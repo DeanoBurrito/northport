@@ -1,3 +1,4 @@
+#include <Log.h>
 #include <boot/Stivale2.h>
 
 uint8_t kernelStackReserve[8192];
@@ -47,11 +48,24 @@ static stivale2_header stivaleHdr
     .tags = (uint64_t)&stivaleTagAnyVideo
 };
 
+namespace Kernel
+{
+    void InitMemory()
+    {
+
+    }
+}
+
 extern "C"
 {
     void _KernelEntry(void* ignored)
     {
-        //generic entry stub, detect what bootloader has loaded us and parse its tables
+        using namespace Kernel;
+
+        LoggingInitEarly();
+        EnableLogDestinaton(LogDestination::DebugCon);
+        Log("Hello world!", LogSeverity::Info);
+        InitMemory();
         
         for (;;)
             asm("hlt");

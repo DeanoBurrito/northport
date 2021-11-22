@@ -11,8 +11,11 @@ LD_FLAGS = $(LD_LIBS) \
 	 -nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext
 ASM_FLAGS = --64
 
-CXX_SRCS = KernelMain.cpp
+CXX_SRCS = KernelMain.cpp Log.cpp
 ASM_SRCS = 
+
+ARCH_DIR = arch/$(CPU_ARCH)
+include $(ARCH_DIR)/local.mk
 
 #auto populated vars
 CXX_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
