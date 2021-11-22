@@ -3,10 +3,12 @@ TOOLCHAIN_DIR = ../cross-tools
 CXX_BIN = $(ARCH_TARGET)-g++
 ASM_BIN = $(ARCH_TARGET)-as
 LD_BIN = $(ARCH_TARGET)-ld
+AR_BIN = $(ARCH_TARGET)-ar
 export TOOLS_DIR = $(abspath $(TOOLCHAIN_DIR))
 export CXX = $(abspath $(TOOLCHAIN_DIR)/bin/$(CXX_BIN))
 export ASM = $(abspath $(TOOLCHAIN_DIR)/bin/$(ASM_BIN))
 export LD = $(abspath $(TOOLCHAIN_DIR)/bin/$(LD_BIN))
+export AR = $(abspath $(TOOLCHAIN_DIR)/bin/$(AR_BIN))
 LIMINE_DIR = $(TOOLCHAIN_DIR)/limine
 
 #top-level projects
@@ -14,8 +16,14 @@ PROJ_BOOTLOADER_ROOT_DIR = boot
 PROJ_INITDISK_DIR = initdisk
 PROJ_KERNEL_DIR = kernel
 PROJ_SYSLIB_DIR = syslib
-export SYSLIB_WHERE = $(abspath $(PROJ_SYSLIB_DIR))
-export INITDISK_WHERE = $(abspath $(PROJ_INITDISK_DIR))
+
+SYSLIB_FILENAME = libsyslib.a
+export SYSLIB_INCLUDE_DIR = $(abspath $(PROJ_SYSLIB_DIR)/include)
+export SYSLIB_FULL_FILEPATH = $(abspath $(PROJ_SYSLIB_DIR)/$(BUILD_DIR)/$(SYSLIB_FILENAME))
+
+INITDISK_FILENAME = initdisk.tar
+export INITDISK_FULL_FILEPATH = $(abspath $(PROJ_INITDISK_DIR)/$(BUILD_DIR)/$(INITDISK_FILENAME))
+
 export KERNEL_FILENAME = kernel-$(CPU_ARCH).elf
 export KERNEL_FULL_FILEPATH = $(abspath $(PROJ_KERNEL_DIR)/$(BUILD_DIR)/$(KERNEL_FILENAME))
 

@@ -1,17 +1,17 @@
 #name of our target file
 TARGET = $(KERNEL_FULL_FILEPATH)
 
-CXX_INCLUDE_DIRS = -Iinclude -I$(SYSLIB_WHERE)/include
+CXX_INCLUDE_DIRS = -Iinclude -I$(SYSLIB_INCLUDE_DIR)
 CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
 	-fno-stack-protector -fno-omit-frame-pointer -ffreestanding -fno-unwind-tables -fno-asynchronous-unwind-tables \
 	-fno-rtti -fno-exceptions -mno-red-zone -Wall -Wextra -std=c++17 -fpie
-LD_LIBS = 
+LD_LIBS = -L$(shell dirname $(SYSLIB_FULL_FILEPATH)) -lsyslib
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds
 LD_FLAGS = $(LD_LIBS) \
 	 -nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext
 ASM_FLAGS = --64
 
-CXX_SRCS = KernelMain.cpp Log.cpp
+CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp memory/PhysicalMemory.cpp
 ASM_SRCS = 
 
 ARCH_DIR = arch/$(CPU_ARCH)
