@@ -6,13 +6,24 @@
 
 namespace Kernel::Memory
 {
+    /*  Notes about current implementation:
+            - Memory map is assumed to be sorted, and have non-overlapping areas.
+            - We create our own copy of any relevent details, mmap is not needed after init.
+            = We dont suppot locking/unlocking pages across region boundaries.
+            - Currently only supports allocating single pages.
+        
+        Improvements to be made:
+            - Logging address on errors ,we'd need to check if dynamic memory exists so we can use Logf or not regular Log
+            - Always searching from root region seems like a nice optimization
+    */
+    
     PhysicalMemoryAllocator globalPma;
     PhysicalMemoryAllocator* PhysicalMemoryAllocator::Global()
     { return &globalPma; }
 
     PhysMemoryRegion* PhysicalMemoryAllocator::InitRegion(stivale2_mmap_entry* mmapEntry)
     {
-        //TODO: investigate alignment issues here, this seems to misalign the first entry?
+        //align the address within the 2x space we allocated for it. Since it's UB to access an unaligned struct.
         const size_t alignBase = (allocBuffer.raw + sizeof(PhysMemoryRegion) - 1) / sizeof(PhysMemoryRegion);
         PhysMemoryRegion* region = reinterpret_cast<PhysMemoryRegion*>(alignBase * sizeof(PhysMemoryRegion));
         allocBuffer.raw += sizeof(PhysMemoryRegion) * 2;
@@ -185,9 +196,11 @@ namespace Kernel::Memory
                 if (!BitmapGet(region->bitmap, i))
                 {
                     BitmapSet(region->bitmap, i);
+
                     region->bitmapNextAlloc++;
                     if (region->bitmapNextAlloc == region->pageCount)
                         region->bitmapNextAlloc = 0;
+
                     region->freePages--;
                     
                     SpinlockRelease(&region->lock);
@@ -201,6 +214,47 @@ namespace Kernel::Memory
             SpinlockRelease(&region->lock);
         }
         
+        Log("Failed to allocate a physical page.", LogSeverity::Error);
         return nullptr;
+    }
+
+    void PhysicalMemoryAllocator::FreePage(void* address)
+    {
+        sl::NativePtr addrPtr = address;
+        addrPtr.raw -= addrPtr.raw % PAGE_SIZE; //ensure that address is actually page aligned. TODO: modulo can be expensive, is it necessary?
+
+        for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
+        {
+            size_t regionTopAddress = region->baseAddress.raw + region->pageCount * PAGE_SIZE;
+            if (addrPtr.raw >= region->baseAddress.raw && addrPtr.raw < regionTopAddress)
+            {
+                //its this region, clear the bit
+                size_t bitmapIndex = (addrPtr.raw - region->baseAddress.raw) / PAGE_SIZE;
+                SpinlockAcquire(&region->lock);
+
+                if (BitmapGet(region->bitmap, bitmapIndex))
+                {
+                    BitmapClear(region->bitmap, bitmapIndex);
+                    region->freePages++;
+
+                    if (bitmapIndex < region->bitmapNextAlloc)
+                        region->bitmapNextAlloc = bitmapIndex;
+                        
+                    
+                    SpinlockRelease(&region->lock);
+                    return;
+                }
+                else
+                {
+                    SpinlockRelease(&region->lock);
+                    Log("Failed to free a physical page, it was already free.", LogSeverity::Warning);
+                    return;
+                }
+
+                SpinlockRelease(&region->lock);
+            }
+        }
+
+        Log("Failed to free a physical page. Address was not found in memory regions.", LogSeverity::Error);
     }
 }

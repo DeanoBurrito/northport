@@ -38,6 +38,7 @@ namespace Kernel::Memory
         void UnlockPages(sl::NativePtr lowestAddress, size_t count);
 
         void* AllocPage();
+        void FreePage(void* address);
     };
 
     using PMM = PhysicalMemoryAllocator;
