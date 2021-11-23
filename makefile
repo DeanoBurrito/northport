@@ -21,10 +21,10 @@ SYSLIB_FILENAME = libsyslib.a
 export SYSLIB_INCLUDE_DIR = $(abspath $(PROJ_SYSLIB_DIR)/include)
 export SYSLIB_FULL_FILEPATH = $(abspath $(PROJ_SYSLIB_DIR)/$(BUILD_DIR)/$(SYSLIB_FILENAME))
 
-INITDISK_FILENAME = initdisk.tar
+INITDISK_FILENAME = northport-initdisk.tar
 export INITDISK_FULL_FILEPATH = $(abspath $(PROJ_INITDISK_DIR)/$(BUILD_DIR)/$(INITDISK_FILENAME))
 
-export KERNEL_FILENAME = kernel-$(CPU_ARCH).elf
+export KERNEL_FILENAME = northport-kernel-$(CPU_ARCH).elf
 export KERNEL_FULL_FILEPATH = $(abspath $(PROJ_KERNEL_DIR)/$(BUILD_DIR)/$(KERNEL_FILENAME))
 
 #build config
@@ -67,6 +67,7 @@ iso: build-all
 	@cp $(LIMINE_DIR)/limine.sys $(ISO_WORKING_DIR)
 	@cp $(LIMINE_DIR)/limine-eltorito-efi.bin $(ISO_WORKING_DIR)
 	@cp $(KERNEL_FULL_FILEPATH) $(ISO_WORKING_DIR)
+	@cp $(INITDISK_FULL_FILEPATH) $(ISO_WORKING_DIR)
 	@xorriso -as mkisofs -b limine-cd.bin -no-emul-boot -boot-load-size 4 \
 		-boot-info-table --efi-boot limine-eltorito-efi.bin -efi-boot-part \
 		--efi-boot-image --protective-msdos-label $(ISO_WORKING_DIR) -o $(ISO_TARGET)
