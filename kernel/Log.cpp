@@ -34,7 +34,7 @@ namespace Kernel
     
     void Log(const char* message, LogSeverity level)
     {
-        const char* headerStr;
+        const char* headerStr = "\0";
         switch (level) 
         {
         case LogSeverity::Info:

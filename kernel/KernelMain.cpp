@@ -36,6 +36,7 @@ extern "C"
 
         LoggingInitEarly();
         EnableLogDestinaton(LogDestination::DebugCon);
+        Log("", LogSeverity::EnumCount); //log empty line so the output of debugcon/serial is starting in a known place.
         Log("Northport kernel succesfully started.", LogSeverity::Info);
 
         InitMemory(stivaleStruct);
