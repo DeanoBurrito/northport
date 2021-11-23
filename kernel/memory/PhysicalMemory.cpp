@@ -29,7 +29,7 @@ namespace Kernel::Memory
         allocBuffer.raw += sizeof(PhysMemoryRegion) * 2;
 
         region->baseAddress = mmapEntry->base;
-        region->pageCount = mmapEntry->length / PAGE_SIZE;
+        region->pageCount = mmapEntry->length / PAGE_FRAME_SIZE;
         region->freePages = region->pageCount;
         region->next = nullptr;
         region->lock = 0;
@@ -54,7 +54,7 @@ namespace Kernel::Memory
 
             if (currentEntry->type == STIVALE2_MMAP_USABLE)
             {
-                size_t bitmapLength = currentEntry->length / PAGE_SIZE / 8 + 1;
+                size_t bitmapLength = currentEntry->length / PAGE_FRAME_SIZE / 8 + 1;
                 allocBufferSize += (sizeof(PhysMemoryRegion) * 2) + bitmapLength;
 
                 if (biggestRegionIndex == (size_t)-1)
@@ -73,10 +73,10 @@ namespace Kernel::Memory
             Log("PMM attempting to bootstrap space for physical bitmaps.", LogSeverity::Info);
         
         //adjust our selected region to not include our alloc buffer
-        const size_t allocBufferPages = allocBufferSize / PAGE_SIZE + 1;
+        const size_t allocBufferPages = allocBufferSize / PAGE_FRAME_SIZE + 1;
         allocBuffer = mmap->memmap[biggestRegionIndex].base;
-        mmap->memmap[biggestRegionIndex].base += allocBufferPages * PAGE_SIZE;
-        mmap->memmap[biggestRegionIndex].length -= allocBufferPages * PAGE_SIZE;
+        mmap->memmap[biggestRegionIndex].base += allocBufferPages * PAGE_FRAME_SIZE;
+        mmap->memmap[biggestRegionIndex].length -= allocBufferPages * PAGE_FRAME_SIZE;
 
         //create structs to manage each area of physical memory
         rootRegion = nullptr;
@@ -127,15 +127,15 @@ namespace Kernel::Memory
 
     void PhysicalMemoryAllocator::LockPages(sl::NativePtr lowestAddress, size_t count)
     {
-        const size_t highestAddress = lowestAddress.raw + count * PAGE_SIZE;
+        const size_t highestAddress = lowestAddress.raw + count * PAGE_FRAME_SIZE;
         
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
             SpinlockAcquire(&region->lock);
             
-            if (lowestAddress.raw >= region->baseAddress.raw && highestAddress <= region->baseAddress.raw + region->freePages * PAGE_SIZE)
+            if (lowestAddress.raw >= region->baseAddress.raw && highestAddress <= region->baseAddress.raw + region->freePages * PAGE_FRAME_SIZE)
             {
-                const size_t localIndex = (lowestAddress.raw - region->baseAddress.raw) / PAGE_SIZE;
+                const size_t localIndex = (lowestAddress.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
 
                 if (count > region->pageCount - localIndex)
                 {
@@ -157,15 +157,15 @@ namespace Kernel::Memory
 
     void PhysicalMemoryAllocator::UnlockPages(sl::NativePtr lowestAddress, size_t count)
     {
-        const size_t highestAddress = lowestAddress.raw + count * PAGE_SIZE;
+        const size_t highestAddress = lowestAddress.raw + count * PAGE_FRAME_SIZE;
         
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
             SpinlockAcquire(&region->lock);
             
-            if (lowestAddress.raw >= region->baseAddress.raw && highestAddress <= region->baseAddress.raw + region->freePages * PAGE_SIZE)
+            if (lowestAddress.raw >= region->baseAddress.raw && highestAddress <= region->baseAddress.raw + region->freePages * PAGE_FRAME_SIZE)
             {
-                const size_t localIndex = (lowestAddress.raw - region->baseAddress.raw) / PAGE_SIZE;
+                const size_t localIndex = (lowestAddress.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
 
                 if (count > region->pageCount - localIndex)
                 {
@@ -204,7 +204,7 @@ namespace Kernel::Memory
                     region->freePages--;
                     
                     SpinlockRelease(&region->lock);
-                    return sl::NativePtr(region->baseAddress.raw + i * PAGE_SIZE).ptr;
+                    return sl::NativePtr(region->baseAddress.raw + i * PAGE_FRAME_SIZE).ptr;
                 }
 
                 if (region->bitmapNextAlloc > 0 && i + 1 == region->pageCount)
@@ -221,15 +221,15 @@ namespace Kernel::Memory
     void PhysicalMemoryAllocator::FreePage(void* address)
     {
         sl::NativePtr addrPtr = address;
-        addrPtr.raw -= addrPtr.raw % PAGE_SIZE; //ensure that address is actually page aligned. TODO: modulo can be expensive, is it necessary?
+        addrPtr.raw -= addrPtr.raw % PAGE_FRAME_SIZE; //ensure that address is actually page aligned. TODO: modulo can be expensive, is it necessary?
 
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
-            size_t regionTopAddress = region->baseAddress.raw + region->pageCount * PAGE_SIZE;
+            size_t regionTopAddress = region->baseAddress.raw + region->pageCount * PAGE_FRAME_SIZE;
             if (addrPtr.raw >= region->baseAddress.raw && addrPtr.raw < regionTopAddress)
             {
                 //its this region, clear the bit
-                size_t bitmapIndex = (addrPtr.raw - region->baseAddress.raw) / PAGE_SIZE;
+                size_t bitmapIndex = (addrPtr.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
                 SpinlockAcquire(&region->lock);
 
                 if (BitmapGet(region->bitmap, bitmapIndex))

@@ -3,12 +3,19 @@
 uint8_t kernelStackReserve[8192];
 
 __attribute__((used))
+static stivale2_tag stivale5LevelPaging
+{
+    .identifier = STIVALE2_HEADER_TAG_5LV_PAGING_ID,
+    .next = 0
+};
+
+__attribute__((used))
 static stivale2_header_tag_smp stivaleTagSmp
 {
     .tag =
     {
         .identifier = STIVALE2_HEADER_TAG_SMP_ID,
-        .next = 0
+        .next = (uint64_t)&stivale5LevelPaging
     },
     .flags = 0
 };
