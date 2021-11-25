@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <Types.h>
 
 namespace Kernel
 {
@@ -19,7 +18,7 @@ namespace Kernel
     struct LogEntry
     {
         LogSeverity severity;
-        uptime_t when;
+        uint64_t when;
         const char* message;
     };
 
