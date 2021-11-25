@@ -57,7 +57,7 @@ namespace Kernel
         cpuidVendorString[11] = (ecx & 0xFF'00'00'00) >> 24;
         cpuidVendorString[12] = 0; //the all important, null terminator.
 
-        __get_cpuid(1, &eax, &ebx, &ecx, &edx);
+        __get_cpuid(0x8000'0001, &eax, &ebx, &ecx, &edx);
         cpuidLeaf1Edx = edx;
         cpuidLeaf1Ecx = ecx;
     }
