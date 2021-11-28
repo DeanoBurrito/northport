@@ -8,6 +8,16 @@
 
 namespace Kernel::Memory
 {   
+    /*  Notes about current implementation:
+            - Supports 4 and 5 level paging
+            - DOES NOT map pages it allocates for page tables
+            - Page table entries are 'sticky' with flags. They're retained and cant be changed until that entry is cleared (which is impossible right now)
+        
+        Improvements to be made:
+            - MapRange() will be super useful
+            - Get rid of reusing bootloader page maps, figure out what we're missing with our own map
+    */
+    
     enum PageEntryFlag : uint64_t
     {
         None = 0,
