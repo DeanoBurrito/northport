@@ -5,8 +5,8 @@ namespace Kernel
 {
     char cpuidVendorString[13];
     
-    uint64_t cpuidLeaf1Edx;
-    uint64_t cpuidLeaf1Ecx;
+    uint64_t extLeaf1Edx;
+    uint64_t extLeaf1Ecx;
 
     bool CPU::InterruptsEnabled()
     {
@@ -35,7 +35,7 @@ namespace Kernel
 
         if (highestLeafAvailable == 0)
         {
-            cpuidLeaf1Ecx = cpuidLeaf1Edx = cpuidVendorString[0] = 0;
+            cpuidVendorString[0] = 0;
             return;
         }
 
@@ -58,8 +58,8 @@ namespace Kernel
         cpuidVendorString[12] = 0; //the all important, null terminator.
 
         __get_cpuid(0x8000'0001, &eax, &ebx, &ecx, &edx);
-        cpuidLeaf1Edx = edx;
-        cpuidLeaf1Ecx = ecx;
+        extLeaf1Edx = edx;
+        extLeaf1Ecx = ecx;
     }
 
     void CPU::PortWrite8(uint16_t port, uint8_t data)
@@ -103,9 +103,9 @@ namespace Kernel
         switch (feature)
         {
         case CpuFeature::ExecuteDisable:
-            return (cpuidLeaf1Edx & (1 << 20)) != 0;
+            return (extLeaf1Edx & (1 << 20)) != 0;
         case CpuFeature::GigabytePages:
-            return (cpuidLeaf1Edx & (1 << 26)) != 0;
+            return (extLeaf1Edx & (1 << 26)) != 0;
 
         default:
             return false;

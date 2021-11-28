@@ -6,12 +6,18 @@ namespace Kernel
 {
     enum class LogSeverity : uint8_t
     {
+        //general log level.
         Info = 0,
+        //potential issue, but not a serious fault.
         Warning = 1,
+        //operation could not be completed, non-fatal issue.
         Error = 2,
+        //usually causes kernel to panic, an unrecoverable issue.
         Fatal = 3,
+        //extra debug info, can be safely ignored.
         Verbose = 4,
 
+        //dont use this to log, its just a count entry.
         EnumCount
     };
 
