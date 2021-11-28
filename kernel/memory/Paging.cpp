@@ -148,12 +148,15 @@ namespace Kernel::Memory
         Log("Paging setup successful.", LogSeverity::Info);
     }
 
-    void PageTableManager::Init()
+    void PageTableManager::Init(bool reuseBootloaderMaps)
     {
-        //topLevelAddress = PMM::Global()->AllocPage();
-        //sl::memset(topLevelAddress.ptr, 0, sizeof(PageTable));
-
-        topLevelAddress = ReadCR3();
+        if (reuseBootloaderMaps)
+            topLevelAddress = ReadCR3();
+        else
+        {
+            topLevelAddress = PMM::Global()->AllocPage();
+            sl::memset(topLevelAddress.ptr, 0, sizeof(PageTable));
+        }
 
         Log("New page table initialized", LogSeverity::Info);
     }

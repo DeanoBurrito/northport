@@ -45,7 +45,7 @@ namespace Kernel::Memory
         static PageTableManager* Local();
 
         static void Setup();
-        void Init();
+        void Init(bool reuseBootloaderMaps);
         //set the higher half of this page table to the same entries as tla. 
         void SetKernelPageRefs(sl::NativePtr tla);
 

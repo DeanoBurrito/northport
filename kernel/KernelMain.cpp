@@ -1,5 +1,8 @@
 #include <Log.h>
+#include <Cpu.h>
+#include <Maths.h>
 #include <memory/PhysicalMemory.h>
+#include <memory/Paging.h>
 #include <boot/Stivale2.h>
 
 namespace Kernel
@@ -23,8 +26,15 @@ namespace Kernel
     {
         using namespace Memory;
         
-        stivale2_tag* mmapTag = FindStivaleTag(stivaleStruct, STIVALE2_STRUCT_TAG_MEMMAP_ID);
-        PMM::Global()->Init(reinterpret_cast<stivale2_struct_tag_memmap*>(mmapTag));
+        stivale2_struct_tag_memmap* mmap = (stivale2_struct_tag_memmap*)FindStivaleTag(stivaleStruct, STIVALE2_STRUCT_TAG_MEMMAP_ID);
+        PMM::Global()->Init(mmap);
+
+        PageTableManager::Setup();
+        PageTableManager::Local()->Init(true);
+
+        //TODO: move away from bootloader map, and use our own
+
+        PageTableManager::Local()->MakeActive();
     }
 }
 
@@ -33,6 +43,9 @@ extern "C"
     void _KernelEntry(stivale2_struct* stivaleStruct)
     {
         using namespace Kernel;
+
+        CPU::ClearInterruptsFlag();
+        CPU::DoCpuId();
 
         LoggingInitEarly();
         EnableLogDestinaton(LogDestination::DebugCon);
