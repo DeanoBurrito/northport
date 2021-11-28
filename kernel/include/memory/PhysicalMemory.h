@@ -30,7 +30,7 @@ namespace Kernel::Memory
         static PhysicalMemoryAllocator* Global();
 
         void Init(stivale2_struct_tag_memmap* mmap);
-        void InitLate(); //called after virtual memory is set up
+        void InitLate(); //called after virtual memory is initialized, identity maps the bitmap
 
         void LockPage(sl::NativePtr address);
         void LockPages(sl::NativePtr lowestAddress, size_t count);
@@ -38,7 +38,9 @@ namespace Kernel::Memory
         void UnlockPages(sl::NativePtr lowestAddress, size_t count);
 
         void* AllocPage();
+        void* AllocPages(size_t count);
         void FreePage(void* address);
+        void FreePages(void* address, size_t count);
     };
 
     using PMM = PhysicalMemoryAllocator;

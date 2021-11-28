@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <Cpu.h>
 
 #define PAGE_FRAME_SIZE 0x1000
 #define PORT_DEBUGCON 0xE9
@@ -86,4 +87,9 @@ namespace Kernel
     {
         asm volatile("mov %0, %%cr4" :: "r"(value));
     }
+
+    struct CoreLocalStorage;
+
+    FORCE_INLINE CoreLocalStorage* GetCoreLocal()
+    { return reinterpret_cast<CoreLocalStorage*>(CPU::ReadMsr(MSR_GS_BASE)); }
 }

@@ -3,18 +3,18 @@
 #include <Memory.h>
 #include <Platform.h>
 #include <stdint.h>
+#include <Maths.h>
 
 namespace Kernel::Memory
 {
     /*  Notes about current implementation:
             - Memory map is assumed to be sorted, and have non-overlapping areas.
             - We create our own copy of any relevent details, mmap is not needed after init.
-            = We dont suppot locking/unlocking pages across region boundaries.
-            - Currently only supports allocating single pages.
+            = We dont support any operations pages across region boundaries.
         
         Improvements to be made:
-            - Logging address on errors ,we'd need to check if dynamic memory exists so we can use Logf or not regular Log
-            - Always searching from root region seems like a nice optimization
+            - Logging address on errors, we'd need to check if dynamic memory exists so we can use Logf or not regular Log
+            - Always searching from root region seems like a nice place for an optimization
     */
     
     PhysicalMemoryAllocator globalPma;
@@ -99,7 +99,9 @@ namespace Kernel::Memory
     }
 
     void PhysicalMemoryAllocator::InitLate()
-    {}
+    {
+        Log("PMM late init finished, bitmap is now in paging structure.", LogSeverity::Verbose);
+    }
 
     FORCE_INLINE bool BitmapGet(uint8_t* base, size_t index)
     {
@@ -218,40 +220,47 @@ namespace Kernel::Memory
         return nullptr;
     }
 
+    void* PhysicalMemoryAllocator::AllocPages(size_t count)
+    {
+        return nullptr;
+    }
+
     void PhysicalMemoryAllocator::FreePage(void* address)
+    { FreePages(address, 1); }
+
+    void PhysicalMemoryAllocator::FreePages(void* address, size_t count)
     {
         sl::NativePtr addrPtr = address;
-        addrPtr.raw -= addrPtr.raw % PAGE_FRAME_SIZE; //ensure that address is actually page aligned. TODO: modulo can be expensive, is it necessary?
+        //NOTE: no need to align the address here, as the divides to get the bitmap index will force alignment.
 
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
             size_t regionTopAddress = region->baseAddress.raw + region->pageCount * PAGE_FRAME_SIZE;
             if (addrPtr.raw >= region->baseAddress.raw && addrPtr.raw < regionTopAddress)
             {
-                //its this region, clear the bit
+                //it's this region, do a bounds check, then set the bits
                 size_t bitmapIndex = (addrPtr.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
+                count = sl::min(bitmapIndex + count, region->pageCount);
+
                 SpinlockAcquire(&region->lock);
 
-                if (BitmapGet(region->bitmap, bitmapIndex))
+                for (size_t i = 0; i < count; i++)
                 {
-                    BitmapClear(region->bitmap, bitmapIndex);
-                    region->freePages++;
+                    if (BitmapGet(region->bitmap, bitmapIndex + i))
+                    {
+                        BitmapClear(region->bitmap, bitmapIndex + i);
+                        region->freePages++;
 
-                    if (bitmapIndex < region->bitmapNextAlloc)
-                        region->bitmapNextAlloc = bitmapIndex;
-                        
-                    
-                    SpinlockRelease(&region->lock);
-                    return;
-                }
-                else
-                {
-                    SpinlockRelease(&region->lock);
-                    Log("Failed to free a physical page, it was already free.", LogSeverity::Warning);
-                    return;
+                        if (bitmapIndex + i < region->bitmapNextAlloc)
+                            region->bitmapNextAlloc = bitmapIndex + i;
+                    }
+                    else
+                        Log("Failed to free a physical page, it was already free.", LogSeverity::Warning);
                 }
 
                 SpinlockRelease(&region->lock);
+                //since we only support operating on 1 region for now, early exit
+                return;
             }
         }
 
