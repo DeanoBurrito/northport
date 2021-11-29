@@ -1,5 +1,5 @@
-CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -fno-omit-frame-pointer -ffreestanding -fno-rtti -fno-exceptions -mno-red-zone -Wall
-CXX_SRCS = Memory.cpp
+CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -fno-omit-frame-pointer -ffreestanding -fno-rtti -fno-exceptions -mno-red-zone -Wall -fpie
+CXX_SRCS = Memory.cpp String.cpp
 
 OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 
