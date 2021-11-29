@@ -11,7 +11,7 @@ LD_FLAGS = $(LD_LIBS) \
 	 -nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext
 ASM_FLAGS = --64
 
-CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp memory/PhysicalMemory.cpp memory/Paging.cpp
+CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp
 ASM_SRCS = 
 
 ARCH_DIR = arch/$(CPU_ARCH)
