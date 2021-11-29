@@ -2,6 +2,10 @@
 
 #include <NativePtr.h>
 
+//prototypes - these are either implemented by kernel or userspace dl
+void* malloc(size_t);
+void free(void*);
+
 namespace sl
 {
     template<typename T>
