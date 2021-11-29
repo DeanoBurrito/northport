@@ -4,6 +4,7 @@
 Northport is a monolithic kernel + utilities targetting x86_64.
 It's booted using the stivale2 protocol (meaning limine is the bootloader),
 and there's otherwise there's not much to say here yet. 
+
 For my *wishful* plans for this project, see the project goals down below.
 
 # Building
@@ -19,11 +20,12 @@ For my *wishful* plans for this project, see the project goals down below.
 ### Setting up the build environment
 The easy solution is to run `make create-toolchain`, which downloads gcc and binutils, and builds them for the target platform (x86_64).
 It's worth noting this script assumes you're on a debian-based distribution (it uses apt).
-Of course that's a huge waste of disk space if you have a GCC cross compiler installed.
-The root makefile defines all the tools used under the section 'toolchain selection',
-so you can point it to your custom tools here, or what if you alreayd have a cross compiler folder, you can point `TOOLCHAIN_DIR` to it, and it'll take care of the rest.
 
-The limine bootloader is used, and is expected to be at `TOOLCHAIN_DIR/limine` by default, but you can override this is your install is elsewhere.
+Of course that's a huge waste of disk space if you have a GCC cross compiler installed.
+
+The root makefile defines all the tools used under the section 'toolchain selection', so you can point it to your custom tools here, or what if you already have a cross compiler folder, you can point `TOOLCHAIN_DIR` to it, and it'll take care of the rest.
+
+The limine bootloader is used, and is expected to be at `TOOLCHAIN_DIR/limine` by default, but you can override this if your install is elsewhere.
 
 To verify everything works you can run `make validate-toolchain`, it'll tell you if there are issues.
 
@@ -35,7 +37,7 @@ The full list of make targets are below:
 - `make all`: by default it builds everything, and creates a bootable iso in `iso/`.
 - `make clean`: as you'd expect, removes build files and forces a clean build.
 - `make run`: builds everything, creates an iso and launches qemu with the iso.
-- `make debug`: same as run, but it halts the virtual machine and opens a gdb server on port 1234.
+- `make debug`: same as run, but it starts a gdb server on port 1234, and waits for a connection before starting execution.
 - `make attach`: a convinient way to have gdb attach to a waiting vm, and load kernel symbols.
 - `make create-toolchain`: runs a script to install a cross compiler toolchain in the default location. 
 - `make validate-toolchain`: validates the toolchain install.
