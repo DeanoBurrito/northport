@@ -1,5 +1,5 @@
 CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -fno-omit-frame-pointer -ffreestanding -fno-rtti -fno-exceptions -mno-red-zone -Wall -fpie
-CXX_SRCS = Memory.cpp String.cpp
+CXX_SRCS = Memory.cpp String.cpp StringCulture.cpp
 
 OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 
