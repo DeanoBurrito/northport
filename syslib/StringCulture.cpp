@@ -5,7 +5,7 @@ namespace sl
     StrayaCulture defaultCulture;
     StringCulture* StringCulture::current = &defaultCulture;
 
-    bool StrayaCulture::IsAlpha(char character)
+    bool StrayaCulture::IsAlpha(int character)
     {
         if (character >= 'a' && character <= 'z')
             return true;
@@ -14,19 +14,19 @@ namespace sl
         return false;
     }
 
-    bool StrayaCulture::IsUpper(char character)
+    bool StrayaCulture::IsUpper(int character)
     { return character >= 'A' && character <= 'Z'; }
 
-    bool StrayaCulture::IsLower(char character)
+    bool StrayaCulture::IsLower(int character)
     { return character >= 'a' && character <= 'z'; }
 
-    bool StrayaCulture::IsPrintable(char character)
+    bool StrayaCulture::IsPrintable(int character)
     { return character >= ' ' && character <= '~'; }
 
-    bool StrayaCulture::IsDigit(char character)
+    bool StrayaCulture::IsDigit(int character)
     { return character >= '0' && character <= '9'; }
 
-    bool StrayaCulture::IsHexDigit(char character)
+    bool StrayaCulture::IsHexDigit(int character)
     { 
         if (character >= 'a' && character <= 'f')
             return true;
@@ -35,12 +35,12 @@ namespace sl
         return IsDigit(character);
     }
 
-    bool StrayaCulture::IsAlphaNum(char character)
+    bool StrayaCulture::IsAlphaNum(int character)
     {
         return IsAlpha(character) || IsDigit(character);
     }
 
-    bool StrayaCulture::IsSpace(char character)
+    bool StrayaCulture::IsSpace(int character)
     {
         switch (character)
         {
@@ -55,18 +55,99 @@ namespace sl
         }
     }
     
-    char StrayaCulture::ToUpper(char character)
+    int StrayaCulture::ToUpper(int character)
     {
         if (IsLower(character))
             return character -= 0x20;
         return character;
     }
 
-    char StrayaCulture::ToLower(char character)
+    int StrayaCulture::ToLower(int character)
     {
         if (IsUpper(character))
             return character += 0x20;
         return character;
     }
 
+    using namespace sl::Helpers;
+
+    bool StrayaCulture::TryGetUInt8(uint8_t* out, const string& str, size_t start)
+    { 
+        return TryGetUInt<uint8_t>(out, str.C_Str(), start); 
+    }
+
+    bool StrayaCulture::TryGetUInt16(uint16_t* out, const string& str, size_t start)
+    { 
+        return TryGetUInt<uint16_t>(out, str.C_Str(), start); 
+    }
+
+    bool StrayaCulture::TryGetUInt32(uint32_t* out, const string& str, size_t start)
+    { 
+        return TryGetUInt<uint32_t>(out, str.C_Str(), start); 
+    }
+
+    bool StrayaCulture::TryGetUInt64(uint64_t* out, const string& str, size_t start)
+    { 
+        return TryGetUInt<uint64_t>(out, str.C_Str(), start); 
+    }
+
+    bool StrayaCulture::TryGetInt8(int8_t* out, const string& str, size_t start)
+    { 
+        return TryGetInt<int8_t>(out, str.C_Str(), start); 
+    }
+
+    bool StrayaCulture::TryGetInt16(int16_t* out, const string& str, size_t start)
+    { 
+        return TryGetInt<int16_t>(out, str.C_Str(), start); 
+    }
+
+    bool StrayaCulture::TryGetInt32(int32_t* out, const string& str, size_t start)
+    { 
+        return TryGetInt<int32_t>(out, str.C_Str(), start); 
+    }
+
+    bool StrayaCulture::TryGetInt64(int64_t* out, const string& str, size_t start)
+    { 
+        return TryGetInt<int64_t>(out, str.C_Str(), start); 
+    }
+
+    string StrayaCulture::ToString(uint8_t num, size_t base)
+    { 
+        return String(UIntToString<uint8_t, 4>(num, base), true); 
+    }
+
+    string StrayaCulture::ToString(uint16_t num, size_t base)
+    { 
+        return String(UIntToString<uint16_t, 7>(num, base), true); 
+    }
+
+    string StrayaCulture::ToString(uint32_t num, size_t base)
+    { 
+        return String(UIntToString<uint32_t, 12>(num, base), true); 
+    }
+
+    string StrayaCulture::ToString(uint64_t num, size_t base)
+    { 
+        return String(UIntToString<uint64_t, 21>(num, base), true); 
+    }
+
+    string StrayaCulture::ToString(int8_t num, size_t base)
+    { 
+        return String(IntToString<int8_t, 4>(num, base), true); 
+    }
+
+    string StrayaCulture::ToString(int16_t num, size_t base)
+    { 
+        return String(IntToString<int16_t, 7>(num, base), true); 
+    }
+
+    string StrayaCulture::ToString(int32_t num, size_t base)
+    { 
+        return String(IntToString<int32_t, 12>(num, base), true); 
+    }
+
+    string StrayaCulture::ToString(int64_t num, size_t base)
+    { 
+        return String(IntToString<int64_t, 21>(num, base), true); 
+    }
 }

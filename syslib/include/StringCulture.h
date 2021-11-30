@@ -1,40 +1,207 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
+#include <String.h>
 
 namespace sl
 {
+    namespace Base
+    {
+        constexpr inline size_t BINARY = 2;
+        constexpr inline size_t OCTAL = 8;
+        constexpr inline size_t DECIMAL = 10;
+        constexpr inline size_t HEX = 16;
+    }
+
+    //a collection of useful string/number conversions that work in most languages. Of course I want the option to override them,
+    //but these stop duplicate of most of the code between cultures that share the arabic number system.
+    namespace Helpers
+    {
+        template<typename IntType> [[gnu::always_inline]]
+        inline bool TryGetInt(IntType* out, const char* str, size_t start)
+        {
+            *out = 0;
+            return false;
+        }
+
+        template<typename UIntType> [[gnu::always_inline]]
+        inline bool TryGetUInt(UIntType* out, const char* str, size_t start)
+        {
+            *out = 0;
+            return false;
+        }
+
+        template<typename UIntType, size_t bufferLength> [[gnu::always_inline]]
+        inline char* UIntToString(UIntType num, size_t base)
+        {
+            if (base < 2 || base > 32)
+                return 0;
+            
+            char* buffer = new char[bufferLength];
+            size_t index = 0;
+
+            while (num)
+            {
+                UIntType remainder = num % base;
+                num = num / base;
+                if (remainder < 10)
+                    buffer[index] = '0' + remainder;
+                else
+                    buffer[index] = 'A' + remainder - 10;
+                index++;
+            }
+
+            if (index == 0 && num == 0)
+            {
+                buffer[index] = '0';
+                index++;
+            }
+
+            buffer[index] = 0;
+            char temp;
+            for (size_t i = 0; i < index / 2; i++)
+            {
+                temp = buffer[i];
+                buffer[i] = buffer[index - i - 1];
+                buffer[index - i - 1] = temp;
+            }
+
+            return buffer;
+        }
+
+        template<typename IntType, size_t bufferLength> [[gnu::always_inline]]
+        inline char* IntToString(IntType num, size_t base)
+        {
+            if (base < 2 || base > 32)
+                return 0;
+            
+            char* buffer = new char[bufferLength];
+            size_t index = 0;
+            bool appendMinus = 0;
+
+            if (num < 0)
+            {
+                appendMinus = true;
+                num = -num;
+            }
+
+            while (num)
+            {
+                IntType remainder = num % base;
+                num = num / base;
+
+                if (remainder < 10)
+                    buffer[index] = '0' + remainder;
+                else
+                    buffer[index] = 'A' + remainder - 10;
+                index++;
+            }
+
+            if (index == 0 && num == 0)
+            {
+                buffer[index] = '0';
+                index++;
+            }
+
+            if (appendMinus)
+            {
+                buffer[index] = '-';
+                index++;
+            }
+
+            buffer[index] = 0;
+            char temp;
+            for (size_t i = 0; i < index / 2; i++)
+            {
+                temp = buffer[i];
+                buffer[i] = buffer[index - i - 1];
+                buffer[index - i - 1] = temp;
+            }
+
+            return buffer;
+        }
+    }
+    
+    /*
+        Yes, I know haha. I apologize to anyone who wants to add extra languages. 
+        
+        The design here is that you override StringCulture, and install it as the default culture (or in some global location, tbd).
+        Then you can override all the functions below, according to your local language, and what makes sense.
+        The TryGet[U]Int() and ToString functions have templated implementations up above that you're welcome to use, 
+        if your language uses arabic numerals. Otherwise I'm afraid you're on your own.
+
+        The reference implementation is in 'StrayaCulture' (Australian, for those not in the know haha). A little joke I can curse myself for later.
+
+        Characters are represented using 'int' here, as UTF-8 support is planned oneday, even though the string class currently uses chars.
+    */
     class StringCulture
     {
-    private:
     public:
         static StringCulture* current;
 
-        virtual bool IsAlpha(char character) = 0;
-        virtual bool IsUpper(char character) = 0;
-        virtual bool IsLower(char character) = 0;
-        virtual bool IsPrintable(char character) = 0;
-        virtual bool IsDigit(char character) = 0;
-        virtual bool IsHexDigit(char character) = 0;
-        virtual bool IsAlphaNum(char character) = 0;
-        virtual bool IsSpace(char character) = 0;
+        virtual bool IsAlpha(int character) = 0;
+        virtual bool IsUpper(int character) = 0;
+        virtual bool IsLower(int character) = 0;
+        virtual bool IsPrintable(int character) = 0;
+        virtual bool IsDigit(int character) = 0;
+        virtual bool IsHexDigit(int character) = 0;
+        virtual bool IsAlphaNum(int character) = 0;
+        virtual bool IsSpace(int character) = 0;
 
-        virtual char ToUpper(char character) = 0;
-        virtual char ToLower(char character) = 0;
+        virtual int ToUpper(int character) = 0;
+        virtual int ToLower(int character) = 0;
+
+        virtual bool TryGetUInt8(uint8_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetUInt16(uint16_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetUInt32(uint32_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetUInt64(uint64_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetInt8(int8_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetInt16(int16_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetInt32(int32_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetInt64(int64_t* out, const string& str, size_t start) = 0;
+
+        virtual string ToString(uint8_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(uint16_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(uint32_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(uint64_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(int8_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(int16_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(int32_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(int64_t num, size_t base = Base::DECIMAL) = 0;
     };
 
     class StrayaCulture : public StringCulture
-    {
-        bool IsAlpha(char character);
-        bool IsUpper(char character);
-        bool IsLower(char character);
-        bool IsPrintable(char character);
-        bool IsDigit(char character);
-        bool IsHexDigit(char character);
-        bool IsAlphaNum(char character);
-        bool IsSpace(char character);
+    {   
+    public:
+        bool IsAlpha(int character);
+        bool IsUpper(int character);
+        bool IsLower(int character);
+        bool IsPrintable(int character);
+        bool IsDigit(int character);
+        bool IsHexDigit(int character);
+        bool IsAlphaNum(int character);
+        bool IsSpace(int character);
 
-        char ToUpper(char character);
-        char ToLower(char character);
+        int ToUpper(int character);
+        int ToLower(int character);
+
+        bool TryGetUInt8(uint8_t* out, const string& str, size_t start);
+        bool TryGetUInt16(uint16_t* out, const string& str, size_t start);
+        bool TryGetUInt32(uint32_t* out, const string& str, size_t start);
+        bool TryGetUInt64(uint64_t* out, const string& str, size_t start);
+        bool TryGetInt8(int8_t* out, const string& str, size_t start);
+        bool TryGetInt16(int16_t* out, const string& str, size_t start);
+        bool TryGetInt32(int32_t* out, const string& str, size_t start);
+        bool TryGetInt64(int64_t* out, const string& str, size_t start);
+
+        string ToString(uint8_t num, size_t base = Base::DECIMAL);
+        string ToString(uint16_t num, size_t base = Base::DECIMAL);
+        string ToString(uint32_t num, size_t base = Base::DECIMAL);
+        string ToString(uint64_t num, size_t base = Base::DECIMAL);
+        string ToString(int8_t num, size_t base = Base::DECIMAL);
+        string ToString(int16_t num, size_t base = Base::DECIMAL);
+        string ToString(int32_t num, size_t base = Base::DECIMAL);
+        string ToString(int64_t num, size_t base = Base::DECIMAL);
     };
 }
