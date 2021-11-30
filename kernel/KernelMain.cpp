@@ -74,7 +74,13 @@ extern "C"
         CPU::DoCpuId();
 
         LoggingInitEarly();
+#ifdef NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT
         EnableLogDestinaton(LogDestination::DebugCon);
+#endif
+#ifdef NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT 
+        EnableLogDestinaton(LogDestination::FramebufferOverwrite);
+#endif
+
         Log("", LogSeverity::EnumCount); //log empty line so the output of debugcon/serial is starting in a known place.
         Log("Northport kernel succesfully started.", LogSeverity::Info);
 
