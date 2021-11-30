@@ -106,9 +106,6 @@ namespace sl
         return memfirst(buffer, offset, token, length);
     }
 
-    size_t String::NoPos() const
-    { return length; }
-
     char& String::At(size_t index)
     {
         if (index >= length)

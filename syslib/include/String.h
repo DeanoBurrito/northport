@@ -12,6 +12,8 @@ namespace sl
         String(char* const cstr, bool reuseBuffer);
 
     public:
+        constexpr static size_t NoPos = (size_t)-1;
+
         String();
         String(const char* const cstr);
         String(const char c);
@@ -28,7 +30,6 @@ namespace sl
         String SubString(size_t start, size_t length) const;
 
         size_t Find(const char token, size_t offset = 0);
-        size_t NoPos() const;
 
         char& At(const size_t index);
         const char& At(const size_t index) const;

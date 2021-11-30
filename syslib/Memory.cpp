@@ -59,6 +59,6 @@ namespace sl
             if (start[i] == target)
                 return i;
         }
-        return upperLimit;
+        return (size_t)-1;
     }
 }
