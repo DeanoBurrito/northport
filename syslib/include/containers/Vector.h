@@ -1,3 +1,24 @@
+/*
+---- NOTE ----
+This vector implementation is mostly from the frigg library (https://github.com/managarm/frigg.
+While I wrote this myself, and it's not completely identical, I had just read the frigg implementation, and so a lot of it ended up being the same.
+Lessons learned for the future!
+
+The license (as required) is listed below, and as syslib is licensed under the same license, there should be no issues.
+If you're a maintainer of frigg and have issues, please dont hesitate to reach out.
+
+---- LICENSE ----
+MIT License
+Copyright 2014-2021 Frigg Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+
 #pragma once
 
 #include <stddef.h>
@@ -15,6 +36,14 @@ namespace sl
         size_t size;
         size_t capacity;
 
+    public:
+        friend void Swap(Vector& a, Vector& b)
+        {
+            sl::swap(a.elements, b.elements);
+            sl::swap(a.size, b.size);
+            sl::swap(a.capacity, b.capacity);
+        }
+
         void EnsureCapacity(size_t neededCapacity)
         {
             if (neededCapacity <= capacity)
@@ -31,14 +60,6 @@ namespace sl
 
             elements = newElements;
             capacity = newCapacity;
-        }
-
-    public:
-        friend void Swap(Vector& a, Vector& b)
-        {
-            sl::swap(a.elements, b.elements);
-            sl::swap(a.size, b.size);
-            sl::swap(a.capacity, b.capacity);
         }
 
         Vector() : elements(nullptr), size(0), capacity(0)

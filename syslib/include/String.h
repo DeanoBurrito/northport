@@ -9,13 +9,13 @@ namespace sl
     private:
         char* buffer;
         size_t length;
-        String(char* const cstr, bool reuseBuffer);
 
     public:
         constexpr static size_t NoPos = (size_t)-1;
 
         String();
         String(const char* const cstr);
+        String(char* const cstr, bool reuseBuffer);
         String(const char c);
         
         ~String();
