@@ -1,9 +1,9 @@
 #include <Log.h>
 #include <Cpu.h>
-#include <Maths.h>
 #include <memory/PhysicalMemory.h>
 #include <memory/Paging.h>
 #include <memory/KernelHeap.h>
+#include <arch/x86_64/Gdt.h>
 #include <boot/Stivale2.h>
 
 namespace Kernel
@@ -26,6 +26,8 @@ namespace Kernel
     void InitMemory(stivale2_struct* stivaleStruct)
     {
         using namespace Memory;
+
+        Log("Initializing memory ...", LogSeverity::Info);
         
         stivale2_struct_tag_memmap* mmap = (stivale2_struct_tag_memmap*)FindStivaleTag(stivaleStruct, STIVALE2_STRUCT_TAG_MEMMAP_ID);
         PMM::Global()->Init(mmap);
@@ -51,6 +53,15 @@ namespace Kernel
 
         KernelHeap::Global()->Init(tentativeHeapStart);
     }
+
+    void InitPlatform()
+    {
+        Log("Initializing platform ...", LogSeverity::Info);
+
+        SetupGDT();
+        FlushGDT();
+        Log("GDT successfully installed.", LogSeverity::Verbose);
+    }
 }
 
 extern "C"
@@ -68,6 +79,7 @@ extern "C"
         Log("Northport kernel succesfully started.", LogSeverity::Info);
 
         InitMemory(stivaleStruct);
+        InitPlatform();
 
         Log("Kernel init done.", LogSeverity::Info);
         

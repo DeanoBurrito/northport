@@ -10,6 +10,11 @@
 #define MSR_GS_BASE 0xC0000101
 #define MSR_GS_KERNEL_BASE 0xC0000102
 
+#define GDT_ENTRY_RING_0_CODE 0x8
+#define GDT_ENTRY_RING_0_DATA 0x10
+#define GDT_ENTRY_RING_3_CODE 0x18
+#define GDT_ENTRY_RING_3_DATA 0x20
+
 #define FORCE_INLINE __attribute__((always_inline)) inline
 
 namespace Kernel
