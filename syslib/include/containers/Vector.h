@@ -49,14 +49,17 @@ namespace sl
             if (neededCapacity <= capacity)
                 return;
 
-            size_t newCapacity = capacity * 2 - (capacity / 2);
+            size_t newCapacity = capacity * 2;
+            if (newCapacity == 0)
+                newCapacity = neededCapacity;
             T* newElements = (T*)malloc(sizeof(T) * newCapacity);
             for (size_t i = 0; i < capacity; i++)
                 new(&newElements[i]) T(sl::move(elements[i]));
             
             for (size_t i = 0; i < size; i++)
                 elements[i].~T();
-            free(elements);
+            if (elements != nullptr)
+                free(elements);
 
             elements = newElements;
             capacity = newCapacity;
@@ -106,7 +109,7 @@ namespace sl
 
             T* latest = new(&elements[size]) T(elem);
             size++;
-            return latest;
+            return *latest;
         }
 
         T& PushBack(T&& elem)

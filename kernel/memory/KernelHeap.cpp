@@ -134,3 +134,13 @@ namespace Kernel::Memory
             heapNode->prev->CombineWithNext(tail);
     }
 }
+
+void* malloc(size_t size)
+{
+    return Kernel::Memory::KernelHeap::Global()->Alloc(size);
+}
+
+void free(void* ptr)
+{
+    Kernel::Memory::KernelHeap::Global()->Free(ptr);
+}

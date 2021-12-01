@@ -36,13 +36,5 @@ namespace Kernel::Memory
     };
 }
 
-FORCE_INLINE void* malloc(size_t size)
-{
-    //lmao
-    return Kernel::Memory::KernelHeap::Global()->Alloc(size);
-}
-
-FORCE_INLINE void free(void* ptr)
-{
-    Kernel::Memory::KernelHeap::Global()->Free(ptr);
-}
+void* malloc(size_t size);
+void free(void* ptr);
