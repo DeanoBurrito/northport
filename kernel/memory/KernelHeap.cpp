@@ -3,8 +3,26 @@
 #include <memory/KernelHeap.h>
 #include <Log.h>
 
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+    #pragma message "Kernel heap is compiling with canary built in. Useful for debugging, but can cause slowdowns."
+#endif
+
 namespace Kernel::Memory
 {
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+    bool CheckCanary(HeapNode* node)
+    { 
+        // return node->canary == (uint64_t)node;
+        return node->canary == ((uint64_t)node->prev << 32 | ((uint64_t)node->next & 0xFFFF'FFFF));
+    }
+
+    void SetCanary(HeapNode* node)
+    {
+        // node->canary = (uint64_t)node;
+        node->canary = ((uint64_t)node->prev << 32 | ((uint64_t)node->next & 0xFFFF'FFFF));
+    }
+#endif
+    
     void HeapNode::CombineWithNext(HeapNode* last)
     {
         if (!free)
@@ -18,8 +36,11 @@ namespace Kernel::Memory
             last = this;
 
         length += next->length + sizeof(HeapNode);
-        next->prev = nullptr; //so we dont accidentally point back here
-        next = nullptr;
+        next = next->next;
+
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+        SetCanary(this);
+#endif
     }
 
     void HeapNode::CarveOut(size_t allocSize, HeapNode* last)
@@ -37,6 +58,11 @@ namespace Kernel::Memory
 
         if (this == last)
             last = nextNode;
+
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+        SetCanary(nextNode);
+        SetCanary(this);
+#endif
     }
 
     KernelHeap globalKernelHeap;
@@ -54,6 +80,11 @@ namespace Kernel::Memory
         head->next = head->prev = nullptr;
         head->length = (size_t)PagingSize::Physical - sizeof(HeapNode);
         head->free = true;
+
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+        SetCanary(head);
+        Log("Kernel heap is using debug canary.", LogSeverity::Verbose);
+#endif
     }
 
     void* KernelHeap::Alloc(size_t size)
@@ -70,6 +101,11 @@ namespace Kernel::Memory
         HeapNode* scan = head;
         while (scan != nullptr)
         {
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+            if (!CheckCanary(scan))
+                Log("Kernel heap canary value is corrupted. Oh no.", LogSeverity::Error);
+#endif
+            
             if (!scan->free)
             {
                 scan = scan->next;
@@ -78,7 +114,7 @@ namespace Kernel::Memory
 
             if (scan->length >= requestedSize)
             {
-                if (scan->length > requestedSize)
+                if (scan->length > requestedSize + HEAP_ALLOC_ALIGN)
                     scan->CarveOut(size, tail);
                 if (tail == scan && scan->next != nullptr)
                     tail = scan->next;
@@ -104,6 +140,12 @@ namespace Kernel::Memory
                 scan->next->length = requiredPages * PAGE_FRAME_SIZE - sizeof(HeapNode);
 
                 tail = scan->next;
+
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+                SetCanary(scan);
+                SetCanary(tail);
+#endif
+
             }
 
             scan = scan->next;
@@ -115,17 +157,19 @@ namespace Kernel::Memory
 
     void KernelHeap::Free(void* ptr)
     {
+        if (ptr == nullptr)
+            return;
+        
         ScopedSpinlock scopeLock(&lock);
 
         sl::NativePtr where(ptr);
-
-        if (where.raw < (uint64_t)head + sizeof(HeapNode) || where.raw > (uint64_t)tail + sizeof(HeapNode))
+        where.raw -= sizeof(HeapNode);
+        if (where.raw < (uint64_t)head || where.raw >= (uint64_t)tail)
         {
             Log("Attempted to free memory not in kernel heap.", LogSeverity::Error);
             return;
         }
 
-        where.raw -= sizeof(HeapNode);
         HeapNode* heapNode = where.As<HeapNode>();
         heapNode->free = true;
 

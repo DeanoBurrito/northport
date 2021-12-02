@@ -42,7 +42,7 @@ export ISO_TARGET = $(abspath $(ISO_FILENAME))
 LIMINE_CFG = misc/limine.cfg
 
 ifeq ($(INCLUDE_DEBUG_INFO), true)
-	export CXX_DEBUG_FLAGS = -g
+	export CXX_DEBUG_FLAGS = -g -DNORTHPORT_DEBUG_USE_HEAP_CANARY
 else
 	export CXX_DEBUG_FLAGS =
 endif

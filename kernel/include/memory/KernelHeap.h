@@ -10,6 +10,9 @@ namespace Kernel::Memory
 {
     struct HeapNode
     {
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+        uint64_t canary;
+#endif
         HeapNode* prev;
         HeapNode* next;
         size_t length;
@@ -24,7 +27,7 @@ namespace Kernel::Memory
     private:
         HeapNode* head;
         HeapNode* tail;
-        char lock; //TODO: do we need to lock on the whole class, or can we lock individual nodes?
+        char lock;
 
     public:
         static KernelHeap* Global();
