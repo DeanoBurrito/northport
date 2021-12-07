@@ -101,6 +101,36 @@ namespace sl
         return move(String(tempBuffer, true));
     }
 
+    String String::Concat(const String& other) const
+    {
+        if (length == 0)
+            return other;
+        if (other.length == 0)
+            return *this;
+        if (length == 0 && other.length == 0)
+            return "";
+
+        const size_t newStrLength = length + other.length;
+        char* buff = new char[newStrLength + 1];
+        sl::memcopy(buffer, buff, length);
+        sl::memcopy(other.buffer, 0, buff, length, other.length);
+        buff[newStrLength] = 0;
+
+        return String(buff, true);
+    }
+
+    String String::operator+(const String& other) const
+    {
+        return Concat(other);
+    }
+
+    String& String::operator+=(const String& other)
+    {
+        string s = Concat(other);
+        sl::swap(*this, s);
+        return *this;
+    }
+
     size_t String::Find(const char token, size_t offset)
     {
         return memfirst(buffer, offset, token, length);

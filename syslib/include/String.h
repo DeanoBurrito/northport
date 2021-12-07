@@ -27,7 +27,11 @@ namespace sl
         const char* C_Str() const;
         bool IsEmpty() const;
         size_t Size() const;
+
         String SubString(size_t start, size_t length) const;
+        String Concat(const String& other) const;
+        String operator+(const String& other) const;
+        String& operator+=(const String& other);
 
         size_t Find(const char token, size_t offset = 0);
 
