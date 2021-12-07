@@ -23,7 +23,7 @@ namespace Kernel::Memory
     }
 #endif
     
-    void HeapNode::CombineWithNext(HeapNode* last)
+    void HeapNode::CombineWithNext(KernelHeap& heap)
     {
         if (!free)
             return;
@@ -32,20 +32,27 @@ namespace Kernel::Memory
         if (!next->free)
             return;
 
-        if (next == last)
-            last = this;
+        if (heap.tail == next)
+            heap.tail = this;
 
         length += next->length + sizeof(HeapNode);
         next = next->next;
+        if (next)
+            next->prev = this;
 
 #ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
         SetCanary(this);
+        if (next)
+            SetCanary(next);
 #endif
     }
 
-    void HeapNode::CarveOut(size_t allocSize, HeapNode* last)
+    void HeapNode::CarveOut(size_t allocSize, KernelHeap& heap)
     {
         const size_t actualSize = sizeof(HeapNode) + allocSize;
+        if (length - actualSize > length)
+            return;
+
         HeapNode* nextNode = reinterpret_cast<HeapNode*>((uint64_t)this + actualSize);
         nextNode->free = this->free;
         nextNode->next = this->next;
@@ -56,12 +63,38 @@ namespace Kernel::Memory
         nextNode->length = length - actualSize;
         length = allocSize;
 
-        if (this == last)
-            last = nextNode;
+        if (heap.tail == this)
+            heap.tail = nextNode;
 
 #ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
         SetCanary(nextNode);
         SetCanary(this);
+        if (nextNode->next)
+            SetCanary(nextNode->next);
+#endif
+    }
+
+    void KernelHeap::ExpandHeap(size_t nextAllocSize)
+    {
+        //reached end of heap, seems there's not enough space. Lets allocate what we need and return from that.
+        const size_t requiredPages = (sizeof(HeapNode) + nextAllocSize) / PAGE_FRAME_SIZE + 1;
+        uint64_t endOfHeapAddr = (uint64_t)tail + tail->length + sizeof(HeapNode);
+
+        if (requiredPages > 1)
+            Log("VMM::MapRange() not yet implemented! //TODO:", LogSeverity::Fatal);
+        PageTableManager::Local()->MapMemory(endOfHeapAddr, MemoryMapFlag::AllowWrites);
+        tail->next = reinterpret_cast<HeapNode*>(endOfHeapAddr);
+
+        tail->next->next = nullptr;
+        tail->next->prev = tail;
+        tail->next->free = true;
+        tail->next->length = requiredPages * PAGE_FRAME_SIZE - sizeof(HeapNode);
+
+        tail = tail->next;
+
+#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
+        SetCanary(tail->prev);
+        SetCanary(tail);
 #endif
     }
 
@@ -95,8 +128,7 @@ namespace Kernel::Memory
         ScopedSpinlock scopeLock(&lock);
 
         //align alloc size
-        size = ((size  / HEAP_ALLOC_ALIGN) + 1) * HEAP_ALLOC_ALIGN;
-        const size_t requestedSize = size + sizeof(HeapNode);
+        size = (size / HEAP_ALLOC_ALIGN + 1) * HEAP_ALLOC_ALIGN;
         
         HeapNode* scan = head;
         while (scan != nullptr)
@@ -112,41 +144,23 @@ namespace Kernel::Memory
                 continue;
             }
 
-            if (scan->length >= requestedSize)
+            if (scan->length == size)
             {
-                if (scan->length > requestedSize + HEAP_ALLOC_ALIGN)
-                    scan->CarveOut(size, tail);
-                if (tail == scan && scan->next != nullptr)
-                    tail = scan->next;
+                scan->free = false;
+                return (void*)((uint64_t)scan + sizeof(HeapNode));
+            }
 
+            if (scan->length > size)
+            {
+                if (scan->length - (size + sizeof(HeapNode)) > HEAP_ALLOC_ALIGN)
+                    scan->CarveOut(size, *this); //carve out space for the next node, ONLY if subdividing would be useful
+                
                 scan->free = false;
                 return (void*)((uint64_t)scan + sizeof(HeapNode));
             }
 
             if (scan == tail)
-            {
-                //reached end of heap, seems there's not enough space. Lets allocate what we need and return from that.
-                const size_t requiredPages = requestedSize / PAGE_FRAME_SIZE + 1;
-                uint64_t endOfHeapAddr = (uint64_t)tail + tail->length + sizeof(HeapNode);
-
-                if (requiredPages > 1)
-                    Log("VMM::MapRange() not yet implemented! //TODO:", LogSeverity::Fatal);
-                PageTableManager::Local()->MapMemory(endOfHeapAddr, MemoryMapFlag::AllowWrites);
-                scan->next = reinterpret_cast<HeapNode*>(endOfHeapAddr);
-
-                scan->next->next = nullptr;
-                scan->next->prev = scan;
-                scan->next->free = true;
-                scan->next->length = requiredPages * PAGE_FRAME_SIZE - sizeof(HeapNode);
-
-                tail = scan->next;
-
-#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
-                SetCanary(scan);
-                SetCanary(tail);
-#endif
-
-            }
+                ExpandHeap(size);
 
             scan = scan->next;
         }
@@ -173,9 +187,9 @@ namespace Kernel::Memory
         HeapNode* heapNode = where.As<HeapNode>();
         heapNode->free = true;
 
-        heapNode->CombineWithNext(tail);
+        heapNode->CombineWithNext(*this);
         if (heapNode->prev)
-            heapNode->prev->CombineWithNext(tail);
+            heapNode->prev->CombineWithNext(*this);
     }
 }
 

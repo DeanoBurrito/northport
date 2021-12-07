@@ -8,6 +8,8 @@
 
 namespace Kernel::Memory
 {
+    class KernelHeap;
+    
     struct HeapNode
     {
 #ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
@@ -18,16 +20,19 @@ namespace Kernel::Memory
         size_t length;
         bool free;
 
-        void CombineWithNext(HeapNode* last);
-        void CarveOut(size_t allocSize, HeapNode* last);
+        void CombineWithNext(KernelHeap& heap);
+        void CarveOut(size_t allocSize, KernelHeap& heap);
     };
     
     class KernelHeap
     {
+    friend HeapNode;
     private:
         HeapNode* head;
         HeapNode* tail;
         char lock;
+
+        void ExpandHeap(size_t nextAllocSize);
 
     public:
         static KernelHeap* Global();

@@ -31,6 +31,7 @@ To verify everything works you can run `make validate-toolchain`, it'll tell you
 
 Building an iso is done by running `make iso`, and if qemu is installed, can be launched via `make run`.
 
+It's worth nothing I do occasionally build with clang (using `--target=`), but the project isn't intended to be built this way. No gaurentees are made about stability or even making it past compilation/linking.
 
 ### Make targets
 The full list of make targets are below:
@@ -44,7 +45,7 @@ The full list of make targets are below:
 
 There are also a few useful settings under the build config section (in the root makefile):
 - OPTIMIZATION_FLAGS: does what you'd expect, just a macro with a nice name.
-- INCLUDE_DEBUG_INFO: set to 1 to have gcc add debug info to the kernel, 0 if not needed.
+- INCLUDE_DEBUG_INFO: set to true to have gcc add debug info to the kernel, false if not needed.
 
 # Project layout
 Each of sub-projects are in their own folder:
@@ -61,3 +62,20 @@ Each project shares some common folder names:
 # Project Goals
 I'd like to support smp and scheduling across multiple cores this time around,
 and port the whole os to another platform (risc-v looks really interesting, and achievable).
+
+# Build flags
+There are a number of flags that can be defined at compile time to enable/disable certain behaviours.
+
+<details>
+    <summary>Logging Flags</summary>
+    These flags accept either `true` or `false`.
+
+    `NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT`: enables logging over debugcon, useful for debugging early boot in VMs.
+    `NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT`: enables logging directly to framebuffer. Messy, but it works.
+</details>
+
+<details>
+    <summary>Debugging Helpers</summary>
+
+    `NORTHPORT_DEBUG_USE_HEAP_CANARY`: kernel heap is compiled with a 'canary' value and associated functions. Uses an extra uint64_t per allocation, and extra time during allocations and frees (its some simple bitwise logic, but its not nothing). It cant repair the linked list, but can be helpful for tracking down buffer overruns and issues in the heap itself.
+</details>
