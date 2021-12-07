@@ -69,13 +69,13 @@ There are a number of flags that can be defined at compile time to enable/disabl
 <details>
     <summary>Logging Flags</summary>
     These flags accept either `true` or `false`.
-
-    `NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT`: enables logging over debugcon, useful for debugging early boot in VMs.
-    `NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT`: enables logging directly to framebuffer. Messy, but it works.
+    
+- `NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT`: enables logging over debugcon, useful for debugging early boot in VMs.
+- `NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT`: enables logging directly to framebuffer. Messy, but it works.
 </details>
 
 <details>
     <summary>Debugging Helpers</summary>
-
-    `NORTHPORT_DEBUG_USE_HEAP_CANARY`: kernel heap is compiled with a 'canary' value and associated functions. Uses an extra uint64_t per allocation, and extra time during allocations and frees (its some simple bitwise logic, but its not nothing). It cant repair the linked list, but can be helpful for tracking down buffer overruns and issues in the heap itself.
+    
+- `NORTHPORT_DEBUG_USE_HEAP_CANARY`: kernel heap is compiled with a 'canary' value and associated functions. Uses an extra uint64_t per allocation, and extra time during allocations and frees (its some simple bitwise logic, it's still non-zero processing time). It cant repair the linked list, but can be helpful for tracking down buffer overruns and issues in the heap itself.
 </details>
