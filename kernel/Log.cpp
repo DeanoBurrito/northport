@@ -5,6 +5,7 @@
 
 namespace Kernel
 {
+    bool fullLoggingAvail; //a bit cheeky, but I dont want to advertise this.
     bool logDestsStatus[(unsigned)LogDestination::EnumCount];
 
     void LoggingInitEarly()
@@ -12,11 +13,13 @@ namespace Kernel
         //make sure all logging is disabled at startup
         for (unsigned i = 0; i < (unsigned)LogDestination::EnumCount; i++)
             logDestsStatus[i] = false;
+
+        fullLoggingAvail = false;
     }
 
     void LoggingInitFull()
     {
-
+        fullLoggingAvail = true;
     }
 
     bool IsLogDestinationEnabled(LogDestination dest)

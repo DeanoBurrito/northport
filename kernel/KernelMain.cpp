@@ -61,6 +61,8 @@ namespace Kernel
         SetupGDT();
         FlushGDT();
         Log("GDT successfully installed.", LogSeverity::Verbose);
+
+        LoggingInitFull();
     }
 }
 

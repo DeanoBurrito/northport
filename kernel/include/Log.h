@@ -37,10 +37,13 @@ namespace Kernel
     };
 
     void LoggingInitEarly(); //gets basic logging capabilities going, no message log though
-    void LoggingInitFull(); //initializes the logging buffer and other nice features that require software setup
+    void LoggingInitFull(); //initializes the logging buffer and other nice features that require the heap and virtual memory
 
     bool IsLogDestinationEnabled(LogDestination dest);
     void EnableLogDestinaton(LogDestination dest, bool enabled = true);
 
     void Log(const char* message, LogSeverity level);
+
+    //NOTE: see Logf.cpp for implementation. I didnt want to pollute Log.cpp (as it can operate before pmm/vmm are available)
+    void Logf(const char* formatStr, LogSeverity level, ...);
 }
