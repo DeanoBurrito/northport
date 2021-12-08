@@ -14,8 +14,35 @@ namespace Kernel
         0x00AF'F300'0000'FFFF,  //0x20: user data
     };
 
-    GDTR defaultGDTR;
+    void TssEntry::SetIST(size_t index, uint64_t value)
+    {
+        values[index * 2 + 9] = value & 0xFFFF'FFFF;
+        values[index * 2 + 10] = value >> 32;
+    }
 
+    uint64_t TssEntry::GetIst(size_t index) const
+    {
+        uint64_t value = 0;
+        value |= values[index * 2 + 9];
+        value |= (uint64_t)values[index * 2 + 10] << 32;
+        return value;
+    }
+
+    void TssEntry::SetRSP(size_t privilegeLevel, uint64_t value)
+    {
+        values[privilegeLevel * 2 + 1] = value & 0xFFFF'FFFF;
+        values[privilegeLevel * 2 + 2] = value >> 32;
+    }
+
+    uint64_t TssEntry::GetRSP(size_t privilegeLevel) const
+    {
+        uint64_t value = 0;
+        value |= values[privilegeLevel * 2 + 1];
+        value |= (uint64_t)values[privilegeLevel * 2 + 2] << 32;
+        return value;
+    }
+
+    GDTR defaultGDTR;
     void SetupGDT()
     {
         defaultGDTR.address = (uint64_t)defaultGdt;
