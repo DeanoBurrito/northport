@@ -21,20 +21,46 @@ namespace sl
     }
     
     template <typename WordType>
-    __attribute__((always_inline)) inline void MemWrite(sl::NativePtr where, WordType val)
+    [[gnu::always_inline]]
+    inline void MemWrite(sl::NativePtr where, WordType val)
     {
         *reinterpret_cast<volatile WordType*>(where.ptr) = val;
     }
 
     template <typename WordType>
-    __attribute__((always_inline)) inline WordType MemRead(sl::NativePtr where)
+    [[gnu::always_inline]]
+    inline WordType MemRead(sl::NativePtr where)
     {
         return *reinterpret_cast<volatile WordType*>(where.ptr);
     }
 
-    __attribute__((always_inline)) inline void* StackAlloc(size_t size)
+    [[gnu::always_inline]]
+    inline void* StackAlloc(size_t size)
     {
         return __builtin_alloca(size);
+    }
+
+    template<typename WordType = NativeUInt, bool inverse = false>
+    [[gnu::always_inline]] 
+    inline void StackPush(sl::NativePtr& sp, WordType value)
+    {
+        if (!inverse)
+            sp.raw -= sizeof(WordType);
+        *sp.As<WordType>() = value;
+        if (inverse)
+            sp.raw += sizeof(WordType);
+    }
+
+    template<typename WordType = NativeUInt, bool inverse = false>
+    [[gnu::always_inline]]
+    inline WordType StackPop(sl::NativePtr& sp)
+    {
+        if (inverse)
+            sp.raw -= sizeof(WordType);
+        WordType value = *sp.As<WordType>();
+        if (!inverse)
+            sp.raw += sizeof(WordType);
+        return value;
     }
 
     void memset(void* const start, uint8_t val, size_t count);

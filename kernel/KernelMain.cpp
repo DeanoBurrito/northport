@@ -4,6 +4,7 @@
 #include <memory/Paging.h>
 #include <memory/KernelHeap.h>
 #include <arch/x86_64/Gdt.h>
+#include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
 
 namespace Kernel
@@ -52,6 +53,7 @@ namespace Kernel
         }
 
         KernelHeap::Global()->Init(tentativeHeapStart);
+        Log("Memory init complete.", LogSeverity::Info);
     }
 
     void InitPlatform()
@@ -62,7 +64,11 @@ namespace Kernel
         FlushGDT();
         Log("GDT successfully installed.", LogSeverity::Verbose);
 
-        LoggingInitFull();
+        SetupIDT();
+        LoadIDT();
+        Log("IDT successfully installed.", LogSeverity::Verbose);
+        
+        Log("Platform init complete.", LogSeverity::Info);
     }
 }
 
@@ -87,6 +93,7 @@ extern "C"
         Log("Northport kernel succesfully started.", LogSeverity::Info);
 
         InitMemory(stivaleStruct);
+        LoggingInitFull();
         InitPlatform();
 
         Log("Kernel init done.", LogSeverity::Info);
