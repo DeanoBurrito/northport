@@ -15,7 +15,7 @@
 #define GDT_ENTRY_RING_3_CODE 0x18
 #define GDT_ENTRY_RING_3_DATA 0x20
 
-#define FORCE_INLINE __attribute__((always_inline)) inline
+#define FORCE_INLINE [[gnu::always_inline]] inline
 
 namespace Kernel
 {

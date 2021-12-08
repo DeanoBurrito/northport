@@ -2,14 +2,12 @@
 
 uint8_t kernelStackReserve[8192];
 
-__attribute__((used))
 static stivale2_tag stivale5LevelPaging
 {
     .identifier = STIVALE2_HEADER_TAG_5LV_PAGING_ID,
     .next = 0
 };
 
-__attribute__((used))
 static stivale2_header_tag_smp stivaleTagSmp
 {
     .tag =
@@ -20,7 +18,6 @@ static stivale2_header_tag_smp stivaleTagSmp
     .flags = 0
 };
 
-__attribute__((used))
 static stivale2_header_tag_framebuffer stivaleTagFramebuffer
 {
     .tag =
@@ -34,7 +31,6 @@ static stivale2_header_tag_framebuffer stivaleTagFramebuffer
     .unused = 0
 };
 
-__attribute__((used))
 static stivale2_header_tag_any_video stivaleTagAnyVideo
 {
     .tag = 
@@ -45,7 +41,7 @@ static stivale2_header_tag_any_video stivaleTagAnyVideo
     .preference = 0
 };
 
-__attribute__((section(".stivale2hdr"), used))
+[[gnu::section(".stivale2hdr"), gnu::used]]
 static stivale2_header stivaleHdr
 {
     .entry_point = 0,
