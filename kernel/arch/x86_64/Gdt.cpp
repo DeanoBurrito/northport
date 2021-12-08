@@ -3,6 +3,7 @@
 namespace Kernel
 {
     //pre-calculated values courtesy of pitust from osdev discord.
+    [[gnu::aligned(0x8)]]
     uint64_t defaultGdt[] = 
     {
         (uint64_t)0,            //0x00: null
@@ -42,7 +43,9 @@ namespace Kernel
         return value;
     }
 
+    [[gnu::aligned(0x8)]]
     GDTR defaultGDTR;
+
     void SetupGDT()
     {
         defaultGDTR.address = (uint64_t)defaultGdt;
