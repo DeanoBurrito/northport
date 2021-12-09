@@ -118,9 +118,6 @@ namespace sl
                 token.lengthMod = FormatLengthMod::Long;
             break;
         }
-
-        default:
-            token.lengthMod = FormatLengthMod::Unsupported;
         }
 
         RETURN_IF_INPUT_EXHAUSTED
@@ -211,15 +208,127 @@ namespace sl
         return token;
     }
 
+#define OUTPUT_SIMPLE_TOKEN(text, len) { char* str = new char[len]; sl::memcopy(text, str, len); outputBuffers.Append(str); outputPos += len; bufferLengths.PushBack(len); }
+
     void FormatPrinter::PrintFormatToken(FormatToken token, va_list args)
     {
-        //TODO: actually respect the length remaining
-        char* buff = new char[5];
-        sl::memcopy("TOKEN", buff, 5);
 
-        outputBuffers.Append(buff);
-        outputPos += 5;
-        bufferLengths.PushBack(5);
+        //check if width or precision need to read their values from the input
+        if (token.minimumPrintWidth == PRINT_WIDTH_READ_FROM_INPUT)
+            token.minimumPrintWidth = (uint64_t)va_arg(args, int);
+        if (token.precision == PRECISION_READ_FROM_INPUT)
+            token.precision = (uint64_t)va_arg(args, int);
+
+        //TODO: handle format flags, precision, width and length mods.
+        //TODO: actually respect the length remaining in the output buffer
+
+        size_t formatBase = 0;
+        switch (token.specifier)
+        {
+        case FormatSpecifier::Unsupported:
+            OUTPUT_SIMPLE_TOKEN(Literals[4], LiteralSizes[4]);
+            break;
+
+        case FormatSpecifier::Verbatim:
+            OUTPUT_SIMPLE_TOKEN(Literals[5], LiteralSizes[5]);
+            break;
+
+        case FormatSpecifier::SingleChar:
+            {
+                char* str = new char[1];
+                str[0] = va_arg(args, int);
+
+                outputBuffers.Append(str);
+                outputPos++;
+                bufferLengths.PushBack(1);
+                break;
+            }
+
+        case FormatSpecifier::String:
+            {
+                char* source = va_arg(args, char*);
+                const size_t sourceLength = sl::memfirst(source, 0, 0);
+                char* str = new char[sourceLength];
+                sl::memcopy(source, str, sourceLength);
+
+                outputBuffers.Append(str);
+                outputPos += sourceLength;
+                bufferLengths.PushBack(sourceLength);
+                break;
+            }
+
+        case FormatSpecifier::SignedIntDecimal:
+            {
+                int64_t source;
+                switch (token.lengthMod)
+                {
+                case FormatLengthMod::Long:
+                    source = va_arg(args, long);
+                    break;
+                case FormatLengthMod::LongLong:
+                    source = va_arg(args, long long);
+                    break;
+                default:
+                    source = va_arg(args, int);
+                    break;
+                }
+
+                string strValue = StringCulture::current->ToString(source);
+                outputPos += strValue.Size();
+                bufferLengths.PushBack(strValue.Size());
+                outputBuffers.Append(strValue.DetachBuffer());
+                break;
+            }
+
+        case FormatSpecifier::UnsignedIntOctal:
+            if (formatBase == 0)
+                formatBase = Base::OCTAL;
+        case FormatSpecifier::UnsignedIntHex:
+            if (formatBase == 0)
+                formatBase = Base::HEX;
+        case FormatSpecifier::UnsignedIntDecimal:
+            {
+                if (formatBase == 0)
+                    formatBase = Base::DECIMAL;
+
+                uint64_t source;
+                switch (token.lengthMod)
+                {
+                case FormatLengthMod::Long:
+                    source = va_arg(args, unsigned long);
+                    break;
+                case FormatLengthMod::LongLong:
+                    source = va_arg(args, unsigned long long);
+                    break;
+                default:
+                    source = va_arg(args, unsigned int);
+                    break;
+                }
+
+                string strValue = StringCulture::current->ToString(source, formatBase);
+                outputPos += strValue.Size();
+                bufferLengths.PushBack(strValue.Size());
+                outputBuffers.Append(strValue.DetachBuffer());
+            }
+
+        case FormatSpecifier::FloatingPointDecimal:
+        case FormatSpecifier::FloatingPointExponent:
+        case FormatSpecifier::FloatingPointHexponent:
+        case FormatSpecifier::FloatingPointShortest:
+        case FormatSpecifier::GetCharsWritten:
+        case FormatSpecifier::CustomImplementation:
+            OUTPUT_SIMPLE_TOKEN(Literals[4], LiteralSizes[4]);
+            break;
+
+        case FormatSpecifier::CUSTOM_Bool:
+            {
+                unsigned source = va_arg(args, unsigned);
+                size_t literalOffset = source ? 1 : 0;
+                literalOffset += token.isBig ? 2 : 0;
+                OUTPUT_SIMPLE_TOKEN(Literals[literalOffset], LiteralSizes[literalOffset]);
+                break;
+            }
+        }
     }
 
     void FormatPrinter::FormatAll(va_list args)

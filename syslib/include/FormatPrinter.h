@@ -38,8 +38,6 @@ namespace sl
         HalfHalf,
         Long,
         LongLong,
-
-        Unsupported,
     };
 
     enum class FormatSpecifier
@@ -89,6 +87,17 @@ namespace sl
     class FormatPrinter
     {
     private:
+        constexpr static inline const char* Literals[] =
+        {
+            "false", "true", "FALSE", "TRUE",
+            "UnsupportedFormat", "%"
+        };
+        constexpr static inline size_t LiteralSizes[] =
+        {
+            5, 4, 5, 4,
+            17, 1
+        };
+
         const char* inputBuffer;
         size_t inputPos;
         size_t inputMaxLength;
