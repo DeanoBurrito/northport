@@ -141,6 +141,9 @@ namespace Kernel::Memory
             if (!scan->free)
             {
                 scan = scan->next;
+                if (scan == tail)
+                    ExpandHeap(size);
+                    
                 continue;
             }
 
