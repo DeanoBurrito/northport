@@ -309,6 +309,7 @@ namespace sl
                 outputPos += strValue.Size();
                 bufferLengths.PushBack(strValue.Size());
                 outputBuffers.Append(strValue.DetachBuffer());
+                break;
             }
 
         case FormatSpecifier::FloatingPointDecimal:
