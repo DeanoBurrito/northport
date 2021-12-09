@@ -27,6 +27,8 @@ namespace sl
         const char* C_Str() const;
         bool IsEmpty() const;
         size_t Size() const;
+        [[nodiscard]]
+        char* DetachBuffer();
 
         String SubString(size_t start, size_t length) const;
         String Concat(const String& other) const;

@@ -88,6 +88,17 @@ namespace sl
     bool String::IsEmpty() const
     { return length > 0; }
 
+    size_t String::Size() const
+    { return length; }
+
+    char* String::DetachBuffer()
+    {
+        char* temp = buffer;
+        length = 0;
+        buffer = nullptr;
+        return temp;
+    }
+
     String String::SubString(size_t start, size_t len) const
     {
         if (start + len > length)
