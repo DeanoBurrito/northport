@@ -7,6 +7,8 @@ namespace Kernel
 {
     bool fullLoggingAvail; //a bit cheeky, but I dont want to advertise this.
     bool logDestsStatus[(unsigned)LogDestination::EnumCount];
+    
+    char debugconLock;
 
     void LoggingInitEarly()
     {
@@ -15,6 +17,8 @@ namespace Kernel
             logDestsStatus[i] = false;
 
         fullLoggingAvail = false;
+
+        SpinlockRelease(&debugconLock);
     }
 
     void LoggingInitFull()
@@ -68,6 +72,8 @@ namespace Kernel
             {
             case LogDestination::DebugCon:
                 {
+                    ScopedSpinlock scopeLock(&debugconLock);
+
                     for (size_t index = 0; headerStr[index] != 0; index++)
                         CPU::PortWrite8(PORT_DEBUGCON, headerStr[index]);
                     
