@@ -63,6 +63,15 @@ namespace sl
         return value;
     }
 
+    template<typename T>
+    void memsetT(void* const start, T value, size_t valueCount)
+    {
+        T* const si = reinterpret_cast<T* const>(start);
+        
+        for (size_t i = 0; i < valueCount; i++)
+            si[i] = value;
+    }
+
     void memset(void* const start, uint8_t val, size_t count);
 
     void memcopy(const void* const source, void* const destination, size_t count);
