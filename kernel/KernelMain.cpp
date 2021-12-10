@@ -4,6 +4,7 @@
 #include <memory/Paging.h>
 #include <memory/KernelHeap.h>
 #include <acpi/AcpiTables.h>
+#include <devices/LApic.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
@@ -66,18 +67,93 @@ namespace Kernel
     {
         Log("Initializing platform ...", LogSeverity::Info);
 
+        //we're sharing gdt and idt instances between cores, so we can set those up here.
         SetupGDT();
-        FlushGDT();
-        Log("GDT successfully installed.", LogSeverity::Verbose);
-
         SetupIDT();
-        LoadIDT();
-        Log("IDT successfully installed.", LogSeverity::Verbose);
 
         stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
         ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);
         
         Log("Platform init complete.", LogSeverity::Info);
+    }
+
+    CoreLocalStorage* PrepareCoreLocal(uint64_t apicId, uint64_t acpiId)
+    {
+        CoreLocalStorage* coreStore = new CoreLocalStorage();
+        coreStore->apicId = apicId;
+        coreStore->acpiProcessorId = acpiId;
+        coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
+
+        Logf("Core local storage created for core %u", LogSeverity::Verbose, apicId);
+        return coreStore;
+    }
+
+    void InitCoreLocal()
+    {
+        Logf("Setting up core %u", LogSeverity::Info, GetCoreLocal()->apicId);
+        
+        uint64_t backupCoreLocal = CPU::ReadMsr(MSR_GS_BASE);
+        FlushGDT();
+        CPU::WriteMsr(MSR_GS_BASE, backupCoreLocal);
+        Log("Core local GDT installed.", LogSeverity::Verbose);
+
+        LoadIDT();
+        Log("Core local IDT installed.", LogSeverity::Verbose);
+
+        Devices::LApic::Local()->Init();
+        Log("Local APIC initialized.", LogSeverity::Verbose);
+
+        Log("Core specific setup complete.", LogSeverity::Info);
+    }
+
+    //the entry point for the APs
+    [[gnu::used]]
+    void _APEntry(uint64_t arg)
+    {
+        CPU::WriteMsr(MSR_GS_BASE, arg);
+        InitCoreLocal();
+
+        Log("AP has finished init, busy waiting.", LogSeverity::Info);
+        while (true)
+            asm("hlt");
+    }
+
+    void StartupAPs()
+    {
+        stivale2_struct_tag_smp* smpTag = FindStivaleTag<stivale2_struct_tag_smp*>(STIVALE2_STRUCT_TAG_SMP_ID);
+        if (smpTag == nullptr)
+        {
+            Log("Couldn't get smp info from bootloader, aborting AP init.", LogSeverity::Info);
+            return;
+        }
+
+#ifdef NORTHPORT_DEBUG_DISABLE_SMP_BOOT
+#pragma message "AP init at boot disabled by define. Compiled for single-core only."
+        Log("Kernel was compiled to only enable BSP, ignoring other cores.", LogSeverity::Info);
+        CoreLocalStorage* coreStore = PrepareCoreLocal(smpTag->bsp_lapic_id, 0);
+        CPU::WriteMsr(MSR_GS_BASE, (uint64_t)coreStore);
+        return;
+#endif
+
+        //this has the side effect of setting up core info for bsp
+        for (size_t i = 0; i < smpTag->cpu_count; i++)
+        {
+            CoreLocalStorage* coreStore = PrepareCoreLocal(smpTag->smp_info[i].lapic_id, smpTag->smp_info[i].processor_id);
+            if (smpTag->smp_info[i].lapic_id == smpTag->bsp_lapic_id)
+            {
+                //stash the address, and resume the regular init path
+                CPU::WriteMsr(MSR_GS_BASE, (uint64_t)coreStore);
+                continue;
+            }
+
+
+            sl::NativePtr stackBase = Memory::PMM::Global()->AllocPage();
+            Memory::PageTableManager::Local()->MapMemory(stackBase, stackBase, Memory::MemoryMapFlag::AllowWrites);
+            
+            smpTag->smp_info[i].target_stack = stackBase.raw + PAGE_FRAME_SIZE;
+            smpTag->smp_info[i].extra_argument = (uint64_t)coreStore;
+            smpTag->smp_info[i].goto_address = (uint64_t)_APEntry;
+        }
     }
 }
 
@@ -105,6 +181,10 @@ extern "C"
         InitMemory();
         LoggingInitFull();
         InitPlatform();
+
+        //init bsp
+        StartupAPs();
+        InitCoreLocal();
 
         Log("Kernel init done.", LogSeverity::Info);
         
