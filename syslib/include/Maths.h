@@ -19,4 +19,15 @@ namespace sl
     [[gnu::always_inline]]
     constexpr inline T max(T a, T b)
     { return a > b ? a : b; }
+
+    template<typename T>
+    [[gnu::always_inline]]
+    constexpr inline T clamp(T v, T lower, T upper)
+    {
+        if (v < lower)
+            return lower;
+        if (upper < v)
+            return upper;
+        return v;
+    }
 }
