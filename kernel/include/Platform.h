@@ -2,10 +2,15 @@
 
 #include <stdint.h>
 #include <Cpu.h>
+#include <NativePtr.h>
 
 #define PAGE_FRAME_SIZE 0x1000
 #define PORT_DEBUGCON 0xE9
+
+#define INTERRUPT_GSI_SPURIOUS 0xFF
+
 #define MSR_IA32_EFER 0xC0000080
+#define MSR_APIC_BASE 0x1B
 #define MSR_FS_BASE 0xC0000100
 #define MSR_GS_BASE 0xC0000101
 #define MSR_GS_KERNEL_BASE 0xC0000102
@@ -93,7 +98,19 @@ namespace Kernel
         asm volatile("mov %0, %%cr4" :: "r"(value));
     }
 
-    struct CoreLocalStorage;
+    enum CoreLocalIndices : size_t
+    {
+        LAPIC,
+        
+        EnumCount,
+    };
+
+    struct CoreLocalStorage
+    {
+        uint64_t apicId;
+        uint64_t acpiProcessorId;
+        sl::NativePtr ptrs[CoreLocalIndices::EnumCount];
+    };
 
     FORCE_INLINE CoreLocalStorage* GetCoreLocal()
     { return reinterpret_cast<CoreLocalStorage*>(CPU::ReadMsr(MSR_GS_BASE)); }
