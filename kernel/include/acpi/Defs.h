@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-namespace ACPI
+namespace Kernel::ACPI
 {
     enum class GenericAddressSpace : uint8_t
     {
@@ -82,7 +82,7 @@ namespace ACPI
     struct [[gnu::packed]] SdtHeader
     {
         uint8_t signature[4];
-        uint32_t length;
+        uint32_t length; //length of entire table, including this header
         uint8_t revision;
         uint8_t checksum;
         uint8_t oemId[6];

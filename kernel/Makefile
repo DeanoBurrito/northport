@@ -12,7 +12,7 @@ LD_FLAGS = $(LD_LIBS) \
 ASM_FLAGS = --64
 
 CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp Logf.cpp memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp \
-	memory/New.cpp
+	memory/New.cpp acpi/AcpiTables.cpp
 ASM_SRCS = 
 
 ARCH_DIR = arch/$(CPU_ARCH)

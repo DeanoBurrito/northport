@@ -3,15 +3,17 @@
 #include <memory/PhysicalMemory.h>
 #include <memory/Paging.h>
 #include <memory/KernelHeap.h>
+#include <acpi/AcpiTables.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
 
 namespace Kernel
 {
-    stivale2_tag* FindStivaleTag(stivale2_struct* stivaleStruct, uint64_t id)
+    stivale2_struct* stivale2Struct;
+    stivale2_tag* FindStivaleTagInternal(uint64_t id)
     {
-        stivale2_tag* tag = sl::NativePtr(stivaleStruct->tags).As<stivale2_tag>();
+        stivale2_tag* tag = sl::NativePtr(stivale2Struct->tags).As<stivale2_tag>();
 
         while (tag != nullptr)
         {
@@ -23,25 +25,29 @@ namespace Kernel
 
         return nullptr;
     }
+
+    template<typename TagType>
+    TagType FindStivaleTag(uint64_t id)
+    {
+        return reinterpret_cast<TagType>(FindStivaleTagInternal(id));
+    }
     
-    void InitMemory(stivale2_struct* stivaleStruct)
+    void InitMemory()
     {
         using namespace Memory;
 
         Log("Initializing memory ...", LogSeverity::Info);
         
-        stivale2_struct_tag_memmap* mmap = (stivale2_struct_tag_memmap*)FindStivaleTag(stivaleStruct, STIVALE2_STRUCT_TAG_MEMMAP_ID);
+        stivale2_struct_tag_memmap* mmap = FindStivaleTag<stivale2_struct_tag_memmap*>(STIVALE2_STRUCT_TAG_MEMMAP_ID);
+        
         PMM::Global()->Init(mmap);
-
         PageTableManager::Setup();
-        PageTableManager::Local()->Init(true);
-
-        //TODO: move away from bootloader map, and use our own
-
+        PageTableManager::Local()->Init(true); //TODO: move away from bootloader map, and use our own
         PageTableManager::Local()->MakeActive();
+        PMM::Global()->InitLate();
 
         //assign heap to start immediately after last mapped kernel page
-        stivale2_struct_tag_pmrs* pmrs = (stivale2_struct_tag_pmrs*)FindStivaleTag(stivaleStruct, STIVALE2_STRUCT_TAG_PMRS_ID);
+        stivale2_struct_tag_pmrs* pmrs = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
         size_t tentativeHeapStart = 0;
         for (size_t i = 0; i < pmrs->entries; i++)
         {
@@ -67,6 +73,9 @@ namespace Kernel
         SetupIDT();
         LoadIDT();
         Log("IDT successfully installed.", LogSeverity::Verbose);
+
+        stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
+        ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);
         
         Log("Platform init complete.", LogSeverity::Info);
     }
@@ -77,6 +86,7 @@ extern "C"
     void _KernelEntry(stivale2_struct* stivaleStruct)
     {
         using namespace Kernel;
+        stivale2Struct = stivaleStruct;
 
         CPU::ClearInterruptsFlag();
         CPU::DoCpuId();
@@ -92,7 +102,7 @@ extern "C"
         Log("", LogSeverity::EnumCount); //log empty line so the output of debugcon/serial is starting in a known place.
         Log("Northport kernel succesfully started.", LogSeverity::Info);
 
-        InitMemory(stivaleStruct);
+        InitMemory();
         LoggingInitFull();
         InitPlatform();
 
