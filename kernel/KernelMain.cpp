@@ -5,6 +5,7 @@
 #include <memory/KernelHeap.h>
 #include <acpi/AcpiTables.h>
 #include <devices/LApic.h>
+#include <devices/SimpleFramebuffer.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
@@ -73,7 +74,14 @@ namespace Kernel
 
         stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
         ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);
-        
+
+        stivale2_struct_tag_framebuffer* framebufferTag = FindStivaleTag<stivale2_struct_tag_framebuffer*>(STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID);
+        Devices::SimpleFramebuffer::Global()->Init(framebufferTag);
+        Devices::SimpleFramebuffer::Global()->DrawTestPattern();
+#ifdef NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT 
+        EnableLogDestinaton(LogDestination::FramebufferOverwrite);
+#endif
+
         Log("Platform init complete.", LogSeverity::Info);
     }
 
@@ -170,9 +178,6 @@ extern "C"
         LoggingInitEarly();
 #ifdef NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT
         EnableLogDestinaton(LogDestination::DebugCon);
-#endif
-#ifdef NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT 
-        EnableLogDestinaton(LogDestination::FramebufferOverwrite);
 #endif
 
         Log("", LogSeverity::EnumCount); //log empty line so the output of debugcon/serial is starting in a known place.
