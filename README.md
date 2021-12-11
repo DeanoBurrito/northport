@@ -8,56 +8,62 @@ and there's otherwise there's not much to say here yet.
 For my *wishful* plans for this project, see the project goals down below.
 
 # Building
-### Required
+### Required Programs
 - Linux-like environment, WSL2 works, a full linux os is best though.
-- A c++ cross-compiler with c++ 17 or greater support. The build system is setup for gcc.
+- A c++17 or higher cross compiler. The build system is setup for GCC or clang (easy to switch between).
 - GNU make.
-- xorriso.
+- Xorriso.
+- [Limine](https://github.com/limine-bootloader/limine). I build and test with the latest 2.x release personally, check their install instructions. 
 
-### Recommended
+The root makefile expects limine to be located in the directory specified by `LIMINE_DIR`. This is required to generate a bootable iso.
+Depending on your compiler of choice (gcc or clang), the setup varies slightly. See the relevant sections below.
+It's worth doing a clean build between compiler switches, there's some odd issues to seem to occur otherwise.
+
+If you're unsure of whether your toolchain is setup, you can test it with `make validate-toolchain`.
+
+Once you're set up, you can build the default build target (currently just the kernel) with `make`/`make all`, and generate a bootable iso with `make iso`.
+If you're feeling adventurous you can execute `make run` to launch it qemu. Qemu monitor and debugcon will both share the stdin/stdout of the terminal used to run it.
+
+### Recommended Programs
 - Qemu is required for using `make run` and gdb is needed for `make attach`.
 
-### Setting up the build environment
-The easy solution is to run `make create-toolchain`, which downloads gcc and binutils, and builds them for the target platform (x86_64).
-It's worth noting this script assumes you're on a debian-based distribution (it uses apt).
+### Setting up the build environment (GCC)
+The easy out-of-the-box solution is the run `make create-toolchain`, which will download, build and then install a cross compiler for the default target platform (x86_64).
+Of course that makes a lot of assumptions about where you want it installed, and is a huge waste of bandwidth and disk space if you already have a cross compiler installed.
 
-Of course that's a huge waste of disk space if you have a GCC cross compiler installed.
+The root makefile (located at `proj_root/Makefile`) has a toolchain selection section at the top. You can adjust the gcc binaries used, 
+or you can just point `TOOLCHAIN_DIR` to your cross compiler bin folder.
 
-The root makefile defines all the tools used under the section 'toolchain selection', so you can point it to your custom tools here, or what if you already have a cross compiler folder, you can point `TOOLCHAIN_DIR` to it, and it'll take care of the rest.
-
-The limine bootloader is used, and is expected to be at `TOOLCHAIN_DIR/limine` by default, but you can override this if your install is elsewhere.
-
-To verify everything works you can run `make validate-toolchain`, it'll tell you if there are issues.
-
-Building an iso is done by running `make iso`, and if qemu is installed, can be launched via `make run`.
-
-It's worth nothing I do occasionally build with clang (using `--target=`), but the project isn't intended to be built this way. No gaurentees are made about stability or even making it past compilation/linking.
+### Setting up the build environment (Clang)
+Clang requires no setup to use. As long as it's installed (and llvm too, llvm-ar is used), it's ready to go.
 
 ### Make targets
 The full list of make targets are below:
 - `make all`: by default it builds everything, and creates a bootable iso in `iso/`.
 - `make clean`: as you'd expect, removes build files and forces a clean build.
+
 - `make run`: builds everything, creates an iso and launches qemu with the iso.
 - `make debug`: same as run, but it starts a gdb server on port 1234, and waits for a connection before starting execution.
 - `make attach`: a convinient way to have gdb attach to a waiting vm, and load kernel symbols.
+
 - `make create-toolchain`: runs a script to install a cross compiler toolchain in the default location. 
 - `make validate-toolchain`: validates the toolchain install.
 
 There are also a few useful settings under the build config section (in the root makefile):
-- OPTIMIZATION_FLAGS: does what you'd expect, just a macro with a nice name.
-- INCLUDE_DEBUG_INFO: set to true to have gcc add debug info to the kernel, false if not needed.
+- `OPTIMIZATION_FLAGS`: does what you'd expect, just a macro with a nice name.
+- `INCLUDE_DEBUG_INFO`: set to true to have gcc add debug info to the kernel, false if not needed.
 
 # Project layout
 Each of sub-projects are in their own folder:
-- `syslib`: a system utilities library. A big collection of code for both kernel and userspace programs.
-- `kernel`: the kernel itself. There's also the `kernel/arch` dir, which contains cpu specific code.
-- `initdisk`: the init ramdisk for the kernel. All the files included are stored here.
-- `misc`: is unrelated project files, limine.cfg lives here.
-- `iso`: is where the final iso is built, not included in the git repo.
+- `syslib/`: a system utilities library. A big collection of code for both kernel and userspace programs.
+- `kernel/`: the kernel itself. There's also the `kernel/arch/` dir, which contains cpu specific code.
+- `initdisk/`: the init ramdisk for the kernel. All the files included are stored here.
+- `misc/`: is unrelated project files, limine.cfg lives here.
+- `iso/`: is where the final iso is built, not included in the git repo.
 
 Each project shares some common folder names:
-- `project_name_here/include`: header files in here, making installing them later really easy.
-- `project_name_here/build`: not included in git repo, but where build files are stored.
+- `project_name_here/include/`: header files in here, making installing them later really easy.
+- `project_name_here/build/`: not included in git repo, but where build files are stored.
 
 # Project Goals
 I'd like to support smp and scheduling across multiple cores this time around,
