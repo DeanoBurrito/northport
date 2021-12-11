@@ -1,4 +1,4 @@
-CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -fno-omit-frame-pointer -ffreestanding -fno-rtti -fno-exceptions -mno-red-zone -Wall -fpie
+CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -fno-omit-frame-pointer -ffreestanding -fno-rtti -fno-exceptions -mno-red-zone -Wall -fpie -std=c++17
 CXX_SRCS = Memory.cpp String.cpp StringCulture.cpp FormatPrinter.cpp Format.cpp
 
 OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))

@@ -9,14 +9,14 @@ LD_LIBS = -L$(shell dirname $(SYSLIB_FULL_FILEPATH)) -lsyslib
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds
 LD_FLAGS = $(LD_LIBS) \
 	 -nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext
-ASM_FLAGS = --64
+ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
 CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp Logf.cpp memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp \
-	memory/New.cpp acpi/AcpiTables.cpp devices/LApic.cpp
+	memory/New.cpp acpi/AcpiTables.cpp devices/LApic.cpp devices/SimpleFramebuffer.cpp gfx/GraphicsPrimitives.cpp
 ASM_SRCS = 
 
 ARCH_DIR = arch/$(CPU_ARCH)
-include $(ARCH_DIR)/local.mk
+include $(ARCH_DIR)/Local.mk
 
 #auto populated vars
 CXX_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
@@ -35,7 +35,7 @@ clean:
 	@rm -r $(BUILD_DIR)
 	@echo "Done."
 
-include overrides.mk
+include Overrides.mk
 
 $(BUILD_DIR)/%.s.o: %.s
 	@echo "[Kernel] Assembling source: $<"
