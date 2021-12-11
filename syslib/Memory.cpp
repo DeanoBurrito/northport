@@ -1,5 +1,17 @@
 #include <Memory.h>
 
+#ifdef __clang__
+//clang compliance: gcc provides built in mem* functions, but clang expects us to supply our own 'builtin functions'.
+extern "C"
+{
+    void memset(void* const ptr, int value, size_t count)
+    { sl::memset(ptr, value, count); }
+
+    void memcpy(void* dest, void* src, size_t count)
+    { sl::memcopy(src, dest, count); }
+}
+#endif
+
 namespace sl
 {
     void memset(void* const start, uint8_t value, size_t count)

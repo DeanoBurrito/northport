@@ -70,7 +70,7 @@ namespace Kernel
             pop %rdi \n\
             push $0x8 \n\
             push %rdi \n\
-            retfq \n\
+            lretq \n\
         ");
     }
 }
