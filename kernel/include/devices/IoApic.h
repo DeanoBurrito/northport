@@ -47,12 +47,16 @@ namespace Kernel::Devices
     {
         Edge = 0,
         Level = 1,
+
+        Default = 0,
     };
 
     enum class IoApicPinPolarity : size_t
     {
         ActiveHigh = 0,
         ActiveLow = 1,
+
+        Default = 0,
     };
 
     //this is basically an lvt, nicely done intel.
@@ -66,6 +70,14 @@ namespace Kernel::Devices
         bool IsMasked();
         FORCE_INLINE void ClearMask()
         { SetMask(false); }
+    };
+
+    struct IoApicEntryModifier
+    {
+        uint32_t irqNum;
+        uint32_t gsiNum;
+        IoApicPinPolarity polarity;
+        IoApicTriggerMode triggerMode;
     };
     
     class IoApic
@@ -85,7 +97,10 @@ namespace Kernel::Devices
         //create ioapic for all available ioapics
         static void InitAll();
         static IoApic* Global(size_t ownsGsi = 0);
+        //takes a standard pc irq number and applies any source overrides to it
+        static IoApicEntryModifier TranslateToGsi(uint8_t irqNumber);
 
+        void WriteRedirect(uint8_t destApicId, IoApicEntryModifier entryMod);
         void WriteRedirect(uint8_t pinNum, IoApicRedirectEntry entry);
         IoApicRedirectEntry ReadRedirect(uint8_t pinNum);
     };

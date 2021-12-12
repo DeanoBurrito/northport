@@ -48,11 +48,15 @@ namespace Kernel::Devices
         Logf("New IO APIC initialized: base=0x%x, id=%u, gsiBase=%u, maxRedirects=%u", LogSeverity::Info, baseAddress.raw, apicId, gsiBase, maxRedirects);
     }
 
-    //has to be a pointer to aovid global ctor calls
+    //these have to be pointers so the compiler dosnt generate global ctors
     sl::Vector<IoApic>* ioApics;
+    sl::Vector<IoApicEntryModifier>* modifiers;
+    sl::Vector<IoApicEntryModifier>* nmis;
     void IoApic::InitAll()
     {
         ioApics = new sl::Vector<IoApic>();
+        modifiers = new sl::Vector<IoApicEntryModifier>();
+        nmis = new sl::Vector<IoApicEntryModifier>();
         
         using namespace ACPI;
         MADT* madt = static_cast<MADT*>(AcpiTables::Global()->Find(SdtSignature::MADT));
@@ -76,9 +80,51 @@ namespace Kernel::Devices
                     break;
                 }
             case MadtEntryType::InterruptSourceOverride:
-                break; //TODO: handle overrides and NMIs - store them, and maybe have an AdjustIrqNum() func later. Nmis we can just override the flags on any redirect entry writes
+                {
+                    MadtEntries::InterruptSourceOverrideEntry* realEntry = scan.As<MadtEntries::InterruptSourceOverrideEntry>();
+                    modifiers->EmplaceBack();
+                    modifiers->Back().irqNum = realEntry->source;
+                    modifiers->Back().gsiNum = realEntry->mappedSource;
+
+                    if (((uint16_t)realEntry->flags & 0b10) != 0)
+                        modifiers->Back().polarity = IoApicPinPolarity::ActiveLow;
+                    else if (((uint16_t)realEntry->flags & 0b01) != 0)
+                        modifiers->Back().polarity = IoApicPinPolarity::ActiveHigh;
+                    else
+                        modifiers->Back().polarity = IoApicPinPolarity::Default;
+
+                    if (((uint16_t)realEntry->flags & 0b1000) != 0)
+                        modifiers->Back().triggerMode = IoApicTriggerMode::Level;
+                    else if (((uint16_t)realEntry->flags & 0b0100) != 0)
+                        modifiers->Back().triggerMode = IoApicTriggerMode::Edge;
+                    else
+                        modifiers->Back().triggerMode = IoApicTriggerMode::Default;
+                    
+                    break;
+                }
             case MadtEntryType::NmiSource:
-                break;
+                {
+                    MadtEntries::NmiSourceEntry* realEntry = scan.As<MadtEntries::NmiSourceEntry>();
+                    nmis->EmplaceBack();
+                    nmis->Back().irqNum = 0;
+                    nmis->Back().gsiNum = realEntry->gsiNumber;
+
+                    if (((uint16_t)realEntry->flags & 0b10) != 0)
+                        nmis->Back().polarity = IoApicPinPolarity::ActiveLow;
+                    else if (((uint16_t)realEntry->flags & 0b01) != 0)
+                        nmis->Back().polarity = IoApicPinPolarity::ActiveHigh;
+                    else
+                        nmis->Back().polarity = IoApicPinPolarity::Default;
+
+                    if (((uint16_t)realEntry->flags & 0b1000) != 0)
+                        nmis->Back().triggerMode = IoApicTriggerMode::Level;
+                    else if (((uint16_t)realEntry->flags & 0b0100) != 0)
+                        nmis->Back().triggerMode = IoApicTriggerMode::Edge;
+                    else
+                        nmis->Back().triggerMode = IoApicTriggerMode::Default;
+
+                    break;
+                }
 
             default:
                 break;
@@ -86,6 +132,10 @@ namespace Kernel::Devices
 
             scan.raw += scan.As<MadtEntry>()->length;
         }
+
+        //apply the nmis now, and we can also re-apply their settings to any redirects that get written later
+        for (size_t i = 0; i < nmis->Size(); i++)
+            Global(nmis->At(i).gsiNum)->WriteRedirect(nmis->At(i).gsiNum, IoApicRedirectEntry{});
     }
 
     IoApic* IoApic::Global(size_t ownsGsi)
@@ -102,12 +152,47 @@ namespace Kernel::Devices
         return last;
     }
 
+    IoApicEntryModifier IoApic::TranslateToGsi(uint8_t irqNumber)
+    {
+        IoApicEntryModifier* mod = sl::FindIf(modifiers->Begin(), modifiers->End(), [&] (IoApicEntryModifier* mod) { return mod->irqNum == irqNumber; });
+        if (mod == modifiers->End())
+            return 
+            { 
+                .irqNum = irqNumber, 
+                .gsiNum = irqNumber, 
+                .polarity = IoApicPinPolarity::Default, 
+                .triggerMode = IoApicTriggerMode::Default 
+            };
+        return *mod;
+    }
+
+    void IoApic::WriteRedirect(uint8_t destApicId, IoApicEntryModifier entryMod)
+    {
+        IoApicRedirectEntry entry;
+        entry.Set(destApicId, entryMod.gsiNum, entryMod.triggerMode, entryMod.polarity);
+        WriteRedirect(entryMod.gsiNum, entry);
+    }
+
     void IoApic::WriteRedirect(uint8_t pinNum, IoApicRedirectEntry entry)
     {
         if (pinNum >= maxRedirects)
         {
             Logf("Attempted to write IO APIC redirect %u - too high.", LogSeverity::Error, pinNum);
             return;
+        }
+
+        //sanitize the entry: we need to check for nmi settings to apply
+        for (size_t i = 0; i < nmis->Size(); i++)
+        {
+            if (nmis->At(i).gsiNum == pinNum)
+            {
+                //spec states that vector info is ignored, and nmis should be edge triggered (0)
+                //so we copy the original lapic destination, the nmi polarity and force it to be unmasked :o
+                uint64_t temp = entry.raw & 0xFF00'0000'0000'0000;
+                temp |= (uint64_t)nmis->At(i).polarity << 13;
+                entry.raw = temp;
+                break;
+            }
         }
 
         IoApicRegister regLow = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum);
