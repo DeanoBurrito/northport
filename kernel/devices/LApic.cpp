@@ -47,6 +47,11 @@ namespace Kernel::Devices
 
     void LApic::Init()
     {
+        if (!CPU::FeatureSupported(CpuFeature::APIC))
+            Log("CPUID says APIC is not unavailable, cannot initialize local apic.", LogSeverity::Fatal);
+
+        //TODO: x2APIC support
+        
         baseAddress = CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFFFFF);
         apicId = ReadReg(LocalApicRegister::Id) >> 24;
 

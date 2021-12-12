@@ -8,6 +8,8 @@ namespace Kernel
     {
         ExecuteDisable,
         GigabytePages,
+        APIC,
+        X2APIC,
 
         EnumCount
     };

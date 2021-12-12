@@ -5,6 +5,8 @@ namespace Kernel
 {
     char cpuidVendorString[13];
     
+    uint64_t leaf1Edx;
+    uint64_t leaf1Ecx;
     uint64_t extLeaf1Edx;
     uint64_t extLeaf1Ecx;
 
@@ -60,6 +62,10 @@ namespace Kernel
         __get_cpuid(0x8000'0001, &eax, &ebx, &ecx, &edx);
         extLeaf1Edx = edx;
         extLeaf1Ecx = ecx;
+
+        __get_cpuid(1, &eax, &ebx, &ecx, &edx);
+        leaf1Edx = edx;
+        leaf1Ecx = ecx;
     }
 
     void CPU::PortWrite8(uint16_t port, uint8_t data)
@@ -106,6 +112,10 @@ namespace Kernel
             return (extLeaf1Edx & (1 << 20)) != 0;
         case CpuFeature::GigabytePages:
             return (extLeaf1Edx & (1 << 26)) != 0;
+        case CpuFeature::APIC:
+            return (leaf1Edx & (1 << 9)) != 0;
+        case CpuFeature::X2APIC:
+            return (leaf1Ecx & (1 << 21)) != 0;
 
         default:
             return false;
@@ -127,14 +137,20 @@ namespace Kernel
     const char* cpuFeatureNamesShort[] = 
     {
         "NX",
-        "GigPages"
+        "GigPages",
+        "APIC",
+        "X2APIC",
+
         "(())"
     };
 
     const char* cpuFeatureNamesLong[] =
     {
         "No Execute/Execute Disable",
-        "1 Gigabyte Pages"
+        "1 Gigabyte Pages",
+        "Advanced PIC",
+        "Extended v2 APIC",
+
         "((Unknown Feature))"
     };
 
