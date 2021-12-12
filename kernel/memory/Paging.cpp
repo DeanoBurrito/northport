@@ -11,7 +11,7 @@ namespace Kernel::Memory
     /*  Notes about current implementation:
             - Supports 4 and 5 level paging
             - DOES NOT map pages it allocates for page tables
-            - Page table entries are 'sticky' with flags. They're retained and cant be changed until that entry is cleared (which is impossible right now)
+            - Page table entries use generic 'writes enabled, present' flags. Requested flags only apply to the final entry.
         
         Improvements to be made:
             - MapRange() will be super useful
@@ -99,6 +99,20 @@ namespace Kernel::Memory
         PageTableEntry entries[512];
     };
 
+    PageEntryFlag GetPageEntryFlags(MemoryMapFlag flags)
+    {
+        PageEntryFlag finalFlags = PageEntryFlag::None;
+
+        if ((uint64_t)(flags & MemoryMapFlag::AllowWrites) != 0)
+            finalFlags = finalFlags | PageEntryFlag::RegionWritesAllowed;
+        if ((uint64_t)(flags & MemoryMapFlag::UserAccessible) != 0)
+            finalFlags = finalFlags | PageEntryFlag::UserAccessAllowed;
+        if (CPU::FeatureSupported(CpuFeature::ExecuteDisable) && (uint64_t)(flags & MemoryMapFlag::AllowExecute) == 0)
+            finalFlags = finalFlags | PageEntryFlag::ExecuteDisable;
+
+        return finalFlags;
+    }
+
     FORCE_INLINE void GetPageMapIndices(sl::NativePtr virtAddr, uint64_t* pml5Index, uint64_t* pml4Index, uint64_t* pml3Index, uint64_t* pml2Index, uint64_t* pml1Index)
     {
         //this works for all levels of paging, since the unused address bits are required to be zero (and ignored).
@@ -185,6 +199,65 @@ namespace Kernel::Memory
         SpinlockRelease(&lock);
     }
 
+    bool PageTableManager::EnsurePageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteExisting)
+    {
+        PageTable* pageTable = topLevelAddress.As<PageTable>();
+        PageTableEntry* entry;
+
+        uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
+        GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
+
+        PageEntryFlag entryFlags = GetPageEntryFlags(flags);
+
+        if (usingExtendedPaging)
+        {
+            entry = &pageTable->entries[pml5Index];
+            if (!entry->HasFlag(PageEntryFlag::Present))
+                return false;
+            if (overwriteExisting)
+                entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
+            entry->SetFlag(entryFlags);
+            pageTable = entry->GetAddr().As<PageTable>();
+        }
+
+        entry = &pageTable->entries[pml4Index];
+        if (!entry->HasFlag(PageEntryFlag::Present))
+            return false;
+        if (overwriteExisting)
+            entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
+        entry->SetFlag(entryFlags);
+        pageTable = entry->GetAddr().As<PageTable>();
+
+        entry = &pageTable->entries[pml3Index];
+        if (!entry->HasFlag(PageEntryFlag::Present))
+            return false;
+        if (overwriteExisting)
+            entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
+        entry->SetFlag(entryFlags);
+        pageTable = entry->GetAddr().As<PageTable>();
+         if (entry->HasFlag(PageEntryFlag::PageSize))
+            return true; //1gb page
+
+        entry = &pageTable->entries[pml2Index];
+        if (!entry->HasFlag(PageEntryFlag::Present))
+            return false;
+        if (overwriteExisting)
+            entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
+        entry->SetFlag(entryFlags);
+        pageTable = entry->GetAddr().As<PageTable>();
+        if (entry->HasFlag(PageEntryFlag::PageSize))
+            return true; //2mb page
+
+        entry = &pageTable->entries[pml1Index];
+        if (!entry->HasFlag(PageEntryFlag::Present))
+            return false;
+        if (overwriteExisting)
+            entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
+        entry->SetFlag(entryFlags);
+
+        return true;
+    }
+
     void PageTableManager::MakeActive() const
     {
         WriteCR3(topLevelAddress.raw);
@@ -263,19 +336,14 @@ namespace Kernel::Memory
         }
 
         ScopedSpinlock scopeLock(&lock);
-        
-        PageEntryFlag templateFlags = PageEntryFlag::Present;
-        if ((uint64_t)(flags & MemoryMapFlag::AllowWrites) != 0)
-            templateFlags = templateFlags | PageEntryFlag::RegionWritesAllowed;
-        if ((uint64_t)(flags & MemoryMapFlag::UserAccessible) != 0)
-            templateFlags = templateFlags | PageEntryFlag::UserAccessAllowed;
-        if (CPU::FeatureSupported(CpuFeature::ExecuteDisable) && (uint64_t)(flags & MemoryMapFlag::AllowExecute) == 0)
-            templateFlags = templateFlags | PageEntryFlag::ExecuteDisable;
+
+        //these are applied to all new entries
+        PageEntryFlag templateFlags = PageEntryFlag::Present | PageEntryFlag::RegionWritesAllowed;
+        //applied to the final entry
+        PageEntryFlag finalFlags = PageEntryFlag::Present | GetPageEntryFlags(flags);
 
         uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
         GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
-
-        //TODO: smarter way of handling flags. What if a level3 page is marked nx, but we want to add an exec page beneath it?
 
         PageTable* pageTable = topLevelAddress.As<PageTable>();
         PageTableEntry* entry;
@@ -308,7 +376,7 @@ namespace Kernel::Memory
         entry = &pageTable->entries[pml3Index];
         if (size == PagingSize::_1GB && CPU::FeatureSupported(CpuFeature::GigabytePages))
         {
-            entry->SetFlag(templateFlags);
+            entry->SetFlag(finalFlags);
             entry->SetFlag(PageEntryFlag::PageSize);
             entry->SetAddr(physAddr);
             return;
@@ -327,7 +395,7 @@ namespace Kernel::Memory
         entry = &pageTable->entries[pml2Index];
         if (size == PagingSize::_2MB)
         {
-            entry->SetFlag(templateFlags);
+            entry->SetFlag(finalFlags);
             entry->SetFlag(PageEntryFlag::PageSize); //tell cpu to end it's search here
             entry->SetAddr(physAddr);
             return;
@@ -344,7 +412,7 @@ namespace Kernel::Memory
 
         //handle pml1
         entry = &pageTable->entries[pml1Index];
-        entry->SetFlag(templateFlags);
+        entry->SetFlag(finalFlags);
         entry->SetAddr(physAddr);
 
         InvalidatePage(physAddr);

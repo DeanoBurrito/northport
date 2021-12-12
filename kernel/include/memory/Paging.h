@@ -53,6 +53,9 @@ namespace Kernel::Memory
         bool IsActive() const;
         bool PageSizeAvailable(PagingSize size) const;
 
+        //checks each level of the paging structure has the appropriate flags to allow access (execute/write/user)
+        bool EnsurePageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteExisting = false);
+
         //allocates a physical page and maps it at the specified address.
         void MapMemory(sl::NativePtr virtAddr, MemoryMapFlag flags);
         //maps the supplied physical address to the virtual address.
