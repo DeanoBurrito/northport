@@ -172,7 +172,7 @@ namespace Kernel::Devices
         else
         {
             Gfx::Vector2u topLeft{(unsigned)rect.left, (unsigned)rect.top};
-            Gfx::Vector2u botLeft{(unsigned)rect.left, (unsigned)(rect.top + rect.height)};
+            Gfx::Vector2u botLeft{(unsigned)rect.left, (unsigned)(rect.top + rect.height - 1)};
             Gfx::Vector2u topRight{(unsigned)(rect.left + rect.width - 1), (unsigned)rect.top};
 
             DrawHLine(topLeft, rect.width, colour);
