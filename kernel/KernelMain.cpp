@@ -5,6 +5,7 @@
 #include <memory/KernelHeap.h>
 #include <acpi/AcpiTables.h>
 #include <devices/LApic.h>
+#include <devices/IoApic.h>
 #include <devices/SimpleFramebuffer.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
@@ -81,6 +82,8 @@ namespace Kernel
 #ifdef NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT 
         EnableLogDestinaton(LogDestination::FramebufferOverwrite);
 #endif
+
+        Devices::IoApic::InitAll();
 
         Log("Platform init complete.", LogSeverity::Info);
     }
