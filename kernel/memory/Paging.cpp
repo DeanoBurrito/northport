@@ -103,11 +103,11 @@ namespace Kernel::Memory
     {
         PageEntryFlag finalFlags = PageEntryFlag::None;
 
-        if ((uint64_t)(flags & MemoryMapFlag::AllowWrites) != 0)
+        if (sl::EnumHasFlag(flags, MemoryMapFlag::AllowWrites))
             finalFlags = finalFlags | PageEntryFlag::RegionWritesAllowed;
-        if ((uint64_t)(flags & MemoryMapFlag::UserAccessible) != 0)
+        if (sl::EnumHasFlag(flags, MemoryMapFlag::UserAccessible))
             finalFlags = finalFlags | PageEntryFlag::UserAccessAllowed;
-        if (CPU::FeatureSupported(CpuFeature::ExecuteDisable) && (uint64_t)(flags & MemoryMapFlag::AllowExecute) == 0)
+        if (CPU::FeatureSupported(CpuFeature::ExecuteDisable) && sl::EnumHasFlag(flags, MemoryMapFlag::AllowExecute))
             finalFlags = finalFlags | PageEntryFlag::ExecuteDisable;
 
         return finalFlags;
