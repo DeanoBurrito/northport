@@ -52,7 +52,7 @@ namespace Kernel::Devices
 
         //TODO: x2APIC support
         
-        baseAddress = CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFFFFF);
+        baseAddress = CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF);
         apicId = ReadReg(LocalApicRegister::Id) >> 24;
 
         if ((CPU::ReadMsr(MSR_APIC_BASE) & (1 << 11)) == 0)
