@@ -133,9 +133,11 @@ namespace Kernel::Devices
             scan.raw += scan.As<MadtEntry>()->length;
         }
 
-        //apply the nmis now, and we can also re-apply their settings to any redirects that get written later
+        //apply the nmis now
         for (size_t i = 0; i < nmis->Size(); i++)
             Global(nmis->At(i).gsiNum)->WriteRedirect(nmis->At(i).gsiNum, IoApicRedirectEntry{});
+
+        Logf("IO APIC parsing finished, nmis=%u, sourceOverrides=%u", LogSeverity::Verbose, nmis->Size(), modifiers->Size());
     }
 
     IoApic* IoApic::Global(size_t ownsGsi)
@@ -181,17 +183,13 @@ namespace Kernel::Devices
             return;
         }
 
-        //sanitize the entry: we need to check for nmi settings to apply
+        //check we dont overwrite any nmis
         for (size_t i = 0; i < nmis->Size(); i++)
         {
             if (nmis->At(i).gsiNum == pinNum)
             {
-                //spec states that vector info is ignored, and nmis should be edge triggered (0)
-                //so we copy the original lapic destination, the nmi polarity and force it to be unmasked :o
-                uint64_t temp = entry.raw & 0xFF00'0000'0000'0000;
-                temp |= (uint64_t)nmis->At(i).polarity << 13;
-                entry.raw = temp;
-                break;
+                Logf("Attempted to overwrite NMI IO APIC redirect %u.", LogSeverity::Error, pinNum);
+                return;
             }
         }
 
