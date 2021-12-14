@@ -8,6 +8,12 @@ void free(void*);
 
 namespace sl
 {
+    template<typename F, typename E>
+    bool EnumHasFlag(F enumeration, E entry)
+    {
+        return ((size_t)enumeration & (size_t)entry) != 0;
+    }
+    
     template<typename T>
     T&& move(T&& t)
     { return static_cast<T&&>(t); }
