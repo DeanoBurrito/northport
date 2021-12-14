@@ -125,6 +125,7 @@ namespace Kernel::Devices
 
         void Init();
         void SendEOI();
+        bool IsBsp();
 
         void SetLvtMasked(LocalApicRegister lvtReg, bool masked);
         bool GetLvtMasked(LocalApicRegister lvtReg);

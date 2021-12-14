@@ -1,4 +1,5 @@
 #include <devices/LApic.h>
+#include <acpi/AcpiTables.h>
 #include <Platform.h>
 #include <Memory.h>
 #include <Log.h>
@@ -58,6 +59,30 @@ namespace Kernel::Devices
         if ((CPU::ReadMsr(MSR_APIC_BASE) & (1 << 11)) == 0)
             Log("IA32_APIC_BASE_MSR bit 11 (global enable) is cleared. Cannot initialize local apic.", LogSeverity::Fatal);
 
+        ACPI::MADT* madt = reinterpret_cast<ACPI::MADT*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MADT));
+        if (madt == nullptr)
+            Log("APIC unable to get madt data, does it exist? Cannot check for existence of 8259 PICs.", LogSeverity::Error);
+        else if (IsBsp() && sl::EnumHasFlag(madt->flags, ACPI::MadtFlags::Dual8259sInstalled))
+        {
+            Log("BSP Local APIC is disabling dual 8259 PICs.", LogSeverity::Verbose);
+
+            //remap pics above native interrupts range, then mask them
+            CPU::PortWrite8(0x20, 0x11); //start standard init squence (in cascade mode)
+            CPU::PortWrite8(0xA0, 0x11);
+
+            CPU::PortWrite8(0x21, 0x20); //setting pic offsets (in case they mis-trigger by accident)
+            CPU::PortWrite8(0xA1, 0x28);
+
+            CPU::PortWrite8(0x21, 0x4); //setting slave yes/no and ids
+            CPU::PortWrite8(0xA1, 0x2);
+
+            CPU::PortWrite8(0x21, 0x1); //setting mode (8086)
+            CPU::PortWrite8(0xA1, 0x1);
+
+            CPU::PortWrite8(0x21, 0xFF); //masking all interrupts
+            CPU::PortWrite8(0xA1, 0xFF);
+        }
+
         //make sure software enable flag is set, and a spurrious vector is set
         WriteReg(LocalApicRegister::SpuriousInterruptVector, INTERRUPT_GSI_SPURIOUS | (1 << 8));
     }
@@ -65,6 +90,11 @@ namespace Kernel::Devices
     void LApic::SendEOI()
     {
         WriteReg(LocalApicRegister::EOI, 0);
+    }
+
+    bool LApic::IsBsp()
+    {
+        return (CPU::ReadMsr(MSR_APIC_BASE) & (1 << 8)) != 0;
     }
 
     void LApic::SetLvtMasked(LocalApicRegister lvtReg, bool masked)

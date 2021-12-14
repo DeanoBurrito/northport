@@ -79,7 +79,7 @@ namespace Kernel::ACPI
         "XSDT",
         "HPET",
         "MCFG",
-        "FADT",
+        "FACP",
     };
 
     struct [[gnu::packed]] SdtHeader
