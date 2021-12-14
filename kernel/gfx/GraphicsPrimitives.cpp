@@ -27,6 +27,9 @@ namespace Kernel::Gfx
             return (uint32_t)a << 24 | (uint32_t)b << 16 | (uint32_t)g << 8 | (uint32_t)r;
         case PackedColourFormat::rBGR_8bpp:
             return (uint32_t)b << 16 | (uint32_t)g << 8 | (uint32_t)r;
+
+        default:
+            return 0;
         }
     }
 }
