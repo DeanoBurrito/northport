@@ -94,9 +94,9 @@ namespace Kernel
 
         size_t ps2PortCount = Devices::Ps2Controller::InitController();
         if (ps2PortCount > 0)
-            Devices::Ps2Controller::InitKeyboard();
+            Devices::Ps2Controller::Keyboard()->Init(false);
         if (ps2PortCount > 1)
-            Devices::Ps2Controller::InitMouse();
+            Devices::Ps2Controller::Mouse()->Init(true);
 
         Log("Platform init complete.", LogSeverity::Info);
     }
@@ -170,7 +170,6 @@ namespace Kernel
                 continue;
             }
 
-
             sl::NativePtr stackBase = Memory::PMM::Global()->AllocPage();
             Memory::PageTableManager::Local()->MapMemory(stackBase, stackBase, Memory::MemoryMapFlag::AllowWrites);
             
@@ -179,10 +178,17 @@ namespace Kernel
             smpTag->smp_info[i].goto_address = (uint64_t)_APEntry;
         }
     }
+
+    void ExitInit()
+    {
+        CPU::SetInterruptsFlag();
+        Log("Kernel init done.", LogSeverity::Info);
+    }
 }
 
 extern "C"
 {
+    [[noreturn]]
     void _KernelEntry(stivale2_struct* stivaleStruct)
     {
         using namespace Kernel;
@@ -207,8 +213,7 @@ extern "C"
         StartupAPs();
         InitCoreLocal();
 
-        Log("Kernel init done.", LogSeverity::Info);
-        
+        ExitInit();
         for (;;)
             asm("hlt");
     }
