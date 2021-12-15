@@ -100,6 +100,7 @@ namespace Kernel::Devices
         //takes a standard pc irq number and applies any source overrides to it
         static IoApicEntryModifier TranslateToGsi(uint8_t irqNumber);
 
+        void SetPinMask(uint8_t pinNum, bool masked);
         void WriteRedirect(uint8_t destApicId, IoApicEntryModifier entryMod);
         void WriteRedirect(uint8_t pinNum, IoApicRedirectEntry entry);
         IoApicRedirectEntry ReadRedirect(uint8_t pinNum);

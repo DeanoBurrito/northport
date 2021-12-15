@@ -156,23 +156,42 @@ namespace Kernel::Devices
 
     IoApicEntryModifier IoApic::TranslateToGsi(uint8_t irqNumber)
     {
+        uint8_t fixedIrq = irqNumber < 0x20 ? irqNumber + 0x20 : irqNumber;
         IoApicEntryModifier* mod = sl::FindIf(modifiers->Begin(), modifiers->End(), [&] (IoApicEntryModifier* mod) { return mod->irqNum == irqNumber; });
+
         if (mod == modifiers->End())
             return 
             { 
                 .irqNum = irqNumber, 
-                .gsiNum = irqNumber, 
+                .gsiNum = fixedIrq, 
                 .polarity = IoApicPinPolarity::Default, 
                 .triggerMode = IoApicTriggerMode::Default 
             };
-        return *mod;
+        
+        return
+        {
+            .irqNum = mod->irqNum,
+            .gsiNum = fixedIrq,
+            .polarity = mod->polarity,
+            .triggerMode = mod->triggerMode
+        };
+    }
+
+    void IoApic::SetPinMask(uint8_t pinNum, bool masked)
+    {
+        auto redirect = ReadRedirect(pinNum);
+        if (masked)
+            redirect.raw |= (1 << 16);
+        else
+            redirect.raw &= ~(1 << 16);
+        WriteRedirect(pinNum, redirect);
     }
 
     void IoApic::WriteRedirect(uint8_t destApicId, IoApicEntryModifier entryMod)
     {
         IoApicRedirectEntry entry;
         entry.Set(destApicId, entryMod.gsiNum, entryMod.triggerMode, entryMod.polarity);
-        WriteRedirect(entryMod.gsiNum, entry);
+        WriteRedirect(entryMod.irqNum, entry);
     }
 
     void IoApic::WriteRedirect(uint8_t pinNum, IoApicRedirectEntry entry)
@@ -193,8 +212,8 @@ namespace Kernel::Devices
             }
         }
 
-        IoApicRegister regLow = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum);
-        IoApicRegister regHigh = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum + 1);
+        IoApicRegister regLow = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum * 2);
+        IoApicRegister regHigh = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum * 2 + 1);
         WriteReg(regLow, entry.raw);
         WriteReg(regHigh, entry.raw >> 32);
     }
@@ -207,8 +226,8 @@ namespace Kernel::Devices
             return {};
         }
 
-        IoApicRegister regLow = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum);
-        IoApicRegister regHigh = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum + 1);
+        IoApicRegister regLow = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum * 2);
+        IoApicRegister regHigh = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + pinNum * 2 + 1);
         
         IoApicRedirectEntry entry;
         entry.raw = ReadReg(regLow) | ((uint64_t)ReadReg(regHigh) << 32);
