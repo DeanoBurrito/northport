@@ -1,14 +1,24 @@
 #include <Cpu.h>
 #include <cpuid.h>
+#include <Platform.h>
 
 namespace Kernel
 {
     char cpuidVendorString[13];
     
-    uint64_t leaf1Edx;
-    uint64_t leaf1Ecx;
-    uint64_t extLeaf1Edx;
-    uint64_t extLeaf1Ecx;
+    uint32_t leaf1Edx;
+    uint32_t leaf1Ecx;
+
+    //tsc, core crystal in Hz. Bus, core max, core base in MHz
+    uint32_t leaf15Eax;
+    uint32_t leaf15Ebx;
+    uint32_t leaf15Ecx;
+    uint32_t leaf16Eax;
+    uint32_t leaf16Ebx;
+    uint32_t leaf16Ecx;
+
+    uint32_t extLeaf1Edx;
+    uint32_t extLeaf1Ecx;
 
     bool CPU::InterruptsEnabled()
     {
@@ -33,14 +43,16 @@ namespace Kernel
 
     void CPU::DoCpuId()
     {
-        uint64_t highestLeafAvailable = __get_cpuid_max(0x8000'0000, (unsigned int*)cpuidVendorString);
+        uint64_t highestExtLeafAvailable = __get_cpuid_max(0x8000'0000, (unsigned int*)cpuidVendorString);
+        uint64_t highestBaseLeafAvailable = __get_cpuid_max(0, (unsigned int*)cpuidVendorString);
 
-        if (highestLeafAvailable == 0)
+        if (highestExtLeafAvailable == 0 || highestBaseLeafAvailable == 0)
         {
             cpuidVendorString[0] = 0;
             return;
         }
 
+        //dummy regs for values we dont care about saving (or getting cpuid string)
         uint32_t eax, edx, ecx, ebx;
         
         //get vendor name
@@ -59,13 +71,21 @@ namespace Kernel
         cpuidVendorString[11] = (ecx & 0xFF'00'00'00) >> 24;
         cpuidVendorString[12] = 0; //the all important, null terminator.
 
-        __get_cpuid(0x8000'0001, &eax, &ebx, &ecx, &edx);
-        extLeaf1Edx = edx;
-        extLeaf1Ecx = ecx;
+        //general purpose leaves
+        __get_cpuid(0x8000'0001, &eax, &ebx, &leaf1Ecx, &leaf1Edx);
+        __get_cpuid(1, &eax, &ebx, &leaf1Ecx, &leaf1Edx);
 
-        __get_cpuid(1, &eax, &ebx, &ecx, &edx);
-        leaf1Edx = edx;
-        leaf1Ecx = ecx;
+        //tsc frequency (= ecx * ebx/eax) and core crystal clock frequency in hertz (ecx)
+        if (highestBaseLeafAvailable >= 0x15)
+            __get_cpuid(0x15, &leaf15Eax, &leaf15Ebx, &leaf15Ecx, &edx);
+        else
+            leaf15Eax = leaf15Ebx = leaf15Ecx = (uint32_t)-1;
+        
+        //all in MHz: core base = eax, core max = ebx, bus reference = ecx
+        if (highestBaseLeafAvailable >= 0x16)
+            __get_cpuid(0x15, &leaf16Eax, &leaf16Ebx, &leaf16Ecx, &edx);
+        else
+            leaf16Eax = leaf16Ebx = leaf16Ecx = (uint32_t)-1;
     }
 
     void CPU::PortWrite8(uint16_t port, uint8_t data)
@@ -165,5 +185,21 @@ namespace Kernel
     const char* CPU::GetVendorString()
     {
         return cpuidVendorString;
+    }
+
+    const CpuFrequencies CPU::GetFrequencies()
+    {
+        CpuFrequencies freqs;
+        freqs.coreClockBaseHertz = leaf16Eax;
+        freqs.coreMaxBaseHertz = leaf16Ebx;
+        freqs.busClockHertz = leaf16Ecx;
+
+        if (leaf15Eax == (uint32_t)-1 || leaf15Ebx == (uint32_t)-1 || leaf15Ecx == (uint32_t)-1)
+            freqs.coreTimerHertz = -1;
+        else //no need to do expensive divide work here if we dont have to
+            freqs.coreTimerHertz = leaf15Ecx * leaf15Ebx / leaf15Eax;
+
+        //RVO should make this fine
+        return freqs;
     }
 }

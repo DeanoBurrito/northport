@@ -13,6 +13,9 @@ namespace Kernel
 
         EnumCount
     };
+
+    //real definition in Platform.h
+    struct CpuFrequencies;
     
     class CPU
     {
@@ -39,5 +42,6 @@ namespace Kernel
         static const char* GetFeatureStr(CpuFeature feature, bool getFullname = false);
 
         static const char* GetVendorString();
+        static const CpuFrequencies GetFrequencies();
     };
 }

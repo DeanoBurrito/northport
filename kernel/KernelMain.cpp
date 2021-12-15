@@ -7,6 +7,7 @@
 #include <devices/LApic.h>
 #include <devices/IoApic.h>
 #include <devices/SimpleFramebuffer.h>
+#include <devices/Ps2Controller.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
@@ -69,6 +70,12 @@ namespace Kernel
     {
         Log("Initializing platform ...", LogSeverity::Info);
 
+        CpuFrequencies cpuFreqs = CPU::GetFrequencies();
+        if (cpuFreqs.coreTimerHertz == (uint32_t)-1)
+            Log("Cpu freqs: unavilable, cpuid did not allow discovery.", LogSeverity::Verbose);
+        else
+            Logf("Cpu freqs: coreBase=%uhz, coreMax=%uhz, bus=%uhz, tscTick=%uhz", LogSeverity::Verbose, cpuFreqs.coreClockBaseHertz, cpuFreqs.coreMaxBaseHertz, cpuFreqs.busClockHertz, cpuFreqs.coreTimerHertz);
+
         //we're sharing gdt and idt instances between cores, so we can set those up here.
         SetupGDT();
         SetupIDT();
@@ -84,6 +91,12 @@ namespace Kernel
 #endif
 
         Devices::IoApic::InitAll();
+
+        size_t ps2PortCount = Devices::Ps2Controller::InitController();
+        if (ps2PortCount > 0)
+            Devices::Ps2Controller::InitKeyboard();
+        if (ps2PortCount > 1)
+            Devices::Ps2Controller::InitMouse();
 
         Log("Platform init complete.", LogSeverity::Info);
     }

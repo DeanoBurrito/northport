@@ -100,6 +100,15 @@ namespace Kernel
         asm volatile("mov %0, %%cr4" :: "r"(value));
     }
 
+    //if any values are pinned at (uint32_t)-1, they're invalid
+    struct CpuFrequencies
+    {
+        uint32_t coreClockBaseHertz;
+        uint32_t coreMaxBaseHertz;
+        uint32_t coreTimerHertz; //TSC freq on x86
+        uint32_t busClockHertz;
+    };
+
     enum CoreLocalIndices : size_t
     {
         LAPIC,
