@@ -1,7 +1,6 @@
 #include <arch/x86_64/Idt.h>
 #include <Memory.h>
 #include <memory/Paging.h>
-
 #include <Log.h>
 
 namespace Kernel
@@ -9,6 +8,7 @@ namespace Kernel
     extern void* InterruptStub_Begin asm ("InterruptStub_Begin");
     extern void* InterruptStub_End asm ("InterruptStub_End");
     extern void* InterruptStub_PatchCall asm("InterruptStub_PatchCall");
+    extern StoredRegisters* InterruptDispatch(StoredRegisters* regs);
     
     void IdtEntry::SetAddress(uint64_t where)
     {
@@ -47,14 +47,6 @@ namespace Kernel
     IdtEntry* IDTR::GetEntry(size_t index)
     {
         return &idtEntries[index];
-    }
-
-    [[gnu::used]]
-    StoredRegisters* InterruptDispatch(StoredRegisters* regs)
-    {
-        //just return the existing registers
-        Log("Hello from interrupt! :D", LogSeverity::Info);
-        return regs;
     }
 
     void* CreateClonedEntry(uint8_t vectorNum, bool pushDummyErrorCode, uint64_t& latestPage, size_t& pageOffset)

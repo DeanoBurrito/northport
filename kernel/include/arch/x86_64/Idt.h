@@ -97,7 +97,7 @@ namespace Kernel
         uint64_t r9;
         uint64_t r8;
         uint64_t rbp;
-        uint64_t rsp;
+        uint64_t rsp; //just a dummy value so its an even 16 regs - use iret_rsp for stack access
         uint64_t rdi;
         uint64_t rsi;
         uint64_t rdx;
@@ -108,14 +108,11 @@ namespace Kernel
         uint64_t vectorNumber;
         uint64_t errorCode;
 
-        struct [[gnu::packed]] Iret
-        {
-            uint64_t rip;
-            uint64_t cs;
-            uint64_t flags;
-            uint64_t rsp;
-            uint64_t ss;
-        };
+        uint64_t iret_rip;
+        uint64_t iret_cs;
+        uint64_t iret_flags;
+        uint64_t iret_rsp;
+        uint64_t iret_ss;
     };
 
     extern "C"
