@@ -171,28 +171,16 @@ namespace sl
         { return isValid; }
 
         constexpr const T& operator*() const
-        {
-            static_assert(isValid, "Cannot deref an null optional.");
-            return *Get();
-        }
+        { return *Get(); }
 
         constexpr T& operator*()
-        {
-            static_assert(isValid, "Cannot deref an null optional.");
-            return *Get();
-        }
+        { return *Get(); }
 
         T* operator->()
-        {
-            static_assert(isValid, "Cannot get pointer an null optional value.");
-            return Get();
-        }
+        { return Get(); }
 
         T& Value()
-        {
-            static_assert(isValid, "Cannot deref an null optional.");
-            return *Get();
-        }
+        { return *Get(); }
     };
 
     //convinience operators
