@@ -30,7 +30,7 @@ namespace Kernel::Devices
         //there are some exceptions: pause and print screen, we just ignore those as they're a crazy 7 bytes long (why)
 
         uint8_t incoming = ReadByte(true); //can ignore output status flag, since an interrupt was triggered.
-        if (incoming == BEGIN_BREAK_PACKET)
+        if (incoming == BEGIN_BREAK_PACKET && inputLength > 0)
         {
             //Incoplete existing data, not sure why it wasnt translated, drop it.
             Log("Ps2 keyboard dropped partial packet data before BEGIN_BREAK_PACKET.", LogSeverity::Warning);
