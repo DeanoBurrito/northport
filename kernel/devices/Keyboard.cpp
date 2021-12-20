@@ -1,5 +1,9 @@
 #include <devices/Keyboard.h>
 #include <Memory.h>
+#include <Platform.h>
+#include <Log.h>
+
+#define KEYBOARD_BUFFER_SIZE 0xFF
 
 namespace Kernel::Devices
 { 
@@ -71,4 +75,37 @@ namespace Kernel::Devices
     }
 #undef RETURN_IF_CASE
 
+    Keyboard globalKeyboardInstance;
+    Keyboard* Keyboard::Global()
+    { return &globalKeyboardInstance; }
+
+    void Keyboard::Init()
+    {
+        keyEvents = new sl::CircularQueue<KeyEvent>(KEYBOARD_BUFFER_SIZE);
+        SpinlockRelease(&lock);
+    }
+
+    void Keyboard::PushKeyEvent(const KeyEvent& event)
+    {
+        ScopedSpinlock scopeLock(&lock);
+        keyEvents->PushBack(event);
+    }
+
+    size_t Keyboard::KeyEventsPending()
+    {
+        return keyEvents->Size();
+    }
+
+    sl::Vector<KeyEvent> Keyboard::GetKeyEvents()
+    {
+        ScopedSpinlock scopeLock(&lock);
+
+        size_t bufferSize = keyEvents->Size();
+        KeyEvent* buffer = new KeyEvent[bufferSize];
+        size_t poppedSize = keyEvents->PopInto(buffer, bufferSize);
+        if (bufferSize != poppedSize)
+            Log("Keyboard::GetKeyEvents() got 2 different buffer sizes despite scope lock.", LogSeverity::Warning);
+
+        return sl::Vector<KeyEvent>(buffer, poppedSize); //use the size of the data that was returned, not what we allocated.
+    }
 }

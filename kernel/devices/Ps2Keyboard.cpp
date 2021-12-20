@@ -3,9 +3,8 @@
 #include <devices/IoApic.h>
 #include <Log.h>
 
-#define BEGIN_BREAK_PACKET 0xE0
-#define BEGIN_BREAK2_PACKET 0xE1
-#define BEGIN_EXTENDED_PACKET 0xF0
+#define BEGIN_BREAK_PACKET 0xF0
+#define BEGIN_EXTENDED_PACKET 0xE0
 
 namespace Kernel::Devices
 {
@@ -40,9 +39,7 @@ namespace Kernel::Devices
         inputBuffer[inputLength] = incoming;
         inputLength++;
 
-        if (inputBuffer[inputLength - 1] != BEGIN_BREAK_PACKET && 
-            inputBuffer[inputLength - 1] != BEGIN_EXTENDED_PACKET && 
-            inputBuffer[inputLength - 1] != BEGIN_BREAK2_PACKET)
+        if (inputBuffer[inputLength - 1] != BEGIN_BREAK_PACKET && inputBuffer[inputLength - 1] != BEGIN_EXTENDED_PACKET)
         {
             Translate(); //we know if those were last written, there's more to the packet, otherwise try translate it
         }
@@ -134,10 +131,68 @@ namespace Kernel::Devices
     }
 #undef RETURN_IF_CASE
 
-    void Ps2Keyboard::Translate()
+    void Ps2Keyboard::ApplyKeyTags(KeyEvent& ev, bool released)
     {
-        //this is a stateful function, we have to remove any parts of the packet we processed, and store the KeyEvent ourselves
+        ev.tags = KeyTags::None;
         
+        switch (ev.id)
+        {
+        case KeyIdentity::LeftShift:
+        case KeyIdentity::RightShift:
+        case KeyIdentity::LeftAlt:
+        case KeyIdentity::RightAlt:
+        case KeyIdentity::LeftControl:
+        case KeyIdentity::RightControl:
+        case KeyIdentity::LeftGui:
+        case KeyIdentity::RightGui:
+            ev.tags = sl::EnumSetFlag(ev.tags, KeyTags::IsModifier);
+            break;
+
+        default:
+            break;
+        };
+
+        if (released)
+            ev.tags = sl::EnumSetFlag(ev.tags, KeyTags::Released);
+        else
+            ev.tags = sl::EnumSetFlag(ev.tags, KeyTags::Pressed);
+    }
+
+    void Ps2Keyboard::UpdateModifiers(const KeyIdentity& id, bool released)
+    {
+        switch (id)
+        {
+        case KeyIdentity::LeftShift:
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftShift, released);
+            break;
+        case KeyIdentity::RightShift:
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightShift, released);
+            break;
+        case KeyIdentity::LeftAlt:
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftAlt, released);
+            break;
+        case KeyIdentity::RightAlt:
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightAlt, released);
+            break;
+        case KeyIdentity::LeftControl:
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftControl, released);
+            break;
+        case KeyIdentity::RightControl:
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightControl, released);
+            break;
+        case KeyIdentity::LeftGui:
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftGui, released);
+            break;
+        case KeyIdentity::RightGui:
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightGui, released);
+            break;
+        default:
+            return;
+        }
+    }
+
+    void Ps2Keyboard::Translate()
+    {    
         //easy early exits
         if (inputBuffer[0] == BEGIN_BREAK_PACKET && inputLength < 2)
             return;
@@ -147,18 +202,32 @@ namespace Kernel::Devices
             return;
 
         size_t scan = 0;
+        bool released = false;
         if (inputBuffer[0] == BEGIN_BREAK_PACKET)
+        {
             scan = 1;
+            released = true;
+        }
 
         KeyIdentity keyId;
         if (inputBuffer[scan] == BEGIN_EXTENDED_PACKET)
             keyId = GetExtendedKeyIdentity(inputBuffer[scan + 1]);
         else
             keyId = ps2Set2Identities[inputBuffer[scan]];
-        
-        Logf("Got key in: 0x%x", LogSeverity::Info, (uint64_t)keyId);
 
-        //reset input buffer
+        UpdateModifiers(keyId, released);
+        
+        //apply input metadata
+        KeyEvent e;
+        e.id = keyId;
+        e.mods = currentModifiers;
+        e.inputDeviceId = (uint8_t)BuiltInInputDevices::Ps2Keyboard;
+        ApplyKeyTags(e, released);
+
+        //store it in global keyboard 
+        Keyboard::Global()->PushKeyEvent(e);
+        
+        //reset input
         inputLength = 0;
     }
 }

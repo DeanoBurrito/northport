@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <Platform.h>
+#include <devices/Keyboard.h>
 
 #define PS2_CMD_READ_CONFIG 0x20
 #define PS2_CMD_WRITE_CONFIG 0x60
@@ -42,9 +43,13 @@ namespace Kernel::Devices
         constexpr static inline size_t inputMaxLenth = 4;
         size_t inputLength;
         uint8_t* inputBuffer;
+
         Ps2ScancodeSet currentSet;
+        KeyModFlags currentModifiers;
 
         void Translate();
+        void ApplyKeyTags(KeyEvent& ev, bool released);
+        void UpdateModifiers(const KeyIdentity& id, bool released);
 
     public:
         void Init(bool usePort2) override;

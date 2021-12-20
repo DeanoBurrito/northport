@@ -8,6 +8,7 @@
 #include <devices/IoApic.h>
 #include <devices/SimpleFramebuffer.h>
 #include <devices/Ps2Controller.h>
+#include <devices/Keyboard.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
@@ -68,6 +69,7 @@ namespace Kernel
 
     void InitPlatform()
     {
+        using namespace Devices;
         Log("Initializing platform ...", LogSeverity::Info);
 
         CpuFrequencies cpuFreqs = CPU::GetFrequencies();
@@ -84,19 +86,20 @@ namespace Kernel
         ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);
 
         stivale2_struct_tag_framebuffer* framebufferTag = FindStivaleTag<stivale2_struct_tag_framebuffer*>(STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID);
-        Devices::SimpleFramebuffer::Global()->Init(framebufferTag);
-        Devices::SimpleFramebuffer::Global()->DrawTestPattern();
+        SimpleFramebuffer::Global()->Init(framebufferTag);
+        SimpleFramebuffer::Global()->DrawTestPattern();
 #ifdef NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT 
         EnableLogDestinaton(LogDestination::FramebufferOverwrite);
 #endif
 
-        Devices::IoApic::InitAll();
+        IoApic::InitAll();
+        Keyboard::Global()->Init();
 
-        size_t ps2PortCount = Devices::Ps2Controller::InitController();
+        size_t ps2PortCount = Ps2Controller::InitController();
         if (ps2PortCount > 0)
-            Devices::Ps2Controller::Keyboard()->Init(false);
+            Ps2Controller::Keyboard()->Init(false);
         if (ps2PortCount > 1)
-            Devices::Ps2Controller::Mouse()->Init(true);
+            Ps2Controller::Mouse()->Init(true);
 
         Log("Platform init complete.", LogSeverity::Info);
     }

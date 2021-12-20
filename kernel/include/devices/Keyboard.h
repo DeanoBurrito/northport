@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 #include <Optional.h>
+#include <containers/CircularQueue.h>
+#include <containers/Vector.h>
 
 namespace Kernel::Devices
 {
@@ -182,8 +184,19 @@ namespace Kernel::Devices
 
     enum class KeyTags : uint8_t
     {
-        //key event for a modifier, can be ignored if you care about modifiers in relation to other keys (we track those)
+        None = 0,
         IsModifier = (1 << 0),
+        Pressed = (1 << 1),
+        Released = (1 << 2),
+    };
+
+    enum class BuiltInInputDevices : uint8_t
+    {
+        Unknown = 0,
+        Ps2Keyboard = 1,
+        Ps2Mouse = 2,
+
+        EnumCount,
     };
 
     struct KeyEvent
@@ -199,4 +212,19 @@ namespace Kernel::Devices
     };
 
     sl::Optional<int> GetPrintableChar(KeyEvent keyEvent);
+
+    class Keyboard
+    {
+    private:
+        char lock;
+        sl::CircularQueue<KeyEvent>* keyEvents;
+
+    public:
+        static Keyboard* Global();
+        void Init();
+
+        void PushKeyEvent(const KeyEvent& event);
+        size_t KeyEventsPending();
+        sl::Vector<KeyEvent> GetKeyEvents();
+    };
 }
