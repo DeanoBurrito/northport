@@ -4,7 +4,7 @@ TARGET = $(KERNEL_FULL_FILEPATH)
 CXX_INCLUDE_DIRS = -Iinclude -I$(SYSLIB_INCLUDE_DIR)
 CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
 	-fno-stack-protector -fno-omit-frame-pointer -ffreestanding -fno-unwind-tables -fno-asynchronous-unwind-tables \
-	-fno-rtti -fno-exceptions -mno-red-zone -Wall -Wextra -std=c++17 -fpie
+	-fno-rtti -fno-exceptions -mno-red-zone -Wall -Wextra -std=c++17 -fpie -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow
 LD_LIBS = -L$(shell dirname $(SYSLIB_FULL_FILEPATH)) -lsyslib
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds
 LD_FLAGS = $(LD_LIBS) \
