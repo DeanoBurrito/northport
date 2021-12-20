@@ -15,6 +15,30 @@ namespace sl
     {
         return ((size_t)enumeration & (size_t)entry) != 0;
     }
+
+    template<typename F, typename E>
+    [[gnu::always_inline]]
+    inline F EnumSetFlag(F enumeration, E entry)
+    {
+        return (F)((size_t)enumeration | (size_t)entry);
+    }
+
+    template<typename F, typename E>
+    [[gnu::always_inline]]
+    inline F EnumClearFlag(F enumeration, E entry)
+    {
+        return (F)((size_t)enumeration & ~(size_t)entry);
+    }
+
+    template<typename F, typename E>
+    [[gnu::always_inline]]
+    inline F EnumSetFlagState(F enumeration, E entry, bool set)
+    {
+        if (set)
+            return EnumSetFlag(enumeration, entry);
+        else
+            return EnumClearFlag(enumeration, entry);
+    }
     
     template<typename T>
     T&& move(T&& t)
