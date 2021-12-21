@@ -17,7 +17,7 @@ namespace Kernel::Devices
 
         //setup ioapic mapping
         auto overrideDetails = IoApic::TranslateToGsi(0); //old school devices uses hardcoded irq number 0
-        overrideDetails.gsiNum = INTERRUPT_GSI_PIT_TICK;
+        overrideDetails.gsiNum = vectorNum;
         IoApic::Global(overrideDetails.gsiNum)->WriteRedirect(destApicId, overrideDetails);
         pitPinNumber = overrideDetails.irqNum;
         
