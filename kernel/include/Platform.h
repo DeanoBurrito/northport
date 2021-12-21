@@ -9,11 +9,16 @@
 #define PORT_DEBUGCON 0xE9
 #define PORT_PS2_DATA 0x60
 #define PORT_PS2_COMMAND_STATUS 0x64
+//we only really care about channel 0 of the PIT, hence why i'm just calling it data
+#define PORT_PIT_DATA 0x40
+#define PORT_PIT_COMMAND 0x43
 
 #define INTERRUPT_GSI_SPURIOUS 0xFF
+#define INTERRUPT_GSI_IGNORE 0xFE
 #define INTERRUPT_GSI_PS2KEYBOARD 0x21
 //NOTE: scheduler has this hardcoded in Yield() -> update it there if modifying
 #define INTERRUPT_GSI_SCHEDULER_NEXT 0x22
+#define INTERRUPT_GSI_PIT_TICK 0x23
 
 #define MSR_IA32_EFER 0xC0000080
 #define MSR_APIC_BASE 0x1B

@@ -9,6 +9,7 @@
 #include <devices/SimpleFramebuffer.h>
 #include <devices/Ps2Controller.h>
 #include <devices/Keyboard.h>
+#include <devices/8254Pit.h>
 #include <scheduling/Scheduler.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
@@ -101,6 +102,8 @@ namespace Kernel
             Ps2Controller::Keyboard()->Init(false);
         if (ps2PortCount > 1)
             Ps2Controller::Mouse()->Init(true);
+
+        InitPit(0, INTERRUPT_GSI_PIT_TICK);
 
         Log("Platform init complete.", LogSeverity::Info);
     }
