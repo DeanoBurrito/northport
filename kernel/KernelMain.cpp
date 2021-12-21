@@ -194,6 +194,8 @@ namespace Kernel
     {
         CPU::SetInterruptsFlag();
 
+        Devices::LApic::Local()->SetupTimer(SCHEDULER_QUANTUM_MS, INTERRUPT_GSI_SCHEDULER_NEXT, true);
+
         Log("Kernel init done, exiting to scheduler.", LogSeverity::Info);
         Scheduling::Scheduler::Local()->Yield();
     }

@@ -4,6 +4,8 @@
 #include <containers/Vector.h>
 #include <IdAllocator.h>
 
+#define SCHEDULER_QUANTUM_MS 10
+
 namespace Kernel::Scheduling
 {
     class Scheduler

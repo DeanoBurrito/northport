@@ -2,6 +2,7 @@
 #include <Log.h>
 #include <devices/LApic.h>
 #include <devices/Ps2Controller.h>
+#include <devices/8254Pit.h>
 #include <scheduling/Scheduler.h>
 
 /*
@@ -12,7 +13,6 @@ namespace Kernel
 {
     bool TryHandleNativeException(StoredRegisters* regs)
     {
-        NativeExceptions exception = (NativeExceptions)regs->vectorNumber;
         switch (regs->vectorNumber)
         {
         case NativeExceptions::GeneralProtectionFault:
@@ -45,11 +45,20 @@ namespace Kernel
 
         switch (regs->vectorNumber)
         {
+            case INTERRUPT_GSI_SPURIOUS:
+                return returnRegs; //no need to do EOI here, just return
+            case INTERRUPT_GSI_IGNORE:
+                Log("Received interrupt vector IGNORE, this should never actually happen.", LogSeverity::Error);
+                return returnRegs; //should never occur, useful for apic timer calibration
+
             case INTERRUPT_GSI_PS2KEYBOARD:
                 Devices::Ps2Controller::Keyboard()->HandleIrq();
                 break;
             case INTERRUPT_GSI_SCHEDULER_NEXT:
                 returnRegs = Scheduling::Scheduler::Local()->SelectNextThread(regs);
+                break;
+            case INTERRUPT_GSI_PIT_TICK:
+                Devices::PitHandleIrq();
                 break;
             
         default:

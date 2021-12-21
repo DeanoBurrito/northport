@@ -1,4 +1,5 @@
 #include <devices/LApic.h>
+#include <devices/8254Pit.h>
 #include <acpi/AcpiTables.h>
 #include <Platform.h>
 #include <Memory.h>
@@ -39,7 +40,27 @@ namespace Kernel::Devices
     { return sl::MemRead<uint32_t>(baseAddress + (uint64_t)reg); }
 
     void LApic::CalibrateTimer()
-    {}
+    {
+        WriteReg(LocalApicRegister::TimerInitialCount, 0); //ensure timer is stopped before we mess with it
+        WriteReg(LocalApicRegister::TimerLVT, INTERRUPT_GSI_IGNORE); //everything else is set to 0
+        calibratedDivisor = (uint32_t)ApicTimerDivisor::_2;
+        WriteReg(LocalApicRegister::TimerDivisor, calibratedDivisor);
+        
+        //start pit and apic timer
+        SetPitMasked(false);
+        WriteReg(LocalApicRegister::TimerInitialCount, (uint32_t)-1); //max value, so we count down
+
+        while (GetPitTicks() < LAPIC_TIMER_CALIBRATION_MS);
+
+        uint32_t currentValue = ReadReg(LocalApicRegister::TimerCurrentCount);
+        WriteReg(LocalApicRegister::TimerInitialCount, 0);
+        SetPitMasked(true);
+
+        timerTicksPerMs = ((uint32_t)-1) - currentValue;
+        timerTicksPerMs = timerTicksPerMs / LAPIC_TIMER_CALIBRATION_MS;
+
+        Logf("Local APIC timer calibration for %u ticks per millisecond.", LogSeverity::Verbose, timerTicksPerMs);
+    }
 
     LApic* LApic::Local()
     {
@@ -55,6 +76,7 @@ namespace Kernel::Devices
         
         baseAddress = CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF);
         apicId = ReadReg(LocalApicRegister::Id) >> 24;
+        timerTicksPerMs = 0;
 
         if ((CPU::ReadMsr(MSR_APIC_BASE) & (1 << 11)) == 0)
             Log("IA32_APIC_BASE_MSR bit 11 (global enable) is cleared. Cannot initialize local apic.", LogSeverity::Fatal);
@@ -100,7 +122,7 @@ namespace Kernel::Devices
     void LApic::SetLvtMasked(LocalApicRegister lvtReg, bool masked)
     {
         uint32_t current = ReadReg(lvtReg);
-        current = ~(1 << 16); //clear it, and then reset it if needed
+        current &= ~(1 << 16); //clear it, and then reset it if needed
         if (masked)
             current |= (1 << 16);
         WriteReg(lvtReg, current);
@@ -112,6 +134,23 @@ namespace Kernel::Devices
     }
 
     void LApic::SetupTimer(size_t millis, uint8_t vector, bool periodic)
-    {}
+    {
+        if (timerTicksPerMs == 0)
+            CalibrateTimer();
+        if (timerTicksPerMs == (uint64_t)-1)
+        {
+            Log("Local APIC timer calibration error. Timer not available.", LogSeverity::Error);
+            return;
+        }
 
+        LvtEntry timerLvt;
+        timerLvt.Set(vector, periodic ? ApicTimerMode::Periodic : ApicTimerMode::OneShot);
+        
+        WriteReg(LocalApicRegister::TimerLVT, timerLvt.raw);
+        WriteReg(LocalApicRegister::TimerDivisor, calibratedDivisor);
+        SetLvtMasked(LocalApicRegister::TimerLVT, false);
+
+        //write to initial count to start timer
+        WriteReg(LocalApicRegister::TimerInitialCount, timerTicksPerMs * millis);
+    }
 }
