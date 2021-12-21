@@ -9,6 +9,7 @@
 #include <devices/SimpleFramebuffer.h>
 #include <devices/Ps2Controller.h>
 #include <devices/Keyboard.h>
+#include <scheduling/Scheduler.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
@@ -110,6 +111,7 @@ namespace Kernel
         coreStore->apicId = apicId;
         coreStore->acpiProcessorId = acpiId;
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
+        coreStore->ptrs[CoreLocalIndices::Scheduler] = new Scheduling::Scheduler();
 
         Logf("Core local storage created for core %u", LogSeverity::Verbose, apicId);
         return coreStore;
@@ -129,6 +131,9 @@ namespace Kernel
 
         Devices::LApic::Local()->Init();
         Log("Local APIC initialized.", LogSeverity::Verbose);
+
+        Scheduling::Scheduler::Local()->Init();
+        Log("Local scheduler initialized.", LogSeverity::Verbose);
 
         Log("Core specific setup complete.", LogSeverity::Info);
     }
@@ -185,7 +190,9 @@ namespace Kernel
     void ExitInit()
     {
         CPU::SetInterruptsFlag();
-        Log("Kernel init done.", LogSeverity::Info);
+
+        Log("Kernel init done, exiting to scheduler.", LogSeverity::Info);
+        Scheduling::Scheduler::Local()->Yield();
     }
 }
 
@@ -217,6 +224,8 @@ extern "C"
         InitCoreLocal();
 
         ExitInit();
+
+        Log("Kernel has somehow returned to pre-scheduled main, this should not happen.", LogSeverity::Fatal);
         for (;;)
             asm("hlt");
     }
