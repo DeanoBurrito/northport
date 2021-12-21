@@ -6,6 +6,14 @@
 
 namespace Kernel::Devices
 {
+    void IoApicRedirectEntry::SetNmi(IoApicEntryModifier nmi)
+    {
+        uint64_t destApicId = 0; //TODO: rtfm on this for nmis
+
+        //vector info is ignored, but make sure we set it for nmi delivery mode
+        raw = (destApicId << 56) | (((uint64_t)nmi.triggerMode & 0b1) << 15) | (((uint64_t)nmi.polarity & 0b1) << 13) | (0b100 << 8);
+    }
+    
     void IoApicRedirectEntry::Set(uint8_t destApicId, uint8_t vector, IoApicTriggerMode triggerMode, IoApicPinPolarity pinPolarity)
     {
         //setting bit 16 as well, to mask by default.
@@ -133,9 +141,18 @@ namespace Kernel::Devices
             scan.raw += scan.As<MadtEntry>()->length;
         }
 
-        //apply the nmis now
+        //apply the nmis now. We have to write these manually, as they're blocked by WriteRedirectEntry()
         for (size_t i = 0; i < nmis->Size(); i++)
-            Global(nmis->At(i).gsiNum)->WriteRedirect(nmis->At(i).gsiNum, IoApicRedirectEntry{});
+        {
+            IoApicEntryModifier nmi = nmis->At(i);
+            IoApicRedirectEntry entry;
+            entry.SetNmi(nmi);
+
+            IoApicRegister regLow = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + nmi.gsiNum * 2);
+            IoApicRegister regHigh = (IoApicRegister)((uint64_t)IoApicRegister::Redirect0 + nmi.gsiNum * 2 + 1);
+            Global(nmi.gsiNum)->WriteReg(regLow, entry.raw);
+            Global(nmi.gsiNum)->WriteReg(regHigh, entry.raw >> 32);
+        }
 
         Logf("IO APIC parsing finished, nmis=%u, sourceOverrides=%u", LogSeverity::Verbose, nmis->Size(), modifiers->Size());
     }
@@ -170,7 +187,7 @@ namespace Kernel::Devices
         
         return
         {
-            .irqNum = mod->irqNum,
+            .irqNum = mod->gsiNum,
             .gsiNum = fixedIrq,
             .polarity = mod->polarity,
             .triggerMode = mod->triggerMode
