@@ -4,7 +4,7 @@
 
 namespace Kernel
 {
-    void GetStackTrace()
+    sl::Vector<NativeUInt> GetStackTrace()
     {
         struct stackframe* stackItem;
         asm ("mov %%rbp,%0" : "=r"(stackItem) ::);
@@ -15,6 +15,7 @@ namespace Kernel
             stackItem = stackItem->ebp;
         }
         Logf("GetStackTrace vec size: %x\n", LogSeverity::Error, vec.Size());
+        return vec;
     }
 
 }
