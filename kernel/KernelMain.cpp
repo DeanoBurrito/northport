@@ -208,12 +208,13 @@ extern "C"
 
         InitMemory();
         LoggingInitFull();
+
+        PrintStackTrace();
         InitPlatform();
 
         //init bsp
         StartupAPs();
         InitCoreLocal();
-        asm("int $0x01");
 
         ExitInit();
         for (;;)

@@ -11,8 +11,8 @@ namespace Kernel
         sl::Vector<NativeUInt> vec;
         while(stackItem != 0)
         {
-            vec.PushBack(stackItem->eip);
-            stackItem = stackItem->ebp;
+            vec.PushBack(stackItem->rip);
+            stackItem = stackItem->rbp;
         }
         return vec;
     }

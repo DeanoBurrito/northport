@@ -7,8 +7,8 @@ namespace Kernel
 {
     struct stackframe 
     {
-      struct stackframe* ebp;
-      uint64_t eip;
+      struct stackframe* rbp;
+      uint64_t rip;
     };
 
     sl::Vector<NativeUInt> GetStackTrace();
