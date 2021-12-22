@@ -11,6 +11,7 @@
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
+#include <StackTrace.h>
 
 namespace Kernel
 {
@@ -128,6 +129,7 @@ namespace Kernel
         Log("Local APIC initialized.", LogSeverity::Verbose);
 
         Log("Core specific setup complete.", LogSeverity::Info);
+        GetStackTrace();
     }
 
     //the entry point for the APs
