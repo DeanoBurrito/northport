@@ -6,7 +6,7 @@ namespace Kernel
 {
     struct stackframe {
       struct stackframe* ebp;
-      uint32_t eip;
+      uint64_t eip;
     };
 
     void GetStackTrace();
