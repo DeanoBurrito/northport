@@ -21,10 +21,12 @@ namespace Kernel
     {
         sl::Vector<NativeUInt> vec;
         vec = GetStackTrace();
-        for(size_t i=0; i<vec.Size(); i++)
+        size_t vectorSize = vec.Size();
+        Logf("GetStackTrace: size: %x\n", LogSeverity::Error, vec.Size());
+        for(size_t i=0; i<vectorSize; i++)
         {
             NativeUInt stackItem = vec.PopBack();
-            Logf("GetStackTrace: %x\n", LogSeverity::Error, stackItem);
+            Logf("GetStackTrace(Size: %d)  eip: %d: - %x\n", LogSeverity::Error, vectorSize, i,stackItem);
         }
     }
 
