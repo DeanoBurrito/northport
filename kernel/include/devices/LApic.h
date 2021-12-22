@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define LAPIC_TIMER_CALIBRATION_MS 100
+
 namespace Kernel::Devices
 {
     enum class LocalApicRegister : uint16_t
@@ -115,6 +117,9 @@ namespace Kernel::Devices
     private:
         uint64_t baseAddress;
         uint32_t apicId;
+
+        uint64_t timerTicksPerMs;
+        uint32_t calibratedDivisor;
 
         void WriteReg(LocalApicRegister reg, uint32_t value);
         uint32_t ReadReg(LocalApicRegister reg);

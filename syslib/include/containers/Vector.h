@@ -71,6 +71,13 @@ namespace sl
         Vector(size_t initialCapacity) : Vector()
         { EnsureCapacity(initialCapacity); }
 
+        Vector(T* takingBuffer, size_t bufferLength)
+        {
+            elements = takingBuffer;
+            capacity = bufferLength;
+            size = bufferLength;
+        }
+
         ~Vector()
         {
             Clear();

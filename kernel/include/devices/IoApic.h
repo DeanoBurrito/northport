@@ -59,9 +59,24 @@ namespace Kernel::Devices
         Default = 0,
     };
 
-    //this is basically an lvt, nicely done intel.
+    struct IoApicEntryModifier
+    {
+        uint32_t irqNum;
+        uint32_t gsiNum;
+        IoApicPinPolarity polarity;
+        IoApicTriggerMode triggerMode;
+    };
+
+    class IoApic;
+
+    //this is basically an lvt, unironically nicely job intel.
     struct IoApicRedirectEntry
     {
+    friend IoApic;
+    private:
+        void SetNmi(IoApicEntryModifier mod);
+        
+    public:
         uint64_t raw;
 
         //NOTE: this is destructive and ignores previous register value
@@ -70,14 +85,6 @@ namespace Kernel::Devices
         bool IsMasked();
         FORCE_INLINE void ClearMask()
         { SetMask(false); }
-    };
-
-    struct IoApicEntryModifier
-    {
-        uint32_t irqNum;
-        uint32_t gsiNum;
-        IoApicPinPolarity polarity;
-        IoApicTriggerMode triggerMode;
     };
     
     class IoApic

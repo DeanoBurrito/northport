@@ -1,6 +1,7 @@
 #pragma once
 
 #include <NativePtr.h>
+#include <PlacementNew.h>
 
 //prototypes - these are either implemented by kernel or userspace dl
 void* malloc(size_t);
@@ -13,6 +14,30 @@ namespace sl
     inline bool EnumHasFlag(F enumeration, E entry)
     {
         return ((size_t)enumeration & (size_t)entry) != 0;
+    }
+
+    template<typename F, typename E>
+    [[gnu::always_inline]]
+    inline F EnumSetFlag(F enumeration, E entry)
+    {
+        return (F)((size_t)enumeration | (size_t)entry);
+    }
+
+    template<typename F, typename E>
+    [[gnu::always_inline]]
+    inline F EnumClearFlag(F enumeration, E entry)
+    {
+        return (F)((size_t)enumeration & ~(size_t)entry);
+    }
+
+    template<typename F, typename E>
+    [[gnu::always_inline]]
+    inline F EnumSetFlagState(F enumeration, E entry, bool set)
+    {
+        if (set)
+            return EnumSetFlag(enumeration, entry);
+        else
+            return EnumClearFlag(enumeration, entry);
     }
     
     template<typename T>
@@ -68,6 +93,16 @@ namespace sl
         if (!inverse)
             sp.raw += sizeof(WordType);
         return value;
+    }
+
+    template<typename T>
+    [[gnu::always_inline]]
+    inline void ComplexCopy(T* src, size_t srcOffset, T* dest, size_t destOffset, size_t count)
+    {
+        for (size_t i = 0; i < count; i++)
+        {
+            new (&dest[i + destOffset]) T(src[i + srcOffset]);
+        }
     }
 
     template<typename T>

@@ -9,9 +9,16 @@
 #define PORT_DEBUGCON 0xE9
 #define PORT_PS2_DATA 0x60
 #define PORT_PS2_COMMAND_STATUS 0x64
+//we only really care about channel 0 of the PIT, hence why i'm just calling it data
+#define PORT_PIT_DATA 0x40
+#define PORT_PIT_COMMAND 0x43
 
 #define INTERRUPT_GSI_SPURIOUS 0xFF
+#define INTERRUPT_GSI_IGNORE 0xFE
 #define INTERRUPT_GSI_PS2KEYBOARD 0x21
+//NOTE: scheduler has this hardcoded in Yield() -> update it there if modifying
+#define INTERRUPT_GSI_SCHEDULER_NEXT 0x22
+#define INTERRUPT_GSI_PIT_TICK 0x23
 
 #define MSR_IA32_EFER 0xC0000080
 #define MSR_APIC_BASE 0x1B
@@ -114,6 +121,7 @@ namespace Kernel
     enum CoreLocalIndices : size_t
     {
         LAPIC,
+        Scheduler,
         
         EnumCount,
     };
@@ -127,4 +135,33 @@ namespace Kernel
 
     FORCE_INLINE CoreLocalStorage* GetCoreLocal()
     { return reinterpret_cast<CoreLocalStorage*>(CPU::ReadMsr(MSR_GS_BASE)); }
+
+    struct [[gnu::packed]] StoredRegisters
+    {
+        uint64_t r15;
+        uint64_t r14;
+        uint64_t r13;
+        uint64_t r12;
+        uint64_t r11;
+        uint64_t r10;
+        uint64_t r9;
+        uint64_t r8;
+        uint64_t rbp;
+        uint64_t rsp; //just a dummy value so its an even 16 regs - use iret_rsp for stack access
+        uint64_t rdi;
+        uint64_t rsi;
+        uint64_t rdx;
+        uint64_t rcx;
+        uint64_t rbx;
+        uint64_t rax;
+
+        uint64_t vectorNumber;
+        uint64_t errorCode;
+
+        uint64_t iret_rip;
+        uint64_t iret_cs;
+        uint64_t iret_flags;
+        uint64_t iret_rsp;
+        uint64_t iret_ss;
+    };
 }

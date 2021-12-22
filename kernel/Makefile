@@ -4,7 +4,7 @@ TARGET = $(KERNEL_FULL_FILEPATH)
 CXX_INCLUDE_DIRS = -Iinclude -I$(SYSLIB_INCLUDE_DIR)
 CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
 	-fno-stack-protector -fno-omit-frame-pointer -ffreestanding -fno-unwind-tables -fno-asynchronous-unwind-tables \
-	-fno-rtti -fno-exceptions -mno-red-zone -Wall -Wextra -std=c++17 -fpie
+	-fno-rtti -fno-exceptions -mno-red-zone -Wall -Wextra -std=c++17 -fpie -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow
 LD_LIBS = -L$(shell dirname $(SYSLIB_FULL_FILEPATH)) -lsyslib
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds
 LD_FLAGS = $(LD_LIBS) \
@@ -13,7 +13,9 @@ ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
 CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp Logf.cpp memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp \
 	memory/New.cpp acpi/AcpiTables.cpp devices/LApic.cpp devices/IoApic.cpp devices/SimpleFramebuffer.cpp gfx/GraphicsPrimitives.cpp \
-	arch/x86_64/InterruptDispatch.cpp devices/Ps2Controller.cpp devices/Ps2Keyboard.cpp devices/Ps2Mouse.cpp arch/x86_64/StackTrace.cpp
+	arch/x86_64/InterruptDispatch.cpp devices/Ps2Controller.cpp devices/Ps2Keyboard.cpp devices/Ps2Mouse.cpp arch/x86_64/StackTrace.cpp \
+	scheduling/Thread.cpp scheduling/Scheduler.cpp devices/8254Pit.cpp
+
 ASM_SRCS = 
 
 ARCH_DIR = arch/$(CPU_ARCH)

@@ -1,5 +1,5 @@
 #toolchain selection (valid options are gcc or clang)
-TOOLCHAIN_DEFAULT = gcc
+TOOLCHAIN_DEFAULT = clang
 
 ifeq ($(TOOLCHAIN_DEFAULT), gcc)
 	TOOLCHAIN_DIR = ../cross-tools
