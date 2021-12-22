@@ -5,11 +5,6 @@
 
 namespace Kernel 
 {
-    struct stackframe 
-    {
-      struct stackframe* rbp;
-      uint64_t rip;
-    };
 
     sl::Vector<NativeUInt> GetStackTrace();
     void PrintStackTrace();

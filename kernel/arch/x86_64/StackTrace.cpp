@@ -3,10 +3,17 @@
 #include <containers/Vector.h>
 
 namespace Kernel
-{
+{    
+
+    struct StackFrame 
+    {
+      struct StackFrame* rbp;
+      uint64_t rip;
+    };
+
     sl::Vector<NativeUInt> GetStackTrace()
     {
-        struct stackframe* stackItem;
+        struct StackFrame* stackItem;
         asm ("mov %%rbp,%0" : "=r"(stackItem) ::);
         sl::Vector<NativeUInt> vec;
         while(stackItem != 0)
@@ -26,7 +33,7 @@ namespace Kernel
         for(size_t i=0; i<vectorSize; i++)
         {
             NativeUInt stackItem = vec.PopBack();
-            Logf("GetStackTrace(Size: %d)  eip: %d: - %x\n", LogSeverity::Error, vectorSize, i,stackItem);
+            Logf("GetStackTrace(Size: %d)  ip: %x: - %x\n", LogSeverity::Error, vectorSize, i,stackItem);
         }
     }
 
