@@ -22,7 +22,7 @@ namespace Kernel
             
         default:
             Log("Received interrupt for unexpected vector.", LogSeverity::Error);
-            GetStackTrace();
+            PrintStackTrace();
             break;
         }    
 
