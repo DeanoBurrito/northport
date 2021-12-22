@@ -7,7 +7,6 @@ namespace Kernel
     {
         struct stackframe* stackItem;
         asm ("mov %%rbp,%0" : "=r"(stackItem) ::);
-        Logf("GetStackTrace: %x\n", LogSeverity::Error, stackItem->eip);
         while(stackItem != 0){
             Logf("GetStackTrace: %x\n", LogSeverity::Error, stackItem->eip);
             stackItem = stackItem->ebp;

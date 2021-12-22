@@ -129,7 +129,6 @@ namespace Kernel
         Log("Local APIC initialized.", LogSeverity::Verbose);
 
         Log("Core specific setup complete.", LogSeverity::Info);
-        GetStackTrace();
     }
 
     //the entry point for the APs
@@ -214,6 +213,7 @@ extern "C"
         //init bsp
         StartupAPs();
         InitCoreLocal();
+        GetStackTrace();
 
         ExitInit();
         for (;;)
