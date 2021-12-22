@@ -213,7 +213,7 @@ extern "C"
         //init bsp
         StartupAPs();
         InitCoreLocal();
-        GetStackTrace();
+        asm("int $0x01");
 
         ExitInit();
         for (;;)
