@@ -31,7 +31,7 @@ namespace Kernel
         for(size_t i=0; i<vectorSize; i++)
         {
             NativeUInt stackItem = vec.PopBack();
-            Logf("StackTrace Frame: %d  ip=%lx\n", LogSeverity::Error, i, stackItem);
+            Logf("StackTrace Frame: %d  ip=%lx", LogSeverity::Error, i, stackItem);
         }
     }
 
