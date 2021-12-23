@@ -1,6 +1,5 @@
 #include <arch/x86_64/Idt.h>
 #include <Log.h>
-#include <StackTrace.h>
 #include <devices/LApic.h>
 #include <devices/Ps2Controller.h>
 #include <devices/8254Pit.h>
