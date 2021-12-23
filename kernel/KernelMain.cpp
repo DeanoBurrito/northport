@@ -224,7 +224,7 @@ extern "C"
         InitMemory();
         LoggingInitFull();
 
-        PrintStackTrace();
+        PrintStackTrace(GetStackTrace());
         InitPlatform();
 
         //init bsp

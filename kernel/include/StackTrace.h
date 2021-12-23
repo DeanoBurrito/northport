@@ -7,6 +7,6 @@ namespace Kernel
 {
 
     sl::Vector<NativeUInt> GetStackTrace();
-    void PrintStackTrace();
+    void PrintStackTrace(sl::Vector<NativeUInt>);
 
 }

@@ -13,9 +13,8 @@ ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
 CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp Logf.cpp memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp \
 	memory/New.cpp acpi/AcpiTables.cpp devices/LApic.cpp devices/IoApic.cpp devices/SimpleFramebuffer.cpp gfx/GraphicsPrimitives.cpp \
-	arch/x86_64/InterruptDispatch.cpp devices/Ps2Controller.cpp devices/Ps2Keyboard.cpp devices/Ps2Mouse.cpp arch/x86_64/StackTrace.cpp \
-	scheduling/Thread.cpp scheduling/Scheduler.cpp devices/8254Pit.cpp
-
+	arch/x86_64/InterruptDispatch.cpp devices/Ps2Controller.cpp devices/Ps2Keyboard.cpp devices/Ps2Mouse.cpp devices/Keyboard.cpp \
+	scheduling/Thread.cpp scheduling/Scheduler.cpp devices/8254Pit.cpp 
 ASM_SRCS = 
 
 ARCH_DIR = arch/$(CPU_ARCH)

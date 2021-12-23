@@ -24,16 +24,14 @@ namespace Kernel
         return vec;
     }
 
-    void PrintStackTrace()
+    void PrintStackTrace(sl::Vector<NativeUInt> vec)
     {
-        sl::Vector<NativeUInt> vec;
-        vec = GetStackTrace();
         size_t vectorSize = vec.Size();
-        Logf("GetStackTrace: size: %x\n", LogSeverity::Error, vec.Size());
+        Logf("StackTrace: (size: %d)\n", LogSeverity::Error, vec.Size());
         for(size_t i=0; i<vectorSize; i++)
         {
             NativeUInt stackItem = vec.PopBack();
-            Logf("GetStackTrace(Size: %d)  ip: %x: - %x\n", LogSeverity::Error, vectorSize, i,stackItem);
+            Logf("StackTrace Frame: %d  ip=%lx\n", LogSeverity::Error, i, stackItem);
         }
     }
 
