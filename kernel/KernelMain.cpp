@@ -14,6 +14,7 @@
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
+#include <StackTrace.h>
 
 namespace Kernel
 {
@@ -222,6 +223,7 @@ extern "C"
 
         InitMemory();
         LoggingInitFull();
+
         InitPlatform();
 
         //init bsp
