@@ -73,42 +73,42 @@ namespace sl
 
     bool StrayaCulture::TryGetUInt8(uint8_t* out, const string& str, size_t start)
     { 
-        return TryGetUInt<uint8_t>(out, str.C_Str(), start); 
+        return TryGetUInt<uint8_t>(out, str, start); 
     }
 
     bool StrayaCulture::TryGetUInt16(uint16_t* out, const string& str, size_t start)
     { 
-        return TryGetUInt<uint16_t>(out, str.C_Str(), start); 
+        return TryGetUInt<uint16_t>(out, str, start); 
     }
 
     bool StrayaCulture::TryGetUInt32(uint32_t* out, const string& str, size_t start)
     { 
-        return TryGetUInt<uint32_t>(out, str.C_Str(), start); 
+        return TryGetUInt<uint32_t>(out, str, start); 
     }
 
     bool StrayaCulture::TryGetUInt64(uint64_t* out, const string& str, size_t start)
     { 
-        return TryGetUInt<uint64_t>(out, str.C_Str(), start); 
+        return TryGetUInt<uint64_t>(out, str, start); 
     }
 
     bool StrayaCulture::TryGetInt8(int8_t* out, const string& str, size_t start)
     { 
-        return TryGetInt<int8_t>(out, str.C_Str(), start); 
+        return TryGetInt<int8_t>(out, str, start); 
     }
 
     bool StrayaCulture::TryGetInt16(int16_t* out, const string& str, size_t start)
     { 
-        return TryGetInt<int16_t>(out, str.C_Str(), start); 
+        return TryGetInt<int16_t>(out, str, start); 
     }
 
     bool StrayaCulture::TryGetInt32(int32_t* out, const string& str, size_t start)
     { 
-        return TryGetInt<int32_t>(out, str.C_Str(), start); 
+        return TryGetInt<int32_t>(out, str, start); 
     }
 
     bool StrayaCulture::TryGetInt64(int64_t* out, const string& str, size_t start)
     { 
-        return TryGetInt<int64_t>(out, str.C_Str(), start); 
+        return TryGetInt<int64_t>(out, str, start); 
     }
 
     string StrayaCulture::ToString(uint8_t num, size_t base)

@@ -13,23 +13,102 @@ namespace sl
         constexpr inline size_t DECIMAL = 10;
         constexpr inline size_t HEX = 16;
     }
+    
+    /*
+        Yes, I know haha. I apologize to anyone who wants to add extra languages. 
+        
+        The design here is that you override StringCulture, and install it as the default culture (or in some global location, tbd).
+        Then you can override all the functions below, according to your local language, and what makes sense.
+        The TryGet[U]Int() and ToString functions have templated implementations up above that you're welcome to use, 
+        if your language uses arabic numerals. Otherwise I'm afraid you're on your own.
+
+        The reference implementation is in 'StrayaCulture' (Australian, for those not in the know haha). A little joke I can curse myself for later.
+
+        Characters are represented using 'int' here, as UTF-8 support is planned oneday, even though the string class currently uses chars.
+    */
+    class StringCulture
+    {
+    public:
+        static StringCulture* current;
+
+        virtual bool IsAlpha(int character) = 0;
+        virtual bool IsUpper(int character) = 0;
+        virtual bool IsLower(int character) = 0;
+        virtual bool IsPrintable(int character) = 0;
+        virtual bool IsDigit(int character) = 0;
+        virtual bool IsHexDigit(int character) = 0;
+        virtual bool IsAlphaNum(int character) = 0;
+        virtual bool IsSpace(int character) = 0;
+
+        virtual int ToUpper(int character) = 0;
+        virtual int ToLower(int character) = 0;
+
+        virtual bool TryGetUInt8(uint8_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetUInt16(uint16_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetUInt32(uint32_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetUInt64(uint64_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetInt8(int8_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetInt16(int16_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetInt32(int32_t* out, const string& str, size_t start) = 0;
+        virtual bool TryGetInt64(int64_t* out, const string& str, size_t start) = 0;
+
+        virtual string ToString(uint8_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(uint16_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(uint32_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(uint64_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(int8_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(int16_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(int32_t num, size_t base = Base::DECIMAL) = 0;
+        virtual string ToString(int64_t num, size_t base = Base::DECIMAL) = 0;
+    };
 
     //a collection of useful string/number conversions that work in most languages. Of course I want the option to override them,
     //but these stop duplicate of most of the code between cultures that share the arabic number system.
     namespace Helpers
     {
         template<typename IntType> [[gnu::always_inline]]
-        inline bool TryGetInt(IntType* out, const char* str, size_t start)
+        inline bool TryGetInt(IntType* out, const string& str, size_t start)
         {
             *out = 0;
-            return false;
+
+            bool negative = false;
+            if (str[start] == '-')
+                negative = true;
+
+            for (size_t i = start + (negative ? 1 : 0); i < str.Size(); i++)
+            {
+                if (!StringCulture::current->IsDigit(str[i]))
+                    break;
+                
+                *out *= 10;
+                
+                char c = str[i];
+                *out += c - '0';
+            }
+
+            if (negative)
+                *out = -(*out);
+
+            return true;
         }
 
         template<typename UIntType> [[gnu::always_inline]]
-        inline bool TryGetUInt(UIntType* out, const char* str, size_t start)
+        inline bool TryGetUInt(UIntType* out, const string& str, size_t start)
         {
             *out = 0;
-            return false;
+
+            for (size_t i = start; i < str.Size(); i++)
+            {
+                if (!StringCulture::current->IsDigit(str[i]))
+                    break;
+                
+                *out *= 10;
+                
+                char c = str[i];
+                *out += c - '0';
+            }
+
+            return true;
         }
 
         template<typename UIntType, size_t bufferLength> [[gnu::always_inline]]
@@ -122,54 +201,6 @@ namespace sl
             return buffer;
         }
     }
-    
-    /*
-        Yes, I know haha. I apologize to anyone who wants to add extra languages. 
-        
-        The design here is that you override StringCulture, and install it as the default culture (or in some global location, tbd).
-        Then you can override all the functions below, according to your local language, and what makes sense.
-        The TryGet[U]Int() and ToString functions have templated implementations up above that you're welcome to use, 
-        if your language uses arabic numerals. Otherwise I'm afraid you're on your own.
-
-        The reference implementation is in 'StrayaCulture' (Australian, for those not in the know haha). A little joke I can curse myself for later.
-
-        Characters are represented using 'int' here, as UTF-8 support is planned oneday, even though the string class currently uses chars.
-    */
-    class StringCulture
-    {
-    public:
-        static StringCulture* current;
-
-        virtual bool IsAlpha(int character) = 0;
-        virtual bool IsUpper(int character) = 0;
-        virtual bool IsLower(int character) = 0;
-        virtual bool IsPrintable(int character) = 0;
-        virtual bool IsDigit(int character) = 0;
-        virtual bool IsHexDigit(int character) = 0;
-        virtual bool IsAlphaNum(int character) = 0;
-        virtual bool IsSpace(int character) = 0;
-
-        virtual int ToUpper(int character) = 0;
-        virtual int ToLower(int character) = 0;
-
-        virtual bool TryGetUInt8(uint8_t* out, const string& str, size_t start) = 0;
-        virtual bool TryGetUInt16(uint16_t* out, const string& str, size_t start) = 0;
-        virtual bool TryGetUInt32(uint32_t* out, const string& str, size_t start) = 0;
-        virtual bool TryGetUInt64(uint64_t* out, const string& str, size_t start) = 0;
-        virtual bool TryGetInt8(int8_t* out, const string& str, size_t start) = 0;
-        virtual bool TryGetInt16(int16_t* out, const string& str, size_t start) = 0;
-        virtual bool TryGetInt32(int32_t* out, const string& str, size_t start) = 0;
-        virtual bool TryGetInt64(int64_t* out, const string& str, size_t start) = 0;
-
-        virtual string ToString(uint8_t num, size_t base = Base::DECIMAL) = 0;
-        virtual string ToString(uint16_t num, size_t base = Base::DECIMAL) = 0;
-        virtual string ToString(uint32_t num, size_t base = Base::DECIMAL) = 0;
-        virtual string ToString(uint64_t num, size_t base = Base::DECIMAL) = 0;
-        virtual string ToString(int8_t num, size_t base = Base::DECIMAL) = 0;
-        virtual string ToString(int16_t num, size_t base = Base::DECIMAL) = 0;
-        virtual string ToString(int32_t num, size_t base = Base::DECIMAL) = 0;
-        virtual string ToString(int64_t num, size_t base = Base::DECIMAL) = 0;
-    };
 
     class StrayaCulture : public StringCulture
     {   
