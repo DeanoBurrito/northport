@@ -14,11 +14,19 @@ namespace Kernel::Scheduling
     }
 
     void Thread::Start(sl::NativePtr arg)
-    {}
+    {
+        runState = ThreadState::Running;
+    }
 
     void Thread::Exit()
     {}
 
     size_t Thread::GetId() const
     { return threadId; }
+
+    ThreadState Thread::GetState() const
+    { return runState; }
+
+    ThreadFlags Thread::GetFlags() const
+    { return flags; }
 }

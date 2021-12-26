@@ -7,6 +7,21 @@
 namespace Kernel::Scheduling
 {
     class Scheduler;
+
+    enum class ThreadState
+    {
+        PendingStart,
+        Running,
+        Sleeping,
+        PendingCleanup,
+    };
+
+    enum class ThreadFlags : uint32_t
+    {
+        None = 0,
+
+        KernelMode = (1 << 0),
+    };
     
     class Thread
     {
@@ -14,6 +29,8 @@ namespace Kernel::Scheduling
     private:
         size_t threadId;
         StoredRegisters* regs;
+        ThreadFlags flags;
+        ThreadState runState;
         
         Thread() = default;
         void Cleanup();
@@ -24,5 +41,7 @@ namespace Kernel::Scheduling
         void Start(sl::NativePtr arg);
         void Exit();
         size_t GetId() const;
+        ThreadState GetState() const;
+        ThreadFlags GetFlags() const;
     };
 }

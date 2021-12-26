@@ -40,20 +40,22 @@ namespace Kernel::Scheduling
         ScopedSpinlock scopeLock(&lock);
 
         Thread* currentThread = GetCurrentThread();
-        if (currentThread || currentId == 0) //thread id 0 means to drop the current thread
+        if (currentThread && currentId != 0) //thread id 0 means to drop the current thread
         {
             //we can safely save registers
             currentThread->regs = currentRegs;
         }
 
-        //TODO: proper thread selection
         auto it = threads.Begin();
         while (it != threads.End())
         {
-            if (*it == currentThread)
+            if (*it == currentThread && (*it)->runState == ThreadState::Running)
+            {
+                it++;
                 break;
+            }
             
-            ++it;
+            it++;
         }
         if (it == threads.End()) //cycle around if we hit the end
             it = threads.Begin();
@@ -81,6 +83,9 @@ namespace Kernel::Scheduling
 
         Thread* thread = new Thread();
         thread->threadId = idGen.Alloc();
+        if (!userspace)
+            thread->flags = sl::EnumSetFlag(thread->flags, ThreadFlags::KernelMode);
+        thread->runState = ThreadState::PendingStart;
         
         //setup stack: this entirely dependant on cpu arch and the calling convention. We're using sys v abi.
         sl::StackPush<NativeUInt>(stack, 0); //dummy rbp and return address
