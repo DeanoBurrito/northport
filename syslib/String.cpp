@@ -108,8 +108,7 @@ namespace sl
         sl::memcopy(buffer, start, tempBuffer, 0, len);
         tempBuffer[len] = 0;
         
-        //using private-ctor which re-uses the existing buffer, rather than a copy
-        return move(String(tempBuffer, true));
+        return String(tempBuffer, true);
     }
 
     String String::Concat(const String& other) const
@@ -145,6 +144,32 @@ namespace sl
     size_t String::Find(const char token, size_t offset)
     {
         return memfirst(buffer, offset, token, length);
+    }
+
+    bool String::BeginsWith(const String& comp) const
+    {
+        if (comp.Size() > Size())
+            return false;
+
+        for (size_t i = 0; i < comp.Size(); i++)
+        {
+            if (At(i) != comp.At(i))
+                return false;
+        }
+        return true;
+    }
+
+    bool String::EndsWith(const String& comp) const
+    {
+        if (comp.Size() > Size())
+            return false;
+
+        for (size_t i = Size() - comp.Size(); i < comp.Size(); i++)
+        {
+            if (At(i) != comp.At(i))
+                return false;
+        }
+        return true;
     }
 
     char& String::At(size_t index)

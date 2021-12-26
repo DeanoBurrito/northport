@@ -36,6 +36,8 @@ namespace sl
         String& operator+=(const String& other);
 
         size_t Find(const char token, size_t offset = 0);
+        bool BeginsWith(const String& comp) const;
+        bool EndsWith(const String& comp) const;
 
         char& At(const size_t index);
         const char& At(const size_t index) const;
