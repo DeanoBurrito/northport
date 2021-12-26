@@ -1,10 +1,10 @@
 #include <memory/PhysicalMemory.h>
 #include <memory/Paging.h>
 #include <Memory.h>
+#include <Utilities.h>
 #include <Platform.h>
 #include <Cpu.h>
 #include <Log.h>
-#include <Maths.h>
 
 namespace Kernel::Memory
 {   

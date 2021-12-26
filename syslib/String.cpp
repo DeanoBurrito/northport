@@ -1,5 +1,6 @@
 #include <String.h>
 #include <Memory.h>
+#include <Utilities.h>
 
 namespace sl
 {
@@ -65,8 +66,8 @@ namespace sl
     {
         buffer = nullptr;
         length = 0;
-        swap(buffer, from.buffer);
-        swap(length, from.length);
+        Swap(buffer, from.buffer);
+        Swap(length, from.length);
     }
 
     String& String::operator=(String&& from)
@@ -76,8 +77,8 @@ namespace sl
         
         buffer = nullptr;
         length = 0;
-        swap(buffer, from.buffer);
-        swap(length, from.length);
+        Swap(buffer, from.buffer);
+        Swap(length, from.length);
 
         return *this;
     }
@@ -137,7 +138,7 @@ namespace sl
     String& String::operator+=(const String& other)
     {
         string s = Concat(other);
-        sl::swap(*this, s);
+        sl::Swap(*this, s);
         return *this;
     }
 

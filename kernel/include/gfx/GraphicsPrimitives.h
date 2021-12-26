@@ -9,6 +9,12 @@ namespace Kernel::Gfx
     {
         T x;
         T y;
+
+        bool operator==(const Vector2& other)
+        { return x == other.x && y == other.y; }
+
+        bool operator!=(const Vector2& other)
+        { return x != other.x || y != other.y; }
     };
 
     using Vector2i = Vector2<long>;
@@ -20,6 +26,12 @@ namespace Kernel::Gfx
         T x;
         T y;
         T z;
+
+        bool operator==(const Vector3& other)
+        { return x == other.x && y = other.y && z == other.z; }
+
+        bool operator!=(const Vector3& other)
+        { return x != other.x || y != other.y || z != other.z; }
     };
 
     using Vector3i = Vector3<long>;

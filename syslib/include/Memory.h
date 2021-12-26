@@ -9,49 +9,6 @@ void free(void*);
 
 namespace sl
 {
-    template<typename F, typename E>
-    [[gnu::always_inline]]
-    inline bool EnumHasFlag(F enumeration, E entry)
-    {
-        return ((size_t)enumeration & (size_t)entry) != 0;
-    }
-
-    template<typename F, typename E>
-    [[gnu::always_inline]]
-    inline F EnumSetFlag(F enumeration, E entry)
-    {
-        return (F)((size_t)enumeration | (size_t)entry);
-    }
-
-    template<typename F, typename E>
-    [[gnu::always_inline]]
-    inline F EnumClearFlag(F enumeration, E entry)
-    {
-        return (F)((size_t)enumeration & ~(size_t)entry);
-    }
-
-    template<typename F, typename E>
-    [[gnu::always_inline]]
-    inline F EnumSetFlagState(F enumeration, E entry, bool set)
-    {
-        if (set)
-            return EnumSetFlag(enumeration, entry);
-        else
-            return EnumClearFlag(enumeration, entry);
-    }
-    
-    template<typename T>
-    T&& move(T&& t)
-    { return static_cast<T&&>(t); }
-
-    template<typename T>
-    void swap(T& a, T& b)
-    {
-        T temp = move(a);
-        a = move(b);
-        b = move(temp);
-    }
-    
     template <typename WordType>
     [[gnu::always_inline]]
     inline void MemWrite(sl::NativePtr where, WordType val)

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <CppStd.h>
+#include <Utilities.h>
 #include <PlacementNew.h>
 #include <Memory.h>
 
@@ -48,7 +48,7 @@ namespace sl
 
         Optional(T&& value) : isValid(true)
         {
-            new (store) T(sl::move(value));
+            new (store) T(sl::Move(value));
         }
 
         template<typename... Args>

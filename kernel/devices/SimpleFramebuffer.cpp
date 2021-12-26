@@ -2,6 +2,7 @@
 #include <boot/Stivale2.h>
 #include <Platform.h>
 #include <Memory.h>
+#include <Utilities.h>
 #include <Maths.h>
 #include <Log.h>
 
@@ -129,7 +130,7 @@ namespace Kernel::Devices
         size_t start = sl::clamp<size_t>(begin.x, 0, width);
         size_t end = (size_t)sl::clamp<int>((int)begin.x + length, 0, (int)width);
         if (end < start)
-            sl::swap(start, end);
+            sl::Swap(start, end);
 
         sl::memsetT<uint32_t>(baseAddress.As<void>(begin.y * stride + (start * bitsPerPixel / 8)), colour.GetPacked(nativeFormat), end - start);
     }
@@ -143,7 +144,7 @@ namespace Kernel::Devices
         size_t start = sl::clamp<size_t>(begin.y, 0, height);
         size_t end = (size_t)sl::clamp<int>((int)begin.y + length, 0, (int)height);
         if (end < start)
-            sl::swap(start, end);
+            sl::Swap(start, end);
 
         for (size_t i = start; i < end; i++)
             *baseAddress.As<uint32_t>(i * stride + (begin.x * bitsPerPixel / 8)) = colour.GetPacked(nativeFormat);

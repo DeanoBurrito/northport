@@ -24,7 +24,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <stddef.h>
 #include <PlacementNew.h>
 #include <Memory.h>
-#include <CppStd.h>
+#include <Utilities.h>
 
 namespace sl
 {
@@ -39,9 +39,9 @@ namespace sl
     public:
         friend void Swap(Vector& a, Vector& b)
         {
-            sl::swap(a.elements, b.elements);
-            sl::swap(a.size, b.size);
-            sl::swap(a.capacity, b.capacity);
+            sl::Swap(a.elements, b.elements);
+            sl::Swap(a.size, b.size);
+            sl::Swap(a.capacity, b.capacity);
         }
 
         void EnsureCapacity(size_t neededCapacity)
@@ -54,7 +54,7 @@ namespace sl
                 newCapacity = neededCapacity;
             T* newElements = (T*)malloc(sizeof(T) * newCapacity);
             for (size_t i = 0; i < capacity; i++)
-                new(&newElements[i]) T(sl::move(elements[i]));
+                new(&newElements[i]) T(sl::Move(elements[i]));
             
             for (size_t i = 0; i < size; i++)
                 elements[i].~T();
@@ -123,7 +123,7 @@ namespace sl
         {
             EnsureCapacity(size + 1);
 
-            T* latest = new(&elements[size]) T(sl::move(elem));
+            T* latest = new(&elements[size]) T(sl::Move(elem));
             size++;
             return *latest;
         }
@@ -141,7 +141,7 @@ namespace sl
         T PopBack()
         {
             size--;
-            T elem = sl::move(elements[size]);
+            T elem = sl::Move(elements[size]);
             elements[size].~T();
             return elem;
         }

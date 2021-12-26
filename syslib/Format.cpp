@@ -1,5 +1,4 @@
 #include <Format.h>
-#include <Memory.h>
 #include <FormatPrinter.h>
 
 namespace sl
@@ -11,7 +10,7 @@ namespace sl
         string str = FormatToStringV(format, argsList);
         va_end(argsList);
 
-        return move(str);
+        return str;
     }
 
     string FormatToString(string&& format, int ignored, ...)
@@ -21,7 +20,7 @@ namespace sl
         string str = FormatToStringV(format, argsList);
         va_end(argsList);
 
-        return move(str);
+        return str;
     }
 
     string FormatToStringV(string& format, va_list args)

@@ -3,6 +3,7 @@
 #include <acpi/AcpiTables.h>
 #include <Platform.h>
 #include <Memory.h>
+#include <Utilities.h>
 #include <Log.h>
 
 namespace Kernel::Devices

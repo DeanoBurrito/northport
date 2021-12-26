@@ -2,6 +2,7 @@
 #include <Log.h>
 #include <Memory.h>
 #include <Platform.h>
+#include <Utilities.h>
 #include <stdint.h>
 #include <Maths.h>
 
@@ -10,7 +11,7 @@ namespace Kernel::Memory
     /*  Notes about current implementation:
             - Memory map is assumed to be sorted, and have non-overlapping areas.
             - We create our own copy of any relevent details, mmap is not needed after init.
-            = We dont support any operations pages across region boundaries.
+            - We dont support any operations pages across region boundaries (for now).
         
         Improvements to be made:
             - Logging address on errors, we'd need to check if dynamic memory exists so we can use Logf or not regular Log
@@ -103,27 +104,6 @@ namespace Kernel::Memory
         Log("PMM late init finished, bitmap is now in paging structure.", LogSeverity::Verbose);
     }
 
-    FORCE_INLINE bool BitmapGet(uint8_t* base, size_t index)
-    {
-        const size_t byteIndex = index / 8;
-        const size_t bitIndex = index % 8;
-        return (*sl::NativePtr(base).As<uint8_t>(byteIndex) & (1 << bitIndex)) != 0;
-    }
-
-    FORCE_INLINE void BitmapSet(uint8_t* base, size_t index)
-    {
-        const size_t byteIndex = index / 8;
-        const size_t bitIndex = index % 8;
-        *sl::NativePtr(base).As<uint8_t>(byteIndex) |= (1 << bitIndex);
-    }
-
-    FORCE_INLINE void BitmapClear(uint8_t* base, size_t index)
-    {
-        const size_t byteIndex = index / 8;
-        const size_t bitIndex = index % 8;
-        *sl::NativePtr(base).As<uint8_t>(byteIndex) &= ~(1 << bitIndex);
-    }
-
     void PhysicalMemoryAllocator::LockPage(sl::NativePtr address)
     { LockPages(address, 1); }
 
@@ -146,7 +126,7 @@ namespace Kernel::Memory
                 }
 
                 for (size_t i = 0; i < count; i++)
-                    BitmapSet(region->bitmap, localIndex + i);
+                    sl::BitmapSet(region->bitmap, localIndex + i);
                 region->freePages -= count;
             }
 
@@ -176,7 +156,7 @@ namespace Kernel::Memory
                 }
 
                 for (size_t i = 0; i < count; i++)
-                    BitmapClear(region->bitmap, localIndex + i);
+                    sl::BitmapClear(region->bitmap, localIndex + i);
                 region->freePages += count;
             }
 
@@ -195,9 +175,9 @@ namespace Kernel::Memory
 
             for (size_t i = region->bitmapNextAlloc; i < region->pageCount; i++)
             {
-                if (!BitmapGet(region->bitmap, i))
+                if (!sl::BitmapGet(region->bitmap, i))
                 {
-                    BitmapSet(region->bitmap, i);
+                    sl::BitmapSet(region->bitmap, i);
 
                     region->bitmapNextAlloc++;
                     if (region->bitmapNextAlloc == region->pageCount)
@@ -246,9 +226,9 @@ namespace Kernel::Memory
 
                 for (size_t i = 0; i < count; i++)
                 {
-                    if (BitmapGet(region->bitmap, bitmapIndex + i))
+                    if (sl::BitmapGet(region->bitmap, bitmapIndex + i))
                     {
-                        BitmapClear(region->bitmap, bitmapIndex + i);
+                        sl::BitmapClear(region->bitmap, bitmapIndex + i);
                         region->freePages++;
 
                         if (bitmapIndex + i < region->bitmapNextAlloc)

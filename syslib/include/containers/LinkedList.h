@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Memory.h>
+#include <Utilities.h>
 
 namespace sl
 {
@@ -46,7 +47,7 @@ namespace sl
             Element* next = nullptr;
             Element* prev = nullptr;
 
-            explicit Element(T&& v) : value(sl::move(v))
+            explicit Element(T&& v) : value(sl::Move(v))
             {}
 
             explicit Element(const T& v) : value(v)
@@ -90,7 +91,7 @@ namespace sl
 
         T TakeFirst()
         {
-            T value = sl::move(head->value);
+            T value = sl::Move(head->value);
             Element* deleteMe = head;
             if (head == tail)
                 head = tail = nullptr;
@@ -105,7 +106,7 @@ namespace sl
 
         T TakeLast()
         {
-            T value = sl::move(tail->value);
+            T value = sl::Move(tail->value);
             Element* deleteMe = tail;
             if (tail == tail)
                 head = tail = nullptr;
