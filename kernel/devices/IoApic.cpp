@@ -91,22 +91,23 @@ namespace Kernel::Devices
                 {
                     MadtEntries::InterruptSourceOverrideEntry* realEntry = scan.As<MadtEntries::InterruptSourceOverrideEntry>();
                     modifiers->EmplaceBack();
-                    modifiers->Back().irqNum = realEntry->source;
-                    modifiers->Back().gsiNum = realEntry->mappedSource;
+                    IoApicEntryModifier* last = &modifiers->Back();
+                    last->irqNum = realEntry->source;
+                    last->gsiNum = realEntry->mappedSource;
 
                     if (((uint16_t)realEntry->flags & 0b10) != 0)
-                        modifiers->Back().polarity = IoApicPinPolarity::ActiveLow;
+                        last->polarity = IoApicPinPolarity::ActiveLow;
                     else if (((uint16_t)realEntry->flags & 0b01) != 0)
-                        modifiers->Back().polarity = IoApicPinPolarity::ActiveHigh;
+                        last->polarity = IoApicPinPolarity::ActiveHigh;
                     else
-                        modifiers->Back().polarity = IoApicPinPolarity::Default;
+                        last->polarity = IoApicPinPolarity::Default;
 
                     if (((uint16_t)realEntry->flags & 0b1000) != 0)
-                        modifiers->Back().triggerMode = IoApicTriggerMode::Level;
+                        last->triggerMode = IoApicTriggerMode::Level;
                     else if (((uint16_t)realEntry->flags & 0b0100) != 0)
-                        modifiers->Back().triggerMode = IoApicTriggerMode::Edge;
+                        last->triggerMode = IoApicTriggerMode::Edge;
                     else
-                        modifiers->Back().triggerMode = IoApicTriggerMode::Default;
+                        last->triggerMode = IoApicTriggerMode::Default;
                     
                     break;
                 }
@@ -114,22 +115,23 @@ namespace Kernel::Devices
                 {
                     MadtEntries::NmiSourceEntry* realEntry = scan.As<MadtEntries::NmiSourceEntry>();
                     nmis->EmplaceBack();
-                    nmis->Back().irqNum = 0;
-                    nmis->Back().gsiNum = realEntry->gsiNumber;
+                    IoApicEntryModifier* last = &modifiers->Back();
+                    last->irqNum = 0;
+                    last->gsiNum = realEntry->gsiNumber;
 
                     if (((uint16_t)realEntry->flags & 0b10) != 0)
-                        nmis->Back().polarity = IoApicPinPolarity::ActiveLow;
+                        last->polarity = IoApicPinPolarity::ActiveLow;
                     else if (((uint16_t)realEntry->flags & 0b01) != 0)
-                        nmis->Back().polarity = IoApicPinPolarity::ActiveHigh;
+                        last->polarity = IoApicPinPolarity::ActiveHigh;
                     else
-                        nmis->Back().polarity = IoApicPinPolarity::Default;
+                        last->polarity = IoApicPinPolarity::Default;
 
                     if (((uint16_t)realEntry->flags & 0b1000) != 0)
-                        nmis->Back().triggerMode = IoApicTriggerMode::Level;
+                        last->triggerMode = IoApicTriggerMode::Level;
                     else if (((uint16_t)realEntry->flags & 0b0100) != 0)
-                        nmis->Back().triggerMode = IoApicTriggerMode::Edge;
+                        last->triggerMode = IoApicTriggerMode::Edge;
                     else
-                        nmis->Back().triggerMode = IoApicTriggerMode::Default;
+                        last->triggerMode = IoApicTriggerMode::Default;
 
                     break;
                 }
