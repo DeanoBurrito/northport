@@ -24,7 +24,7 @@ namespace sl
 
         bool IsValidElf();
         Elf64_Sym* GetSymbol(NativePtr where);
-        const char* GetSymbolName(NativePtr where);
+        string GetSymbolName(NativePtr where);
         Elf64_Shdr* FindSectionHeader(string name);
     };
 }

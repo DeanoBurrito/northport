@@ -1,6 +1,8 @@
 #include <elf/HeaderParser.h>
+#include <elf/Demangle.h>
 #include <Memory.h>
 #include <Maths.h>
+#include <Memory.h>
 
 namespace sl
 {
@@ -39,15 +41,16 @@ namespace sl
         return nullptr;
     }
 
-    const char* Elf64HeaderParser::GetSymbolName(NativePtr where)
+    string Elf64HeaderParser::GetSymbolName(NativePtr where)
     {
         Elf64_Sym* sym = GetSymbol(where);
 
         if (!sym)
-            return "Unknown symbol.";
+            return "<unknown symbol>";
 
-        //TODO: unmangle c++ names. I'll need to find some docs on how these are generated
-        return sl::NativePtr((size_t)header + stringTable->sh_offset).As<const char>(sym->st_name);
+        //DemangleName() will return the original name if it couldn't demangle successfully
+        string rawName = sl::NativePtr((size_t)header + stringTable->sh_offset).As<const char>(sym->st_name);
+        return DemangleName(rawName);
     }
 
     Elf64_Shdr* Elf64HeaderParser::FindSectionHeader(string name)
