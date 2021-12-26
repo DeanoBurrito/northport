@@ -14,7 +14,9 @@
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
-#include <StackTrace.h>
+
+//needs to be implemented once per linked program. This is for the kernel.
+sl::NativePtr currentProgramElf;
 
 namespace Kernel
 {
@@ -74,6 +76,18 @@ namespace Kernel
     {
         using namespace Devices;
         Log("Initializing platform ...", LogSeverity::Info);
+
+        stivale2_struct_tag_kernel_file_v2* kernelFile = FindStivaleTag<stivale2_struct_tag_kernel_file_v2*>(STIVALE2_STRUCT_TAG_KERNEL_FILE_V2_ID);
+        if (kernelFile == nullptr)
+        {
+            currentProgramElf.ptr = nullptr;
+            Log("Unable to get kernel elf from bootloader, debug symbols unavailable.", LogSeverity::Error);
+        }
+        else
+        {
+            currentProgramElf.raw = kernelFile->kernel_file;
+            Logf("Kernel elf located at 0x%lx", LogSeverity::Info, kernelFile->kernel_file);
+        }
 
         CpuFrequencies cpuFreqs = CPU::GetFrequencies();
         if (cpuFreqs.coreTimerHertz == (uint32_t)-1)

@@ -4,6 +4,9 @@
 #include <NativePtr.h>
 #include <String.h>
 
+//pointer to the elf of the currently running program
+extern sl::NativePtr currentProgramElf;
+
 namespace sl
 {
     /*

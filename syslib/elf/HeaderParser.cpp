@@ -8,6 +8,12 @@ namespace sl
 {
     Elf64HeaderParser::Elf64HeaderParser(NativePtr headerAddr)
     {
+        if (headerAddr.ptr == nullptr)
+        {
+            header = nullptr;
+            return;
+        }
+
         header = headerAddr.As<Elf64_Ehdr>();
 
         shdrStringTable = nullptr;
@@ -25,6 +31,9 @@ namespace sl
 
     Elf64_Sym* Elf64HeaderParser::GetSymbol(NativePtr where)
     {
+        if (header == nullptr)
+            return nullptr;
+        
         Elf64_Sym* symbols = sl::NativePtr((void*)header).As<Elf64_Sym>(symbolTable->sh_offset);
         const size_t symbolCount = symbolTable->sh_size / symbolTable->sh_entsize;
 
@@ -55,6 +64,9 @@ namespace sl
 
     Elf64_Shdr* Elf64HeaderParser::FindSectionHeader(string name)
     {
+        if (header == nullptr)
+            return nullptr;
+        
         Elf64_Shdr* shdrs = sl::NativePtr((void*)header).As<Elf64_Shdr>(header->e_shoff);
 
         for (size_t i = 1; i < header->e_shnum; i++)

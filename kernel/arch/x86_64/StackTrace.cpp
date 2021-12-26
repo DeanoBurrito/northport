@@ -1,13 +1,13 @@
 #include <StackTrace.h>
 #include <Log.h>
 #include <containers/Vector.h>
+#include <elf/HeaderParser.h>
 
 namespace Kernel
 {    
-
     struct StackFrame 
     {
-        struct StackFrame* rbp;
+        StackFrame* rbp;
         uint64_t rip;
     };
 
@@ -17,7 +17,7 @@ namespace Kernel
         asm ("mov %%rbp,%0" : "=r"(stackItem));
         sl::Vector<NativeUInt> vec;
 
-        while(stackItem != 0)
+        while(stackItem->rip != 0)
         {
             vec.PushBack(stackItem->rip);
             stackItem = stackItem->rbp;
@@ -28,14 +28,15 @@ namespace Kernel
 
     void PrintStackTrace(sl::Vector<NativeUInt> vec)
     {
-        size_t vectorSize = vec.Size();
+        const size_t vecSize = vec.Size();
+        sl::Elf64HeaderParser symbolStore(currentProgramElf);
         Logf("StackTrace: (size: %d)", LogSeverity::Verbose, vec.Size());
 
-        for(size_t i=0; i<vectorSize; i++)
+        for(size_t i = 0; i < vecSize; i++)
         {
             NativeUInt stackItem = vec.PopBack();
-            Logf("Frame %d: ip=%lx", LogSeverity::Verbose, i, stackItem);
+            string symbolName = currentProgramElf.ptr == nullptr ? "<no symbol store>" : symbolStore.GetSymbolName(stackItem);
+            Logf("Frame %d: ip=%lx, symbolName=%s", LogSeverity::Verbose, i, stackItem, symbolName.C_Str());
         }
     }
-
 }
