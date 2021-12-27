@@ -1,31 +1,34 @@
 ![](https://tokei.rs/b1/github/deanoburrito/northport)
 
 # Northport
-Northport is a monolithic kernel + utilities targetting x86_64.
+Northport is a monolithic kernel and utilities targetting x86_64.
 It's booted using the stivale2 protocol (meaning limine is the bootloader),
-and there's otherwise there's not much to say here yet. 
+and there's otherwise there's not much to say here yet.
 
 For my *wishful* plans for this project, see the project goals down below.
 
 # Building
 ### Required Programs
 - Linux-like environment, WSL2 works, a full linux os is best though.
-- A c++17 or higher cross compiler. The build system is setup for GCC or clang (easy to switch between).
+- A c++17 or higher cross compiler. The build system is setup for clang (default), or GCC. It's easy to switch between.
 - GNU make.
 - Xorriso.
 - [Limine](https://github.com/limine-bootloader/limine). I build and test with the latest 2.x release personally, check their install instructions. 
 
-The root makefile expects limine to be located in the directory specified by `LIMINE_DIR`. This is required to generate a bootable iso.
-Depending on your compiler of choice (gcc or clang), the setup varies slightly. See the relevant sections below.
-It's worth doing a clean build between compiler switches, there's some odd issues to seem to occur otherwise.
-
-If you're unsure of whether your toolchain is setup, you can test it with `make validate-toolchain`.
-
-Once you're set up, you can build the default build target (currently just the kernel) with `make`/`make all`, and generate a bootable iso with `make iso`.
-If you're feeling adventurous you can execute `make run` to launch it qemu. Qemu monitor and debugcon will both share the stdin/stdout of the terminal used to run it.
-
 ### Recommended Programs
 - Qemu is required for using `make run` and gdb is needed for `make attach`.
+
+### Setting up the build environment
+
+The root makefile contains a few variables you will need to set for it to build correctly.
+`LIMINE_DIR` will need to point to your limine install directory (where you pointer `git clone` to). If you're using the GCC toolchain, you'll also need to point `TOOLCHAIN_DIR` to the bin directory of your cross-compiler, or point each of lines for the tools to point there directly (see `CXX`, `ASM`, `LD`, `AR`).
+
+There's some notes on compiler-specific setup below, and if you do switch toolchains, its always worth running `make clean` for a fresh build.
+
+Once you're set up, you can build the project with `make`/`make all`, and generate a bootable iso with `make iso`.
+If you're feeling adventurous you can execute `make run` to launch it qemu. Qemu monitor and debugcon will both share the stdin/stdout of the terminal used to run it.
+
+Build-time options can be found under the 'build config' section in the root makefile. The full list of build flags are defined below.
 
 ### Setting up the build environment (GCC)
 The easy out-of-the-box solution is the run `make create-toolchain`, which will download, build and then install a cross compiler for the default target platform (x86_64).
@@ -33,6 +36,8 @@ Of course that makes a lot of assumptions about where you want it installed, and
 
 The root makefile (located at `proj_root/Makefile`) has a toolchain selection section at the top. You can adjust the gcc binaries used, 
 or you can just point `TOOLCHAIN_DIR` to your cross compiler bin folder.
+
+If you're unsure of whether your toolchain is setup, you can test it with `make validate-toolchain`.
 
 ### Setting up the build environment (Clang)
 Clang requires no setup to use. As long as it's installed (and llvm too, llvm-ar is used), it's ready to go.
@@ -68,6 +73,18 @@ Each project shares some common folder names:
 # Project Goals
 I'd like to support smp and scheduling across multiple cores this time around,
 and port the whole os to another platform (risc-v looks really interesting, and achievable).
+
+### Current Features
+- Physical memory manager (does page frame allocation, in single or multiple pages).
+- Paging support (4 or 5 levels).
+- GDT and IDT implementations. IDT implementation is nothing unique, but something I think is quite cool.
+- Simple heap for the kernel. It's a linkedlist style heap for now.
+- Support for simple devices: IO/APIC, Local APIC, PS2 controller/keyboard/mouse, 8254 PIT.
+- Parsing and finding ACPI tables.
+- Scheduler, with support for kernel and userspace threads.
+- Stack traces. These can be printed with symbol names of the currently running program (including kernel), and will demangle c++ names.
+- Custom string and string formatting implementation (that conforms to printf() style).
+- Linear framebuffer and character-based framebuffer. PSF v1 & v2 rendering.
 
 # Build flags
 There are a number of flags that can be defined at compile time to enable/disable certain behaviours.
