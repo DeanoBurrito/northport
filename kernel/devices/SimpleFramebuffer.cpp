@@ -112,6 +112,12 @@ namespace Kernel::Devices
         DrawRect({750, 250, 100, 100}, Gfx::Colours::White, false);
         DrawRect({850, 250, 100, 100}, Gfx::Colours::Black, false);
     }
+
+    Gfx::Vector2u SimpleFramebuffer::Size() const
+    {
+        return { width, height };
+    }
+
     void SimpleFramebuffer::DrawPixel(Gfx::Vector2u where, Gfx::Colour colour)
     {
         if (where.x >= width || where.y >= height || !available)

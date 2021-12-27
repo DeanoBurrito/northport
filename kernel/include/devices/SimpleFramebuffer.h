@@ -32,6 +32,7 @@ namespace Kernel::Devices
         void Clear(Gfx::Colour clearColor = Gfx::Colours::Black);
 
         void DrawTestPattern();
+        Gfx::Vector2u Size() const;
 
         //puts a single pixel on the screen.
         void DrawPixel(Gfx::Vector2u where, Gfx::Colour colour);
