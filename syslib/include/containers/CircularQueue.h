@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <PlacementNew.h>
 #include <Memory.h>
+#include <Utilities.h>
 #include <CppStd.h>
 #include <Maths.h>
 
