@@ -64,15 +64,14 @@ namespace Kernel::Memory
         void MapMemory(sl::NativePtr virtAddr, PagingSize pageSize, MemoryMapFlag flags);
         void MapMemory(sl::NativePtr virtAddr, sl::NativePtr physAddr, PagingSize pageSize, MemoryMapFlag flags);
 
-        //TODO: implement AllocPages()/FreePages() and MapRange()/UnmapRange()
-        // void MapRange(sl::NativePtr virtAddrBase, size_t count, MemoryMapFlag flags);
-        // void MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, MemoryMapFlag flags);
-        // void MapRange(sl::NativePtr virtAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags);
-        // void MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags);
+        void MapRange(sl::NativePtr virtAddrBase, size_t count, MemoryMapFlag flags);
+        void MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, MemoryMapFlag flags);
+        void MapRange(sl::NativePtr virtAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags);
+        void MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags);
 
         //removes a mapping froma virtual region, returns the size of attached page.
         PagingSize UnmapMemory(sl::NativePtr virtAddr);
 
-        //PagingSize UnmapRange(sl::NativePtr virtAddrBase, size_t count) const;
+        PagingSize UnmapRange(sl::NativePtr virtAddrBase, size_t count);
     };
 }

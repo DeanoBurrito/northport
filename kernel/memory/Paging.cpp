@@ -14,7 +14,6 @@ namespace Kernel::Memory
             - Page table entries use generic 'writes enabled, present' flags. Requested flags only apply to the final entry.
         
         Improvements to be made:
-            - MapRange() will be super useful
             - Get rid of reusing bootloader page maps, figure out what we're missing with our own map
     */
     
@@ -418,6 +417,30 @@ namespace Kernel::Memory
         InvalidatePage(physAddr);
     }
 
+    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, size_t count, MemoryMapFlag flags)
+    {
+        for (size_t i = 0; i < count; i++)
+            MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), flags);
+    }
+
+    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, MemoryMapFlag flags)
+    {
+        for (size_t i = 0; i < count; i++)
+            MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), physAddrBase.raw + (i * PAGE_FRAME_SIZE), flags);
+    }
+
+    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags)
+    {
+        for (size_t i = 0; i < count; i++)
+            MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), pageSize, flags);
+    }
+
+    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags)
+    {
+        for (size_t i = 0; i < count; i++)
+            MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), physAddrBase.raw + (i * PAGE_FRAME_SIZE), pageSize, flags);
+    }
+
     PagingSize PageTableManager::UnmapMemory(sl::NativePtr virtAddr)
     {
         uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
@@ -481,6 +504,14 @@ namespace Kernel::Memory
         
         //unmap memory
         InvalidatePage(virtAddr);
+        return PagingSize::Physical;
+    }
+
+    PagingSize PageTableManager::UnmapRange(sl::NativePtr virtAddrBase, size_t count)
+    {
+        for (size_t i = 0; i < count; i++)
+            UnmapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE));
+
         return PagingSize::Physical;
     }
 }
