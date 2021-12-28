@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 namespace Kernel
 {
@@ -10,6 +11,19 @@ namespace Kernel
         GigabytePages,
         APIC,
         X2APIC,
+
+        FXSave,
+        XSave,
+
+        FPU,
+        SSE,
+        SSE2,
+        SSE3,
+        S_SSE3,
+        SSE4_1,
+        SSE4_2,
+        SSE4A,
+        AVX,
 
         EnumCount
     };
@@ -23,6 +37,11 @@ namespace Kernel
 
     public:
         static void DoCpuId();
+
+        static void SetupExtendedState();
+        static size_t GetExtendedStateBufferSize();
+        static void SaveExtendedState(uint8_t* buff);
+        static void LoadExtendedState(uint8_t* buff);
 
         static bool InterruptsEnabled();
         static void SetInterruptsFlag(bool state = true);

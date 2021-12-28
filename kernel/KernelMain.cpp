@@ -140,9 +140,10 @@ namespace Kernel
         size_t coreNumber = GetCoreLocal()->apicId;
         uint64_t backupCoreLocal = CPU::ReadMsr(MSR_GS_BASE);
         Logf("Setting up core %u, coreLocalStorage=0x%lx", LogSeverity::Info, coreNumber, backupCoreLocal);
-        
+
+        CPU::SetupExtendedState(); //setup fpu, sse, avx if supported. Not used in kernel, but hardware is now ready
         FlushGDT();
-        CPU::WriteMsr(MSR_GS_BASE, backupCoreLocal);
+        CPU::WriteMsr(MSR_GS_BASE, backupCoreLocal); //since reloading the gdt will flush the previous GS_BASE
         LoadIDT();
         Logf("Core %lu IDT and GDT installed.", LogSeverity::Verbose, coreNumber);
 
