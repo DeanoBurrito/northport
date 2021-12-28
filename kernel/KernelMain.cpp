@@ -131,39 +131,36 @@ namespace Kernel
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
         coreStore->ptrs[CoreLocalIndices::Scheduler] = new Scheduling::Scheduler();
 
-        Logf("Core local storage created for core %u", LogSeverity::Verbose, apicId);
+        Logf("Core local storage created for core %lu", LogSeverity::Verbose, apicId);
         return coreStore;
     }
 
     void InitCoreLocal()
     {
-        Logf("Setting up core %u", LogSeverity::Info, GetCoreLocal()->apicId);
-        
+        size_t coreNumber = GetCoreLocal()->apicId;
         uint64_t backupCoreLocal = CPU::ReadMsr(MSR_GS_BASE);
+        Logf("Setting up core %u, coreLocalStorage=0x%lx", LogSeverity::Info, coreNumber, backupCoreLocal);
+        
         FlushGDT();
         CPU::WriteMsr(MSR_GS_BASE, backupCoreLocal);
-        Log("Core local GDT installed.", LogSeverity::Verbose);
-
         LoadIDT();
-        Log("Core local IDT installed.", LogSeverity::Verbose);
+        Logf("Core %lu IDT and GDT installed.", LogSeverity::Verbose, coreNumber);
 
         Devices::LApic::Local()->Init();
-        Log("Local APIC initialized.", LogSeverity::Verbose);
+        Logf("Core %lu Local APIC initialized.", LogSeverity::Verbose, coreNumber);
 
         Scheduling::Scheduler::Local()->Init();
-        Log("Local scheduler initialized.", LogSeverity::Verbose);
-
-        Log("Core specific setup complete.", LogSeverity::Info);
+        Logf("Core %lu scheduler initialized.", LogSeverity::Verbose, coreNumber);
     }
 
     //the entry point for the APs
     [[gnu::used]]
-    void _APEntry(uint64_t arg)
+    void _APEntry(stivale2_smp_info* coreInfo)
     {
-        CPU::WriteMsr(MSR_GS_BASE, arg);
+        CPU::WriteMsr(MSR_GS_BASE, coreInfo->extra_argument);
         InitCoreLocal();
 
-        Log("AP has finished init, busy waiting.", LogSeverity::Info);
+        Logf("AP (coreId=%lu) has finished init, busy waiting.", LogSeverity::Info, GetCoreLocal()->apicId);
         while (true)
             asm("hlt");
     }
@@ -193,6 +190,7 @@ namespace Kernel
             {
                 //stash the address, and resume the regular init path
                 CPU::WriteMsr(MSR_GS_BASE, (uint64_t)coreStore);
+                Logf("BSP has coreId=%lu", LogSeverity::Verbose, smpTag->bsp_lapic_id);
                 continue;
             }
 

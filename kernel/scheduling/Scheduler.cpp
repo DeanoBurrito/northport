@@ -86,6 +86,9 @@ namespace Kernel::Scheduling
         if (!userspace)
             thread->flags = sl::EnumSetFlag(thread->flags, ThreadFlags::KernelMode);
         thread->runState = ThreadState::PendingStart;
+
+        //we're forming a downwards stack, make sure the pointer starts at the top of the allocated space
+        stack.raw += PAGE_FRAME_SIZE;
         
         //setup stack: this entirely dependant on cpu arch and the calling convention. We're using sys v abi.
         sl::StackPush<NativeUInt>(stack, 0); //dummy rbp and return address
