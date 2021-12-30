@@ -10,7 +10,7 @@ struct stivale2_struct_tag_framebuffer;
 namespace Kernel::Devices
 {
     class SimpleFramebuffer;
-    using RenderCallback = void (*)(SimpleFramebuffer* framebuffer, Gfx::Vector2u where, Gfx::Colour colour);
+    using SimpleRenderCallback = void (*)(SimpleFramebuffer* framebuffer, Gfx::Vector2u where, Gfx::Colour colour);
 
     class SimpleFramebuffer
     {
@@ -33,6 +33,7 @@ namespace Kernel::Devices
 
         void DrawTestPattern();
         Gfx::Vector2u Size() const;
+        Gfx::PackedColourFormat GetNativeFormat() const;
 
         //puts a single pixel on the screen.
         void DrawPixel(Gfx::Vector2u where, Gfx::Colour colour);
@@ -46,7 +47,7 @@ namespace Kernel::Devices
         void DrawRect(Gfx::IntRect rect, Gfx::Colour colour, bool filled);
 
         //draws a complex output using the callback function, passing through the position and colour info
-        void DrawUsing(RenderCallback drawFunc, Gfx::Vector2u where, Gfx::Colour colour);
+        void DrawUsing(SimpleRenderCallback drawFunc, Gfx::Vector2u where, Gfx::Colour colour);
 
         //templated function, requires T to have a Draw() function matching the RenderCallback() definition.
         template<typename T>

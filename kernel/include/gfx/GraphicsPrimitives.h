@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 namespace Kernel::Gfx
 {
@@ -64,6 +65,8 @@ namespace Kernel::Gfx
     struct Colour
     {   
         static PackedColourFormat packedFormatDefault;
+        
+        static void Translate(uint32_t* source, PackedColourFormat srcFormat, uint32_t* destination, PackedColourFormat destFormat, size_t pixelCount);
         
         uint8_t r;
         uint8_t g;

@@ -118,6 +118,11 @@ namespace Kernel::Devices
         return { width, height };
     }
 
+    Gfx::PackedColourFormat SimpleFramebuffer::GetNativeFormat() const
+    {
+        return nativeFormat;
+    }
+
     void SimpleFramebuffer::DrawPixel(Gfx::Vector2u where, Gfx::Colour colour)
     {
         if (where.x >= width || where.y >= height || !available)
