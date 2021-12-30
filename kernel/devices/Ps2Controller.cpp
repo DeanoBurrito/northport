@@ -5,9 +5,6 @@
 #include <Cpu.h>
 #include <Log.h>
 
-//uncomment this to cause ps/2 init to respect acpi flags (seems to be busted on qemu + seabios)
-#define PS2_INIT_IGNORE_FADT_FLAGS
-
 #define PS2_WRITE_CMD(cmd) \
     while(!InputBufferEmpty()); \
     CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, cmd); \
@@ -85,16 +82,11 @@ namespace Kernel::Devices
 
         if (fadt == nullptr)
             Log("FADT not available, PS/2 Controller defaulting to initialize-anyway", LogSeverity::Warning);
-#ifndef PS2_INIT_IGNORE_FADT_FLAGS
-        else if (!sl::EnumHasFlag(fadt->iaPcBootFlags, IaPcBootArchFlags::Ps2ControllerAvailable))
+        else if (!sl::EnumHasFlag(fadt->iaPcBootFlags, IaPcBootArchFlags::Ps2ControllerAvailable) && AcpiTables::Global()->GetRevision() > 0)
         {
             Log("ACPI says PS/2 controller is not available on this system. Aborting controller init.", LogSeverity::Info);
             return 0;
         }
-#else
-        else if (!sl::EnumHasFlag(fadt->iaPcBootFlags, IaPcBootArchFlags::Ps2ControllerAvailable))
-            Log("ACPI says PS/2 controller is not available on this system, but ps/2 init will try to continue.", LogSeverity::Warning);
-#endif
 
         //disable both ports (controller will ignore port 2 commands if its not available, so thats safe)
         PS2_WRITE_CMD(PS2_CMD_DISABLE_KB_PORT)

@@ -29,6 +29,9 @@ namespace Kernel::ACPI
         return (checksum & 0xFF) == 0;
     }
 
+    size_t AcpiTables::GetRevision() const
+    { return revision; }
+
     void AcpiTables::Init(uint64_t rsdptr)
     {
         RSDP* rsdp1 = sl::NativePtr(rsdptr).As<RSDP>();

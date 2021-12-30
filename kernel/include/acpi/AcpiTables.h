@@ -19,6 +19,7 @@ namespace Kernel::ACPI
         static bool ChecksumValid(SdtHeader* header);
         
         void Init(uint64_t rsdptr);
+        size_t GetRevision() const;
         SdtHeader* Find(SdtSignature which) const;
 
         void PrintSdt(SdtHeader* header) const;
