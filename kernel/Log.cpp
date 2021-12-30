@@ -2,6 +2,7 @@
 #include <Platform.h>
 #include <Cpu.h>
 #include <stddef.h>
+#include <Panic.h>
 
 namespace Kernel
 {
@@ -40,7 +41,7 @@ namespace Kernel
     }
     
     void Log(const char* message, LogSeverity level)
-    {
+    {   
         const char* headerStr = "\0";
         switch (level) 
         {
@@ -92,5 +93,8 @@ namespace Kernel
                 break;
             }
         }
+
+        if (level == LogSeverity::Fatal)
+            Panic(message);
     }
 }

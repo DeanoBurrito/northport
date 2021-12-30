@@ -189,7 +189,7 @@ namespace Kernel::Devices
         }
     }
 
-    void SimpleFramebuffer::DrawUsing(RenderCallback drawFunc, Gfx::Vector2u where, Gfx::Colour colour)
+    void SimpleFramebuffer::DrawUsing(SimpleRenderCallback drawFunc, Gfx::Vector2u where, Gfx::Colour colour)
     {
         if (!available)
             return;
