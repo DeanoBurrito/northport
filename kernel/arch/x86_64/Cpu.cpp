@@ -99,6 +99,11 @@ namespace Kernel
             leaf16Eax = leaf16Ebx = leaf16Ecx = (uint32_t)-1;
     }
 
+    void CPU::Halt()
+    {
+        asm volatile("hlt");
+    }
+
     void CPU::SetupExtendedState()
     {
         if (extendedState.setup)

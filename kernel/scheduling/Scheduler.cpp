@@ -28,6 +28,7 @@ namespace Kernel::Scheduling
     {
         SpinlockRelease(&lock);
         idGen.Alloc(); //id=0 means to drop the current thread, we dont want to accidentally allocate it
+        suspended = false;
         
         Thread* idleThread = CreateThread((size_t)IdleMain, false);
         idleThread->Start(nullptr);
@@ -37,6 +38,9 @@ namespace Kernel::Scheduling
 
     StoredRegisters* Scheduler::SelectNextThread(StoredRegisters* currentRegs)
     {
+        if (suspended)
+            return currentRegs;
+        
         ScopedSpinlock scopeLock(&lock);
 
         Thread* currentThread = GetCurrentThread();
@@ -73,6 +77,9 @@ namespace Kernel::Scheduling
         asm("int $0x22");
         __builtin_unreachable();
     }
+
+    void Scheduler::Suspend(bool suspend)
+    { suspended = suspend; }
 
     Thread* Scheduler::CreateThread(sl::NativePtr entryAddr, bool userspace)
     {

@@ -139,6 +139,7 @@ namespace Kernel::Gfx
     void TerminalFramebuffer::Print(const string& text, const Vector2u where)
     {
         useV2Font ? RenderPsf2Text(text, where) : RenderPsf1Text(text, where);
+        OffsetCursorPos({text.Size(), 0});
     }
     
     void TerminalFramebuffer::PrintLine(const string& text, const Vector2u where)

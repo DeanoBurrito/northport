@@ -12,6 +12,7 @@ namespace Kernel::Scheduling
     {
     private:
         char lock;
+        bool suspended;
         size_t currentId;
         sl::Vector<Thread*> threads;
         sl::UIdAllocator idGen;
@@ -23,6 +24,8 @@ namespace Kernel::Scheduling
         StoredRegisters* SelectNextThread(StoredRegisters* currentRegs); //usually called from inside an interrupt handler
         [[noreturn]]
         void Yield();
+        //causes the scheduler to immediately return from SelectNextThread, locking the current thread.
+        void Suspend(bool suspendSelection);
 
         Thread* CreateThread(sl::NativePtr entryAddr, bool userspace);
         void RemoveThread(size_t id);

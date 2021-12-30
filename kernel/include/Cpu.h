@@ -37,6 +37,7 @@ namespace Kernel
 
     public:
         static void DoCpuId();
+        static void Halt();
 
         static void SetupExtendedState();
         static size_t GetExtendedStateBufferSize();

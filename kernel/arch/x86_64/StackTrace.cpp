@@ -11,10 +11,13 @@ namespace Kernel
         uint64_t rip;
     };
 
-    sl::Vector<NativeUInt> GetStackTrace()
+    sl::Vector<NativeUInt> GetStackTrace(NativeUInt startFrame)
     {
         StackFrame* stackItem;
-        asm ("mov %%rbp,%0" : "=r"(stackItem));
+        if (startFrame == 0)
+            asm ("mov %%rbp,%0" : "=r"(stackItem));
+        else
+            stackItem = reinterpret_cast<StackFrame*>(startFrame);
         sl::Vector<NativeUInt> vec;
 
         while(stackItem->rip != 0)
