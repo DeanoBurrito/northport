@@ -81,8 +81,8 @@ namespace Kernel::Memory
         uint64_t endOfHeapAddr = (uint64_t)tail + tail->length + sizeof(HeapNode);
 
         if (requiredPages > 1)
-            Log("VMM::MapRange() not yet implemented! //TODO:", LogSeverity::Fatal);
-        PageTableManager::Local()->MapMemory(endOfHeapAddr, MemoryMapFlag::AllowWrites);
+            Log("Kernel heap is expanding by more than 1 page.", LogSeverity::Warning);
+        PageTableManager::Local()->MapRange(endOfHeapAddr, requiredPages, MemoryMapFlag::AllowWrites);
         tail->next = reinterpret_cast<HeapNode*>(endOfHeapAddr);
 
         tail->next->next = nullptr;

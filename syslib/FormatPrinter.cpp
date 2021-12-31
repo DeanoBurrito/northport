@@ -53,10 +53,7 @@ namespace sl
             inputPos++;
 
         if (inputPos > segmentStart)
-        {
-            //TODO: support reading integers from strings
-            token.minimumPrintWidth = 1;
-        }
+            StringCulture::current->TryGetUInt64(&token.minimumPrintWidth, inputBuffer, segmentStart);
         else if (inputBuffer[inputPos] == '*')
         {
             token.minimumPrintWidth = PRINT_WIDTH_READ_FROM_INPUT;
@@ -77,10 +74,7 @@ namespace sl
                 inputPos++;
             
             if (inputPos > segmentStart)
-            {
-                //TODO: support reading integers from strings
-                token.precision = 1;
-            }
+                StringCulture::current->TryGetUInt64(&token.precision, inputBuffer, segmentStart);
             else if (inputBuffer[inputPos] == '*')
             {
                 token.precision = PRECISION_READ_FROM_INPUT;

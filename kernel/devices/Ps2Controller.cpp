@@ -102,7 +102,7 @@ namespace Kernel::Devices
         config &= (0b1011'1100); //disable interrupts for both ports, and enable time out errors. Leave everything else as is
         PS2_WRITE_CMD2(PS2_CMD_WRITE_CONFIG, config)
 
-        //TODO: we should test for dual channels here, but I'm yet to find any reliable documenation on how to do that.
+        //NOTE: we're going to make the fairly safe assumption that 2 ports are present. Even if one is unused, the chipset's implementation should still have the port.
         bool dualPortsAvail = true;
         //NOTE: this is where we'd test the controller + devices, after discovering if they're available.
 
@@ -118,7 +118,6 @@ namespace Kernel::Devices
             config |= (1 << 1); //enable port 2 interrupts if available
         PS2_WRITE_CMD2(PS2_CMD_WRITE_CONFIG, config)
 
-        //TODO: we should optionally support quierying ps/2 devices using identify/disable-scanning commands here, so get exactly what we're using.
         Logf("PS/2 Controller initialized: dualPorts=%b", LogSeverity::Info, dualPortsAvail);
         return dualPortsAvail ? 2 : 1;
     }

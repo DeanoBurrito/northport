@@ -8,7 +8,7 @@ namespace Kernel::Devices
 {
     void IoApicRedirectEntry::SetNmi(IoApicEntryModifier nmi)
     {
-        uint64_t destApicId = 0; //TODO: rtfm on this for nmis
+        uint64_t destApicId = 0;
 
         //vector info is ignored, but make sure we set it for nmi delivery mode
         raw = (destApicId << 56) | (((uint64_t)nmi.triggerMode & 0b1) << 15) | (((uint64_t)nmi.polarity & 0b1) << 13) | (0b100 << 8);

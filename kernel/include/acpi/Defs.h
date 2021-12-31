@@ -242,9 +242,19 @@ namespace Kernel::ACPI
         HpetPageProtectionFlags protectionAttribs;
     };
 
+    struct [[gnu::packed]] EcamEntry
+    {
+        uint64_t baseAddress;
+        uint16_t pciSegmentGroup;
+        uint8_t pciBusFirst;
+        uint8_t pciBusLast;
+        uint32_t reserved;
+    };
+
     struct [[gnu::packed]] MCFG : public SdtHeader
     {
-        //TODO: implement MCFG header
+        uint64_t reserved; //good one pci-sig, all in a day's work i'm sure.
+        EcamEntry entries[];
     };
 
     enum class PowerManagementProfile : uint8_t

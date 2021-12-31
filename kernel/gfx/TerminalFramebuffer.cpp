@@ -41,9 +41,9 @@ namespace Kernel::Gfx
         backingFb = Devices::SimpleFramebuffer::Global();
         v1Font = psf1Default;
         v2Font = psf2Default;
-        SetTextRenderVersion(1);
+        SetTextRenderVersion(1); //this also sets the font size
 
-        //get screen size + default render region, and font size TODO:
+        //get screen size + default render region
         screenSize = backingFb->Size();
         SetReservedRegion({0, 0, (long)screenSize.x, (long)screenSize.y});
 
