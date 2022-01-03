@@ -9,6 +9,9 @@ struct stivale2_struct_tag_framebuffer;
 
 namespace Kernel::Devices
 {
+    struct FramebufferNoLockType {};
+    constexpr static inline FramebufferNoLockType NoLock = FramebufferNoLockType();
+    
     class SimpleFramebuffer;
     using SimpleRenderCallback = void (*)(SimpleFramebuffer* framebuffer, Gfx::Vector2u where, Gfx::Colour colour);
 
@@ -30,6 +33,8 @@ namespace Kernel::Devices
 
         void Init(stivale2_struct_tag_framebuffer* framebufferTag);
         void Clear(Gfx::Colour clearColor = Gfx::Colours::Black);
+        //Note: this is the internal lock, and should be respected as other threads may be trying to access this as well
+        char* GetLock();
 
         void DrawTestPattern();
         Gfx::Vector2u Size() const;
@@ -37,12 +42,16 @@ namespace Kernel::Devices
 
         //puts a single pixel on the screen.
         void DrawPixel(Gfx::Vector2u where, Gfx::Colour colour);
+        void DrawPixel(Gfx::Vector2u where, Gfx::Colour colour, FramebufferNoLockType noLock);
         //draws a horizontal line. length can be positive or negative to indicate direction from start
         void DrawHLine(Gfx::Vector2u begin, int length, Gfx::Colour colour);
+        void DrawHLine(Gfx::Vector2u begin, int length, Gfx::Colour colour, FramebufferNoLockType noLock);
         //draws a vertical line. length can be positive or negative to indicate direction from start
         void DrawVLine(Gfx::Vector2u begin, int length, Gfx::Colour colour);
+        void DrawVLine(Gfx::Vector2u begin, int length, Gfx::Colour colour, FramebufferNoLockType noLock);
         //draws a complex line from begin to end. Check out DrawHLine()/DrawVLine() if you only need those.
         void DrawLine(Gfx::Vector2u begin, Gfx::Vector2u end, Gfx::Colour colour);
+        void DrawLine(Gfx::Vector2u begin, Gfx::Vector2u end, Gfx::Colour colour, FramebufferNoLockType noLock);
         //draws a rectangle. Filled sets whether just the outlines or the full thing are drawn.
         void DrawRect(Gfx::IntRect rect, Gfx::Colour colour, bool filled);
 

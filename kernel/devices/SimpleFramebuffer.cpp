@@ -75,6 +75,9 @@ namespace Kernel::Devices
             sl::memsetT<uint32_t>(baseAddress.As<void>(i * stride), clearColour.GetPacked(nativeFormat), width);
     }
 
+    char* SimpleFramebuffer::GetLock()
+    { return &lock; }
+
     void SimpleFramebuffer::DrawTestPattern()
     {
         Clear(0x1f1f1fFF);
@@ -125,19 +128,29 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawPixel(Gfx::Vector2u where, Gfx::Colour colour)
     {
+        ScopedSpinlock scopeLock(&lock);
+        DrawPixel(where, colour, NoLock);
+    }
+
+    void SimpleFramebuffer::DrawPixel(Gfx::Vector2u where, Gfx::Colour colour, FramebufferNoLockType noLock)
+    {
         if (where.x >= width || where.y >= height || !available)
             return;
-        ScopedSpinlock scopeLock(&lock);
-
+        
         *baseAddress.As<uint32_t>((where.y * stride) + (where.x * bitsPerPixel / 8)) = colour.GetPacked(nativeFormat);
     }
 
     void SimpleFramebuffer::DrawHLine(Gfx::Vector2u begin, int length, Gfx::Colour colour)
     {
+        ScopedSpinlock scopeLock(&lock);
+        DrawHLine(begin, length, colour, NoLock);
+    }
+
+    void SimpleFramebuffer::DrawHLine(Gfx::Vector2u begin, int length, Gfx::Colour colour, FramebufferNoLockType noLock)
+    {
         if (!available)
             return;
-        ScopedSpinlock scopeLock(&lock);
-
+        
         size_t start = sl::clamp<size_t>(begin.x, 0, width);
         size_t end = (size_t)sl::clamp<int>((int)begin.x + length, 0, (int)width);
         if (end < start)
@@ -148,9 +161,14 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawVLine(Gfx::Vector2u begin, int length, Gfx::Colour colour)
     {
+        ScopedSpinlock scopeLock(&lock);
+        DrawVLine(begin, length, colour, NoLock);
+    }
+
+    void SimpleFramebuffer::DrawVLine(Gfx::Vector2u begin, int length, Gfx::Colour colour, FramebufferNoLockType noLock)
+    {
         if (!available)
             return;
-        ScopedSpinlock scopeLock(&lock);
 
         size_t start = sl::clamp<size_t>(begin.y, 0, height);
         size_t end = (size_t)sl::clamp<int>((int)begin.y + length, 0, (int)height);
@@ -163,9 +181,14 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawLine(Gfx::Vector2u begin, Gfx::Vector2u end, Gfx::Colour colour)
     {
+        ScopedSpinlock scopeLock(&lock);
+        DrawLine(begin, end, colour, NoLock);
+    }
+    
+    void SimpleFramebuffer::DrawLine(Gfx::Vector2u begin, Gfx::Vector2u end, Gfx::Colour colour, FramebufferNoLockType noLock)
+    {
         if (!available)
             return;
-        ScopedSpinlock scopeLock(&lock);
         
         (void)begin; (void)end; (void)colour;
         //TODO: implement bresenham's algorithm or similar
