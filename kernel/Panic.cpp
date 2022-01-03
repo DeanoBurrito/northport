@@ -6,12 +6,14 @@
 #include <elf/HeaderParser.h>
 #include <scheduling/Scheduler.h>
 #include <gfx/TerminalFramebuffer.h>
+#include <formats/XPixMap.h>
+
+extern const char* panicBitmapData[];
 
 namespace Kernel
 {
     struct PanicDetails
     {
-        bool setup;
         Gfx::TerminalFramebuffer fb;
     };
 
@@ -45,7 +47,40 @@ namespace Kernel
 
     constexpr size_t borderLeft = 3;
     constexpr size_t registerPrintStride = 30;
-    constexpr uint32_t bgColour = 0xB0'60'00'00;
+    constexpr uint32_t bgColour = 0x54'00'00'00;
+
+    void RenderBackgroundBitmap()
+    {
+        Devices::SimpleFramebuffer* fb = panicDetails->fb.GetBackingBuffer();
+        sl::XPixMap pixmap(panicBitmapData);
+
+        sl::Vector<uint32_t> xColours = pixmap.GetColours();
+        sl::Vector<size_t> pixels  = pixmap.GetPixels();
+
+        sl::Vector<Gfx::Colour> colours(xColours.Size());
+        for (size_t i = 0; i < xColours.Size(); i++)
+        {
+            colours.PushBack(xColours[i] << 8); //x uses 24bpp rgb, we're exepected 32bpp rgba
+        }
+        colours[0] = panicDetails->fb.GetColour(true); //set white (we know its the first in this case) to the background
+
+        const size_t renderScale = 2;
+        const Gfx::Vector2u renderOffset = 
+        {
+            fb->Size().x / 2 - (pixmap.Size().x * renderScale) / 2,
+            fb->Size().y - (pixmap.Size().y * renderScale)
+        };
+
+        //lock the fb once here, and we'll use NoLock within the loop
+        ScopedSpinlock scopeLock(fb->GetLock());
+        for (size_t y = 0; y < pixmap.Size().y; y++)
+        {
+            for (size_t x = 0; x < pixmap.Size().x; x++)
+            {
+                fb->DrawPixel({renderOffset.x + x * renderScale, renderOffset.y + y * renderScale}, colours[pixels[y * pixmap.Size().x + x]], Devices::NoLock);
+            }
+        }
+    }
 
     void PrintStackTrace(const StoredRegisters* regs)
     {
@@ -147,6 +182,7 @@ namespace Kernel
         fb->Print(sl::StringCulture::current->ToString(regs->vectorNumber, sl::Base::HEX));
     }
 
+    [[noreturn]]
     void Panic(const char* reason, StoredRegisters* regs)
     {
         CPU::ClearInterruptsFlag();
@@ -161,6 +197,8 @@ namespace Kernel
         fb->ClearScreen();
         fb->SetCursorPos({ 0, 1 });
 
+        RenderBackgroundBitmap();
+
         fb->PrintLine("Panic! In the kernel. Reason:");
         fb->PrintLine(reason);
 
@@ -171,6 +209,7 @@ namespace Kernel
             PrintIretFrame(regs);
         PrintStackTrace(regs);
 
+        Log("Final log: All cpus are being placed in an infinite halt.", LogSeverity::Info);
         while (true)
             CPU::Halt();
     }

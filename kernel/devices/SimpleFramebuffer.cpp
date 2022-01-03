@@ -134,6 +134,7 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawPixel(Gfx::Vector2u where, Gfx::Colour colour, FramebufferNoLockType noLock)
     {
+        (void)noLock;
         if (where.x >= width || where.y >= height || !available)
             return;
         
@@ -148,6 +149,7 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawHLine(Gfx::Vector2u begin, int length, Gfx::Colour colour, FramebufferNoLockType noLock)
     {
+        (void)noLock;
         if (!available)
             return;
         
@@ -167,6 +169,7 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawVLine(Gfx::Vector2u begin, int length, Gfx::Colour colour, FramebufferNoLockType noLock)
     {
+        (void)noLock;
         if (!available)
             return;
 
@@ -187,6 +190,7 @@ namespace Kernel::Devices
     
     void SimpleFramebuffer::DrawLine(Gfx::Vector2u begin, Gfx::Vector2u end, Gfx::Colour colour, FramebufferNoLockType noLock)
     {
+        (void)noLock;
         if (!available)
             return;
         

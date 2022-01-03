@@ -14,6 +14,7 @@
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <boot/Stivale2.h>
+#include <Panic.h>
 
 //needs to be implemented once per linked program. This is for the kernel.
 sl::NativePtr currentProgramElf;
@@ -108,7 +109,7 @@ namespace Kernel
 #ifdef NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT 
         EnableLogDestinaton(LogDestination::FramebufferOverwrite);
 #endif
-
+        InitPanic(); //framebuffer is needed for panic subsystem, so we init it here.
         IoApic::InitAll();
         Keyboard::Global()->Init();
 
