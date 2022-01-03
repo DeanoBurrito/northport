@@ -27,7 +27,7 @@ namespace Kernel::Scheduling
         //causes the scheduler to immediately return from SelectNextThread, locking the current thread.
         void Suspend(bool suspendSelection);
 
-        Thread* CreateThread(sl::NativePtr entryAddr, bool userspace);
+        Thread* CreateThread(sl::NativePtr entryAddr, ThreadFlags flags);
         void RemoveThread(size_t id);
         Thread* GetCurrentThread();
     };

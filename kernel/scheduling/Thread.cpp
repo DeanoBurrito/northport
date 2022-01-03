@@ -15,6 +15,7 @@ namespace Kernel::Scheduling
 
     void Thread::Start(sl::NativePtr arg)
     {
+        regs->rsi = arg.raw; //depends on abi (we're using sys v x86_64)
         runState = ThreadState::Running;
     }
 

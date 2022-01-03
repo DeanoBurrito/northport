@@ -30,7 +30,7 @@ namespace Kernel::Scheduling
         idGen.Alloc(); //id=0 means to drop the current thread, we dont want to accidentally allocate it
         suspended = false;
         
-        Thread* idleThread = CreateThread((size_t)IdleMain, false);
+        Thread* idleThread = CreateThread((size_t)IdleMain, ThreadFlags::KernelMode);
         idleThread->Start(nullptr);
         //we're dropping this pointer, but this is okay as the idle thread should ALWAYS be present.
         (void)idleThread;
@@ -81,7 +81,7 @@ namespace Kernel::Scheduling
     void Scheduler::Suspend(bool suspend)
     { suspended = suspend; }
 
-    Thread* Scheduler::CreateThread(sl::NativePtr entryAddr, bool userspace)
+    Thread* Scheduler::CreateThread(sl::NativePtr entryAddr, ThreadFlags flags)
     {
         ScopedSpinlock scopeLock(&lock);
 
@@ -90,8 +90,7 @@ namespace Kernel::Scheduling
 
         Thread* thread = new Thread();
         thread->threadId = idGen.Alloc();
-        if (!userspace)
-            thread->flags = sl::EnumSetFlag(thread->flags, ThreadFlags::KernelMode);
+        thread->flags = flags;
         thread->runState = ThreadState::PendingStart;
 
         //we're forming a downwards stack, make sure the pointer starts at the top of the allocated space
@@ -103,13 +102,13 @@ namespace Kernel::Scheduling
         NativeUInt realStackStart = stack.raw;
 
         //All these stack interactions are setting up a StoredRegisters instance for the scheduler to use when it loads this thread for the first time.
-        if (userspace)
+        if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
             sl::StackPush<NativeUInt>(stack, GDT_USER_DATA);
         else
             sl::StackPush<NativeUInt>(stack, GDT_KERNEL_DATA);
         sl::StackPush<NativeUInt>(stack, realStackStart);
         sl::StackPush<NativeUInt>(stack, 0x202); //interrupts enabled, everything else set to default
-        if (userspace)
+        if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
             sl::StackPush<NativeUInt>(stack, GDT_USER_CODE);
         else
             sl::StackPush<NativeUInt>(stack, GDT_KERNEL_CODE);
