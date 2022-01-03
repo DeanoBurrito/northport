@@ -32,9 +32,9 @@ namespace sl
     class Vector
     {
     private:
-        T* elements;
-        size_t size;
-        size_t capacity;
+        T* elements = nullptr;
+        size_t size = 0;
+        size_t capacity = 0;
 
     public:
         friend void Swap(Vector& a, Vector& b)
@@ -95,7 +95,11 @@ namespace sl
 
         Vector& operator=(const Vector& other)
         {
-            Swap(*this, other);
+            Clear();
+            EnsureCapacity(other.size);
+            for (size_t i = 0; i < other.size; i++)
+                new(&elements[i]) T(other[i]);
+            size = other.size;
             return *this;
         }
 
