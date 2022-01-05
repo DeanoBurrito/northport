@@ -1,6 +1,7 @@
 #include <devices/LApic.h>
 #include <devices/8254Pit.h>
 #include <acpi/AcpiTables.h>
+#include <memory/Paging.h>
 #include <Platform.h>
 #include <Memory.h>
 #include <Utilities.h>
@@ -75,7 +76,8 @@ namespace Kernel::Devices
 
         //TODO: x2APIC support
         
-        baseAddress = CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF);
+        baseAddress = (CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + vmaHighAddr;
+        Memory::PageTableManager::Local()->MapMemory(baseAddress, baseAddress - vmaHighAddr, Memory::MemoryMapFlag::AllowWrites);
         apicId = ReadReg(LocalApicRegister::Id) >> 24;
         timerTicksPerMs = 0;
 

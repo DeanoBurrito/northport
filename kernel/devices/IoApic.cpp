@@ -1,5 +1,6 @@
 #include <devices/IoApic.h>
 #include <acpi/AcpiTables.h>
+#include <memory/Paging.h>
 #include <Algorithms.h>
 #include <Memory.h>
 #include <Log.h>
@@ -48,12 +49,15 @@ namespace Kernel::Devices
     void IoApic::Init(uint64_t address, uint8_t id, uint8_t gsiBase)
     {
         baseAddress = address;
+        baseAddress.ptr = EnsureHigherHalfAddr(baseAddress.ptr);
+        Memory::PageTableManager::Local()->MapMemory(baseAddress, address, Memory::MemoryMapFlag::AllowWrites);
+
         apicId = id;
         this->gsiBase = gsiBase;
         maxRedirects = (ReadReg(IoApicRegister::Version) >> 16) & 0xFF;
         maxRedirects++; //stored value is n - 1
 
-        Logf("New IO APIC initialized: base=0x%x, id=%u, gsiBase=%u, maxRedirects=%u", LogSeverity::Info, baseAddress.raw, apicId, gsiBase, maxRedirects);
+        Logf("New IO APIC initialized: base=0x%lx, id=%u, gsiBase=%u, maxRedirects=%u", LogSeverity::Info, baseAddress.raw, apicId, gsiBase, maxRedirects);
     }
 
     //these have to be pointers so the compiler dosnt generate global ctors

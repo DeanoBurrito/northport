@@ -18,6 +18,7 @@
 
 //needs to be implemented once per linked program. This is for the kernel.
 sl::NativePtr currentProgramElf;
+NativeUInt Kernel::vmaHighAddr;
 
 namespace Kernel
 {
@@ -53,7 +54,7 @@ namespace Kernel
         
         PMM::Global()->Init(mmap);
         PageTableManager::Setup();
-        PageTableManager::Local()->Init(true); //TODO: move away from bootloader map, and use our own
+        PageTableManager::Local()->InitKernel();
         PageTableManager::Local()->MakeActive();
         PMM::Global()->InitLate();
 
@@ -159,6 +160,9 @@ namespace Kernel
     [[gnu::used]]
     void _APEntry(stivale2_smp_info* coreInfo)
     {
+        Memory::PageTableManager::Local()->MakeActive(); //switch cpu to our page table
+
+        coreInfo = EnsureHigherHalfAddr(coreInfo);
         CPU::WriteMsr(MSR_GS_BASE, coreInfo->extra_argument);
         InitCoreLocal();
 
@@ -197,10 +201,11 @@ namespace Kernel
             }
 
             sl::NativePtr stackBase = Memory::PMM::Global()->AllocPage();
-            Memory::PageTableManager::Local()->MapMemory(stackBase, stackBase, Memory::MemoryMapFlag::AllowWrites);
+            sl::NativePtr stackBaseHigh = EnsureHigherHalfAddr(stackBase.ptr);
+            Memory::PageTableManager::Local()->MapMemory(stackBaseHigh, stackBase, Memory::MemoryMapFlag::AllowWrites);
             
-            smpTag->smp_info[i].target_stack = stackBase.raw + PAGE_FRAME_SIZE;
-            smpTag->smp_info[i].extra_argument = (uint64_t)coreStore;
+            smpTag->smp_info[i].target_stack = stackBaseHigh.raw + PAGE_FRAME_SIZE;
+            smpTag->smp_info[i].extra_argument = (uint64_t)EnsureHigherHalfAddr(coreStore);
             smpTag->smp_info[i].goto_address = (uint64_t)_APEntry;
         }
     }
@@ -222,7 +227,11 @@ extern "C"
     void _KernelEntry(stivale2_struct* stivaleStruct)
     {
         using namespace Kernel;
+
+        //setup vma high offset, and move address of stivale base struct there.
         stivale2Struct = stivaleStruct;
+        stivale2_struct_tag_hhdm* hhdm = FindStivaleTag<stivale2_struct_tag_hhdm*>(STIVALE2_STRUCT_TAG_HHDM_ID);
+        vmaHighAddr = hhdm->addr;
 
         CPU::ClearInterruptsFlag();
         CPU::DoCpuId();

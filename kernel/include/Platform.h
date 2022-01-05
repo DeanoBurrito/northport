@@ -164,4 +164,14 @@ namespace Kernel
         uint64_t iret_rsp;
         uint64_t iret_ss;
     };
+
+    extern NativeUInt vmaHighAddr;
+
+    template<typename T>
+    FORCE_INLINE T* EnsureHigherHalfAddr(T* existing)
+    {
+        if ((NativeUInt)existing < vmaHighAddr)
+            return reinterpret_cast<T*>((NativeUInt)existing + vmaHighAddr);
+        return existing;
+    }
 }

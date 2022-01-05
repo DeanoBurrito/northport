@@ -35,7 +35,7 @@ namespace Kernel::Memory
         region->next = nullptr;
         region->lock = 0;
         region->bitmapNextAlloc = 0;
-        region->bitmap = allocBuffer.As<uint8_t>();
+        region->bitmap = EnsureHigherHalfAddr(allocBuffer.As<uint8_t>());
 
         const size_t bitmapBytes = region->pageCount / 8 + 1;
         allocBuffer.raw += bitmapBytes;
@@ -86,7 +86,7 @@ namespace Kernel::Memory
         {
             if (mmap->memmap[i].type == STIVALE2_MMAP_USABLE)
             {
-                PhysMemoryRegion* region = InitRegion(&mmap->memmap[i]);
+                PhysMemoryRegion* region = EnsureHigherHalfAddr(InitRegion(&mmap->memmap[i]));
                 
                 if (rootRegion == nullptr)
                     rootRegion = region;

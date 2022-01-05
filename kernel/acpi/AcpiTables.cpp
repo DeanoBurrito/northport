@@ -1,4 +1,5 @@
 #include <acpi/AcpiTables.h>
+#include <Platform.h>
 #include <Memory.h>
 #include <Log.h>
 
@@ -42,6 +43,7 @@ namespace Kernel::ACPI
             
             GetAddrAtIndex = Get64BitTableAddr;
             rootTable = reinterpret_cast<RSDP2*>(rsdp1)->xsdtAddress;
+            rootTable.ptr = EnsureHigherHalfAddr(rootTable.ptr);
 
             XSDT* xsdt = rootTable.As<XSDT>();
             sdtCount = (xsdt->length - sizeof(SdtHeader)) / 8;
@@ -52,6 +54,7 @@ namespace Kernel::ACPI
 
             GetAddrAtIndex = Get32BitTableAddr;
             rootTable = rsdp1->rsdtAddress;
+            rootTable.ptr = EnsureHigherHalfAddr(rootTable.ptr);
 
             RSDT* rsdt = rootTable.As<RSDT>();
             sdtCount = (rsdt->length - sizeof(SdtHeader)) / 4;
@@ -62,7 +65,7 @@ namespace Kernel::ACPI
         //dump all the acpi tables
         for (size_t i = 0; i < sdtCount; i++)
         {
-            SdtHeader* currentTable = reinterpret_cast<SdtHeader*>(GetAddrAtIndex(rootTable, i));
+            SdtHeader* currentTable = EnsureHigherHalfAddr(reinterpret_cast<SdtHeader*>(GetAddrAtIndex(rootTable, i)));
             PrintSdt(currentTable);
         }
     }
@@ -71,7 +74,7 @@ namespace Kernel::ACPI
     {
         for (size_t i = 0; i < sdtCount; i++)
         {
-            SdtHeader* currentTable = reinterpret_cast<SdtHeader*>(GetAddrAtIndex(rootTable, i));
+            SdtHeader* currentTable = EnsureHigherHalfAddr(reinterpret_cast<SdtHeader*>(GetAddrAtIndex(rootTable, i)));
             if (sl::memcmp(currentTable->signature, SdtSignatureLiterals[(size_t)sig], 4) == 0)
             {
                 if (!ChecksumValid(currentTable))
