@@ -35,6 +35,7 @@ namespace Kernel::Memory
     {
     private:
         static bool usingExtendedPaging;
+
         sl::NativePtr topLevelAddress;
         char lock;
 
@@ -43,11 +44,10 @@ namespace Kernel::Memory
         
     public:
         static PageTableManager* Local();
-
         static void Setup();
-        void Init(bool reuseBootloaderMaps);
-        //set the higher half of this page table to the same entries as tla. 
-        void SetKernelPageRefs(sl::NativePtr tla);
+
+        void InitKernel(bool reuseBootloaderMaps = false);
+        void InitClone();
 
         void MakeActive() const;
         bool IsActive() const;
