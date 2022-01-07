@@ -10,6 +10,7 @@
 #include <devices/Ps2Controller.h>
 #include <devices/Keyboard.h>
 #include <devices/8254Pit.h>
+#include <devices/SystemClock.h>
 #include <scheduling/Scheduler.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
@@ -112,15 +113,16 @@ namespace Kernel
 #endif
         InitPanic(); //framebuffer is needed for panic subsystem, so we init it here.
         IoApic::InitAll();
-        Keyboard::Global()->Init();
+        InitPit(0, INTERRUPT_GSI_PIT_TICK);
+        SetPitMasked(false); //start keeping track of uptime
 
+        Keyboard::Global()->Init();
         size_t ps2PortCount = Ps2Controller::InitController();
         if (ps2PortCount > 0)
             Ps2Controller::Keyboard()->Init(false);
         if (ps2PortCount > 1)
             Ps2Controller::Mouse()->Init(true);
 
-        InitPit(0, INTERRUPT_GSI_PIT_TICK);
 
         Log("Platform init complete.", LogSeverity::Info);
     }
@@ -215,7 +217,9 @@ namespace Kernel
         CPU::SetInterruptsFlag();
 
         Devices::LApic::Local()->SetupTimer(SCHEDULER_QUANTUM_MS, INTERRUPT_GSI_SCHEDULER_NEXT, true);
+        Devices::SetPitMasked(true); //ensure PIT is masked here, lapic timer will progress uptime from now on.
 
+        Logf("Boot completed in: %u ms", LogSeverity::Verbose, Devices::GetUptime()); //NOTE: this time includes local apic timer calibration time (100ms)
         Log("Kernel init done, exiting to scheduler.", LogSeverity::Info);
         Scheduling::Scheduler::Local()->Yield();
     }

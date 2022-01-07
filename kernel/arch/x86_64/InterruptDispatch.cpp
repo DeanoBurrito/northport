@@ -3,6 +3,7 @@
 #include <devices/LApic.h>
 #include <devices/Ps2Controller.h>
 #include <devices/8254Pit.h>
+#include <devices/SystemClock.h>
 #include <scheduling/Scheduler.h>
 
 /*
@@ -55,9 +56,11 @@ namespace Kernel
                 Devices::Ps2Controller::Keyboard()->HandleIrq();
                 break;
             case INTERRUPT_GSI_SCHEDULER_NEXT:
+                Devices::IncrementUptime(Devices::LApic::Local()->GetTimerIntervalMS());
                 returnRegs = Scheduling::Scheduler::Local()->SelectNextThread(regs);
                 break;
             case INTERRUPT_GSI_PIT_TICK:
+                Devices::IncrementUptime(1); //we hardcore the PIT to ~1ms ticks
                 Devices::PitHandleIrq();
                 break;
             

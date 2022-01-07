@@ -121,19 +121,20 @@ namespace Kernel::Devices
         uint64_t timerTicksPerMs;
         uint32_t calibratedDivisor;
 
-        void WriteReg(LocalApicRegister reg, uint32_t value);
-        uint32_t ReadReg(LocalApicRegister reg);
+        void WriteReg(LocalApicRegister reg, uint32_t value) const;
+        uint32_t ReadReg(LocalApicRegister reg) const;
         void CalibrateTimer();
     
     public:
         static LApic* Local();
 
         void Init();
-        void SendEOI();
-        bool IsBsp();
+        void SendEOI() const;
+        bool IsBsp() const;
 
-        void SetLvtMasked(LocalApicRegister lvtReg, bool masked);
-        bool GetLvtMasked(LocalApicRegister lvtReg);
+        void SetLvtMasked(LocalApicRegister lvtReg, bool masked) const;
+        bool GetLvtMasked(LocalApicRegister lvtReg) const;
         void SetupTimer(size_t millis, uint8_t vector, bool periodic);
+        uint64_t GetTimerIntervalMS() const;
     };
 }

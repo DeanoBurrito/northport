@@ -35,10 +35,10 @@ namespace Kernel::Devices
         raw = vector | ((uint64_t)mode << 8) | (levelTrigger ? 1 << 15 : 0) | ((uint64_t)destinationId << 56);
     }
 
-    void LApic::WriteReg(LocalApicRegister reg, uint32_t value)
+    void LApic::WriteReg(LocalApicRegister reg, uint32_t value) const
     { sl::MemWrite<uint32_t>(baseAddress + (uint64_t)reg, value); }
 
-    uint32_t LApic::ReadReg(LocalApicRegister reg)
+    uint32_t LApic::ReadReg(LocalApicRegister reg) const
     { return sl::MemRead<uint32_t>(baseAddress + (uint64_t)reg); }
 
     void LApic::CalibrateTimer()
@@ -48,6 +48,9 @@ namespace Kernel::Devices
         calibratedDivisor = (uint32_t)ApicTimerDivisor::_2;
         WriteReg(LocalApicRegister::TimerDivisor, calibratedDivisor);
         
+        //mask pit to clear its current tick count (it's being used for uptime calculations before this)
+        SetPitMasked(true);
+
         //start pit and apic timer
         SetPitMasked(false);
         WriteReg(LocalApicRegister::TimerInitialCount, (uint32_t)-1); //max value, so we count down
@@ -112,17 +115,17 @@ namespace Kernel::Devices
         WriteReg(LocalApicRegister::SpuriousInterruptVector, INTERRUPT_GSI_SPURIOUS | (1 << 8));
     }
 
-    void LApic::SendEOI()
+    void LApic::SendEOI() const
     {
         WriteReg(LocalApicRegister::EOI, 0);
     }
 
-    bool LApic::IsBsp()
+    bool LApic::IsBsp() const
     {
         return (CPU::ReadMsr(MSR_APIC_BASE) & (1 << 8)) != 0;
     }
 
-    void LApic::SetLvtMasked(LocalApicRegister lvtReg, bool masked)
+    void LApic::SetLvtMasked(LocalApicRegister lvtReg, bool masked) const
     {
         uint32_t current = ReadReg(lvtReg);
         current &= ~(1 << 16); //clear it, and then reset it if needed
@@ -131,7 +134,7 @@ namespace Kernel::Devices
         WriteReg(lvtReg, current);
     }
 
-    bool LApic::GetLvtMasked(LocalApicRegister lvtReg)
+    bool LApic::GetLvtMasked(LocalApicRegister lvtReg) const
     {
         return (ReadReg(lvtReg) & (1 << 16)) != 0;
     }
@@ -155,5 +158,10 @@ namespace Kernel::Devices
 
         //write to initial count to start timer
         WriteReg(LocalApicRegister::TimerInitialCount, timerTicksPerMs * millis);
+    }
+
+    uint64_t LApic::GetTimerIntervalMS() const
+    {
+        return ReadReg(LocalApicRegister::TimerInitialCount) / timerTicksPerMs;
     }
 }
