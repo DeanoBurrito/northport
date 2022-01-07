@@ -20,7 +20,9 @@ namespace Kernel::Scheduling
     }
 
     void Thread::Exit()
-    {}
+    {
+        runState = ThreadState::PendingCleanup;
+    }
 
     size_t Thread::GetId() const
     { return threadId; }

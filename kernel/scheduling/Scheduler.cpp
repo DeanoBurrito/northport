@@ -2,6 +2,7 @@
 #include <memory/PhysicalMemory.h>
 #include <arch/x86_64/Gdt.h>
 #include <Algorithms.h>
+#include <Platform.h>
 #include <Memory.h>
 #include <Log.h>
 
@@ -44,30 +45,44 @@ namespace Kernel::Scheduling
         ScopedSpinlock scopeLock(&lock);
 
         Thread* currentThread = GetCurrentThread();
-        if (currentThread && currentId != 0) //thread id 0 means to drop the current thread
+        if (currentThread && currentId != 0)
         {
             //we can safely save registers
             currentThread->regs = currentRegs;
         }
 
-        auto it = threads.Begin();
-        while (it != threads.End())
+        //thread selection: round robin
+        bool selectNextValid = false;
+        Thread* nextThread = threads[0]; //first thread is always the idle thread - if selection fails, we'll run it
+        for (size_t i = 0; i < threads.Size(); i++)
         {
-            if (*it == currentThread && (*it)->runState == ThreadState::Running)
+            Thread* scan = threads[i];
+            //prime next valid thread to be selected
+            if (scan->threadId == currentId)
             {
-                it++;
+                selectNextValid = true;
+                continue;
+            }
+            else if (!selectNextValid)
+                continue;
+
+            //filter any threads that we dont care about
+            if (scan->runState != ThreadState::Running)
+                continue;
+
+            //actual selection
+            if (selectNextValid)
+            {
+                nextThread = scan;
                 break;
             }
-            
-            it++;
         }
-        if (it == threads.End()) //cycle around if we hit the end
-            it = threads.Begin();
+        //if we reached the end, and were ready to select, select the first thread after the idle one
+        if (nextThread->threadId == 1 && selectNextValid && threads.Size() > 1 && threads[1]->runState == ThreadState::Running)
+            nextThread = threads[1];
 
-        Thread* newThread = *it;
-        currentId = newThread->threadId;
-
-        return newThread->regs;
+        currentId = nextThread->threadId;
+        return nextThread->regs;
     }
 
     [[noreturn]]
@@ -86,7 +101,7 @@ namespace Kernel::Scheduling
         ScopedSpinlock scopeLock(&lock);
 
         sl::NativePtr stack = Memory::PMM::Global()->AllocPage();
-        Memory::PageTableManager::Local()->MapMemory(stack, stack, Memory::MemoryMapFlag::AllowWrites);
+        Memory::PageTableManager::Local()->MapMemory(EnsureHigherHalfAddr(stack.ptr), stack, Memory::MemoryMapFlag::AllowWrites);
 
         Thread* thread = new Thread();
         thread->threadId = idGen.Alloc();
@@ -95,6 +110,7 @@ namespace Kernel::Scheduling
 
         //we're forming a downwards stack, make sure the pointer starts at the top of the allocated space
         stack.raw += PAGE_FRAME_SIZE;
+        stack.ptr = EnsureHigherHalfAddr(stack.ptr);
         
         //setup stack: this entirely dependant on cpu arch and the calling convention. We're using sys v abi.
         sl::StackPush<NativeUInt>(stack, 0); //dummy rbp and return address
