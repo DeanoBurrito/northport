@@ -7,5 +7,5 @@ namespace Kernel
     void InitPanic();
 
     [[noreturn]]
-    void Panic(const char* reason, StoredRegisters* regs = nullptr);
+    void Panic(const char* reason);
 }

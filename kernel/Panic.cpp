@@ -14,6 +14,7 @@ namespace Kernel
 {
     struct PanicDetails
     {
+        bool panicLock; //helps prevent panic loops
         Gfx::TerminalFramebuffer fb;
     };
 
@@ -41,6 +42,7 @@ namespace Kernel
     void InitPanic()
     {
         panicDetails = new PanicDetails();
+        SpinlockRelease(&panicDetails->panicLock);
 
         Log("Panic subsystem is ready.", LogSeverity::Info);
     }
@@ -88,7 +90,7 @@ namespace Kernel
         size_t sectionStart = fb->GetCursorPos().y + 2;
         
         sl::Elf64HeaderParser elfInfo(currentProgramElf);
-        sl::Vector<NativeUInt> trace = GetStackTrace(regs == nullptr ? 0 : regs->rbp);
+        sl::Vector<NativeUInt> trace = GetStackTrace(regs->rbp);
         PrintStackTrace(trace); //print trace to text-based outputs as well
 
         for (size_t i = 0; i < trace.Size(); i++)
@@ -105,12 +107,7 @@ namespace Kernel
     {
         Gfx::TerminalFramebuffer* fb = &panicDetails->fb;
         size_t sectionStart = fb->GetCursorPos().y + 2;
-
-//clang/gcc dont like us taking the address of a packed member (fair enough). However we know they're all 8 byte aligned anyway, so no issues.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
-        const uint64_t* generalRegs = &regs->rax;
-#pragma GCC diagnostic pop
+        const uint64_t* generalRegs = sl::NativePtr((size_t)regs).As<uint64_t>(7 * sizeof(uint64_t));
 
         fb->SetCursorPos({borderLeft, sectionStart});
         for (size_t reg = 0; reg < 16; reg++)
@@ -183,9 +180,16 @@ namespace Kernel
     }
 
     [[noreturn]]
-    void Panic(const char* reason, StoredRegisters* regs)
+    void Panic(const char* reason)
     {
-        CPU::ClearInterruptsFlag();
+        SpinlockAcquire(&panicDetails->panicLock);
+        asm volatile("mov %0, %%rdi; int $0xFE" :: "m"(reason)); //TODO: find a better solution than trashing rdi - the stack?
+        __builtin_unreachable();
+    }
+
+    [[noreturn]]
+    void PanicInternal(const char* reason, StoredRegisters* regs)
+    {
         Scheduling::Scheduler::Local()->Suspend(true); //stop this cpu's scheduler trying to switch tasks //TODO: we need a global suspend scheduling, for all cores
         EnableLogDestinaton(LogDestination::FramebufferOverwrite, false); //we're taking control of the framebuffer, make sure we dont overwrite ourselves
         Log("Panic() called, attempting to dump info", LogSeverity::Info);
@@ -202,15 +206,14 @@ namespace Kernel
         fb->PrintLine("Panic! In the kernel. Reason:");
         fb->PrintLine(reason);
 
-        if (regs != nullptr)
-            PrintGeneralRegs(regs);
+        PrintGeneralRegs(regs);
         PrintSpecialRegs();
-        if (regs != nullptr)
-            PrintIretFrame(regs);
+        PrintIretFrame(regs);
         PrintStackTrace(regs);
 
         Log("Final log: All cpus are being placed in an infinite halt.", LogSeverity::Info);
         while (true)
             CPU::Halt();
+        __builtin_unreachable();
     }
 }

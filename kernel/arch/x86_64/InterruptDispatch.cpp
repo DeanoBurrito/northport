@@ -12,6 +12,9 @@
 */
 namespace Kernel
 {
+    [[noreturn]]
+    extern void PanicInternal(const char* reason, StoredRegisters* regs);
+    
     bool TryHandleNativeException(StoredRegisters* regs)
     {
         switch (regs->vectorNumber)
@@ -48,10 +51,9 @@ namespace Kernel
         {
             case INTERRUPT_GSI_SPURIOUS:
                 return returnRegs; //no need to do EOI here, just return
-            case INTERRUPT_GSI_IGNORE:
-                Log("Received interrupt vector IGNORE, this should never actually happen.", LogSeverity::Error);
-                return returnRegs; //should never occur, useful for apic timer calibration
-
+            case INTERRUPT_GSI_PANIC:
+                PanicInternal((const char*)regs->rdi, regs);
+                __builtin_unreachable();
             case INTERRUPT_GSI_PS2KEYBOARD:
                 Devices::Ps2Controller::Keyboard()->HandleIrq();
                 break;

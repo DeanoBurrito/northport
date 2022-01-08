@@ -14,7 +14,8 @@
 #define PORT_PIT_COMMAND 0x43
 
 #define INTERRUPT_GSI_SPURIOUS 0xFF
-#define INTERRUPT_GSI_IGNORE 0xFE
+#define INTERRUPT_GSI_IGNORE 0xFF
+#define INTERRUPT_GSI_PANIC 0xFE
 #define INTERRUPT_GSI_PS2KEYBOARD 0x21
 //NOTE: scheduler has this hardcoded in Yield() -> update it there if modifying
 #define INTERRUPT_GSI_SCHEDULER_NEXT 0x22
