@@ -91,6 +91,8 @@ namespace Kernel
             __get_cpuid(0x15, &leaf15Eax, &leaf15Ebx, &leaf15Ecx, &edx);
         else
             leaf15Eax = leaf15Ebx = leaf15Ecx = (uint32_t)-1;
+        if (leaf15Eax == 0)
+            leaf15Eax = 1; //virtualbox can sometimes return 0 for some reason. Can lead to a div by zero if we're not careful.
         
         //all in MHz: core base = eax, core max = ebx, bus reference = ecx
         if (highestBaseLeafAvailable >= 0x16)
