@@ -54,6 +54,8 @@ ISO_WORKING_DIR = iso/$(BUILD_DIR)
 export ISO_TARGET = $(abspath $(ISO_FILENAME))
 LIMINE_CFG = misc/limine.cfg
 
+SUBMAKE_FLAGS = --no-print-directory
+
 #these are modified by build prep (based on options above)
 export CXX_DEBUG_FLAGS = 
 include BuildPrep.mk
@@ -66,9 +68,9 @@ all: iso
 
 build-all: prep-build-env
 	@echo "Starting northport full build ..."
-	@cd $(PROJ_SYSLIB_DIR); make all;
-	@cd $(PROJ_INITDISK_DIR); make all;
-	@cd $(PROJ_KERNEL_DIR); make all;
+	@cd $(PROJ_SYSLIB_DIR); make all $(SUBMAKE_FLAGS);
+	@cd $(PROJ_INITDISK_DIR); make all $(SUBMAKE_FLAGS);
+	@cd $(PROJ_KERNEL_DIR); make all $(SUBMAKE_FLAGS);
 	@echo "Build done!"
 
 iso: build-all
@@ -90,9 +92,9 @@ iso: build-all
 
 clean:
 	@echo "Cleaning build directories ..."
-	@-cd $(PROJ_SYSLIB_DIR); make clean;
-	@-cd $(PROJ_INITDISK_DIR); make clean;
-	@-cd $(PROJ_KERNEL_DIR); make clean;
+	@-cd $(PROJ_SYSLIB_DIR); make clean $(SUBMAKE_FLAGS);
+	@-cd $(PROJ_INITDISK_DIR); make clean $(SUBMAKE_FLAGS);
+	@-cd $(PROJ_KERNEL_DIR); make clean $(SUBMAKE_FLAGS);
 	@-rm -r iso
 	@echo "Cleaning done!"
 
