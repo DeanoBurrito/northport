@@ -85,6 +85,7 @@ and port the whole os to another platform (risc-v looks really interesting, and 
 - Stack traces. These can be printed with symbol names of the currently running program (including kernel), and will demangle c++ names.
 - Custom string and string formatting implementation (that conforms to printf() style).
 - Linear framebuffer and character-based framebuffer. PSF v1 & v2 rendering.
+- PCI support.
 
 # Build flags
 There are a number of flags that can be defined at compile time to enable/disable certain behaviours.

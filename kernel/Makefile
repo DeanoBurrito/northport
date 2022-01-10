@@ -15,7 +15,7 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp Logf.cpp Panic.cpp \
 	memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp memory/New.cpp \
 	acpi/AcpiTables.cpp \
 	devices/LApic.cpp devices/IoApic.cpp devices/SimpleFramebuffer.cpp devices/Ps2Controller.cpp devices/Ps2Keyboard.cpp \
-	devices/Ps2Mouse.cpp devices/Keyboard.cpp devices/8254Pit.cpp devices/SystemClock.cpp \
+	devices/Ps2Mouse.cpp devices/Keyboard.cpp devices/8254Pit.cpp devices/SystemClock.cpp devices/PciBridge.cpp \
 	gfx/GraphicsPrimitives.cpp gfx/BakedGfxResources.cpp gfx/TerminalFramebuffer.cpp \
 	scheduling/Thread.cpp scheduling/Scheduler.cpp 
 	

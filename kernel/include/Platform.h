@@ -12,6 +12,8 @@
 //we only really care about channel 0 of the PIT, hence why i'm just calling it data
 #define PORT_PIT_DATA 0x40
 #define PORT_PIT_COMMAND 0x43
+#define PORT_PCI_CONFIG_ADDRESS 0xCF8
+#define PORT_PCI_CONFIG_DATA 0xCFC
 
 #define INTERRUPT_GSI_SPURIOUS 0xFF
 #define INTERRUPT_GSI_IGNORE 0xFF
@@ -174,5 +176,12 @@ namespace Kernel
         if ((NativeUInt)existing < vmaHighAddr)
             return reinterpret_cast<T*>((NativeUInt)existing + vmaHighAddr);
         return existing;
+    }
+
+    FORCE_INLINE NativeUInt EnsureHigherHalfAddr(NativeUInt addr)
+    {
+        if (addr < vmaHighAddr)
+            return addr + vmaHighAddr;
+        return addr;
     }
 }
