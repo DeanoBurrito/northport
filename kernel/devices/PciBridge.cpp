@@ -9,6 +9,8 @@ namespace Kernel::Devices
 {
     void PciDevice::Init(size_t devNum)
     {
+        ScopedSpinlock scopeLock(&lock);
+        
         id = devNum;
 
         uint32_t regs[16];
@@ -90,6 +92,8 @@ namespace Kernel::Devices
                     continue; //device does not exist
 
                 PciDevice device;
+                SpinlockRelease(&device.lock);
+                
                 device.header.ecamAddress = ecamAvail ? ecamAddr : 0;
                 device.header.legacyAddress = ecamAvail ? 0 : legacyAddr;
                 device.Init(dev);

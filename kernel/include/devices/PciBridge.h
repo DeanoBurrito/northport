@@ -57,6 +57,8 @@ namespace Kernel::Devices
         void Init(size_t devNum);
 
     public:
+        char lock;
+
         size_t GetId() const;
         const PciDeviceHeader* GetHeader() const;
     };
