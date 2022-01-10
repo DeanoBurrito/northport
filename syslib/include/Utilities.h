@@ -75,7 +75,7 @@ namespace sl
     }
 
     template<typename T>
-    constexpr T&& Foward(RemoveReferenceType<T>& param)
+    constexpr T&& Forward(RemoveReferenceType<T>& param)
     { return static_cast<T&&>(param); }
 
     template<typename T>

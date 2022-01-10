@@ -199,4 +199,7 @@ namespace sl
     template<typename A, typename B>
     constexpr bool operator!=(const A& value, const Optional<B>& opt)
     { return opt ? (*opt != value) : true; }
+
+    template<typename T>
+    using Opt = Optional<T>;
 }
