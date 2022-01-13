@@ -1,5 +1,6 @@
 #include <devices/PciBridge.h>
 #include <acpi/AcpiTables.h>
+#include <drivers/DriverManager.h>
 #include <Platform.h>
 #include <Memory.h>
 #include <Cpu.h>
@@ -7,158 +8,185 @@
 
 namespace Kernel::Devices
 {
-    void PciDevice::Init(size_t devNum)
+    uint32_t PciAddress::ReadReg(size_t index)
     {
-        ScopedSpinlock scopeLock(&lock);
-        
-        id = devNum;
+        if (addr >> 32 != 0xFFFF'FFFF)
+            return sl::MemRead<uint32_t>(EnsureHigherHalfAddr(addr + (index * 4)));
+        else
+        {
+            CPU::PortWrite32(PORT_PCI_CONFIG_ADDRESS, (uint32_t)addr | PCI_ENABLE_CONFIG_CYCLE + (index * 4));
+            return CPU::PortRead32(PORT_PCI_CONFIG_DATA);
+        }
+    }
 
+    void PciAddress::WriteReg(size_t index, uint32_t data)
+    {
+        if (addr >> 32 != 0xFFFF'FFFF)
+            sl::MemWrite(EnsureHigherHalfAddr(addr + (index * 4)), data);
+        else
+        {
+            CPU::PortWrite32(PORT_PCI_CONFIG_ADDRESS, (uint32_t)addr | PCI_ENABLE_CONFIG_CYCLE + (index * 4));
+            CPU::PortWrite32(PORT_PCI_CONFIG_DATA, data);
+        }
+    }
+
+    void PciFunction::Init()
+    {
         uint32_t regs[16];
-        bool ecamAvail = header.ecamAddress != 0;
         for (size_t i = 0; i < 16; i++)
-            regs[i] = ecamAvail ? PciBridge::EcamReadConfig(header.ecamAddress) : PciBridge::LegacyReadConfig(header.legacyAddress);
-
+            regs[i] = addr.ReadReg(i);
+        
+        //populate header ids
         header.ids.vendor = regs[0] & 0xFFFF;
         header.ids.device = regs[0] >> 16;
-        header.ids.deviceClass = regs[3] >> 24;
-        header.ids.deviceSubclass = regs[3] >> 16;
-        
-        size_t headerType = (regs[3] >> 16) & 0x7F;
-        if (headerType == 0)
-        {
-            header.ids.subsystem = regs[11] >> 16;
-            header.ids.subsystemVendor = regs[11] & 0xFFFF;
-        }
-        else
-        { header.ids.subsystem = header.ids.subsystem = 0; }
-
+        header.ids.deviceClass = regs[2] >> 24;
+        header.ids.deviceSubclass = (regs[2] >> 16) & 0xFF;
         header.revision = regs[2] & 0xFF;
-        header.progIf = regs[2] >> 8;
-        if ((regs[1] >> 20) & 1)
-            header.capabilitiesOffset = regs[13] & 0xFF;
+        header.progIf = (regs[2] >> 8) & 0xFF;
+
+        //get capabilities offset
+        uint16_t statusReg = regs[1] >> 16;
+        if (statusReg & (1 << 4))
+            header.capabilitiesOffset = regs[0xD] & 0xFF;
         else
             header.capabilitiesOffset = 0;
         header.interruptVector = 0;
 
-        header.functionsBitmap = 0b1;
-        if (headerType & 0x80)
+        //rest of the data is conditional, determine how to parse rest of the header
+        if ((regs[3] >> 16 & 0x7F) != 0)
         {
-            for (size_t i = 0; i < 8; i++)
-            {
-                uint32_t reg0;
-                if (ecamAvail)
-                {
-                    NativeUInt addr = header.ecamAddress & ~(7 << 12); //clear 3 function bits
-                    addr |= i << 12;
-                    reg0 = PciBridge::EcamReadConfig(addr);
-                }
-                else
-                {
-                    uint32_t addr = header.legacyAddress & ~(7 << 8);
-                    addr |= i << 8;
-                    reg0 = PciBridge::LegacyReadConfig(addr);
-                }
-
-                if ((reg0 & 0xFFFF) != VENDOR_ID_NONEXISTENT)
-                    header.functionsBitmap |= (1 << i);
-            }
+            //TODO: for now we'll just handle type 0 headers. Need to implement PCI-to-PCI bridges at some point.
+            Logf("PCI func with unknown header type: 0x%x", LogSeverity::Error, (regs[3] >> 16) & 0xFF);
+            return;
         }
 
-        //TODO: check if a driver is available, if so, allocate bars and mark driver for init
+        header.ids.subsystem = regs[0xB] >> 16;
+        header.ids.subsystemVendor = regs[0xB] & 0xFFFF;
+        
+        //map and populate bar entries (but not allocate!)
+        size_t barCount = 0;
+        constexpr size_t BarBase = 4;
+        constexpr size_t BarMaxCount = 6;
+        for (size_t i = BarBase; i < BarBase + BarMaxCount; i++)
+        {   
+            PciBar* bar = &header.bars[i - 4];
+            bar->address = bar->size = 0;
+            if (regs[i] == 0)
+                continue;
+
+            barCount++;
+            if ((regs[i] & 1) == 0)
+            {
+                //memory space BAR
+                bar->isMemory = true;
+                bar->is64BitWide = (regs[i] & 0b110) == 0x2;
+                bar->isPrefetchable = regs[i] & 1 << 3;
+                bar->address = regs[i] & ~0b1111;
+
+                addr.WriteReg(i, 0xFFFF'FFFF);
+                uint32_t readback = addr.ReadReg(i);
+                bar->size = ~(readback & ~0b1111) + 1;
+                addr.WriteReg(i, regs[i]);
+            }
+            else
+            {
+                //io space BAR
+                bar->isMemory = bar->is64BitWide = bar->isPrefetchable = false;
+                bar->address = regs[i] & ~0b11;
+
+                addr.WriteReg(i, 0xFFFF'FFFF);
+                uint32_t readback = addr.ReadReg(i);
+                bar->size = ~(readback & ~0b11) + 1;
+                addr.WriteReg(i, regs[i]);
+            }
+        }
+        
+        Logf("PCI endpoint [bus %u, dev %u, func %u]: vendor=0x%x, device=0x%x, class=0x%x, subclass=0x%x, BARs=%u.", LogSeverity::Verbose, parent->parent->id, parent->id, id, header.ids.vendor, header.ids.device, header.ids.deviceClass, header.ids.deviceSubclass, barCount);
+    }
+
+    void PciDevice::Init()
+    {
+        uint32_t reg3 = addr.ReadReg(3);
+        size_t maxFunctions = ((reg3 >> 16) & 0x80) != 0 ? 8 : 1; //if multi function, scan each function, otherwise just check first
+        
+        for (size_t i = 0; i < maxFunctions; i++)
+        {
+            PciAddress funcAddr = addr.IsLegacy() ? PciAddress::CreateLegacy(parent->id, id, i, 0) : PciAddress::CreateEcam(parent->parent->baseAddress, parent->id, id, i, 0);
+            uint32_t reg0 = funcAddr.ReadReg(0);
+
+            if ((reg0 & 0xFFFF) == VENDOR_ID_NONEXISTENT)
+                continue;
+
+
+            functionBitmap |= 1 << i;
+            PciFunction function(i, this);
+            function.addr = funcAddr;
+            function.Init();
+
+//yeah yeah, it works and make the code below it cleaner
+#define MAKE_FIT(x) (uint8_t)(function.header.ids.x)
+            uint8_t machName[] = { MAKE_FIT(device), MAKE_FIT(device >> 8), MAKE_FIT(vendor), MAKE_FIT(vendor >> 8) };
+#undef MAKE_FIT
+            functions.PushBack(sl::Move(function));
+            
+            //check if there's a driver available for the function, create an instance if required
+            using namespace Drivers;
+            sl::Opt<DriverManifest> driver = DriverManager::Global()->FindDriver(DriverSubsytem::PCI, DriverMachineName {.length = 4, .name = machName});
+            if (driver)
+            {
+                //prepare init data
+                DriverInitTagPciFunction initTag(&functions.Back());
+                DriverManager::Global()->StartDriver(*driver, &initTag);
+            }
+        }
+    }
+
+    sl::Opt<const PciFunction*> PciDevice::GetFunction(size_t index) const
+    {
+        for (auto it = functions.Begin(); it != functions.End(); ++it)
+        {
+            if (it->id == index)
+                return it;
+        }
+
+        return {};
     }
     
-    size_t PciDevice::GetId() const
-    { return id; }
-
-    const PciDeviceHeader* PciDevice::GetHeader() const
-    { return &header; }
-
     void PciSegmentGroup::Init()
     {
         bool ecamAvail = PciBridge::Global()->EcamAvailable();
         
-        //brute-force scan approach TODO: recursive scan 
+        //brute-force scan approach, works fine for now
         for (size_t bus = 0; bus < 256; bus++)
         {
-            sl::Vector<PciDevice> devices;
+            children.PushBack(PciBus(bus, this));
+            PciBus* tempBus = &children.Back();
             
             for (size_t dev = 0; dev < 32; dev++)
             {
-                NativeUInt ecamAddr = PciBridge::CreateEcamConfigAddr(id, bus, dev, 0, 0);
-                uint32_t legacyAddr = PciBridge::CreateLegacyConfigAddr(bus, dev, 0, 0);
-                uint32_t reg0 = ecamAvail ? PciBridge::EcamReadConfig(ecamAddr) : PciBridge::LegacyReadConfig(legacyAddr);
-
-                if ((reg0 & 0xFFFF) == VENDOR_ID_NONEXISTENT)
-                    continue; //device does not exist
-
-                PciDevice device;
-                SpinlockRelease(&device.lock);
+                PciAddress addr = ecamAvail ? PciAddress::CreateEcam(baseAddress, bus, dev, 0, 0) : PciAddress::CreateLegacy(bus, dev, 0, 0);
+                uint32_t reg0 = addr.ReadReg(0);
                 
-                device.header.ecamAddress = ecamAvail ? ecamAddr : 0;
-                device.header.legacyAddress = ecamAvail ? 0 : legacyAddr;
-                device.Init(dev);
+                if ((reg0 & 0xFFFF) == VENDOR_ID_NONEXISTENT)
+                    continue; //no d(ev)ice
 
-                devices.PushBack(sl::Move(device));
-                Logf("Found PCI device: bus=%u, index=%u, vendor=0x%x, device=0x%x", LogSeverity::Verbose, bus, dev, reg0 & 0xFFFF, reg0 >> 16);
+                PciDevice device(dev, tempBus);
+                device.addr = addr;
+                device.Init();
+                tempBus->devices.PushBack(sl::Move(device));
             }
 
-            if (devices.Size() > 0)
+            if (tempBus->devices.Size() == 0)
             {
-                Logf("Adding new populated PCI bus %u (segment %u).", LogSeverity::Verbose, bus, id);
-                
-                children.EmplaceBack(bus, 0, 0);
-                children.Back().devices = sl::Move(devices);
+                //remove unused bus
+                (void)children.PopBack();
             }
         }
-    }
-
-    NativeUInt PciSegmentGroup::GetBaseAddress() const
-    { return baseAddress; }
-
-    size_t PciSegmentGroup::GetId() const
-    { return id; }
-
-    void PciBridge::LegacyWriteConfig(uint32_t address, uint32_t data)
-    {
-        CPU::PortWrite32(PORT_PCI_CONFIG_ADDRESS, address | PCI_ENABLE_CONFIG_CYCLE);
-        CPU::PortWrite32(PORT_PCI_CONFIG_DATA, data);
-    }
-
-    uint32_t PciBridge::LegacyReadConfig(uint32_t address)
-    {
-        CPU::PortWrite32(PORT_PCI_CONFIG_ADDRESS, address | PCI_ENABLE_CONFIG_CYCLE);
-        return CPU::PortRead32(PORT_PCI_CONFIG_DATA);
     }
 
     PciBridge globalPciBridge;
     PciBridge* PciBridge::Global()
     { return &globalPciBridge; }
-
-    uint32_t PciBridge::CreateLegacyConfigAddr(size_t busNumber, size_t deviceNumber, size_t functionNumber, size_t registerOffset)
-    {
-        return (busNumber << 16) | ((deviceNumber & 0b11111) << 11) | ((functionNumber & 0b111) << 8) | (registerOffset & 0b1111'1100);
-    }
-
-    NativeUInt PciBridge::CreateEcamConfigAddr(size_t segment, size_t bus, size_t device, size_t function, size_t reg)
-    {
-        const NativeUInt addend = bus << 20 | device << 15 | function << 12 | reg & 0xFFC;
-        for (size_t i = 0; i < Global()->segments->Size(); i++)
-        {
-            if (Global()->segments->At(i).GetId() == segment)
-                return Global()->segments->At(i).GetBaseAddress() + addend;
-        }
-        return 0;
-    }
-
-    void PciBridge::EcamWriteConfig(NativeUInt address, uint32_t data)
-    {
-        sl::MemWrite(EnsureHigherHalfAddr(address), data);
-    }
-
-    uint32_t PciBridge::EcamReadConfig(NativeUInt address)
-    {
-        return sl::MemRead<uint32_t>(EnsureHigherHalfAddr(address));
-    }
 
     void PciBridge::Init()
     {
@@ -166,6 +194,10 @@ namespace Kernel::Devices
         
         //determine which config mechanism to use, and setup segments accordingly
         ACPI::MCFG* mcfg = reinterpret_cast<ACPI::MCFG*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MCFG));
+#ifdef NORTHPORT_PCI_FORCE_LEGACY_ACCESS
+        mcfg = nullptr;
+#endif
+
         if (mcfg != nullptr)
         {
             ecamAvailable = true;
@@ -197,9 +229,6 @@ namespace Kernel::Devices
 
         Logf("PCI bridge initialized, ecamSupport=%b", LogSeverity::Info, ecamAvailable);
     }
-
-    bool PciBridge::EcamAvailable() const
-    { return ecamAvailable; }
 
     sl::Opt<const PciSegmentGroup*> PciBridge::GetSegment(size_t id) const
     {
@@ -238,6 +267,22 @@ namespace Kernel::Devices
         for (auto it = busVal->devices.Begin(); it != busVal->devices.End(); ++it)
         {
             if (it->id == device)
+                return it;
+        }
+
+        return {};
+    }
+
+    sl::Opt<const PciFunction*> PciBridge::GetFunction(size_t segment, size_t bus, size_t device, size_t function) const
+    {
+        sl::Opt<const PciDevice*> maybeDev = GetDevice(segment, bus, device);
+        if (!maybeDev)
+            return {};
+
+        const PciDevice* devVal = *maybeDev;
+        for (auto it = devVal->functions.Begin(); it != devVal->functions.End(); ++it)
+        {
+            if (it->id == function)
                 return it;
         }
 
