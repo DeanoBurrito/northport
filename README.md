@@ -1,11 +1,10 @@
 ![](https://tokei.rs/b1/github/deanoburrito/northport)
 
 # Northport
-Northport is a monolithic kernel and utilities targetting x86_64.
-It's booted using the stivale2 protocol (meaning limine is the bootloader),
-and there's otherwise there's not much to say here yet.
+Northport is a monolithic kernel and utilities, targeting x86_64.
+It's booted via the stivale2 protocol (using limine).
 
-For my *wishful* plans for this project, see the project goals down below.
+Limited docs about the kernel and other projects are contained under `docs/`, available in markdown format.
 
 # Building
 ### Required Programs
@@ -30,6 +29,9 @@ If you're feeling adventurous you can execute `make run` to launch it qemu. Qemu
 
 Build-time options can be found under the 'build config' section in the root makefile. The full list of build flags are defined below.
 
+### Setting up the build environment (Clang)
+Clang requires no setup to use. As long as it's installed (and llvm too, llvm-ar is used), it's ready to go.
+
 ### Setting up the build environment (GCC)
 The easy out-of-the-box solution is the run `make create-toolchain`, which will download, build and then install a cross compiler for the default target platform (x86_64).
 Of course that makes a lot of assumptions about where you want it installed, and is a huge waste of bandwidth and disk space if you already have a cross compiler installed.
@@ -38,9 +40,6 @@ The root makefile (located at `proj_root/Makefile`) has a toolchain selection se
 or you can just point `TOOLCHAIN_DIR` to your cross compiler bin folder.
 
 If you're unsure of whether your toolchain is setup, you can test it with `make validate-toolchain`.
-
-### Setting up the build environment (Clang)
-Clang requires no setup to use. As long as it's installed (and llvm too, llvm-ar is used), it's ready to go.
 
 ### Make targets
 The full list of make targets are below:
@@ -85,14 +84,20 @@ and port the whole os to another platform (risc-v looks really interesting, and 
 - Stack traces. These can be printed with symbol names of the currently running program (including kernel), and will demangle c++ names.
 - Custom string and string formatting implementation (that conforms to printf() style).
 - Linear framebuffer and character-based framebuffer. PSF v1 & v2 rendering.
-- PCI support.
+- PCI support, both legacy and ECAM.
+- Loadable driver infrastructure, allowing device drivers to be loaded as they are discovered.
 
 # Build flags
 There are a number of flags that can be defined at compile time to enable/disable certain behaviours.
 
 <details>
+    <summary>General Flags</summary>
+
+- `NORTHPORT_PCI_FORCE_LEGACY_ACCESS`: PCI subsystem will ignore the machine config acpi table, and only use the legacy ports
+</details>
+
+<details>
     <summary>Logging Flags</summary>
-    These flags accept either `true` or `false`.
     
 - `NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT`: enables logging over debugcon, useful for debugging early boot in VMs.
 - `NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT`: enables logging directly to framebuffer. Messy, but it works.
