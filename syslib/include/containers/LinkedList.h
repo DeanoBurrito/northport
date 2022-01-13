@@ -125,6 +125,7 @@ namespace sl
             if (head == nullptr)
             {
                 head = tail = latest;
+                size = 1;
                 return;
             }
 
@@ -142,6 +143,7 @@ namespace sl
             if (head == nullptr)
             {
                 head = tail = latest;
+                size = 1;
                 return;
             }
 
@@ -188,6 +190,7 @@ namespace sl
             
             if (whereElem == head)
                 head = elem;
+            size++;
         }
 
         template <typename U = T>
@@ -204,6 +207,7 @@ namespace sl
         
             if (whereElem == tail)
                 tail = elem;
+            size++;
         }
 
         Iterator Find(const T& value)
