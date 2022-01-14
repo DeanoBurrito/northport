@@ -100,18 +100,5 @@ clean:
 
 #run and debug arent necessary for building, and are from the run.mk file
 
-create-toolchain:
-	@scripts/create-toolchain.sh
-
-validate-toolchain:
-	@echo "Checking for C++ compiler"
-	@which $(CXX) || echo "Could not locate architecture specific C++ compiler."
-	@echo "Checking for assembler"
-	@which $(ASM) || echo "Could not locate architecture specific assembler."
-	@echo "Checking for linker"
-	@which $(LD) || echo "Could not locate architecture specific linker."
-	@echo "Checking for limine install"
-	@if [ -d "$(LIMINE_DIR)" ] ; then echo "Found limine."; else echo "Unable to locate limine."; fi
-
 prep-build-env:
 	@mkdir -p $(shell dirname $(ISO_TARGET))
