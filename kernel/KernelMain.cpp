@@ -16,6 +16,7 @@
 #include <scheduling/Scheduler.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
+#include <arch/x86_64/Tss.h>
 #include <boot/Stivale2.h>
 #include <Panic.h>
 
@@ -100,8 +101,7 @@ namespace Kernel
         else
             Logf("Cpu freqs: coreBase=%uhz, coreMax=%uhz, bus=%uhz, tscTick=%uhz", LogSeverity::Verbose, cpuFreqs.coreClockBaseHertz, cpuFreqs.coreMaxBaseHertz, cpuFreqs.busClockHertz, cpuFreqs.coreTimerHertz);
 
-        //we're sharing gdt and idt instances between cores, so we can set those up here.
-        SetupGDT();
+        //idt is shared across all cores, so we can set that up here
         SetupIDT();
 
         stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
@@ -138,6 +138,7 @@ namespace Kernel
         coreStore->acpiProcessorId = acpiId;
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
         coreStore->ptrs[CoreLocalIndices::Scheduler] = new Scheduling::Scheduler();
+        coreStore->ptrs[CoreLocalIndices::TSS] = new TaskStateSegment();
 
         Logf("Core local storage created for core %lu", LogSeverity::Verbose, apicId);
         return coreStore;
@@ -153,7 +154,8 @@ namespace Kernel
         FlushGDT();
         CPU::WriteMsr(MSR_GS_BASE, backupCoreLocal); //since reloading the gdt will flush the previous GS_BASE
         LoadIDT();
-        Logf("Core %lu IDT and GDT installed.", LogSeverity::Verbose, coreNumber);
+        FlushTSS();
+        Logf("Core %lu IDT, GDT and TSS installed.", LogSeverity::Verbose, coreNumber);
 
         Devices::LApic::Local()->Init();
         Logf("Core %lu Local APIC initialized.", LogSeverity::Verbose, coreNumber);
