@@ -165,7 +165,7 @@ namespace Kernel
     }
 
     //the entry point for the APs
-    [[gnu::used]]
+    [[gnu::used, noreturn]]
     void _APEntry(stivale2_smp_info* coreInfo)
     {
         Memory::PageTableManager::Local()->MakeActive(); //switch cpu to our page table
@@ -177,6 +177,7 @@ namespace Kernel
         Logf("AP (coreId=%lu) has finished init, busy waiting.", LogSeverity::Info, GetCoreLocal()->apicId);
         while (true)
             asm("hlt");
+        __builtin_unreachable();
     }
 
     void StartupAPs()
@@ -218,6 +219,7 @@ namespace Kernel
         }
     }
 
+    [[noreturn]]
     void ExitInit()
     {
         CPU::SetInterruptsFlag();
@@ -228,6 +230,7 @@ namespace Kernel
         Logf("Boot completed in: %u ms", LogSeverity::Verbose, Devices::GetUptime()); //NOTE: this time includes local apic timer calibration time (100ms)
         Log("Kernel init done, exiting to scheduler.", LogSeverity::Info);
         Scheduling::Scheduler::Local()->Yield();
+        __builtin_unreachable();        
     }
 }
 
@@ -266,7 +269,6 @@ extern "C"
         ExitInit();
 
         Log("Kernel has somehow returned to pre-scheduled main, this should not happen.", LogSeverity::Fatal);
-        for (;;)
-            asm("hlt");
+        __builtin_unreachable();
     }
 }
