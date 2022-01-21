@@ -211,9 +211,10 @@ namespace Kernel::Memory
             }
 
             //nmap the first 4gb of physical memory at a known address (we're reusing the address specified by hddm tag for now)
-            constexpr size_t memUpper = 1 * GB; //TODO: investigate why 4gb here causes slowdowns - bigger pages perhaps?
-            for (size_t i = 0; i < memUpper; i += PAGE_FRAME_SIZE)
-                MapMemory(hhdmTag->addr + i, i, MemoryMapFlag::AllowWrites);
+            //using 2MB pages here to increase startup time. This is fine as this memory view is always read/write/NX, and only visible to the kernel
+            constexpr size_t memUpper = 4 * GB; 
+            for (size_t i = 0; i < memUpper; i += (size_t)PagingSize::_2MB)
+                MapMemory(hhdmTag->addr + i, i, PagingSize::_2MB, MemoryMapFlag::AllowWrites);
             
             //map any regions of memory that are above the 4gb mark
             for (size_t i = 0; i < mmapTag->entries; i++)
@@ -367,8 +368,7 @@ namespace Kernel::Memory
         if (physAddr.ptr == nullptr)
             Log("Could not allocate enough physical memory to map!", LogSeverity::Fatal);
         
-        //emit an error and then trash the tlb cache in protest.
-        Log("Non-4K paging is not supported yet.", LogSeverity::Error);
+        MapMemory(virtAddr, physAddr, pageSize, flags);
     }
 
     void PageTableManager::MapMemory(sl::NativePtr virtAddr, sl::NativePtr physAddr, PagingSize size, MemoryMapFlag flags)
