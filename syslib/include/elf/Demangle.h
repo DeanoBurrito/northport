@@ -38,10 +38,13 @@ namespace sl
         DemangleNodeFlags currentFlags;
 
         void Parse();
+        void ParseNext();
         void ParseFlags();
         void ParseShorthand(bool applyFlags);
+        bool ParseOperator();
         void ParseNameSegment(bool applyFlags);
         void ParseName();
+        void ParseTemplate();
 
     public:
         CxxDemangler(const string& mangled);
