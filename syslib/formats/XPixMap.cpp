@@ -67,8 +67,8 @@ namespace sl
         return pixels;
     }
 
-    XPixMap::Dimensions XPixMap::Size() const
+    Vector2u XPixMap::Size() const
     {
-        return {width, height};
+        return { width, height };
     }
 }

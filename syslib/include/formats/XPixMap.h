@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <containers/Vector.h>
+#include <Vectors.h>
 
 namespace sl
 {
@@ -28,9 +29,6 @@ namespace sl
 
         sl::Vector<uint32_t> GetColours() const;
         sl::Vector<size_t> GetPixels() const;
-
-        struct Dimensions //TODO: this will leads to lots of duplicate types, lets implement a proper vector2d type
-        { size_t x, y; };
-        Dimensions Size() const;
+        Vector2u Size() const;
     };
 }
