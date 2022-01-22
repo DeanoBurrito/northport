@@ -23,13 +23,15 @@ Most sub-projects share a common internal layout:
 
 # Project Goals
 ## Planned Features
-A relatively competent scheduler, meaning it's SMP-aware and can gracefully handle async syscalls.
+A relatively competent scheduler, meaning it's SMP-aware (check!) and can gracefully handle async syscalls.
 
 I'd also like to implement (or at least port) a libc, and get a custom compiler target for gcc setup, so I can start porting software over (looking at you doom).
 
 A *nice*, if limited, userspace experience. Basic window manager, shell, and other common programs like a file explorer and text editor.
 
 A port to another platform is something I've been interested in for a while. I'm currently looking at a 64 bit riscv platform. It's seems quite interesting, and definitely doable.
+
+Decent documentation! It'd be nice to induct some other people into developing small programs or drivers in the future.
 
 ## Current Features
 - Physical memory manager (does page frame allocation, in single or multiple pages).
@@ -38,9 +40,14 @@ A port to another platform is something I've been interested in for a while. I'm
 - Simple heap for the kernel. It's a linkedlist style heap for now.
 - Support for simple devices: IO/APIC, Local APIC, PS2 controller/keyboard/mouse, 8254 PIT.
 - Parsing and finding ACPI tables.
-- Scheduler, with support for kernel and userspace threads.
+- Scheduler, with support multiple cores.
 - Stack traces. These can be printed with symbol names of the currently running program (including kernel), and will demangle c++ names.
 - Custom string and string formatting implementation (that conforms to printf() style).
 - Linear framebuffer and character-based framebuffer. PSF v1 & v2 rendering.
 - PCI support, both legacy and ECAM.
 - Loadable driver infrastructure, allowing device drivers to be loaded as devices are discovered.
+
+## Screenshots
+Currently not much to see, as there's no gui. Have a boot log for now.
+
+![Northport development bootlog](docs/assets/northport-boot-log-nover.png)
