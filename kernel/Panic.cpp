@@ -190,7 +190,7 @@ namespace Kernel
     [[noreturn]]
     void PanicInternal(const char* reason, StoredRegisters* regs)
     {
-        Scheduling::Scheduler::Local()->Suspend(true); //stop this cpu's scheduler trying to switch tasks //TODO: we need a global suspend scheduling, for all cores
+        Scheduling::Scheduler::Global()->Suspend();
         EnableLogDestinaton(LogDestination::FramebufferOverwrite, false); //we're taking control of the framebuffer, make sure we dont overwrite ourselves
         Log("Panic() called, attempting to dump info", LogSeverity::Info);
 

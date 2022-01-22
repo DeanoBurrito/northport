@@ -3,33 +3,47 @@
 
 namespace Kernel::Scheduling
 {
-    void Thread::Cleanup()
-    {
-        //TODO: free memory used by stack
-    }
-
     Thread* Thread::Current()
-    {
-        return Scheduler::Local()->GetCurrentThread();
-    }
+    { return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Thread>(); }
+
+    size_t Thread::GetId() const
+    { return id; }
+
+    ThreadFlags Thread::GetFlags() const
+    { return flags; }
+
+    ThreadState Thread::GetState() const
+    { return runState; }
+    
+    ThreadGroup* Thread::GetParent() const
+    { return parent; }
 
     void Thread::Start(sl::NativePtr arg)
     {
-        regs->rsi = arg.raw; //depends on abi (we're using sys v x86_64)
+        ScopedSpinlock scopeLock(&lock);
+
+        sl::NativePtr(programStack).As<StoredRegisters>()->rsi = arg.raw;
         runState = ThreadState::Running;
     }
 
     void Thread::Exit()
     {
+        ScopedSpinlock scopeLock(&lock);
         runState = ThreadState::PendingCleanup;
     }
 
-    size_t Thread::GetId() const
-    { return threadId; }
+    void Thread::Kill()
+    {}
 
-    ThreadState Thread::GetState() const
-    { return runState; }
+    void Thread::Sleep(size_t millis)
+    {}
 
-    ThreadFlags Thread::GetFlags() const
-    { return flags; }
+    const sl::Vector<Thread*>& ThreadGroup::GetThreads() const
+    { return threads; }
+
+    const Thread* ThreadGroup::GetParent() const
+    { return parent; }
+
+    size_t ThreadGroup::GetId() const
+    { return id; }
 }

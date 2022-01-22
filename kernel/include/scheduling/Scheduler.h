@@ -1,34 +1,42 @@
 #pragma once
 
+#include <IdAllocator.h>
 #include <scheduling/Thread.h>
 #include <containers/Vector.h>
-#include <IdAllocator.h>
+#include <containers/LinkedList.h>
 
-#define SCHEDULER_QUANTUM_MS 10
+#define SCHEDULER_TIMER_TICK_MS 10
 
 namespace Kernel::Scheduling
 {
     class Scheduler
     {
+    friend Thread;
     private:
         char lock;
         bool suspended;
-        size_t currentId;
-        sl::Vector<Thread*> threads;
-        sl::UIdAllocator idGen;
-        
-    public:
-        static Scheduler* Local();
+        size_t realPressure;
+        sl::UIdAllocator idAllocator;
+        sl::Vector<Thread*> allThreads;
+        sl::Vector<Thread*> idleThreads;
+        Thread* lastSelectedThread;
 
-        void Init();
-        StoredRegisters* SelectNextThread(StoredRegisters* currentRegs); //usually called from inside an interrupt handler
+        void SaveContext(Thread* thread, StoredRegisters* regs);
+        StoredRegisters* LoadContext(Thread* thread);
+
+    public:
+        static Scheduler* Global();
+
+        void Init(size_t coreCount);
+        StoredRegisters* Tick(StoredRegisters* current);
         [[noreturn]]
         void Yield();
-        //causes the scheduler to immediately return from SelectNextThread, locking the current thread.
-        void Suspend(bool suspendSelection);
+        void Suspend(bool suspendScheduling = true);
 
-        Thread* CreateThread(sl::NativePtr entryAddr, ThreadFlags flags);
+        size_t GetPressure() const;
+
+        size_t CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent = nullptr);
         void RemoveThread(size_t id);
-        Thread* GetCurrentThread();
+        Thread* GetThread(size_t id) const;
     };
 }

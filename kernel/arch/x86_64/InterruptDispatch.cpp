@@ -59,7 +59,7 @@ namespace Kernel
                 break;
             case INTERRUPT_GSI_SCHEDULER_NEXT:
                 Devices::IncrementUptime(Devices::LApic::Local()->GetTimerIntervalMS());
-                returnRegs = Scheduling::Scheduler::Local()->SelectNextThread(regs);
+                returnRegs = Scheduling::Scheduler::Global()->Tick(regs);
                 break;
             case INTERRUPT_GSI_PIT_TICK:
                 Devices::IncrementUptime(1); //we hardcore the PIT to ~1ms ticks

@@ -1,13 +1,23 @@
 #include <scheduling/Scheduler.h>
 #include <memory/PhysicalMemory.h>
-#include <arch/x86_64/Gdt.h>
-#include <Algorithms.h>
+#include <arch/x86_64/Tss.h>
 #include <Platform.h>
+#include <Algorithms.h>
 #include <Memory.h>
 #include <Log.h>
 
+#define THREAD_ALL_STARTING_CAPACITY 128
+#define THREAD_STACK_PAGES 2
+
 namespace Kernel::Scheduling
 {
+    void IdleMain(void* arg)
+    {
+        (void)arg;
+        while (1)
+            CPU::Halt();
+    }
+
     using RealStartType = void (*)(sl::NativePtr);
     void ThreadStartWrapper(sl::NativePtr realStart, sl::NativePtr arg)
     {
@@ -15,156 +25,197 @@ namespace Kernel::Scheduling
         startPtr(arg);
         Thread::Current()->Exit();
     }
-
-    void IdleMain()
-    {
-        while (1)
-            asm("hlt");
-    }
     
-    Scheduler* Scheduler::Local()
-    { return GetCoreLocal()->ptrs[CoreLocalIndices::Scheduler].As<Scheduler>(); }
+    void Scheduler::SaveContext(Thread* thread, StoredRegisters* regs)
+    {
+        thread->kernelStack = CurrentTss()->rsp0;
+        thread->programStack = regs;
+    }
 
-    void Scheduler::Init()
+    StoredRegisters* Scheduler::LoadContext(Thread* thread)
+    {
+        CurrentTss()->rsp0 = thread->kernelStack.raw;
+        thread->parent->pageTables.MakeActive();
+
+        return thread->programStack.As<StoredRegisters>();
+    }
+
+    Scheduler* globalScheduler;
+    Scheduler* Scheduler::Global()
+    { 
+        if (!globalScheduler)
+            globalScheduler = new Scheduler();
+        return globalScheduler; 
+    }
+
+    void Scheduler::Init(size_t coreCount)
     {
         SpinlockRelease(&lock);
-        idGen.Alloc(); //id=0 means to drop the current thread, we dont want to accidentally allocate it
+
         suspended = false;
+        realPressure = 0;
+        allThreads.EnsureCapacity(THREAD_ALL_STARTING_CAPACITY);
+        for (size_t i = 0; i < allThreads.Capacity(); i++)
+            allThreads.EmplaceBack(); //default fill = nullptrs
         
-        Thread* idleThread = CreateThread((size_t)IdleMain, ThreadFlags::KernelMode);
-        idleThread->Start(nullptr);
-        //we're dropping this pointer, but this is okay as the idle thread should ALWAYS be present.
-        (void)idleThread;
-    }
-
-    StoredRegisters* Scheduler::SelectNextThread(StoredRegisters* currentRegs)
-    {
-        if (suspended)
-            return currentRegs;
-        
-        ScopedSpinlock scopeLock(&lock);
-
-        Thread* currentThread = GetCurrentThread();
-        if (currentThread && currentId != 0)
+        //create idle thread (1 per core)
+        for (size_t i = 0; i < coreCount; i++)
         {
-            //we can safely save registers
-            currentThread->regs = currentRegs;
+            size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode);
+            idleThreads.PushBack(allThreads[idleId]);
+            idleThreads.Back()->Start(nullptr);
         }
 
-        //thread selection: round robin
-        bool selectNextValid = false;
-        Thread* nextThread = threads[0]; //first thread is always the idle thread - if selection fails, we'll run it
-        for (size_t i = 0; i < threads.Size(); i++)
+        size_t idleId = CreateThread((size_t)IdleMain, ThreadFlags::KernelMode);
+        allThreads[idleId]->Start(nullptr);
+        lastSelectedThread = *allThreads.Begin();
+        
+        Log("Scheduler initialized, waiting for next tick.", LogSeverity::Info);
+    }
+
+    StoredRegisters* Scheduler::Tick(StoredRegisters* currentRegs)
+    {
+        ScopedSpinlock schedLock(&lock);
+
+        Thread* current = Thread::Current();
+        if (current != nullptr)
         {
-            Thread* scan = threads[i];
-            //prime next valid thread to be selected
-            if (scan->threadId == currentId)
+            ScopedSpinlock scopeLock(&current->lock);
+            SaveContext(current, currentRegs);
+        }
+
+        Thread* next = nullptr;
+        Thread* nextBehindIndex = nullptr;
+        bool behindIndex = true;
+        for (auto it = allThreads.Begin(); it != allThreads.End(); ++it)
+        {
+            Thread* scan = *it;
+            if (scan == nullptr)
+                continue;
+            
+            if (behindIndex)
             {
-                selectNextValid = true;
+                //since we're iterating here, check what thread we would run if we looped around
+                if (scan->runState == ThreadState::Running && 
+                    !sl::EnumHasFlag(scan->flags, ThreadFlags::Executing) && 
+                    nextBehindIndex == nullptr)
+                    nextBehindIndex = scan;
+                
+                if (scan == lastSelectedThread)
+                    behindIndex = false;
                 continue;
             }
-            else if (!selectNextValid)
-                continue;
 
-            //filter any threads that we dont care about
-            if (scan->runState != ThreadState::Running)
-                continue;
-
-            //actual selection
-            if (selectNextValid)
+            if (scan->runState == ThreadState::Running && !sl::EnumHasFlag(scan->flags, ThreadFlags::Executing))
             {
-                nextThread = scan;
+                next = scan;
                 break;
             }
         }
-        //if we reached the end, and were ready to select, select the first thread after the idle one
-        if (nextThread->threadId == 1 && selectNextValid && threads.Size() > 1 && threads[1]->runState == ThreadState::Running)
-            nextThread = threads[1];
 
-        currentId = nextThread->threadId;
-        return nextThread->regs;
+        if (next == nullptr)
+            next = nextBehindIndex; //loop around
+        if (next == nullptr)
+            next = idleThreads[GetCoreLocal()->apicId]; //nothing available to run, run idle thread
+        lastSelectedThread = next;
+        
+        if (current != nullptr)
+        {
+            ScopedSpinlock currLock(&current->lock);
+            current->flags = sl::EnumClearFlag(current->flags, ThreadFlags::Executing);
+        }
+
+        ScopedSpinlock nextScopeLock(&next->lock);
+        next->flags = sl::EnumSetFlag(next->flags, ThreadFlags::Executing);
+        GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = next;
+        return LoadContext(next);
     }
 
     [[noreturn]]
     void Scheduler::Yield()
     {
-        //NOTE: this is hardcoded, the real definition is in Platform.h
-        asm("int $0x22");
+        //NOTE: this is hardcoded to the scheduler tick interrupt
+        asm("int $0x22"); 
         __builtin_unreachable();
     }
 
-    void Scheduler::Suspend(bool suspend)
-    { suspended = suspend; }
+    void Scheduler::Suspend(bool suspendScheduling)
+    { suspended = suspendScheduling; }
 
-    Thread* Scheduler::CreateThread(sl::NativePtr entryAddr, ThreadFlags flags)
+    size_t Scheduler::GetPressure() const
+    {
+        return realPressure;
+    }
+
+    size_t Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
     {
         ScopedSpinlock scopeLock(&lock);
-
-        sl::NativePtr stack = Memory::PMM::Global()->AllocPage();
-        Memory::PageTableManager::Local()->MapMemory(EnsureHigherHalfAddr(stack.ptr), stack, Memory::MemoryMapFlag::AllowWrites);
+        
+        if (parent == nullptr)
+        {
+            parent = new ThreadGroup();
+            parent->id = idAllocator.Alloc();
+            // parent->pageTables.InitClone();
+            parent->pageTables = *Memory::PageTableManager::Local();
+        }
 
         Thread* thread = new Thread();
-        thread->threadId = idGen.Alloc();
-        thread->flags = flags;
+        thread->id = idAllocator.Alloc();
+        thread->flags = sl::EnumClearFlag(flags, ThreadFlags::Executing); //ensure executing flag is cleared, otherwise itl never run
         thread->runState = ThreadState::PendingStart;
-
-        //we're forming a downwards stack, make sure the pointer starts at the top of the allocated space
-        stack.raw += PAGE_FRAME_SIZE;
-        stack.ptr = EnsureHigherHalfAddr(stack.ptr);
+        thread->parent = parent;
         
-        //setup stack: this entirely dependant on cpu arch and the calling convention. We're using sys v abi.
-        sl::StackPush<NativeUInt>(stack, 0); //dummy rbp and return address
-        sl::StackPush<NativeUInt>(stack, 0);
-        NativeUInt realStackStart = stack.raw;
+        parent->threads.PushBack(thread);
+        allThreads[thread->id] = thread;
 
-        //All these stack interactions are setting up a StoredRegisters instance for the scheduler to use when it loads this thread for the first time.
-        if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
-            sl::StackPush<NativeUInt>(stack, GDT_USER_DATA);
+        //TODO: implement PMM::AllocPages, and alloc multiple here
+        NativeUInt threadStackPhysBase = (NativeUInt)Memory::PMM::Global()->AllocPage();
+        sl::NativePtr threadStack = EnsureHigherHalfAddr(threadStackPhysBase);
+        threadStack.raw += PAGE_FRAME_SIZE;
+
+        //setup dummy frame base and return address
+        sl::StackPush<NativeUInt>(threadStack, 0);
+        sl::StackPush<NativeUInt>(threadStack, 0);
+        NativeUInt realStackStart = threadStack.raw;
+
+        //setup iret frame
+        if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
+            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_0_DATA);
         else
-            sl::StackPush<NativeUInt>(stack, GDT_KERNEL_DATA);
-        sl::StackPush<NativeUInt>(stack, realStackStart);
-        sl::StackPush<NativeUInt>(stack, 0x202); //interrupts enabled, everything else set to default
-        if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
-            sl::StackPush<NativeUInt>(stack, GDT_USER_CODE);
+            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_3_DATA);
+        sl::StackPush<NativeUInt>(threadStack, realStackStart);
+        sl::StackPush<NativeUInt>(threadStack, 0x202); //interrupts set, everything else cleared
+        if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
+            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_0_CODE);
         else
-            sl::StackPush<NativeUInt>(stack, GDT_KERNEL_CODE);
-        sl::StackPush<NativeUInt>(stack, (NativeUInt)ThreadStartWrapper);
+            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_3_CODE);
+        sl::StackPush<NativeUInt>(threadStack, (NativeUInt)ThreadStartWrapper);
 
-        for (size_t i = 0; i < 6; i++) //push fake vector num, error code and then rax,rbx,rcx,rdx
-            sl::StackPush<NativeUInt>(stack, 0); //dummy vector and error code
+        //push the rest of a stored registers frame (EC, vector, then 16 registers)
+        for (size_t i = 0; i < 18; i++)
+            sl::StackPush<NativeUInt>(threadStack, 0);
 
-        sl::StackPush<NativeUInt>(stack, 0); //rsi: we'll overwrite this value later with the main function arg
-        sl::StackPush<NativeUInt>(stack, entryAddr.raw); //rdi: first arg of wrapper, main func addr
+        StoredRegisters* regs = threadStack.As<StoredRegisters>();
+        regs->rdi = entryAddress.raw;
 
-        for (size_t i = 0; i < 10; i++) //push rbp,rsp, r8-r15 (all zeroed)
-            sl::StackPush<NativeUInt>(stack, 0);
+        if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
+        {
+            threadStack.raw -= vmaHighAddr; //user mode thread, use lower half address
+            parent->pageTables.MapMemory(threadStackPhysBase, threadStackPhysBase, Memory::MemoryMapFlag::AllowWrites);
+        }
+        thread->programStack = threadStack;
 
-        thread->regs = stack.As<StoredRegisters>();
+        sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPage());
+        thread->kernelStack = kernelStack.raw + PAGE_FRAME_SIZE;
 
-        threads.PushBack(thread);
-        return thread;
+        return thread->id;
     }
 
     void Scheduler::RemoveThread(size_t id)
     {
-        ScopedSpinlock scopeLock(&lock);
+        Log("RemoveThread() not implemented TODO", LogSeverity::Error);
     }
 
-    Thread* Scheduler::GetCurrentThread()
-    {
-        if (currentId == 0)
-            return nullptr;
-        
-        auto it = sl::FindIf(threads.Begin(), threads.End(), 
-            [&](auto iterator){
-                if ((*iterator)->threadId == currentId)
-                    return true;
-                return false;
-            });
-        
-        if (it != threads.End())
-            return *it;
-        else
-            return nullptr;
-    }
+    Thread* Scheduler::GetThread(size_t id) const
+    {}
 }

@@ -104,6 +104,12 @@ namespace Kernel
         //idt is shared across all cores, so we can set that up here
         SetupIDT();
 
+        stivale2_struct_tag_smp* stivaleSmpTag = FindStivaleTag<stivale2_struct_tag_smp*>(STIVALE2_STRUCT_TAG_SMP_ID);
+        if (!stivaleSmpTag)
+            Scheduling::Scheduler::Global()->Init(1);
+        else
+            Scheduling::Scheduler::Global()->Init(stivaleSmpTag->cpu_count);
+
         stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
         ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);
 
@@ -137,8 +143,8 @@ namespace Kernel
         coreStore->apicId = apicId;
         coreStore->acpiProcessorId = acpiId;
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
-        coreStore->ptrs[CoreLocalIndices::Scheduler] = new Scheduling::Scheduler();
         coreStore->ptrs[CoreLocalIndices::TSS] = new TaskStateSegment();
+        coreStore->ptrs[CoreLocalIndices::CurrentThread] = nullptr;
 
         Logf("Core local storage created for core %lu", LogSeverity::Verbose, apicId);
         return coreStore;
@@ -159,9 +165,6 @@ namespace Kernel
 
         Devices::LApic::Local()->Init();
         Logf("Core %lu Local APIC initialized.", LogSeverity::Verbose, coreNumber);
-
-        Scheduling::Scheduler::Local()->Init();
-        Logf("Core %lu scheduler initialized.", LogSeverity::Verbose, coreNumber);
     }
 
     //the entry point for the APs
@@ -174,9 +177,10 @@ namespace Kernel
         CPU::WriteMsr(MSR_GS_BASE, coreInfo->extra_argument);
         InitCoreLocal();
 
-        Logf("AP (coreId=%lu) has finished init, busy waiting.", LogSeverity::Info, GetCoreLocal()->apicId);
-        while (true)
-            asm("hlt");
+        Logf("AP %lu has finished init. Exiting to scheduler.", LogSeverity::Info, GetCoreLocal()->apicId);
+
+        Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INTERRUPT_GSI_SCHEDULER_NEXT, true);
+        Scheduling::Scheduler::Global()->Yield();
         __builtin_unreachable();
     }
 
@@ -186,6 +190,10 @@ namespace Kernel
         if (smpTag == nullptr)
         {
             Log("Couldn't get smp info from bootloader, aborting AP init.", LogSeverity::Info);
+
+            //TODO: read bsp lapic id and use it here
+            CoreLocalStorage* coreStore = PrepareCoreLocal(0, 0);
+            CPU::WriteMsr(MSR_GS_BASE, (uint64_t)coreStore);
             return;
         }
 
@@ -224,12 +232,12 @@ namespace Kernel
     {
         CPU::SetInterruptsFlag();
 
-        Devices::LApic::Local()->SetupTimer(SCHEDULER_QUANTUM_MS, INTERRUPT_GSI_SCHEDULER_NEXT, true);
+        Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INTERRUPT_GSI_SCHEDULER_NEXT, true);
         Devices::SetPitMasked(true); //ensure PIT is masked here, lapic timer will progress uptime from now on.
 
         Logf("Boot completed in: %u ms", LogSeverity::Verbose, Devices::GetUptime()); //NOTE: this time includes local apic timer calibration time (100ms)
-        Log("Kernel init done, exiting to scheduler.", LogSeverity::Info);
-        Scheduling::Scheduler::Local()->Yield();
+        Log("BSP init done, exiting to scheduler.", LogSeverity::Info);
+        Scheduling::Scheduler::Global()->Yield();
         __builtin_unreachable();        
     }
 }

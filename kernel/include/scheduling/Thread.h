@@ -1,47 +1,80 @@
 #pragma once
 
 #include <Platform.h>
-#include <NativePtr.h>
+#include <containers/Vector.h>
 #include <memory/Paging.h>
+#include <Optional.h>
 
 namespace Kernel::Scheduling
 {
-    class Scheduler;
-
     enum class ThreadState
     {
         PendingStart,
-        Running,
-        Sleeping,
         PendingCleanup,
+        Running,
+        Waiting,
     };
 
-    enum class ThreadFlags : uint32_t
+    enum class ThreadFlags
     {
         None = 0,
 
+        //code is running in ring 0
         KernelMode = (1 << 0),
+        //code is currently running on a processor somewhere
+        Executing = (1 << 1),
     };
-    
+
+    class Scheduler;
+    class ThreadGroup;
+
     class Thread
     {
     friend Scheduler;
     private:
-        size_t threadId;
-        StoredRegisters* regs;
+        char lock;
         ThreadFlags flags;
         ThreadState runState;
-        
-        Thread() = default;
-        void Cleanup();
+        size_t id;
+        sl::Vector<size_t> waitJobs;
 
+        sl::NativePtr programStack;
+        sl::NativePtr kernelStack;
+
+        ThreadGroup* parent;
+
+        Thread() = default;
+        
     public:
         static Thread* Current();
 
+        size_t GetId() const;
+        ThreadFlags GetFlags() const;
+        ThreadState GetState() const;
+        ThreadGroup* GetParent() const;
+
         void Start(sl::NativePtr arg);
         void Exit();
+        void Kill();
+        void Sleep(size_t millis);
+    };
+
+    class ThreadGroup
+    {
+    friend Scheduler;
+    private:
+        char lock;
+        size_t id;
+        Thread* parent;
+        sl::Vector<Thread*> threads;
+        Memory::PageTableManager pageTables;
+        //handles and group events (most of them) stored here
+
+        ThreadGroup() = default;
+
+    public:
+        const sl::Vector<Thread*>& GetThreads() const;
+        const Thread* GetParent() const;
         size_t GetId() const;
-        ThreadState GetState() const;
-        ThreadFlags GetFlags() const;
     };
 }

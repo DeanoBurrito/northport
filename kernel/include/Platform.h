@@ -125,8 +125,8 @@ namespace Kernel
     enum CoreLocalIndices : size_t
     {
         LAPIC,
-        Scheduler,
         TSS,
+        CurrentThread,
         
         EnumCount,
     };
