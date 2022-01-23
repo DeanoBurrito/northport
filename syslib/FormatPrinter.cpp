@@ -368,7 +368,10 @@ namespace sl
 
     const char* FormatPrinter::GetOutput()
     {
-        char* buffer = new char[outputPos + 1];
+        //TODO: would be better to stop parsing input if we ever overrun this limit too
+        const size_t finalBufferSize = outputPos < outputMaxLength ? outputPos : outputMaxLength;
+        
+        char* buffer = new char[finalBufferSize + 1];
         size_t bufferPos = 0;
         size_t bufferIndex = 0;
 

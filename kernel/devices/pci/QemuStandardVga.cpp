@@ -19,11 +19,13 @@ namespace Kernel::Devices::Pci
     QemuVgaDriver::QemuVgaDriver(Drivers::DriverInitInfo* info)
     {
         Log("Hello from qemu std vga! :D", LogSeverity::Info);
+        (void)info;
+        (void)pciDevice;
     }
 
     QemuVgaDriver::~QemuVgaDriver()
     {}
 
     void QemuVgaDriver::HandleEvent(Drivers::DriverEventType type, void* arg)
-    {}
+    { (void)type; (void)arg; }
 }

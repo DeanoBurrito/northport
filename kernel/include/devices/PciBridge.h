@@ -87,7 +87,7 @@ namespace Kernel::Devices
     public:
         char lock;
 
-        PciFunction(uint8_t id, PciDevice* parent) : parent(parent), id(id), addr(0)
+        PciFunction(uint8_t id, PciDevice* parent) : addr(0), parent(parent), id(id)
         {}
 
         FORCE_INLINE size_t GetId() const
@@ -109,7 +109,7 @@ namespace Kernel::Devices
         void Init();
 
     public:
-        PciDevice(uint8_t id, PciBus* parent) : parent(parent), id(id), addr(0)
+        PciDevice(uint8_t id, PciBus* parent) : parent(parent), addr(0), id(id)
         {}
 
         FORCE_INLINE size_t GetId() const
@@ -148,16 +148,11 @@ namespace Kernel::Devices
         size_t id;
         NativeUInt baseAddress;
         sl::Vector<PciBus> children;
-        size_t firstBus;
-        size_t lastBus;
 
         void Init();
 
     public:
-        PciSegmentGroup(size_t id, NativeUInt base) : id(id), baseAddress(base), firstBus(0), lastBus(0)
-        {}
-
-        PciSegmentGroup(size_t id, NativeUInt base, size_t firstBus, size_t lastBus) : id(id), baseAddress(base), firstBus(firstBus), lastBus(lastBus)
+        PciSegmentGroup(size_t id, NativeUInt base) : id(id), baseAddress(base)
         {}
 
         FORCE_INLINE NativeUInt GetBaseAddress() const

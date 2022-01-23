@@ -208,8 +208,8 @@ namespace Kernel::Devices
             {
                 ACPI::EcamEntry* entry = &mcfg->entries[i];
 
-                segments->EmplaceBack((size_t)entry->pciSegmentGroup, (NativeUInt)entry->baseAddress, (size_t)entry->pciBusFirst, (size_t)entry->pciBusLast);
-                Logf("PCIe segment group added: id=0x%lx, baseAddress=0x%lx, firstBus=0x%x, lastBus=0x%x", LogSeverity::Verbose, entry->pciSegmentGroup, entry->baseAddress, entry->pciBusFirst, entry->pciBusLast);
+                segments->EmplaceBack((size_t)entry->pciSegmentGroup, (NativeUInt)entry->baseAddress);
+                Logf("PCIe segment group added: id=0x%lx, baseAddress=0x%lx", LogSeverity::Verbose, entry->pciSegmentGroup, entry->baseAddress);
             }
 
             Logf("PCIe ecam parsed, %lu segment groups located", LogSeverity::Verbose, segments->Size());

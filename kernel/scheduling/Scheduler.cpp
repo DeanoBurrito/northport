@@ -217,5 +217,16 @@ namespace Kernel::Scheduling
     }
 
     Thread* Scheduler::GetThread(size_t id) const
-    {}
+    {
+        auto it = sl::FindIf(allThreads.Begin(), allThreads.End(), [=](auto it)
+        {
+            if ((*it)->id == id)
+                return true;
+            return false;
+        });
+
+        if (it != allThreads.End())
+            return *it;
+        return nullptr;
+    }
 }

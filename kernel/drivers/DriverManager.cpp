@@ -155,5 +155,6 @@ namespace Kernel::Drivers
         }
 
         Log("Driver event injection not supported yet. TODO:", LogSeverity::Fatal);
+        (void)manifest; (void)instance; (void)arg;
     }
 }
