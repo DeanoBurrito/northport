@@ -21,4 +21,11 @@ namespace Kernel::Devices
 
     uint64_t GetUptime()
     { return uptimeMillis; }
+
+    bool usingApicForUptime;
+    bool UsingApicForUptime()
+    { return usingApicForUptime; }
+
+    void SetApicForUptime(bool yes)
+    { usingApicForUptime = yes; }
 }

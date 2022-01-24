@@ -105,7 +105,8 @@ namespace Kernel
         InitPanic();
         IoApic::InitAll();
         InitPit(0, INTERRUPT_GSI_PIT_TICK);
-        SetPitMasked(false); //unmask and start keeping track of uptime
+        SetApicForUptime(false); //use PIT for uptime until first apic is initialized
+        SetPitMasked(false);
 
         Keyboard::Global()->Init();
 

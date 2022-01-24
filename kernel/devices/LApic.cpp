@@ -1,5 +1,6 @@
 #include <devices/LApic.h>
 #include <devices/8254Pit.h>
+#include <devices/SystemClock.h>
 #include <acpi/AcpiTables.h>
 #include <memory/Paging.h>
 #include <Platform.h>
@@ -163,6 +164,10 @@ namespace Kernel::Devices
 
         //write to initial count to start timer
         WriteReg(LocalApicRegister::TimerInitialCount, timerTicksPerMs * millis);
+
+        //stop using PIT for uptime if apic is taking over
+        if (IsBsp())
+            SetApicForUptime(true);
     }
 
     uint64_t LApic::GetTimerIntervalMS() const
