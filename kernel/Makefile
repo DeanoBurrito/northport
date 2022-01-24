@@ -3,8 +3,9 @@ TARGET = $(KERNEL_FULL_FILEPATH)
 
 CXX_INCLUDE_DIRS = -Iinclude -I$(SYSLIB_INCLUDE_DIR)
 CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
-	-fno-stack-protector -fno-omit-frame-pointer -ffreestanding -fno-unwind-tables -fno-asynchronous-unwind-tables \
-	-fno-rtti -fno-exceptions -mno-red-zone -Wall -Wextra -std=c++17 -fpie -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow
+	-Wall -Wextra  -fpie -fno-stack-protector -fno-omit-frame-pointer -ffreestanding \
+	-mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow \
+	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
 LD_LIBS = -L$(shell dirname $(SYSLIB_FULL_FILEPATH)) -lsyslib
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds
 LD_FLAGS = $(LD_LIBS) \
@@ -19,7 +20,8 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp Logf.cpp Panic.cpp \
 	devices/Ps2Mouse.cpp devices/Keyboard.cpp devices/8254Pit.cpp devices/SystemClock.cpp devices/PciBridge.cpp \
 	devices/pci/QemuStandardVga.cpp \
 	gfx/GraphicsPrimitives.cpp gfx/BakedGfxResources.cpp gfx/TerminalFramebuffer.cpp \
-	scheduling/Thread.cpp scheduling/Scheduler.cpp 
+	scheduling/Thread.cpp scheduling/Scheduler.cpp \
+	sanitizers/UBSanitizer.cpp
 	
 ASM_SRCS = 
 

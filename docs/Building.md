@@ -51,6 +51,7 @@ There are a number of flags that can be defined at compile time to enable/disabl
     <summary>General Flags</summary>
 
 - `NORTHPORT_PCI_FORCE_LEGACY_ACCESS`: PCI subsystem will ignore the machine config acpi table (if available), and only use the legacy ports
+- `NORTHPORT_SUPPRESS_UBSAN_TYPE_MISMATCH`: When kernel undefined behaviour sanitizer is active, will suppress type-mismatch messages (quite spammy).
 </details>
 
 <details>
