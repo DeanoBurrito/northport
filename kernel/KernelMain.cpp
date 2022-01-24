@@ -56,7 +56,6 @@ namespace Kernel
         PageTableManager::Setup();
         PageTableManager::Local()->InitKernel();
         PageTableManager::Local()->MakeActive();
-        PMM::Global()->InitLate();
 
         //assign heap to start immediately after last mapped kernel page TODO: find a better place for the heap start
         stivale2_struct_tag_pmrs* pmrs = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);

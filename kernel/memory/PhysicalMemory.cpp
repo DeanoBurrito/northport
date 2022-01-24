@@ -99,11 +99,6 @@ namespace Kernel::Memory
         Log("PMM successfully finished early init.", LogSeverity::Info);
     }
 
-    void PhysicalMemoryAllocator::InitLate()
-    {
-        Log("PMM late init finished, bitmap is now in paging structure.", LogSeverity::Verbose);
-    }
-
     void PhysicalMemoryAllocator::LockPage(sl::NativePtr address)
     { LockPages(address, 1); }
 
