@@ -102,14 +102,6 @@ namespace Kernel::Devices
         void Set(uint8_t vector, ApicTimerMode mode);
     };
 
-    struct IcrPacket
-    {
-        uint64_t raw;
-
-        void Set(uint8_t vector, ApicDeliveryMode mode, bool levelTrigger, uint8_t destinationId);
-    };
-    
-    //It's important to note that this is core-local (we can only interract with this processor's apic)
     class LApic
     {
     private:
@@ -129,6 +121,10 @@ namespace Kernel::Devices
         void Init();
         void SendEOI() const;
         bool IsBsp() const;
+        size_t GetId() const;
+
+        void SendIpi(uint32_t destId, uint8_t vector);
+        void BroadcastIpi(uint8_t vector, bool includeSelf);
 
         void SetLvtMasked(LocalApicRegister lvtReg, bool masked) const;
         bool GetLvtMasked(LocalApicRegister lvtReg) const;

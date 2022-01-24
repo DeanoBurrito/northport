@@ -57,7 +57,7 @@ namespace Kernel
         PageTableManager::Local()->InitKernel();
         PageTableManager::Local()->MakeActive();
 
-        //assign heap to start immediately after last mapped kernel page TODO: find a better place for the heap start
+        //assign heap to start immediately after last mapped kernel page
         stivale2_struct_tag_pmrs* pmrs = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
         size_t tentativeHeapStart = 0;
         for (size_t i = 0; i < pmrs->entries; i++)
@@ -154,8 +154,9 @@ namespace Kernel
         {
             Log("SMP not available on this system.", LogSeverity::Info);
 
-            //TODO: read bsp apic id and use it here
-            InitCore(0, 0);
+            //manually read the apic id, since LApic class isnt initialized yet
+            uint32_t apicIdReg = sl::MemRead<uint32_t>(CPU::ReadMsr(MSR_APIC_BASE) + 0x20);
+            InitCore(apicIdReg >> 24, 0);
             return;
         }
 

@@ -33,11 +33,6 @@ namespace Kernel::Devices
         raw = vector | (1 << 16) | ((uint64_t)mode << 17);
     }
 
-    void IcrPacket::Set(uint8_t vector, ApicDeliveryMode mode, bool levelTrigger, uint8_t destinationId)
-    {
-        raw = vector | ((uint64_t)mode << 8) | (levelTrigger ? 1 << 15 : 0) | ((uint64_t)destinationId << 56);
-    }
-
     void LApic::WriteReg(LocalApicRegister reg, uint32_t value) const
     { sl::MemWrite<uint32_t>(baseAddress + (uint64_t)reg, value); }
 
@@ -129,6 +124,30 @@ namespace Kernel::Devices
     bool LApic::IsBsp() const
     {
         return (CPU::ReadMsr(MSR_APIC_BASE) & (1 << 8)) != 0;
+    }
+
+    size_t LApic::GetId() const
+    { return ReadReg(LocalApicRegister::Id) >> 24; }
+
+    void LApic::SendIpi(uint32_t destId, uint8_t vector)
+    {
+        uint32_t low = vector;
+        uint32_t high = destId << 24;
+
+        //everything else is fine as default here, all zeros.
+
+        WriteReg(LocalApicRegister::ICR1, high);
+        //writing to low dword sends IPI
+        WriteReg(LocalApicRegister::ICR0, low);
+    }
+
+    void LApic::BroadcastIpi(uint8_t vector, bool includeSelf)
+    {
+        uint32_t low = vector | (includeSelf ? (0b10 << 18) : (0b11 << 18));
+
+        WriteReg(LocalApicRegister::ICR1, 0); //destination is ignored when using shorthand
+        //writing to low dword sends IPI
+        WriteReg(LocalApicRegister::ICR0, low);
     }
 
     void LApic::SetLvtMasked(LocalApicRegister lvtReg, bool masked) const
