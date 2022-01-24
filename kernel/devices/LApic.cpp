@@ -7,6 +7,8 @@
 #include <Utilities.h>
 #include <Log.h>
 
+#define LAPIC_TIMER_CALIBRATION_MS 25
+
 namespace Kernel::Devices
 {
     void LvtEntry::Set(uint8_t vector)
@@ -41,8 +43,11 @@ namespace Kernel::Devices
     uint32_t LApic::ReadReg(LocalApicRegister reg) const
     { return sl::MemRead<uint32_t>(baseAddress + (uint64_t)reg); }
 
+    char lapicCalibLock;
     void LApic::CalibrateTimer()
     {
+        ScopedSpinlock scopeLock(&lapicCalibLock);
+        
         WriteReg(LocalApicRegister::TimerInitialCount, 0); //ensure timer is stopped before we mess with it
         WriteReg(LocalApicRegister::TimerLVT, INTERRUPT_GSI_IGNORE); //everything else is set to 0
         calibratedDivisor = (uint32_t)ApicTimerDivisor::_2;

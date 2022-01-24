@@ -12,7 +12,7 @@ LD_FLAGS = $(LD_LIBS) \
 	 -nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext
 ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
-CXX_SRCS = BootStuff.cpp KernelMain.cpp Log.cpp Logf.cpp Panic.cpp \
+CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp \
 	memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp memory/New.cpp \
 	acpi/AcpiTables.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp \

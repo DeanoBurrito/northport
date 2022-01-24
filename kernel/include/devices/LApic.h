@@ -3,8 +3,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define LAPIC_TIMER_CALIBRATION_MS 100
-
 namespace Kernel::Devices
 {
     enum class LocalApicRegister : uint16_t

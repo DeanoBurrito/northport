@@ -6,13 +6,9 @@
 #include <acpi/AcpiTables.h>
 #include <devices/LApic.h>
 #include <devices/IoApic.h>
-#include <devices/SimpleFramebuffer.h>
-#include <devices/Ps2Controller.h>
-#include <devices/Keyboard.h>
 #include <devices/8254Pit.h>
 #include <devices/SystemClock.h>
-#include <devices/PciBridge.h>
-#include <drivers/DriverManager.h>
+#include <devices/Keyboard.h>
 #include <scheduling/Scheduler.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
@@ -47,7 +43,7 @@ namespace Kernel
     {
         return reinterpret_cast<TagType>(FindStivaleTagInternal(id));
     }
-    
+
     void InitMemory()
     {
         using namespace Memory;
@@ -62,7 +58,7 @@ namespace Kernel
         PageTableManager::Local()->MakeActive();
         PMM::Global()->InitLate();
 
-        //assign heap to start immediately after last mapped kernel page
+        //assign heap to start immediately after last mapped kernel page TODO: find a better place for the heap start
         stivale2_struct_tag_pmrs* pmrs = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
         size_t tentativeHeapStart = 0;
         for (size_t i = 0; i < pmrs->entries; i++)
@@ -103,6 +99,16 @@ namespace Kernel
 
         //idt is shared across all cores, so we can set that up here
         SetupIDT();
+        
+        stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
+        ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);
+
+        InitPanic();
+        IoApic::InitAll();
+        InitPit(0, INTERRUPT_GSI_PIT_TICK);
+        SetPitMasked(false); //unmask and start keeping track of uptime
+
+        Keyboard::Global()->Init();
 
         stivale2_struct_tag_smp* stivaleSmpTag = FindStivaleTag<stivale2_struct_tag_smp*>(STIVALE2_STRUCT_TAG_SMP_ID);
         if (!stivaleSmpTag)
@@ -110,120 +116,62 @@ namespace Kernel
         else
             Scheduling::Scheduler::Global()->Init(stivaleSmpTag->cpu_count);
 
-        stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
-        ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);
-
-        stivale2_struct_tag_framebuffer* framebufferTag = FindStivaleTag<stivale2_struct_tag_framebuffer*>(STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID);
-        SimpleFramebuffer::Global()->Init(framebufferTag);
-        SimpleFramebuffer::Global()->DrawTestPattern();
-#ifdef NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT 
-        EnableLogDestinaton(LogDestination::FramebufferOverwrite);
-#endif
-        InitPanic(); //framebuffer is needed for panic subsystem, so we init it here.
-        IoApic::InitAll();
-        InitPit(0, INTERRUPT_GSI_PIT_TICK);
-        SetPitMasked(false); //start keeping track of uptime
-
-        Keyboard::Global()->Init();
-        size_t ps2PortCount = Ps2Controller::InitController();
-        if (ps2PortCount > 0)
-            Ps2Controller::Keyboard()->Init(false);
-        if (ps2PortCount > 1)
-            Ps2Controller::Mouse()->Init(true);
-        
-        Drivers::DriverManager::Global()->Init();
-        PciBridge::Global()->Init();
-
         Log("Platform init complete.", LogSeverity::Info);
     }
 
-    CoreLocalStorage* PrepareCoreLocal(uint64_t apicId, uint64_t acpiId)
+    void InitCore(size_t apicId, size_t acpiProcessorId)
     {
         CoreLocalStorage* coreStore = new CoreLocalStorage();
         coreStore->apicId = apicId;
-        coreStore->acpiProcessorId = acpiId;
+        coreStore->acpiProcessorId = acpiProcessorId;
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
         coreStore->ptrs[CoreLocalIndices::TSS] = new TaskStateSegment();
         coreStore->ptrs[CoreLocalIndices::CurrentThread] = nullptr;
 
-        Logf("Core local storage created for core %lu", LogSeverity::Verbose, apicId);
-        return coreStore;
-    }
-
-    void InitCoreLocal()
-    {
-        size_t coreNumber = GetCoreLocal()->apicId;
-        uint64_t backupCoreLocal = CPU::ReadMsr(MSR_GS_BASE);
-        Logf("Setting up core %u, coreLocalStorage=0x%lx", LogSeverity::Info, coreNumber, backupCoreLocal);
-
-        CPU::SetupExtendedState(); //setup fpu, sse, avx if supported. Not used in kernel, but hardware is now ready
         FlushGDT();
-        CPU::WriteMsr(MSR_GS_BASE, backupCoreLocal); //since reloading the gdt will flush the previous GS_BASE
+        CPU::WriteMsr(MSR_GS_BASE, (size_t)coreStore);
+
+        CPU::SetupExtendedState();
         LoadIDT();
         FlushTSS();
-        Logf("Core %lu IDT, GDT and TSS installed.", LogSeverity::Verbose, coreNumber);
+        Logf("Core %lu has setup core (GDT, IDT, TSS) and extended state.", LogSeverity::Info, apicId);
 
         Devices::LApic::Local()->Init();
-        Logf("Core %lu Local APIC initialized.", LogSeverity::Verbose, coreNumber);
+        Logf("Core %lu LAPIC initialized.", LogSeverity::Verbose, apicId);
     }
 
-    //the entry point for the APs
     [[gnu::used, noreturn]]
-    void _APEntry(stivale2_smp_info* coreInfo)
-    {
-        Memory::PageTableManager::Local()->MakeActive(); //switch cpu to our page table
+    extern "C" void _ApEntry(stivale2_smp_info* smpInfo);
 
-        coreInfo = EnsureHigherHalfAddr(coreInfo);
-        CPU::WriteMsr(MSR_GS_BASE, coreInfo->extra_argument);
-        InitCoreLocal();
-
-        Logf("AP %lu has finished init. Exiting to scheduler.", LogSeverity::Info, GetCoreLocal()->apicId);
-
-        Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INTERRUPT_GSI_SCHEDULER_NEXT, true);
-        Scheduling::Scheduler::Global()->Yield();
-        __builtin_unreachable();
-    }
-
-    void StartupAPs()
+    void SetupAllCores()
     {
         stivale2_struct_tag_smp* smpTag = FindStivaleTag<stivale2_struct_tag_smp*>(STIVALE2_STRUCT_TAG_SMP_ID);
+#ifdef NORTHPORT_DEBUG_DISABLE_SMP_BOOT
+        if (true)
+#else
         if (smpTag == nullptr)
+#endif
         {
-            Log("Couldn't get smp info from bootloader, aborting AP init.", LogSeverity::Info);
+            Log("SMP not available on this system.", LogSeverity::Info);
 
-            //TODO: read bsp lapic id and use it here
-            CoreLocalStorage* coreStore = PrepareCoreLocal(0, 0);
-            CPU::WriteMsr(MSR_GS_BASE, (uint64_t)coreStore);
+            //TODO: read bsp apic id and use it here
+            InitCore(0, 0);
             return;
         }
 
-#ifdef NORTHPORT_DEBUG_DISABLE_SMP_BOOT
-#pragma message "AP init at boot disabled by define. Compiled for single-core only."
-        Log("Kernel was compiled to only enable BSP, ignoring other cores.", LogSeverity::Info);
-        CoreLocalStorage* coreStore = PrepareCoreLocal(smpTag->bsp_lapic_id, 0);
-        CPU::WriteMsr(MSR_GS_BASE, (uint64_t)coreStore);
-        return;
-#endif
-
-        //this has the side effect of setting up core info for bsp
         for (size_t i = 0; i < smpTag->cpu_count; i++)
         {
-            CoreLocalStorage* coreStore = PrepareCoreLocal(smpTag->smp_info[i].lapic_id, smpTag->smp_info[i].processor_id);
             if (smpTag->smp_info[i].lapic_id == smpTag->bsp_lapic_id)
             {
-                //stash the address, and resume the regular init path
-                CPU::WriteMsr(MSR_GS_BASE, (uint64_t)coreStore);
-                Logf("BSP has coreId=%lu", LogSeverity::Verbose, smpTag->bsp_lapic_id);
+                InitCore(smpTag->smp_info[i].lapic_id, smpTag->smp_info[i].processor_id);
                 continue;
             }
 
             sl::NativePtr stackBase = Memory::PMM::Global()->AllocPage();
-            sl::NativePtr stackBaseHigh = EnsureHigherHalfAddr(stackBase.ptr);
-            Memory::PageTableManager::Local()->MapMemory(stackBaseHigh, stackBase, Memory::MemoryMapFlag::AllowWrites);
-            
-            smpTag->smp_info[i].target_stack = stackBaseHigh.raw + PAGE_FRAME_SIZE;
-            smpTag->smp_info[i].extra_argument = (uint64_t)EnsureHigherHalfAddr(coreStore);
-            smpTag->smp_info[i].goto_address = (uint64_t)_APEntry;
+            Memory::PageTableManager::Local()->MapMemory(EnsureHigherHalfAddr(stackBase.raw), stackBase, Memory::MemoryMapFlag::AllowWrites);
+
+            smpTag->smp_info[i].target_stack = EnsureHigherHalfAddr(stackBase.raw) + PAGE_FRAME_SIZE;
+            smpTag->smp_info[i].goto_address = (uint64_t)_ApEntry;
         }
     }
 
@@ -231,25 +179,39 @@ namespace Kernel
     void ExitInit()
     {
         CPU::SetInterruptsFlag();
-
         Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INTERRUPT_GSI_SCHEDULER_NEXT, true);
-        Devices::SetPitMasked(true); //ensure PIT is masked here, lapic timer will progress uptime from now on.
+        Logf("Core %lu init completed in: %lu ms. Exiting to scheduler ...", LogSeverity::Info, GetCoreLocal()->apicId, Devices::GetUptime());
 
-        Logf("Boot completed in: %u ms", LogSeverity::Verbose, Devices::GetUptime()); //NOTE: this time includes local apic timer calibration time (100ms)
-        Log("BSP init done, exiting to scheduler.", LogSeverity::Info);
+        //NOTE: this time includes local apic timer calibration time (100ms)
         Scheduling::Scheduler::Global()->Yield();
-        __builtin_unreachable();        
+        __builtin_unreachable();
     }
 }
 
 extern "C"
 {
-    [[noreturn]]
+    [[gnu::used, noreturn]]
+    void _ApEntry(stivale2_smp_info* smpInfo)
+    {
+        using namespace Kernel;
+        //ensure we're using our page map
+        Memory::PageTableManager::Local()->MakeActive();
+        smpInfo = EnsureHigherHalfAddr(smpInfo);
+
+        InitCore(smpInfo->lapic_id, smpInfo->processor_id);
+
+        ExitInit();
+        __builtin_unreachable();
+    }
+    
+    extern void QueueInitTasks();
+
+    [[gnu::used, noreturn]]
     void _KernelEntry(stivale2_struct* stivaleStruct)
     {
         using namespace Kernel;
 
-        //setup vma high offset, and move address of stivale base struct there.
+        //setup static data: phys mem mirror addr, stivale struct
         stivale2Struct = stivaleStruct;
         stivale2_struct_tag_hhdm* hhdm = FindStivaleTag<stivale2_struct_tag_hhdm*>(STIVALE2_STRUCT_TAG_HHDM_ID);
         vmaHighAddr = hhdm->addr;
@@ -269,14 +231,10 @@ extern "C"
         LoggingInitFull();
 
         InitPlatform();
+        SetupAllCores();
 
-        //init bsp
-        StartupAPs();
-        InitCoreLocal();
-
+        QueueInitTasks();
         ExitInit();
-
-        Log("Kernel has somehow returned to pre-scheduled main, this should not happen.", LogSeverity::Fatal);
         __builtin_unreachable();
     }
 }

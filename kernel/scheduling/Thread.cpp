@@ -28,8 +28,9 @@ namespace Kernel::Scheduling
 
     void Thread::Exit()
     {
-        ScopedSpinlock scopeLock(&lock);
         runState = ThreadState::PendingCleanup;
+        Scheduler::Global()->RemoveThread(this->id);
+        Scheduler::Global()->Yield();
     }
 
     void Thread::Kill()

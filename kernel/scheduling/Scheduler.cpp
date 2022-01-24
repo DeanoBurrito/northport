@@ -61,12 +61,12 @@ namespace Kernel::Scheduling
         //create idle thread (1 per core)
         for (size_t i = 0; i < coreCount; i++)
         {
-            size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode);
+            size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode)->id;
             idleThreads.PushBack(allThreads[idleId]);
             idleThreads.Back()->Start(nullptr);
         }
 
-        size_t idleId = CreateThread((size_t)IdleMain, ThreadFlags::KernelMode);
+        size_t idleId = CreateThread((size_t)IdleMain, ThreadFlags::KernelMode)->id;
         allThreads[idleId]->Start(nullptr);
         lastSelectedThread = *allThreads.Begin();
         
@@ -147,7 +147,7 @@ namespace Kernel::Scheduling
         return realPressure;
     }
 
-    size_t Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
+    Thread* Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
     {
         ScopedSpinlock scopeLock(&lock);
         
@@ -208,7 +208,7 @@ namespace Kernel::Scheduling
         sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPage());
         thread->kernelStack = kernelStack.raw + PAGE_FRAME_SIZE;
 
-        return thread->id;
+        return thread;
     }
 
     void Scheduler::RemoveThread(size_t id)
