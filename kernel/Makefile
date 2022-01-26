@@ -18,7 +18,7 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp \
 	devices/LApic.cpp devices/IoApic.cpp devices/SimpleFramebuffer.cpp devices/Ps2Controller.cpp devices/Ps2Keyboard.cpp \
 	devices/Ps2Mouse.cpp devices/Keyboard.cpp devices/8254Pit.cpp devices/SystemClock.cpp devices/PciBridge.cpp \
-	devices/pci/QemuStandardVga.cpp \
+	devices/pci/BochsGraphicsAdaptor.cpp \
 	gfx/GraphicsPrimitives.cpp gfx/BakedGfxResources.cpp gfx/TerminalFramebuffer.cpp \
 	scheduling/Thread.cpp scheduling/Scheduler.cpp \
 	sanitizers/UBSanitizer.cpp

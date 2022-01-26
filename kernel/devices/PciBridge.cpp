@@ -131,13 +131,10 @@ namespace Kernel::Devices
             
             //check if there's a driver available for the function, create an instance if required
             using namespace Drivers;
-            sl::Opt<DriverManifest> driver = DriverManager::Global()->FindDriver(DriverSubsytem::PCI, DriverMachineName {.length = 4, .name = machName});
-            if (driver)
-            {
-                //prepare init data
-                DriverInitTagPciFunction initTag(&functions.Back());
-                DriverManager::Global()->StartDriver(*driver, &initTag);
-            }
+            sl::Opt<DriverManifest*> driver = DriverManager::Global()->FindDriver(DriverSubsytem::PCI, DriverMachineName {.length = 4, .name = machName});
+
+            if (driver) //queue driver for loading after pci tree has been fully populated
+                PciBridge::Global()->pendingDriverLoads->EmplaceBack(&functions.Back(), driver.Value());
         }
     }
 
@@ -191,6 +188,7 @@ namespace Kernel::Devices
     void PciBridge::Init()
     {
         segments = new sl::Vector<PciSegmentGroup>;
+        pendingDriverLoads = new sl::Vector<DelayLoadedPciDriver>();
         
         //determine which config mechanism to use, and setup segments accordingly
         ACPI::MCFG* mcfg = reinterpret_cast<ACPI::MCFG*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MCFG));
@@ -228,6 +226,18 @@ namespace Kernel::Devices
             it->Init();
 
         Logf("PCI bridge initialized, ecamSupport=%b", LogSeverity::Info, ecamAvailable);
+
+        //load any drivers we detected
+        for (auto it = pendingDriverLoads->Begin(); it != pendingDriverLoads->End(); ++it)
+        {
+            Drivers::DriverInitTagPciFunction initTag(it->function);
+            Drivers::DriverManager::Global()->StartDriver(it->manifest, &initTag);
+        }
+
+        Logf("PCI bridge has delay loaded %u drivers.", LogSeverity::Verbose, pendingDriverLoads->Size());
+        pendingDriverLoads->Clear();
+        delete pendingDriverLoads;
+        pendingDriverLoads = nullptr;
     }
 
     sl::Opt<const PciSegmentGroup*> PciBridge::GetSegment(size_t id) const
@@ -284,6 +294,23 @@ namespace Kernel::Devices
         {
             if (it->id == function)
                 return it;
+        }
+
+        return {};
+    }
+
+    sl::Opt<const PciDevice*> PciBridge::FindDevice(uint16_t vendorId, uint16_t deviceId) const
+    {
+        for (auto segmentIt = segments->Begin(); segmentIt != segments->End(); ++segmentIt)
+        {
+            for (auto busIt = segmentIt->children.Begin(); busIt != segmentIt->children.End(); ++busIt)
+            {
+                for (auto deviceIt = busIt->devices.Begin(); deviceIt != busIt->devices.End(); ++deviceIt)
+                {   
+                    if (deviceIt->functions[0].header.ids.vendor == vendorId && deviceIt->functions[0].header.ids.device == deviceId)
+                        return deviceIt;
+                }
+            }
         }
 
         return {};

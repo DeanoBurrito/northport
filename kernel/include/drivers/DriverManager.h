@@ -31,9 +31,9 @@ namespace Kernel::Drivers
         void Init();
         void RegisterDriver(const DriverManifest& manifest);
 
-        sl::Opt<DriverManifest> FindDriver(DriverSubsytem subsystem, DriverMachineName machineName);
-        bool StartDriver(const DriverManifest& manifest, DriverInitTag* userTags);
-        bool StopDriver(const DriverManifest& manifest, size_t instanceNumber);
-        void InjectEvent(const DriverManifest& manifest, size_t instance, void* arg);
+        sl::Opt<DriverManifest*> FindDriver(DriverSubsytem subsystem, DriverMachineName machineName);
+        bool StartDriver(const DriverManifest* manifest, DriverInitTag* userTags);
+        bool StopDriver(const DriverManifest* manifest, size_t instanceNumber);
+        void InjectEvent(const DriverManifest* manifest, size_t instance, void* arg);
     };
 }

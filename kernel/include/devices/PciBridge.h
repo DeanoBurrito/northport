@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <Platform.h>
 #include <containers/Vector.h>
+#include <drivers/DriverManifest.h>
 #include <Optional.h>
 
 #define VENDOR_ID_NONEXISTENT 0xFFFF
@@ -160,6 +161,15 @@ namespace Kernel::Devices
         FORCE_INLINE size_t GetId() const
         { return id; }
     };
+    
+    struct DelayLoadedPciDriver
+    {
+        PciFunction* function;
+        const Drivers::DriverManifest* manifest;
+
+        DelayLoadedPciDriver(PciFunction* func, const Drivers::DriverManifest* mani) : function(func), manifest(mani)
+        {}
+    };
 
     class PciBridge
     {
@@ -167,6 +177,7 @@ namespace Kernel::Devices
     private:
         bool ecamAvailable;
         sl::Vector<PciSegmentGroup>* segments;
+        sl::Vector<DelayLoadedPciDriver>* pendingDriverLoads;
 
     public:
         static PciBridge* Global();
@@ -179,6 +190,8 @@ namespace Kernel::Devices
         sl::Opt<const PciBus*> GetBus(size_t segment, size_t bus) const;
         sl::Opt<const PciDevice*> GetDevice(size_t segment, size_t bus, size_t device) const;
         sl::Opt<const PciFunction*> GetFunction(size_t segment, size_t bus, size_t device, size_t function) const;
+
+        sl::Opt<const PciDevice*> FindDevice(uint16_t vendorId, uint16_t deviceId) const;
     };
 
 #undef ALLOW_PCI_INTERNAL_ACCESS

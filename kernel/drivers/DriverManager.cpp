@@ -43,7 +43,7 @@ namespace Kernel::Drivers
         Logf("New driver registered: name=%s, subsystem=0x%lx", LogSeverity::Verbose, manifest.name, (size_t)manifest.subsystem);
     }
 
-    sl::Opt<DriverManifest> DriverManager::FindDriver(DriverSubsytem subsystem, DriverMachineName machineName)
+    sl::Opt<DriverManifest*> DriverManager::FindDriver(DriverSubsytem subsystem, DriverMachineName machineName)
     {
         ScopedSpinlock scopeLock(&lock);
 
@@ -51,22 +51,22 @@ namespace Kernel::Drivers
 
         if (extManifest == nullptr)
             return {};
-        return extManifest->manifest;
+        return &extManifest->manifest;
     }
 
-    bool DriverManager::StartDriver(const DriverManifest& manifest, DriverInitTag* userTags)
+    bool DriverManager::StartDriver(const DriverManifest* manifest, DriverInitTag* userTags)
     {
         ScopedSpinlock scopeLock(&lock);
 
-        DriverExtendedManifest* extManifest = GetExtendedManifest(manifest.subsystem, manifest.machineName);
+        DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)
         {
-            Logf("Unable to start driver %s, matching manifest not found.", LogSeverity::Error, manifest.name);
+            Logf("Unable to start driver %s, matching manifest not found.", LogSeverity::Error, manifest->name);
             return false;
         }
         if (!sl::EnumHasFlag(extManifest->manifest.status, DriverStatusFlags::Loaded))
         {
-            Logf("Unable to start driver %s, binary not loaded.", LogSeverity::Error, manifest.name);
+            Logf("Unable to start driver %s, binary not loaded.", LogSeverity::Error, manifest->name);
             return false;
         }
 
@@ -85,7 +85,7 @@ namespace Kernel::Drivers
         void* instance = extManifest->manifest.InitNew(&initInfo);
         if (instance == nullptr)
         {
-            Logf("Unable to start driver %s, instance pointer is null. Check relevent logs for more info.", LogSeverity::Error, manifest.name);
+            Logf("Unable to start driver %s, instance pointer is null. Check relevent logs for more info.", LogSeverity::Error, manifest->name);
             return false;
         }
 
@@ -96,29 +96,29 @@ namespace Kernel::Drivers
         
         //ensure running flag is set
         extManifest->manifest.status = sl::EnumSetFlag(extManifest->manifest.status, DriverStatusFlags::Running);
-        Logf("Start new instance %u of driver %s", LogSeverity::Info, index, manifest.name);
+        Logf("Started new instance %u of driver %s", LogSeverity::Info, index, manifest->name);
         return true;
     }
 
-    bool DriverManager::StopDriver(const DriverManifest& manifest, size_t instanceNumber)
+    bool DriverManager::StopDriver(const DriverManifest* manifest, size_t instanceNumber)
     {
         ScopedSpinlock scopeLock(&lock);
         
-        DriverExtendedManifest* extManifest = GetExtendedManifest(manifest.subsystem, manifest.machineName);
+        DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)
         {
-            Logf("Unable to stop driver %s, matching manifest not found.", LogSeverity::Error, manifest.name);
+            Logf("Unable to stop driver %s, matching manifest not found.", LogSeverity::Error, manifest->name);
             return false;
         }
         if (!sl::EnumHasFlag(extManifest->manifest.status, DriverStatusFlags::Running))
         {
-            Logf("Unable to stop driver %s, no instances.", LogSeverity::Error, manifest.name);
+            Logf("Unable to stop driver %s, no instances.", LogSeverity::Error, manifest->name);
             return false;
         }
         
         if (instanceNumber >= extManifest->instances.Size() || extManifest->instances[instanceNumber] == nullptr)
         {
-            Logf("Unable to stop driver %s:%u, no instance with that id.", LogSeverity::Error, manifest.name, instanceNumber);
+            Logf("Unable to stop driver %s:%u, no instance with that id.", LogSeverity::Error, manifest->name, instanceNumber);
             return false;
         }
 
@@ -139,18 +139,18 @@ namespace Kernel::Drivers
 
         if (!anyInstances)
             extManifest->manifest.status = sl::EnumClearFlag(extManifest->manifest.status, DriverStatusFlags::Running);
-        Logf("Stopped running instance %u of driver %s, final=%b", LogSeverity::Info, instanceNumber, manifest.name, !anyInstances);
+        Logf("Stopped running instance %u of driver %s, final=%b", LogSeverity::Info, instanceNumber, manifest->name, !anyInstances);
         return true;
     }
 
-    void DriverManager::InjectEvent(const DriverManifest& manifest, size_t instance, void* arg)
+    void DriverManager::InjectEvent(const DriverManifest* manifest, size_t instance, void* arg)
     {
         ScopedSpinlock scopeLock(&lock);
         
-        DriverExtendedManifest* extManifest = GetExtendedManifest(manifest.subsystem, manifest.machineName);
+        DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)
         {
-            Logf("Unable to inject event to driver %s, matching manifest not found.", LogSeverity::Error, manifest.name);
+            Logf("Unable to inject event to driver %s, matching manifest not found.", LogSeverity::Error, manifest->name);
             return;
         }
 
