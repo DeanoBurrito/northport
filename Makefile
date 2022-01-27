@@ -1,6 +1,17 @@
+#SECTION ---- Toolchain Setup and Build Options ----
+
 #toolchain selection (valid options are gcc or clang)
 TOOLCHAIN_DEFAULT = clang
 
+#build options
+INCLUDE_DEBUG_INFO = true
+OPTIMIZATION_FLAGS = -O0
+DISABLE_SMP = false
+ENABLE_UBSAN = false
+ENABLE_DEBUGCON_LOGGING = true
+ENABLE_FRAMEBUFFER_LOGGING = false
+
+#configuring toolchain binaries (if default dosnt work)
 ifeq ($(TOOLCHAIN_DEFAULT), gcc)
 	TOOLCHAIN_DIR = ../cross-tools
 	CXX_BIN = $(ARCH_TARGET)-g++
@@ -23,28 +34,21 @@ else ifeq ($(TOOLCHAIN_DEFAULT), clang)
 endif
 
 #top-level projects
-PROJ_BOOTLOADER_ROOT_DIR = boot
 PROJ_INITDISK_DIR = initdisk
 PROJ_KERNEL_DIR = kernel
-PROJ_SYSLIB_DIR = syslib
+PROJ_LIBS_GLUE_DIR = libs
 
-SYSLIB_FILENAME = libsyslib.a
-export SYSLIB_INCLUDE_DIR = $(abspath $(PROJ_SYSLIB_DIR)/include)
-export SYSLIB_FULL_FILEPATH = $(abspath $(PROJ_SYSLIB_DIR)/$(BUILD_DIR)/$(SYSLIB_FILENAME))
+#ENDSECTION
 
-INITDISK_FILENAME = northport-initdisk.tar
-export INITDISK_FULL_FILEPATH = $(abspath $(PROJ_INITDISK_DIR)/$(BUILD_DIR)/$(INITDISK_FILENAME))
-
+#SECTION ---- Build Paths, Bibraries and Iso Generation ----
+export INITDISK_FULL_FILEPATH = $(abspath $(PROJ_INITDISK_DIR)/$(BUILD_DIR)/northport-initdisk.tar)
 export KERNEL_FILENAME = northport-kernel-$(CPU_ARCH).elf
 export KERNEL_FULL_FILEPATH = $(abspath $(PROJ_KERNEL_DIR)/$(BUILD_DIR)/$(KERNEL_FILENAME))
 
-#build config
-INCLUDE_DEBUG_INFO = true
-OPTIMIZATION_FLAGS = -O0
-DISABLE_SMP = false
-ENABLE_UBSAN = false
-ENABLE_DEBUGCON_LOGGING = true
-ENABLE_FRAMEBUFFER_LOGGING = false
+#where built libraries are going to be stored
+export LIBS_OUTPUT_DIR = $(abspath libs/$(BUILD_DIR))
+export LIBS_DIR = $(abspath libs/)
+export LIB_COMMON_MK = $(abspath misc/LibCommon.mk)
 
 export CPU_ARCH = x86_64
 export ARCH_TARGET = $(CPU_ARCH)-elf
@@ -53,29 +57,34 @@ export BUILD_DIR = build
 ISO_FILENAME = iso/northport-os-$(CPU_ARCH).iso
 ISO_WORKING_DIR = iso/$(BUILD_DIR)
 export ISO_TARGET = $(abspath $(ISO_FILENAME))
+
+#ENDSECTION
+
+#SECTION ---- Internals ----
 LIMINE_CFG = misc/limine.cfg
+SUBMAKE_FLAGS = --no-print-directory -j $(shell nproc)
 
-SUBMAKE_FLAGS = --no-print-directory
-
-#these are modified by build prep (based on options above)
 export CXX_DEBUG_FLAGS = 
+#BuildPrep.mk populates debug flags
 include BuildPrep.mk
-include Run.mk
 export CXX_GLOBAL_FLAGS = $(OPTIMIZATION_FLAGS) $(CXX_DEBUG_FLAGS)
 
-.PHONY: all build-all iso clean run debug create-toolchain validate-toolchain
+#ENDSECTION
+
+#SECTION ---- GNU Make Targets ----
+.PHONY: all build-all iso clean run debug
 
 all: iso
 
 build-all: prep-build-env
 	@echo "Starting northport full build ..."
-	@cd $(PROJ_SYSLIB_DIR); make all $(SUBMAKE_FLAGS);
-	@cd $(PROJ_INITDISK_DIR); make all $(SUBMAKE_FLAGS);
-	@cd $(PROJ_KERNEL_DIR); make all $(SUBMAKE_FLAGS);
+	@cd $(PROJ_INITDISK_DIR); $(MAKE) all $(SUBMAKE_FLAGS);
+	@cd $(PROJ_LIBS_GLUE_DIR); $(MAKE) all -j $(SUBMAKE_FLAGS);
+	@cd $(PROJ_KERNEL_DIR); $(MAKE) all $(SUBMAKE_FLAGS);
 	@echo "Build done!"
 
 iso: build-all
-	@echo "Creating bootable iso ..."
+	@echo "Generating bootable iso ..."
 	@mkdir -p $(ISO_WORKING_DIR)
 	@cp $(LIMINE_CFG) $(ISO_WORKING_DIR)
 	@cp $(LIMINE_DIR)/limine-cd.bin $(ISO_WORKING_DIR)
@@ -88,18 +97,20 @@ iso: build-all
 		--efi-boot-image --protective-msdos-label $(ISO_WORKING_DIR) -o $(ISO_TARGET)
 	@$(LIMINE_DIR)/limine-install $(ISO_TARGET)
 	@rm -r $(ISO_WORKING_DIR)
-	@echo "Done! Bootable iso located at $(ISO_TARGET)."
+	@echo "Iso generated @ $(ISO_TARGET)."
 	@echo "If qemu is installed, try it out with 'make run'."
 
 clean:
 	@echo "Cleaning build directories ..."
-	@-cd $(PROJ_SYSLIB_DIR); make clean $(SUBMAKE_FLAGS);
-	@-cd $(PROJ_INITDISK_DIR); make clean $(SUBMAKE_FLAGS);
-	@-cd $(PROJ_KERNEL_DIR); make clean $(SUBMAKE_FLAGS);
-	@-rm -r iso
-	@echo "Cleaning done!"
-
-#run and debug arent necessary for building, and are from the run.mk file
+	@-cd $(PROJ_INITDISK_DIR); $(MAKE) clean $(SUBMAKE_FLAGS);
+	@-cd $(PROJ_LIBS_GLUE_DIR); $(MAKE) clean $(SUBMAKE_FLAGS);
+	@-cd $(PROJ_KERNEL_DIR); $(MAKE) clean $(SUBMAKE_FLAGS)
+	@echo  "Cleaning done!"
 
 prep-build-env:
 	@mkdir -p $(shell dirname $(ISO_TARGET))
+
+#run and debug arent necessary for building, separation of concerns and all.
+include Run.mk
+
+#ENDSECTION

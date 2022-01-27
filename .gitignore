@@ -1,4 +1,5 @@
 build/
 iso/*
+libs/include
 compile_flags.txt
 .*.sw*

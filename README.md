@@ -15,7 +15,8 @@ Each of sub-projects are in their own folder:
 - `iso/`: is where the final iso is built, not included in the git repo.
 - `kernel/`: the kernel itself. There's also the `kernel/arch/` dir, which contains cpu specific code.
 - `misc/`: contains unrelated project files, limine.cfg lives here.
-- `syslib/`: a system utilities library. A big collection of code for both kernel and userspace programs.
+- `libs/np-xyz`: contains project files for northport (np) library xyz.
+- `libs/build`: built libraries are stored here, not included in the git repo for obvious reasons.
 
 Most sub-projects share a common internal layout:
 - `project_name_here/include/`: header files in here, making installing them later really easy.
@@ -39,13 +40,13 @@ Decent documentation! It'd be nice to induct some other people into developing s
 - GDT and IDT implementations. IDT implementation is nothing unique, but something I think is quite cool.
 - Simple heap for the kernel. It's a linkedlist style heap for now.
 - Support for simple devices: IO/APIC, Local APIC, PS2 controller/keyboard/mouse, 8254 PIT.
-- Parsing and finding ACPI tables.
 - Scheduler, with support multiple cores.
 - Stack traces. These can be printed with symbol names of the currently running program (including kernel), and will demangle c++ names.
 - Custom string and string formatting implementation (that conforms to printf() style).
 - Linear framebuffer and character-based framebuffer. PSF v1 & v2 rendering.
 - PCI support, both legacy and ECAM.
 - Loadable driver infrastructure, allowing device drivers to be loaded as devices are discovered.
+- Support libraries: np-graphics (for simple cpu-driven graphics), np-syscall (syscalls c++ wrapper), np-syslib (utilties library, partial STL implementation).
 
 ## Screenshots
 Currently not much to see, as there's no gui. Have a boot log for now.
