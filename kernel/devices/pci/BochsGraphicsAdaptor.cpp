@@ -47,6 +47,9 @@ namespace Kernel::Devices::Pci
         (void)type; (void)arg;
     }
 
+    BochsGraphicsAdaptor* BochsGraphicsDriver::GetAdaptor() const
+    { return adaptor; }
+
     enum BgaDispiReg : uint16_t
     {
         Id = 0,

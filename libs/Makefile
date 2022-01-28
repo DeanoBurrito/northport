@@ -2,7 +2,7 @@
 # It'll run a make target on all directories listed in SUB_PROJS, as long as 
 # target exists in TOP_TARGETS.
 
-SUB_PROJS = np-graphics np-syslib
+SUB_PROJS = np-graphics np-syslib np-syscall
 TOP_TARGETS = all clean
 
 .PHONY: $(SUB_PROJS) $(TOP_TARGETS)

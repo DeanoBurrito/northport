@@ -1,20 +1,20 @@
 #name of our target file
 TARGET = $(KERNEL_FULL_FILEPATH)
 
-CXX_INCLUDE_DIRS = -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include
+CXX_INCLUDE_DIRS = -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include -I$(LIBS_DIR)/np-graphics/include
 CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
 	-Wall -Wextra  -fpie -fno-stack-protector -fno-omit-frame-pointer -ffreestanding \
 	-mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow \
 	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
 
-LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-syslib
+LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-syslib -lnp-syscall -lnp-graphics
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds
 LD_FLAGS = $(LD_LIBS) \
 	 -nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext
 
 ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
-CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp \
+CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp SyscallDispatch.cpp \
 	memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp memory/New.cpp \
 	acpi/AcpiTables.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp \

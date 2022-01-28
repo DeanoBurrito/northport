@@ -1,5 +1,6 @@
 #include <arch/x86_64/Idt.h>
 #include <Log.h>
+#include <SyscallDispatch.h>
 #include <devices/LApic.h>
 #include <devices/Ps2Controller.h>
 #include <devices/8254Pit.h>
@@ -66,6 +67,9 @@ namespace Kernel
                 if (!Devices::UsingApicForUptime())
                     Devices::IncrementUptime(1); //we hardcore the PIT to ~1ms ticks
                 Devices::PitHandleIrq();
+                break;
+            case INTERRUPT_GSI_SYSCALL:
+                regs = DispatchSyscall(regs);
                 break;
             
         default:

@@ -157,4 +157,24 @@ namespace Kernel::Drivers
         Log("Driver event injection not supported yet. TODO:", LogSeverity::Fatal);
         (void)manifest; (void)instance; (void)arg;
     }
+
+    void* DriverManager::GetDriverInstance(const DriverManifest* manifest, size_t instanceNumber)
+    {
+        ScopedSpinlock scopeLock(&lock);
+        
+        DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
+        if (extManifest == nullptr)
+        {
+            Logf("Unable to get driver instance, manifest not found for name %s.", LogSeverity::Error, manifest->name);
+            return nullptr;
+        }
+
+        if (instanceNumber >= extManifest->instances.Size())
+        {
+            Log("Unable to get driver instance, instance id too high!", LogSeverity::Error);
+            return nullptr;
+        }
+
+        return extManifest->instances[instanceNumber];
+    }
 }

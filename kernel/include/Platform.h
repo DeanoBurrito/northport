@@ -22,12 +22,15 @@
 //NOTE: scheduler has this hardcoded in Yield() -> update it there if modifying
 #define INTERRUPT_GSI_SCHEDULER_NEXT 0x22
 #define INTERRUPT_GSI_PIT_TICK 0x23
+#define INTERRUPT_GSI_SYSCALL 0x24
 
 #define MSR_IA32_EFER 0xC0000080
 #define MSR_APIC_BASE 0x1B
 #define MSR_FS_BASE 0xC0000100
 #define MSR_GS_BASE 0xC0000101
 #define MSR_GS_KERNEL_BASE 0xC0000102
+#define MSR_LSTAR 0xC0000082
+#define MSR_SFMASK 0xC0000084
 
 #define GDT_ENTRY_RING_0_CODE 0x8
 #define GDT_ENTRY_RING_0_DATA 0x10

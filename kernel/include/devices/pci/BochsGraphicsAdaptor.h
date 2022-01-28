@@ -29,6 +29,9 @@ namespace Kernel::Devices::Pci
         BochsGraphicsDriver& operator=(BochsGraphicsDriver&& from) = delete;
 
         void HandleEvent(Drivers::DriverEventType type, void* arg);
+
+        //TODO: Big hack, remove once device manager is implemented
+        BochsGraphicsAdaptor* GetAdaptor() const;
     };
     
     class BochsFramebuffer : public Interfaces::GenericFramebuffer

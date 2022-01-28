@@ -35,5 +35,7 @@ namespace Kernel::Drivers
         bool StartDriver(const DriverManifest* manifest, DriverInitTag* userTags);
         bool StopDriver(const DriverManifest* manifest, size_t instanceNumber);
         void InjectEvent(const DriverManifest* manifest, size_t instance, void* arg);
+
+        void* GetDriverInstance(const DriverManifest* manifest, size_t instanceNumber);
     };
 }

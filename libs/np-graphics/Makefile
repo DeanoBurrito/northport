@@ -1,10 +1,10 @@
 TARGET = np-graphics
 
-CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -I$(LIBS_DIR)/np-syslib/include \
+CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include \
 	-fno-omit-frame-pointer -ffreestanding -fno-rtti -fno-exceptions -mno-red-zone -Wall -Wextra \
 	-fpie -std=c++17 -mno-80387 -mno-sse -mno-sse2 -mno-3dnow
 
-CXX_SRCS =
+CXX_SRCS = LinearFramebuffer.cpp
 
 include $(LIB_COMMON_MK)
 
