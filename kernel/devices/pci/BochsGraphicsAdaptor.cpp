@@ -4,6 +4,7 @@
 #include <Memory.h>
 #include <Maths.h>
 #include <Log.h>
+#include <Locks.h>
 
 #define BGA_DISPI_DISABLE 0x0
 #define BGA_DISPI_ENABLE 0x1
@@ -105,7 +106,7 @@ namespace Kernel::Devices::Pci
 
     void BochsFramebuffer::Init()
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         ready = false;
 
         auto maybePciDevice = PciBridge::Global()->FindDevice(0x1234, 0x1111);
@@ -161,7 +162,7 @@ namespace Kernel::Devices::Pci
 
     void BochsFramebuffer::Destroy()
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
     }
 
     bool BochsFramebuffer::IsAvailable() const
@@ -172,7 +173,7 @@ namespace Kernel::Devices::Pci
 
     void BochsFramebuffer::SetMode(FramebufferModeset& modeset)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         WriteDispiReg(BgaDispiReg::Enable, BGA_DISPI_DISABLE);
 

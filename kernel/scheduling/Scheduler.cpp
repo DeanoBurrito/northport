@@ -5,6 +5,7 @@
 #include <Algorithms.h>
 #include <Memory.h>
 #include <Log.h>
+#include <Locks.h>
 
 #define THREAD_ALL_STARTING_CAPACITY 128
 #define THREAD_STACK_PAGES 2
@@ -50,7 +51,7 @@ namespace Kernel::Scheduling
 
     void Scheduler::Init(size_t coreCount)
     {
-        SpinlockRelease(&lock);
+        sl::SpinlockRelease(&lock);
 
         suspended = false;
         realPressure = 0;
@@ -75,12 +76,12 @@ namespace Kernel::Scheduling
 
     StoredRegisters* Scheduler::Tick(StoredRegisters* currentRegs)
     {
-        ScopedSpinlock schedLock(&lock);
+        sl::ScopedSpinlock schedLock(&lock);
 
         Thread* current = Thread::Current();
         if (current != nullptr)
         {
-            ScopedSpinlock scopeLock(&current->lock);
+            sl::ScopedSpinlock scopeLock(&current->lock);
             SaveContext(current, currentRegs);
         }
 
@@ -121,11 +122,11 @@ namespace Kernel::Scheduling
         
         if (current != nullptr)
         {
-            ScopedSpinlock currLock(&current->lock);
+            sl::ScopedSpinlock currLock(&current->lock);
             current->flags = sl::EnumClearFlag(current->flags, ThreadFlags::Executing);
         }
 
-        ScopedSpinlock nextScopeLock(&next->lock);
+        sl::ScopedSpinlock nextScopeLock(&next->lock);
         next->flags = sl::EnumSetFlag(next->flags, ThreadFlags::Executing);
         GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = next;
         return LoadContext(next);
@@ -149,7 +150,7 @@ namespace Kernel::Scheduling
 
     Thread* Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         
         if (parent == nullptr)
         {

@@ -1,5 +1,6 @@
 #include <scheduling/Thread.h>
 #include <scheduling/Scheduler.h>
+#include <Locks.h>
 
 namespace Kernel::Scheduling
 {
@@ -20,7 +21,7 @@ namespace Kernel::Scheduling
 
     void Thread::Start(sl::NativePtr arg)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         sl::NativePtr(programStack).As<StoredRegisters>()->rsi = arg.raw;
         runState = ThreadState::Running;

@@ -7,6 +7,7 @@
 #include <Memory.h>
 #include <Utilities.h>
 #include <Log.h>
+#include <Locks.h>
 
 #define LAPIC_TIMER_CALIBRATION_MS 25
 
@@ -42,7 +43,7 @@ namespace Kernel::Devices
     char lapicCalibLock;
     void LApic::CalibrateTimer()
     {
-        ScopedSpinlock scopeLock(&lapicCalibLock);
+        sl::ScopedSpinlock scopeLock(&lapicCalibLock);
         
         WriteReg(LocalApicRegister::TimerInitialCount, 0); //ensure timer is stopped before we mess with it
         WriteReg(LocalApicRegister::TimerLVT, INTERRUPT_GSI_IGNORE); //everything else is set to 0

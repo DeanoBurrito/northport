@@ -2,6 +2,7 @@
 #include <Memory.h>
 #include <Platform.h>
 #include <Log.h>
+#include <Locks.h>
 
 #define KEYBOARD_BUFFER_SIZE 0xFF
 
@@ -82,12 +83,12 @@ namespace Kernel::Devices
     void Keyboard::Init()
     {
         keyEvents = new sl::CircularQueue<KeyEvent>(KEYBOARD_BUFFER_SIZE);
-        SpinlockRelease(&lock);
+        sl::SpinlockRelease(&lock);
     }
 
     void Keyboard::PushKeyEvent(const KeyEvent& event)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         keyEvents->PushBack(event);
     }
 
@@ -98,7 +99,7 @@ namespace Kernel::Devices
 
     sl::Vector<KeyEvent> Keyboard::GetKeyEvents()
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         size_t bufferSize = keyEvents->Size();
         KeyEvent* buffer = new KeyEvent[bufferSize];

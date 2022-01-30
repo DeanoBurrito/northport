@@ -1,6 +1,7 @@
 #include <arch/x86_64/Tss.h>
 #include <arch/x86_64/Gdt.h>
 #include <Platform.h>
+#include <Locks.h>
 
 namespace Kernel
 {
@@ -8,7 +9,7 @@ namespace Kernel
     
     void FlushTSS()
     {
-        ScopedSpinlock scopeLock(&tssInitLock);
+        sl::ScopedSpinlock scopeLock(&tssInitLock);
 
         SetTssDescriptorAddr(GetCoreLocal()->ptrs[CoreLocalIndices::TSS].raw);
         asm volatile("ltr %0" :: "r"((uint16_t)GDT_ENTRY_TSS));

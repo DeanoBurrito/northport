@@ -3,6 +3,7 @@
 #include <Cpu.h>
 #include <stddef.h>
 #include <Panic.h>
+#include <Locks.h>
 
 namespace Kernel
 {
@@ -19,7 +20,7 @@ namespace Kernel
 
         fullLoggingAvail = false;
 
-        SpinlockRelease(&debugconLock);
+        sl::SpinlockRelease(&debugconLock);
     }
 
     void LoggingInitFull()
@@ -73,7 +74,7 @@ namespace Kernel
             {
             case LogDestination::DebugCon:
                 {
-                    ScopedSpinlock scopeLock(&debugconLock);
+                    sl::ScopedSpinlock scopeLock(&debugconLock);
 
                     for (size_t index = 0; headerStr[index] != 0; index++)
                         CPU::PortWrite8(PORT_DEBUGCON, headerStr[index]);

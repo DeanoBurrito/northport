@@ -7,6 +7,7 @@
 #include <Cpu.h>
 #include <Log.h>
 #include <Maths.h>
+#include <Locks.h>
 
 namespace Kernel
 {
@@ -242,7 +243,7 @@ namespace Kernel::Memory
 
     void PageTableManager::InitClone()
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         
         Log("Freshly cloned page table initialized.", LogSeverity::Info);
     }
@@ -379,7 +380,7 @@ namespace Kernel::Memory
             return;
         }
 
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         //these are applied to all new entries
         PageEntryFlag templateFlags = PageEntryFlag::Present | PageEntryFlag::RegionWritesAllowed;
@@ -491,7 +492,7 @@ namespace Kernel::Memory
         uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
         GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
 
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
         PageTableEntry* entry;

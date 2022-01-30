@@ -2,6 +2,7 @@
 #include <Platform.h>
 #include <Memory.h>
 #include <Log.h>
+#include <Locks.h>
 
 namespace Kernel::Drivers
 {
@@ -38,14 +39,14 @@ namespace Kernel::Drivers
 
     void DriverManager::RegisterDriver(const DriverManifest& manifest)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         manifests->Append(manifest);
         Logf("New driver registered: name=%s, subsystem=0x%lx", LogSeverity::Verbose, manifest.name, (size_t)manifest.subsystem);
     }
 
     sl::Opt<DriverManifest*> DriverManager::FindDriver(DriverSubsytem subsystem, DriverMachineName machineName)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         DriverExtendedManifest* extManifest = GetExtendedManifest(subsystem, machineName);
 
@@ -56,7 +57,7 @@ namespace Kernel::Drivers
 
     bool DriverManager::StartDriver(const DriverManifest* manifest, DriverInitTag* userTags)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)
@@ -102,7 +103,7 @@ namespace Kernel::Drivers
 
     bool DriverManager::StopDriver(const DriverManifest* manifest, size_t instanceNumber)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         
         DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)
@@ -145,7 +146,7 @@ namespace Kernel::Drivers
 
     void DriverManager::InjectEvent(const DriverManifest* manifest, size_t instance, void* arg)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         
         DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)
@@ -160,7 +161,7 @@ namespace Kernel::Drivers
 
     void* DriverManager::GetDriverInstance(const DriverManifest* manifest, size_t instanceNumber)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         
         DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)

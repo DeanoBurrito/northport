@@ -5,6 +5,7 @@
 #include <Utilities.h>
 #include <Maths.h>
 #include <Log.h>
+#include <Locks.h>
 
 namespace Kernel::Devices
 {
@@ -14,7 +15,7 @@ namespace Kernel::Devices
     
     void SimpleFramebuffer::Init(stivale2_struct_tag_framebuffer* framebufferTag)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         
         baseAddress = framebufferTag->framebuffer_addr;
         width = framebufferTag->framebuffer_width;
@@ -69,7 +70,7 @@ namespace Kernel::Devices
     {
         if (!available)
             return;
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         
         for (size_t i = 0; i < height; i++)
             sl::memsetT<uint32_t>(baseAddress.As<void>(i * stride), clearColour.GetPacked(nativeFormat), width);
@@ -128,7 +129,7 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawPixel(Gfx::Vector2u where, Gfx::Colour colour)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         DrawPixel(where, colour, NoLock);
     }
 
@@ -143,7 +144,7 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawHLine(Gfx::Vector2u begin, int length, Gfx::Colour colour)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         DrawHLine(begin, length, colour, NoLock);
     }
 
@@ -163,7 +164,7 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawVLine(Gfx::Vector2u begin, int length, Gfx::Colour colour)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         DrawVLine(begin, length, colour, NoLock);
     }
 
@@ -184,7 +185,7 @@ namespace Kernel::Devices
 
     void SimpleFramebuffer::DrawLine(Gfx::Vector2u begin, Gfx::Vector2u end, Gfx::Colour colour)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
         DrawLine(begin, end, colour, NoLock);
     }
     
@@ -225,7 +226,7 @@ namespace Kernel::Devices
     {
         if (!available)
             return;
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         if (drawFunc != nullptr)
             drawFunc(this, where, colour);

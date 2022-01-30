@@ -2,6 +2,7 @@
 #include <memory/Paging.h>
 #include <memory/KernelHeap.h>
 #include <Log.h>
+#include <Locks.h>
 
 #ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
     #pragma message "Kernel heap is compiling with canary built in. Useful for debugging, but can cause slowdowns."
@@ -104,7 +105,7 @@ namespace Kernel::Memory
 
     void KernelHeap::Init(sl::NativePtr base)
     {
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         head = base.As<HeapNode>();
         PageTableManager::Local()->MapMemory(head, MemoryMapFlag::AllowWrites);
@@ -125,7 +126,7 @@ namespace Kernel::Memory
         if (size == 0)
             return nullptr;
         
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         //align alloc size
         size = (size / HEAP_ALLOC_ALIGN + 1) * HEAP_ALLOC_ALIGN;
@@ -177,7 +178,7 @@ namespace Kernel::Memory
         if (ptr == nullptr)
             return;
         
-        ScopedSpinlock scopeLock(&lock);
+        sl::ScopedSpinlock scopeLock(&lock);
 
         sl::NativePtr where(ptr);
         where.raw -= sizeof(HeapNode);

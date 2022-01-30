@@ -1,5 +1,6 @@
 #include <devices/SystemClock.h>
 #include <Platform.h>
+#include <Locks.h>
 
 namespace Kernel::Devices
 {
@@ -9,13 +10,13 @@ namespace Kernel::Devices
 
     void SetBootEpoch(uint64_t epoch)
     { 
-        ScopedSpinlock scopeLock(&timeLock); //probably unnecessary
+        sl::ScopedSpinlock scopeLock(&timeLock); //probably unnecessary
         bootEpoch = epoch; 
     }
     
     void IncrementUptime(size_t millis)
     {
-        ScopedSpinlock scopeLock(&timeLock);
+        sl::ScopedSpinlock scopeLock(&timeLock);
         uptimeMillis += millis;
     }
 

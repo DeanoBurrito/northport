@@ -7,6 +7,7 @@
 #include <scheduling/Scheduler.h>
 #include <gfx/TerminalFramebuffer.h>
 #include <formats/XPixMap.h>
+#include <Locks.h>
 
 extern const char* panicBitmapData[];
 
@@ -42,7 +43,7 @@ namespace Kernel
     void InitPanic()
     {
         panicDetails = new PanicDetails();
-        SpinlockRelease(&panicDetails->panicLock);
+        sl::SpinlockRelease(&panicDetails->panicLock);
 
         Log("Panic subsystem is ready.", LogSeverity::Info);
     }
@@ -74,7 +75,7 @@ namespace Kernel
         };
 
         //lock the fb once here, and we'll use NoLock within the loop
-        ScopedSpinlock scopeLock(fb->GetLock());
+        sl::ScopedSpinlock scopeLock(fb->GetLock());
         for (size_t y = 0; y < pixmap.Size().y; y++)
         {
             for (size_t x = 0; x < pixmap.Size().x; x++)
@@ -182,7 +183,7 @@ namespace Kernel
     [[noreturn]]
     void Panic(const char* reason)
     {
-        SpinlockAcquire(&panicDetails->panicLock);
+        sl::SpinlockAcquire(&panicDetails->panicLock);
         asm volatile("mov %0, %%rdi; int $0xFE" :: "m"(reason)); //TODO: find a better solution than trashing rdi - the stack?
         __builtin_unreachable();
     }
