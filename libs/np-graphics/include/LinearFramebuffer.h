@@ -33,6 +33,7 @@ namespace np::Graphics
     public:
         static LinearFramebuffer* Screen();
         static LinearFramebuffer Create(size_t width, size_t height, size_t bpp, bool doubleBuffered, ColourFormat format);
+        static LinearFramebuffer CreateAt(sl::NativePtr frontBuffer, sl::NativePtr backBuffer, size_t width, size_t height, size_t bpp, size_t stride, ColourFormat format);
 
         void Clear(Colour col = Colours::Black);
         void SwapBuffers();

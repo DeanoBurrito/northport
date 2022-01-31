@@ -49,6 +49,22 @@ namespace np::Graphics
         return fb;
     }
 
+    LinearFramebuffer LinearFramebuffer::CreateAt(sl::NativePtr frontBuffer, sl::NativePtr backBuffer, size_t width, size_t height, size_t bpp, size_t stride, ColourFormat format)
+    {
+        LinearFramebuffer fb;
+        
+        fb.doubleBuffered = frontBuffer.raw == backBuffer.raw;
+        fb.frontBuffer = frontBuffer;
+        fb.backBuffer = backBuffer;
+        fb.width = width;
+        fb.height = height;
+        fb.stride = stride;
+        fb.bitsPerPixel = bpp;
+        fb.bufferFormat = format;
+
+        return fb;
+    }
+
     void LinearFramebuffer::Clear(Colour colour)
     {
         sl::ScopedSpinlock scopeLock(&lock);
