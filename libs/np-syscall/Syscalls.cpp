@@ -25,6 +25,7 @@ namespace np::Syscall
         fbData.height = data.arg1 >> 32;
         fbData.bpp = data.arg2 & 0xFFFF'FFFF;
         fbData.stride = data.arg2 >> 32;
+        fbData.format.raw = data.arg3;
         
         return fbData;
     }

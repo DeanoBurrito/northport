@@ -129,11 +129,19 @@ namespace Kernel
                     needsDummyEC = false;
                     break;
             }
+
+            bool userDpl = false;
+            switch (i)
+            {
+                case INTERRUPT_GSI_SYSCALL:
+                    userDpl = true;
+                    break;
+            }
             
             void* entry = CreateClonedEntry(i, needsDummyEC, stubsBase, pageOffset);
             IdtEntry* idtEntry = defaultIDTR.GetEntry(i);
             idtEntry->SetAddress((uint64_t)entry);
-            idtEntry->SetDetails(0, 0x8, IdtGateType::InterruptGate, 0);
+            idtEntry->SetDetails(0, 0x8, IdtGateType::InterruptGate, userDpl ? 3 : 0);
         }
 
         Logf("Setup IDT for 0x%x entries (max platform supported).", LogSeverity::Verbose, HighestUserInterrupt);

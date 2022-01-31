@@ -46,6 +46,22 @@ namespace np::Syscall
         NativeUInt height;
         NativeUInt stride;
         NativeUInt bpp;
+
+        union
+        {
+            struct
+            {
+                uint8_t redOffset;
+                uint8_t greenOffset;
+                uint8_t blueOffset;
+                uint8_t reserved1;
+                uint8_t redMask;
+                uint8_t greenMask;
+                uint8_t blueMask;
+                uint8_t reserved0;
+            };
+            uint64_t raw;
+        } format;
     };
 
     sl::Opt<PrimaryFramebufferData> GetPrimaryFramebuffer();

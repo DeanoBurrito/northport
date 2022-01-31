@@ -44,7 +44,7 @@ namespace Kernel
             regs->rdi = primaryFramebuffer->GetAddress().Value().raw;
             Devices::Interfaces::FramebufferModeset modeset = primaryFramebuffer->GetCurrentMode();
             regs->rsi = modeset.width | (modeset.height << 32);
-            regs->rdx = modeset.bitsPerPixel | (modeset.width * modeset.bitsPerPixel);
+            regs->rdx = modeset.bitsPerPixel | ((modeset.width * modeset.bitsPerPixel / 8) << 32);
             regs->rcx = 0x00 | (8 << 8) | (16 << 16) | (24 << 24) | (0xFFFF'FFFFl << 32);
             break;
         }
