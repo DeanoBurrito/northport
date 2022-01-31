@@ -307,6 +307,43 @@ namespace Kernel::Memory
         return true;
     }
 
+    sl::Opt<sl::NativePtr> PageTableManager::GetPhysicalAddress(sl::NativePtr virtAddr)
+    {
+        PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
+        PageTableEntry entry(0);
+
+        uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
+        GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
+        
+        if (usingExtendedPaging)
+        {
+            entry = pageTable->entries[pml5Index];
+            if (!entry.HasFlag(PageEntryFlag::Present))
+                return {};
+            pageTable = EnsureHigherHalfAddr(entry.GetAddr().As<PageTable>());
+        }
+
+        entry = pageTable->entries[pml4Index];
+        if (!entry.HasFlag(PageEntryFlag::Present))
+            return {};
+        pageTable = EnsureHigherHalfAddr(entry.GetAddr().As<PageTable>());
+
+        entry = pageTable->entries[pml3Index];
+        if (!entry.HasFlag(PageEntryFlag::Present))
+            return {};
+        pageTable = EnsureHigherHalfAddr(entry.GetAddr().As<PageTable>());
+
+        entry = pageTable->entries[pml2Index];
+        if (!entry.HasFlag(PageEntryFlag::Present))
+            return {};
+        pageTable = EnsureHigherHalfAddr(entry.GetAddr().As<PageTable>());
+
+        entry = pageTable->entries[pml1Index];
+        if (!entry.HasFlag(PageEntryFlag::Present))
+            return {};
+        return entry.GetAddr();
+    }
+
     void PageTableManager::MakeActive() const
     {
         WriteCR3(topLevelAddress.raw);

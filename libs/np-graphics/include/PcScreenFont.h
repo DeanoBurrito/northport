@@ -1,13 +1,9 @@
 #pragma once
 
-#include <stdint.h>
+#include <BakedData.h>
 #include <stddef.h>
-#include <devices/SimpleFramebuffer.h>
 
-extern uint8_t font1DefaultData[];
-extern uint8_t font2DefaultData[];
-
-namespace Kernel::Gfx
+namespace np::Graphics
 {
     constexpr static inline uint8_t Psf1Magic[] = { 0x36, 0x04 };
     constexpr static inline size_t Psf1MagicLen = 2;
@@ -48,6 +44,6 @@ namespace Kernel::Gfx
         uint32_t charWidth;
     };
 
-    const static inline Psf1* psf1Default = (Psf1*)font1DefaultData;
-    const static inline Psf2* psf2Default = (Psf2*)font2DefaultData;
+    const static inline Psf1* psf1Default = (const Psf1*)font1DefaultData;
+    const static inline Psf2* psf2Default = (const Psf2*)font2DefaultData;
 }

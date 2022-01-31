@@ -5,6 +5,24 @@
 
 namespace np::Graphics
 {
+    struct ColourFormat
+    {
+        uint8_t redOffset;
+        uint8_t greenOffset;
+        uint8_t blueOffset;
+        uint8_t alphaOffset;
+        uint8_t redMask;
+        uint8_t greenMask;
+        uint8_t blueMask;
+        uint8_t alphaMask;
+
+        ColourFormat() = default;
+
+        constexpr ColourFormat(uint8_t r_o, uint8_t g_o, uint8_t b_o, uint8_t a_o, uint8_t r_m, uint8_t g_m, uint8_t b_m, uint8_t a_m)
+        : redOffset(r_o), greenOffset(g_o), blueOffset(b_o), alphaOffset(a_o), redMask(r_m), greenMask(g_m), blueMask(b_m), alphaMask(a_m)
+        {}
+    };
+    
     struct Colour
     {
     public:
@@ -24,10 +42,12 @@ namespace np::Graphics
         constexpr Colour(uint32_t rgba) : r(rgba >> 24), g((rgba >> 16) & 0xFF), b((rgba >> 8) & 0xFF), a(rgba & 0xFF)
         {}
 
-        uint32_t Pack(size_t redOffset, size_t greenOffset, size_t blueOffset, size_t alphaOffset, uint8_t redMask, uint8_t greenMask, uint8_t blueMask, uint8_t alphaMask);
+        uint32_t Pack(size_t redOffset, size_t greenOffset, size_t blueOffset, size_t alphaOffset, uint8_t redMask, uint8_t greenMask, uint8_t blueMask, uint8_t alphaMask) const;
+        
+        [[gnu::always_inline]] inline
+        uint32_t Pack(ColourFormat f) const
+        { return Pack(f.redOffset, f.greenOffset, f.blueOffset, f.alphaOffset, f.redMask, f.greenMask, f.blueMask, f.alphaMask); }
     };
-
-    using Color = Colour;
 
     namespace Colours
     {

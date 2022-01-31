@@ -2,6 +2,7 @@
 
 #include <NativePtr.h>
 #include <Platform.h>
+#include <Optional.h>
 
 namespace Kernel::Memory
 {   
@@ -55,6 +56,8 @@ namespace Kernel::Memory
 
         //checks each level of the paging structure has the appropriate flags to allow access (execute/write/user)
         bool EnsurePageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteExisting = false);
+
+        sl::Opt<sl::NativePtr> GetPhysicalAddress(sl::NativePtr virtAddr);
 
         //allocates a physical page and maps it at the specified address.
         void MapMemory(sl::NativePtr virtAddr, MemoryMapFlag flags);

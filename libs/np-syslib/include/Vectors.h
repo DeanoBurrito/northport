@@ -8,19 +8,19 @@ namespace sl
         T x;
         T y;
 
-        Vector2() : x(0), y(0)
+        constexpr Vector2() : x(0), y(0)
         {}
 
-        Vector2(T a) : x(a), y(a)
+        constexpr Vector2(T a) : x(a), y(a)
         {}
 
-        Vector2(T x, T y) : x(x), y(y)
+        constexpr Vector2(T x, T y) : x(x), y(y)
         {}
 
-        bool operator==(const Vector2& other)
+        constexpr bool operator==(const Vector2& other)
         { return x == other.x && y == other.y; }
         
-        bool operator!=(const Vector2& other)
+        constexpr bool operator!=(const Vector2& other)
         { return x != other.x || y != other.y; }
     };
 
@@ -36,19 +36,19 @@ namespace sl
         T y;
         T z;
 
-        Vector3() : x(0), y(0), z(0)
+        constexpr Vector3() : x(0), y(0), z(0)
         {}
 
-        Vector3(T a) : x(a), y(a), z(a)
+        constexpr Vector3(T a) : x(a), y(a), z(a)
         {}
 
-        Vector3(T x, T y, T z) : x(x), y(y), z(z)
+        constexpr Vector3(T x, T y, T z) : x(x), y(y), z(z)
         {}
 
-        bool operator==(const Vector3& other)
+        constexpr bool operator==(const Vector3& other)
         { return x == other.x && y == other.y && z == other.z; }
 
-        bool operator!=(const Vector3& other)
+        constexpr bool operator!=(const Vector3& other)
         { return x != other.x || y != other.y || z != other.z; }
     };
 
@@ -65,19 +65,19 @@ namespace sl
         T z;
         T w;
 
-        Vector4() : x(0), y(0), z(0), w(0)
+        constexpr Vector4() : x(0), y(0), z(0), w(0)
         {}
 
-        Vector4(T a) : x(a), y(a), z(a), w(a)
+        constexpr Vector4(T a) : x(a), y(a), z(a), w(a)
         {}
 
-        Vector4(T x, T y, T z, T w) : x(x), y(y), z(z), w(w)
+        constexpr Vector4(T x, T y, T z, T w) : x(x), y(y), z(z), w(w)
         {}
 
-        bool operator==(const Vector4& other)
+        constexpr bool operator==(const Vector4& other)
         { return x == other.x && y == other.y && z == other.z && w == other.w; }
 
-        bool operator!=(const Vector4& other)
+        constexpr bool operator!=(const Vector4& other)
         { return x != other.x || y != other.y || z != other.z || w != other.w; }
     };
 

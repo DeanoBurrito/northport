@@ -4,6 +4,7 @@
 #include <Colour.h>
 #include <NativePtr.h>
 #include <Vectors.h>
+#include <Rects.h>
 
 namespace np::Graphics
 {
@@ -22,6 +23,7 @@ namespace np::Graphics
         size_t width;
         size_t height;
         size_t bitsPerPixel;
+        ColourFormat bufferFormat;
         
         char lock;
         bool doubleBuffered;
@@ -30,11 +32,15 @@ namespace np::Graphics
 
     public:
         static LinearFramebuffer* Screen();
-        static LinearFramebuffer Create(size_t width, size_t height, size_t bpp, bool doubleBuffered);
+        static LinearFramebuffer Create(size_t width, size_t height, size_t bpp, bool doubleBuffered, ColourFormat format);
 
-        void Clear(Colour col = Colours::Black) const;
+        void Clear(Colour col = Colours::Black);
         void SwapBuffers();
+        void SetBufferFormat(const ColourFormat& format);
+        ColourFormat GetBufferFormat() const;
         sl::Vector2u Size() const;
+
+        char* GetLock();
 
         void DrawTestPattern();
 
@@ -51,7 +57,8 @@ namespace np::Graphics
         void DrawLine(sl::Vector2u begin, sl::Vector2u end, Colour colour);
         void DrawLine(sl::Vector2u begin, sl::Vector2u end, Colour colour, FramebufferNoLockType noLock);
         //draws a rectangle. Filled sets whether just the outlines or the full thing are drawn.
-        void DrawRect(sl::Vector2u topLeft, sl::Vector2u size, Colour colour, bool filled);
+        void DrawRect(sl::UIntRect rect, Colour colour, bool filled);
+        void DrawRect(sl::UIntRect rect, Colour colour, bool filled, FramebufferNoLockType noLock);
 
         //draws a complex output using the callback function, passing through the position and colour info
         void DrawUsing(SimpleRenderCallback drawFunc, sl::Vector2u where, Colour colour);
