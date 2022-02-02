@@ -1,5 +1,6 @@
 #include <devices/pci/BochsGraphicsAdaptor.h>
 #include <devices/interfaces/GenericGraphicsAdaptor.h>
+#include <devices/DeviceManager.h>
 #include <memory/Paging.h>
 #include <Memory.h>
 #include <Maths.h>
@@ -33,13 +34,13 @@ namespace Kernel::Devices::Pci
         (void)info;
 
         adaptor = new BochsGraphicsAdaptor();
-        adaptor->Init();
+        DeviceManager::Global()->RegisterDevice(adaptor);
+        DeviceManager::Global()->SetPrimaryDevice(DeviceType::GraphicsAdaptor, adaptor->GetId());
     }
 
     BochsGraphicsDriver::~BochsGraphicsDriver()
     {
-        adaptor->Destroy();
-        delete adaptor;
+        delete DeviceManager::Global()->UnregisterDevice(adaptor->GetId());
         adaptor = nullptr;
     }
 
@@ -47,9 +48,6 @@ namespace Kernel::Devices::Pci
     { 
         (void)type; (void)arg;
     }
-
-    BochsGraphicsAdaptor* BochsGraphicsDriver::GetAdaptor() const
-    { return adaptor; }
 
     enum BgaDispiReg : uint16_t
     {
@@ -107,7 +105,11 @@ namespace Kernel::Devices::Pci
     void BochsFramebuffer::Init()
     {
         sl::ScopedSpinlock scopeLock(&lock);
-        ready = false;
+    
+        if (state == DeviceState::Ready)
+            return;
+
+        type = DeviceType::GraphicsFramebuffer;
 
         auto maybePciDevice = PciBridge::Global()->FindDevice(0x1234, 0x1111);
         if (!maybePciDevice)
@@ -122,6 +124,8 @@ namespace Kernel::Devices::Pci
             Log("Cannot initialize bochs framebuffer: pci device does not have function 0.", LogSeverity::Error);
             return;
         }
+
+        format = { 16, 8, 0, 24, 0xFF, 0xFF, 0xFF, 0 };
 
         const PciFunction* pciFunc = *maybePciFunction;
         bool mmioRegsAvailable = false;
@@ -157,22 +161,32 @@ namespace Kernel::Devices::Pci
         bpp = ReadDispiReg(BgaDispiReg::Bpp);
         WriteDispiReg(BgaDispiReg::Enable, BGA_DISPI_ENABLE | BGA_DISPI_LFB_ENABLED | BGA_DISPI_NO_CLEAR_MEM);
 
-        ready = true;
+        state = DeviceState::Ready;
     }
 
-    void BochsFramebuffer::Destroy()
+    void BochsFramebuffer::Deinit()
     {
         sl::ScopedSpinlock scopeLock(&lock);
+        state = DeviceState::Shutdown;
     }
 
-    bool BochsFramebuffer::IsAvailable() const
-    { return ready; }
+    void BochsFramebuffer::Reset()
+    {
+        Deinit();
+        Init();
+    }
+
+    sl::Opt<void*> BochsFramebuffer::GetDriverInstance()
+    { return {}; }
 
     bool BochsFramebuffer::CanModeset() const
     { return true; }
 
     void BochsFramebuffer::SetMode(FramebufferModeset& modeset)
     {
+        if (modeset.bitsPerPixel != 32)
+            Log("Attempting to set non 32bpp mode on framebuffer, this is not currently supported! TODO:", LogSeverity::Warning);
+
         sl::ScopedSpinlock scopeLock(&lock);
 
         WriteDispiReg(BgaDispiReg::Enable, BGA_DISPI_DISABLE);
@@ -185,11 +199,11 @@ namespace Kernel::Devices::Pci
     }
 
     FramebufferModeset BochsFramebuffer::GetCurrentMode() const
-    { return { width, height, bpp }; }
+    { return { width, height, bpp, format }; }
 
     sl::Opt<sl::NativePtr> BochsFramebuffer::GetAddress() const
     {
-        if (!IsAvailable())
+        if (state != DeviceState::Ready)
             return {};
 
         return linearFramebufferBase;
@@ -197,20 +211,33 @@ namespace Kernel::Devices::Pci
 
     void BochsGraphicsAdaptor::Init()
     {
+        type = DeviceType::GraphicsAdaptor;
+        
         if (framebuffer == nullptr)
+        {
             framebuffer = new BochsFramebuffer();
-        framebuffer->Init();
+            DeviceManager::Global()->RegisterDevice(framebuffer);
+            DeviceManager::Global()->SetPrimaryDevice(DeviceType::GraphicsFramebuffer, framebuffer->GetId());
+        }
     }
 
-    void BochsGraphicsAdaptor::Destroy()
+    void BochsGraphicsAdaptor::Deinit()
     {
         if (framebuffer != nullptr)
         {
-            framebuffer->Destroy();
-            delete framebuffer;
+            delete DeviceManager::Global()->UnregisterDevice(framebuffer->GetId());
             framebuffer = nullptr;
         }
     }
+
+    void BochsGraphicsAdaptor::Reset()
+    {
+        Deinit();
+        Init();
+    }
+
+    sl::Opt<void*> BochsGraphicsAdaptor::GetDriverInstance()
+    { return {}; }
 
     size_t BochsGraphicsAdaptor::GetFramebuffersCount() const
     { return 1; }

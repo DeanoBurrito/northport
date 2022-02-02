@@ -1,9 +1,8 @@
 #include <SyscallDispatch.h>
 #include <Syscalls.h>
 #include <SyscallEnums.h>
-
-#include <drivers/DriverManager.h>
-#include <devices/pci/BochsGraphicsAdaptor.h>
+#include <devices/DeviceManager.h>
+#include <devices/interfaces/GenericFramebuffer.h>
 
 namespace Kernel
 {
@@ -22,30 +21,26 @@ namespace Kernel
             break;
         case SyscallId::GetPrimaryFramebuffer:
         {
-            //This is a big hack for now, until we have a device manager: we know we're going to have access to a bochs VGA driver, use it directly.
-            regs->rax = 0;
-            
-            using namespace Drivers;
-            uint8_t machNameBytes[] = { 0x11, 0x11, 0x34, 0x12 };
-            DriverMachineName machName;
-            machName.length = 4;
-            machName.name = machNameBytes;
-            sl::Opt<DriverManifest*> maybeBgaManifest = DriverManager::Global()->FindDriver(DriverSubsytem::PCI, machName);
-            if (!maybeBgaManifest.HasValue())
+            regs->rax = 0; //TODO: lots of magic numbers here, would be good to move them to constants
+
+            using namespace Devices;
+            sl::Opt<GenericDevice*> maybePrimaryFramebuffer = DeviceManager::Global()->GetPrimaryDevice(DeviceType::GraphicsFramebuffer);
+            if (!maybePrimaryFramebuffer)
             {
                 regs->rax = 1;
                 break;
             }
-            
-            using namespace Devices::Pci;
-            BochsGraphicsDriver* bgaGpu = reinterpret_cast<BochsGraphicsDriver*>(DriverManager::Global()->GetDriverInstance(*maybeBgaManifest, 0));
-            BochsFramebuffer* primaryFramebuffer = static_cast<BochsFramebuffer*>(bgaGpu->GetAdaptor()->GetFramebuffer(0));
 
-            regs->rdi = primaryFramebuffer->GetAddress().Value().raw;
-            Devices::Interfaces::FramebufferModeset modeset = primaryFramebuffer->GetCurrentMode();
+            Interfaces::GenericFramebuffer* fbDesc = static_cast<Interfaces::GenericFramebuffer*>(*maybePrimaryFramebuffer);
+            regs->rdi = fbDesc->GetAddress().Value().raw;
+            Interfaces::FramebufferModeset modeset = fbDesc->GetCurrentMode();
             regs->rsi = modeset.width | (modeset.height << 32);
             regs->rdx = modeset.bitsPerPixel | ((modeset.width * modeset.bitsPerPixel / 8) << 32);
-            regs->rcx = (16 << 0) | (8 << 8) | (0 << 16) | (24 << 24) | (0xFFFF'FFFFl << 32); //r g b [offset|mask]
+
+#define SQUISH_INTO_REG(field, shift) ((uint64_t)modeset.pixelFormat.field << shift)
+            regs->rcx = SQUISH_INTO_REG(redOffset, 0) | SQUISH_INTO_REG(greenOffset, 8) | SQUISH_INTO_REG(blueOffset, 16) | SQUISH_INTO_REG(alphaOffset, 24)
+                | SQUISH_INTO_REG(redMask, 32) | SQUISH_INTO_REG(greenMask, 40) | SQUISH_INTO_REG(blueMask, 48) | SQUISH_INTO_REG(alphaMask, 56);
+#undef SQUISH_INTO_REG
             break;
         }
 

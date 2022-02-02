@@ -155,8 +155,8 @@ namespace Kernel
             Log("SMP not available on this system.", LogSeverity::Info);
 
             //manually read the apic id, since LApic class isnt initialized yet
-            uint32_t apicIdReg = sl::MemRead<uint32_t>(CPU::ReadMsr(MSR_APIC_BASE) + 0x20);
-            InitCore(apicIdReg >> 24, 0);
+            uint32_t apicIdReg = sl::MemRead<uint32_t>(EnsureHigherHalfAddr(CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + 0x20);
+            InitCore(0, 0);
             return;
         }
 

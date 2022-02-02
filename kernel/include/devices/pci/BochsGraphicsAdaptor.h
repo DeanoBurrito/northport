@@ -29,15 +29,11 @@ namespace Kernel::Devices::Pci
         BochsGraphicsDriver& operator=(BochsGraphicsDriver&& from) = delete;
 
         void HandleEvent(Drivers::DriverEventType type, void* arg);
-
-        //TODO: Big hack, remove once device manager is implemented
-        BochsGraphicsAdaptor* GetAdaptor() const;
     };
     
     class BochsFramebuffer : public Interfaces::GenericFramebuffer
     {
     private:
-        bool ready;
         char lock;
 
         sl::NativePtr linearFramebufferBase;
@@ -45,6 +41,7 @@ namespace Kernel::Devices::Pci
         size_t width;
         size_t height;
         size_t bpp;
+        Interfaces::ColourFormat format;
 
         void WriteVgaReg(uint16_t reg, uint16_t data) const;
         uint16_t ReadVgaReg(uint16_t reg) const;
@@ -53,8 +50,9 @@ namespace Kernel::Devices::Pci
 
     public:
         void Init() override;
-        void Destroy() override;
-        bool IsAvailable() const override;
+        void Deinit() override;
+        void Reset() override;
+        sl::Opt<void*> GetDriverInstance() override;
 
         bool CanModeset() const override;
         void SetMode(Interfaces::FramebufferModeset& modeset) override;
@@ -67,10 +65,13 @@ namespace Kernel::Devices::Pci
     {
     private:
         BochsFramebuffer* framebuffer;
+        
+        void Init() override;
+        void Deinit() override;
 
     public:
-        void Init() override;
-        void Destroy() override;
+        void Reset() override;
+        sl::Opt<void*> GetDriverInstance() override;
 
         size_t GetFramebuffersCount() const override;
         Interfaces::GenericFramebuffer* GetFramebuffer(size_t index) const override;
