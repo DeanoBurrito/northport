@@ -1,17 +1,7 @@
 #include <devices/DeviceManager.h>
 #include <Locks.h>
 #include <Log.h>
-
-/*
-Notes about graphics BUP:
-    After reading serenity source, looks like they default to the bootloader provided framebuffer, if nothing specific can be initialized.
-    Would be nice to support that sort of functionality here too.
-
-    We'd probably want to define a set of defices which *require* a primary definiton between we consider device initialization complete.
-    For now this would simply be the framebuffer and keyboard I guess (although kb is a 1-way device, so perhaps not necessary).
-
-    Perhaps we have an interface like `DeviceManager::FinishInit()`, which checks for any primary devices, and assigns their defaults (i.e bootloader fb).
-*/
+#include <devices/StivaleFramebuffer.h>
 
 namespace Kernel::Devices
 {
@@ -30,6 +20,13 @@ namespace Kernel::Devices
         sl::SpinlockRelease(&primaryDevicesLock);
         
         Log("Kernel device manager initialized.", LogSeverity::Info);
+
+        //init bootloader provided device. Weird place for this, but since it's not discovered by anything,
+        //this seems to the only logical place. 
+        //It also has the benefit of being overwritten as the default framebuffer if a suitable gpu is found later.
+        bootloaderFramebuffer = new StivaleFramebuffer();
+        RegisterDevice(bootloaderFramebuffer);
+        SetPrimaryDevice(DeviceType::GraphicsFramebuffer, bootloaderFramebuffer->deviceId);
     }
 
     size_t DeviceManager::RegisterDevice(GenericDevice* device)
@@ -168,6 +165,12 @@ namespace Kernel::Devices
         if (!maybeDevice || *maybeDevice == nullptr)
             return;
 
+        if (bootloaderFramebuffer != nullptr && bootloaderFramebuffer->deviceId != deviceId && type == DeviceType::GraphicsFramebuffer)
+        {
+            delete UnregisterDevice(bootloaderFramebuffer->deviceId);
+            bootloaderFramebuffer = nullptr;
+        }
+        
         sl::ScopedSpinlock scopeLock(&primaryDevicesLock); //probably unnecessary as this will be an atomic write anyway.
         primaryDevices[(size_t)type] = *maybeDevice;
     }
