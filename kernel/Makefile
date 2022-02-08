@@ -7,7 +7,7 @@ CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
 	-mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow \
 	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
 
-LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-syslib -lnp-syscall -lnp-graphics
+LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-graphics -lnp-syslib -lnp-syscall
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds
 LD_FLAGS = $(LD_LIBS) \
 	 -nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext

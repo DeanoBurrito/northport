@@ -17,7 +17,6 @@ namespace Kernel::Devices
     struct PciBus;
     struct PciSegmentGroup;
     class PciBridge;
-#define ALLOW_PCI_INTERNAL_ACCESS friend PciFunction; friend PciDevice; friend PciBus; friend PciSegmentGroup; friend PciBridge;
 
     struct PciAddress
     {
@@ -76,7 +75,11 @@ namespace Kernel::Devices
 
     struct PciFunction
     {
-    ALLOW_PCI_INTERNAL_ACCESS
+    friend PciDevice;
+    friend PciBus;
+    friend PciSegmentGroup;
+    friend PciBridge;
+    
     private:
         PciConfigHeader header;
         PciAddress addr;
@@ -99,7 +102,11 @@ namespace Kernel::Devices
 
     struct PciDevice
     {
-    ALLOW_PCI_INTERNAL_ACCESS
+    friend PciFunction;
+    friend PciBus;
+    friend PciSegmentGroup;
+    friend PciBridge;
+
     private:
         sl::Vector<PciFunction> functions;
         uint8_t functionBitmap;
@@ -124,7 +131,11 @@ namespace Kernel::Devices
 
     struct PciBus
     {
-    ALLOW_PCI_INTERNAL_ACCESS
+    friend PciFunction;
+    friend PciDevice;
+    friend PciSegmentGroup;
+    friend PciBridge;
+
     private:
         sl::Vector<PciDevice> devices;
         sl::Vector<PciBus> children;
@@ -144,7 +155,11 @@ namespace Kernel::Devices
 
     struct PciSegmentGroup
     {
-    ALLOW_PCI_INTERNAL_ACCESS
+    friend PciFunction;
+    friend PciDevice;
+    friend PciBus;
+    friend PciBridge;
+
     private:
         size_t id;
         NativeUInt baseAddress;
@@ -173,7 +188,11 @@ namespace Kernel::Devices
 
     class PciBridge
     {
-    ALLOW_PCI_INTERNAL_ACCESS
+    friend PciFunction;
+    friend PciDevice;
+    friend PciBus;
+    friend PciSegmentGroup;
+
     private:
         bool ecamAvailable;
         sl::Vector<PciSegmentGroup>* segments;

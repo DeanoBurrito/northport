@@ -44,6 +44,8 @@ namespace np::Graphics
         uint32_t charWidth;
     };
 
+    [[gnu::used]]
     const static inline Psf1* psf1Default = (const Psf1*)font1DefaultData;
+    [[gnu::used]]
     const static inline Psf2* psf2Default = (const Psf2*)font2DefaultData;
 }

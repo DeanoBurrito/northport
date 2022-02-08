@@ -5,11 +5,6 @@
 
 namespace Kernel
 {
-    struct [[gnu::packed]] Gdt
-    {
-        uint64_t entries[];
-    };
-
     struct [[gnu::packed]] Gdtr
     {
         uint16_t limit;

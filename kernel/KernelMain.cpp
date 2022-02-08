@@ -20,6 +20,13 @@
 sl::NativePtr currentProgramElf;
 NativeUInt Kernel::vmaHighAddr;
 
+//defined down below, forward declared for code-arranging purposes.
+extern "C"
+{
+    [[gnu::used, noreturn]]
+    void _ApEntry(stivale2_smp_info* smpInfo);
+}
+
 namespace Kernel
 {
     stivale2_struct* stivale2Struct;
@@ -139,9 +146,6 @@ namespace Kernel
         Devices::LApic::Local()->Init();
         Logf("Core %lu LAPIC initialized.", LogSeverity::Verbose, apicId);
     }
-
-    [[gnu::used, noreturn]]
-    extern "C" void _ApEntry(stivale2_smp_info* smpInfo);
 
     void SetupAllCores()
     {
