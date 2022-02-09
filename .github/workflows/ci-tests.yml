@@ -1,0 +1,41 @@
+name: CI testing
+
+on:
+  push:
+    branches: [ master, dev ]
+  pull_request:
+    branches: [ master, dev ]
+    
+jobs:
+  main-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download and setup LLVM/Clang tools
+      run: sudo apt install lld llvm-12
+    
+    - name: Download GCC cross-compiler for x86_64
+      run: > 
+        wget https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--bleeding-edge-2021.11-5.tar.bz2 -O ../cross-chain;
+        cd ..;
+        tar -vxf cross-chain; mv x86-64--glibc--bleeding-edge-2021.11-5 gcc-x86_64-cross
+
+    - uses: actions/checkout@v2
+
+    - name: GCC compile test
+      run: >
+        make build-all 
+        TOOLCHAIN_DEFAULT=gcc 
+        TOOLCHAIN_DIR=../gcc-x86_64-cross 
+        CXX_BIN=x86_64-buildroot-linux-gnu-g++ 
+        ASM_BIN=x86_64-buildroot-linux-gnu-as 
+        LD_BIN=x86_64-buildroot-linux-gnu-ld 
+        AR_BIN=x86_64-buildroot-linux-gnu-ar
+    
+    - name: Clang compile test
+      run: >
+        make clean;
+        make build-all 
+        TOOLCHAIN_DEFAULT=clang 
+        AR=ar
+    
