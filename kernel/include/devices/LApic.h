@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define ExtractX2Offset(reg) ((((uint64_t)reg) >> 4) + 0x800)
+
 namespace Kernel::Devices
 {
     enum class LocalApicRegister : uint16_t
@@ -110,6 +112,8 @@ namespace Kernel::Devices
 
         uint64_t timerTicksPerMs;
         uint32_t calibratedDivisor;
+
+        bool x2ModeEnabled;
 
         void WriteReg(LocalApicRegister reg, uint32_t value) const;
         uint32_t ReadReg(LocalApicRegister reg) const;

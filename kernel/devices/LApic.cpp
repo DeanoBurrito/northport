@@ -8,6 +8,7 @@
 #include <Utilities.h>
 #include <Log.h>
 #include <Locks.h>
+#include <Cpu.h>
 
 #define LAPIC_TIMER_CALIBRATION_MS 25
 
@@ -35,10 +36,28 @@ namespace Kernel::Devices
     }
 
     void LApic::WriteReg(LocalApicRegister reg, uint32_t value) const
-    { sl::MemWrite<uint32_t>(baseAddress + (uint64_t)reg, value); }
+    {
+        if(!x2ModeEnabled)
+        {
+            sl::MemWrite<uint32_t>(baseAddress + (uint64_t)reg, value);
+        }
+        else
+        {
+            CPU::WriteMsr(ExtractX2Offset(reg), value);
+        }
+    }
 
     uint32_t LApic::ReadReg(LocalApicRegister reg) const
-    { return sl::MemRead<uint32_t>(baseAddress + (uint64_t)reg); }
+    {
+        if(!x2ModeEnabled)
+        {
+            return sl::MemRead<uint32_t>(baseAddress + (uint64_t)reg);
+        }
+        else
+        {
+            return (uint32_t) CPU::ReadMsr(ExtractX2Offset(reg));
+        }
+    }
 
     char lapicCalibLock;
     void LApic::CalibrateTimer()
@@ -82,12 +101,40 @@ namespace Kernel::Devices
         //TODO: x2APIC support
         
         baseAddress = (CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + vmaHighAddr;
+        bool isX2ApicFeaturePresent = CPU::FeatureSupported(CpuFeature::X2APIC);
+        Logf("X2Apic feature status: %b", LogSeverity::Info, isX2ApicFeaturePresent);
         Memory::PageTableManager::Local()->MapMemory(baseAddress, baseAddress - vmaHighAddr, Memory::MemoryMapFlag::AllowWrites);
+        
         apicId = ReadReg(LocalApicRegister::Id) >> 24;
         timerTicksPerMs = 0;
 
+        uint64_t apic_msr_base = CPU::ReadMsr(MSR_APIC_BASE);
         if ((CPU::ReadMsr(MSR_APIC_BASE) & (1 << 11)) == 0)
             Log("IA32_APIC_BASE_MSR bit 11 (global enable) is cleared. Cannot initialize local apic.", LogSeverity::Fatal);
+
+        if(isX2ApicFeaturePresent) 
+        {
+            if (((apic_msr_base >> 10) & 0b11) != 0b11) 
+            {
+                Log("X2apic is not enabled", LogSeverity::Info);
+                x2ModeEnabled = isX2ApicFeaturePresent;
+                //To Enable x2apic we need to set the 10th bit in the MSR register and write it back.
+                Logf("Apic ms base before: %x\n", LogSeverity::Info, apic_msr_base);
+                apic_msr_base = apic_msr_base | (1 << 10);
+                Logf("Apic ms base after: %x\n", LogSeverity::Info, apic_msr_base);
+                CPU::WriteMsr(MSR_APIC_BASE, apic_msr_base);
+                uint64_t x2apic_id = CPU::ReadMsr(0x802);
+                Logf("Apic id: %x\n", LogSeverity::Info, x2apic_id);
+                Logf("Test conversion Spurious: %x\n", LogSeverity::Info, (((uint64_t) LocalApicRegister::SpuriousInterruptVector)>> 4) + 0x800);
+                Logf("Test macro: %x\n", LogSeverity::Info, ExtractX2Offset(LocalApicRegister::SpuriousInterruptVector));
+                Logf("Test conversion Timer: %x\n", LogSeverity::Info, (((uint64_t) LocalApicRegister::TimerLVT)>> 4) + 0x800);
+                Logf("Test macro: %x\n", LogSeverity::Info, ExtractX2Offset(LocalApicRegister::TimerLVT));
+                Logf("Test macro EOI: %x\n", LogSeverity::Info, ExtractX2Offset(LocalApicRegister::EOI));
+
+            }  
+
+            x2ModeEnabled = true;
+        }
 
         ACPI::MADT* madt = reinterpret_cast<ACPI::MADT*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MADT));
         if (madt == nullptr)
@@ -97,7 +144,7 @@ namespace Kernel::Devices
             Log("BSP Local APIC is disabling dual 8259 PICs.", LogSeverity::Verbose);
 
             //remap pics above native interrupts range, then mask them
-            CPU::PortWrite8(0x20, 0x11); //start standard init squence (in cascade mode)
+            CPU::PortWrite8(0x20, 0x11); //start standard init sequence (in cascade mode)
             CPU::PortWrite8(0xA0, 0x11);
 
             CPU::PortWrite8(0x21, 0x20); //setting pic offsets (in case they mis-trigger by accident)
