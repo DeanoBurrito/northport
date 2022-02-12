@@ -180,13 +180,20 @@ namespace Kernel::Devices
     void LApic::SendIpi(uint32_t destId, uint8_t vector)
     {
         uint32_t low = vector;
-        uint32_t high = destId << 24;
+        uint32_t high = (x2ModeEnabled ? destId : destId << 24);
 
         //everything else is fine as default here, all zeros.
-
-        WriteReg(LocalApicRegister::ICR1, high);
-        //writing to low dword sends IPI
-        WriteReg(LocalApicRegister::ICR0, low);
+        if(!x2ModeEnabled)
+        {
+            WriteReg(LocalApicRegister::ICR1, high);
+            //writing to low dword sends IPI
+            WriteReg(LocalApicRegister::ICR0, low);
+        } 
+        else
+        {
+            uint64_t x2IcrRegisterValue = ((uint64_t) high | (uint64_t) low);
+            WriteReg(LocalApicRegister::ICR0, x2IcrRegisterValue);
+        }
     }
 
     void LApic::BroadcastIpi(uint8_t vector, bool includeSelf)
