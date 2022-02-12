@@ -118,8 +118,6 @@ namespace Kernel::Devices
                 //To Enable x2apic we need to set the 10th bit in the MSR register and write it back.
                 apic_msr_base = apic_msr_base | (1 << 10);
                 CPU::WriteMsr(MSR_APIC_BASE, apic_msr_base);
-                uint64_t x2apic_id = CPU::ReadMsr(0x802);
-                Log("Apic id: %x\n", LogSeverity::Info, x2apic_id);
                 if(IsBsp())
                     Log("System Succesfully initialized X2Apic", LogSeverity::Verbose);
             } 
