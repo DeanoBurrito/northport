@@ -199,10 +199,16 @@ namespace Kernel::Devices
     void LApic::BroadcastIpi(uint8_t vector, bool includeSelf)
     {
         uint32_t low = vector | (includeSelf ? (0b10 << 18) : (0b11 << 18));
-
-        WriteReg(LocalApicRegister::ICR1, 0); //destination is ignored when using shorthand
-        //writing to low dword sends IPI
-        WriteReg(LocalApicRegister::ICR0, low);
+        if(!x2ModeEnabled) {
+            WriteReg(LocalApicRegister::ICR1, 0); //destination is ignored when using shorthand
+            //writing to low dword sends IPI
+            WriteReg(LocalApicRegister::ICR0, low);
+        }
+        else
+        {
+            uint64_t x2IcrRegisterValue = ((uint64_t) 0 | (uint64_t) low);
+            WriteReg(LocalApicRegister::ICR0, x2IcrRegisterValue);
+        }
     }
 
     void LApic::SetLvtMasked(LocalApicRegister lvtReg, bool masked) const
