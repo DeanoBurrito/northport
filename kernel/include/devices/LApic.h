@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define ExtractX2Offset(reg) ((((uint64_t)reg) >> 4) + 0x800)
 
 namespace Kernel::Devices
 {
@@ -110,8 +109,8 @@ namespace Kernel::Devices
         uint64_t baseAddress;
         uint32_t apicId;
 
-        uint64_t timerTicksPerMs;
         uint32_t calibratedDivisor;
+        uint64_t timerTicksPerMs;
 
         bool x2ModeEnabled;
 
