@@ -8,8 +8,11 @@
 #include <Utilities.h>
 #include <Log.h>
 #include <Locks.h>
+#include <Cpu.h>
 
 #define LAPIC_TIMER_CALIBRATION_MS 25
+
+#define ExtractX2Offset(reg) ((((uint64_t)reg) >> 4) + 0x800)
 
 namespace Kernel::Devices
 {
@@ -35,10 +38,28 @@ namespace Kernel::Devices
     }
 
     void LApic::WriteReg(LocalApicRegister reg, uint32_t value) const
-    { sl::MemWrite<uint32_t>(baseAddress + (uint64_t)reg, value); }
+    {
+        if(x2ModeEnabled)
+        {
+            CPU::WriteMsr(ExtractX2Offset(reg), value);
+        }
+        else
+        {
+            sl::MemWrite<uint32_t>(baseAddress + (uint64_t)reg, value);
+        }
+    }
 
     uint32_t LApic::ReadReg(LocalApicRegister reg) const
-    { return sl::MemRead<uint32_t>(baseAddress + (uint64_t)reg); }
+    {
+        if(x2ModeEnabled)
+        {
+            return (uint32_t) CPU::ReadMsr(ExtractX2Offset(reg));
+        }
+        else
+        {
+            return sl::MemRead<uint32_t>(baseAddress + (uint64_t)reg);
+        }
+    }
 
     char lapicCalibLock;
     void LApic::CalibrateTimer()
@@ -79,16 +100,42 @@ namespace Kernel::Devices
         if (!CPU::FeatureSupported(CpuFeature::APIC))
             Log("CPUID says APIC is not unavailable, cannot initialize local apic.", LogSeverity::Fatal);
 
-        //TODO: x2APIC support
-        
         baseAddress = (CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + vmaHighAddr;
+        bool isX2ApicFeaturePresent = CPU::FeatureSupported(CpuFeature::X2APIC);
         Memory::PageTableManager::Local()->MapMemory(baseAddress, baseAddress - vmaHighAddr, Memory::MemoryMapFlag::AllowWrites);
-        apicId = ReadReg(LocalApicRegister::Id) >> 24;
+        
         timerTicksPerMs = 0;
 
+        uint64_t apic_msr_base = CPU::ReadMsr(MSR_APIC_BASE);
         if ((CPU::ReadMsr(MSR_APIC_BASE) & (1 << 11)) == 0)
             Log("IA32_APIC_BASE_MSR bit 11 (global enable) is cleared. Cannot initialize local apic.", LogSeverity::Fatal);
 
+        if(isX2ApicFeaturePresent) 
+        {
+            if (((apic_msr_base >> 10) & 0b11) != 0b11) 
+            {
+                x2ModeEnabled = isX2ApicFeaturePresent;
+                //To Enable x2apic we need to set the 10th bit in the MSR register and write it back.
+                apic_msr_base = apic_msr_base | (1 << 10);
+                CPU::WriteMsr(MSR_APIC_BASE, apic_msr_base);
+                if(IsBsp())
+                    Log("System Succesfully initialized X2Apic", LogSeverity::Verbose);
+            } 
+            else
+            {
+                if(IsBsp())
+                    Log("System is using X2APIC, initialized by bootloader", LogSeverity::Verbose);
+            }
+
+            x2ModeEnabled = true;
+        } 
+        else 
+        {
+            if(IsBsp())
+                Log("Local Apic is running in XAPIC Mode", LogSeverity::Verbose);
+        }
+
+        apicId = GetId();
         ACPI::MADT* madt = reinterpret_cast<ACPI::MADT*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MADT));
         if (madt == nullptr)
             Log("APIC unable to get madt data, does it exist? Cannot check for existence of 8259 PICs.", LogSeverity::Error);
@@ -97,7 +144,7 @@ namespace Kernel::Devices
             Log("BSP Local APIC is disabling dual 8259 PICs.", LogSeverity::Verbose);
 
             //remap pics above native interrupts range, then mask them
-            CPU::PortWrite8(0x20, 0x11); //start standard init squence (in cascade mode)
+            CPU::PortWrite8(0x20, 0x11); //start standard init sequence (in cascade mode)
             CPU::PortWrite8(0xA0, 0x11);
 
             CPU::PortWrite8(0x21, 0x20); //setting pic offsets (in case they mis-trigger by accident)
@@ -128,27 +175,47 @@ namespace Kernel::Devices
     }
 
     size_t LApic::GetId() const
-    { return ReadReg(LocalApicRegister::Id) >> 24; }
+    { 
+        if(x2ModeEnabled)
+        {
+            return ReadReg(LocalApicRegister::Id);
+        } 
+        return ReadReg(LocalApicRegister::Id) >> 24; 
+    }
 
     void LApic::SendIpi(uint32_t destId, uint8_t vector)
     {
         uint32_t low = vector;
-        uint32_t high = destId << 24;
+        uint32_t high = (x2ModeEnabled ? destId : destId << 24);
 
         //everything else is fine as default here, all zeros.
-
-        WriteReg(LocalApicRegister::ICR1, high);
-        //writing to low dword sends IPI
-        WriteReg(LocalApicRegister::ICR0, low);
+        if(!x2ModeEnabled)
+        {
+            WriteReg(LocalApicRegister::ICR1, high);
+            //writing to low dword sends IPI
+            WriteReg(LocalApicRegister::ICR0, low);
+        } 
+        else
+        {
+            uint64_t x2IcrRegisterValue = ((uint64_t) high << 32 | (uint32_t) low);
+            WriteReg(LocalApicRegister::ICR0, x2IcrRegisterValue);
+        }
     }
 
     void LApic::BroadcastIpi(uint8_t vector, bool includeSelf)
     {
         uint32_t low = vector | (includeSelf ? (0b10 << 18) : (0b11 << 18));
-
-        WriteReg(LocalApicRegister::ICR1, 0); //destination is ignored when using shorthand
-        //writing to low dword sends IPI
-        WriteReg(LocalApicRegister::ICR0, low);
+        if(!x2ModeEnabled)
+        {
+            WriteReg(LocalApicRegister::ICR1, 0); //destination is ignored when using shorthand
+            //writing to low dword sends IPI
+            WriteReg(LocalApicRegister::ICR0, low);
+        }
+        else
+        {
+            uint64_t x2IcrRegisterValue = ((uint64_t) 0 << 32| (uint32_t) low);
+            WriteReg(LocalApicRegister::ICR0, x2IcrRegisterValue);
+        }
     }
 
     void LApic::SetLvtMasked(LocalApicRegister lvtReg, bool masked) const
