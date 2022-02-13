@@ -127,16 +127,15 @@ namespace Kernel::Devices
                     Log("System is using X2APIC, initialized by bootloader", LogSeverity::Verbose);
             }
 
-            apicId = ReadReg(LocalApicRegister::Id);
             x2ModeEnabled = true;
         } 
         else 
         {
             if(IsBsp())
                 Log("Local Apic is running in XAPIC Mode", LogSeverity::Verbose);
-            apicId = ReadReg(LocalApicRegister::Id) >> 24;
         }
 
+        apicId = GetId();
         ACPI::MADT* madt = reinterpret_cast<ACPI::MADT*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MADT));
         if (madt == nullptr)
             Log("APIC unable to get madt data, does it exist? Cannot check for existence of 8259 PICs.", LogSeverity::Error);
@@ -177,7 +176,8 @@ namespace Kernel::Devices
 
     size_t LApic::GetId() const
     { 
-        if(x2ModeEnabled) {
+        if(x2ModeEnabled)
+        {
             return ReadReg(LocalApicRegister::Id);
         } 
         return ReadReg(LocalApicRegister::Id) >> 24; 
@@ -205,7 +205,8 @@ namespace Kernel::Devices
     void LApic::BroadcastIpi(uint8_t vector, bool includeSelf)
     {
         uint32_t low = vector | (includeSelf ? (0b10 << 18) : (0b11 << 18));
-        if(!x2ModeEnabled) {
+        if(!x2ModeEnabled)
+        {
             WriteReg(LocalApicRegister::ICR1, 0); //destination is ignored when using shorthand
             //writing to low dword sends IPI
             WriteReg(LocalApicRegister::ICR0, low);
