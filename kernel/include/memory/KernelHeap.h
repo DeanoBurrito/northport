@@ -20,7 +20,7 @@ namespace Kernel::Memory
         size_t length;
         bool free;
 
-        void CombineWithNext(KernelHeap& heap);
+        bool CombineWithNext(KernelHeap& heap);
         void CarveOut(size_t allocSize, KernelHeap& heap);
     };
     
@@ -30,6 +30,7 @@ namespace Kernel::Memory
     private:
         HeapNode* head;
         HeapNode* tail;
+        size_t bytesUsed;
         char lock;
 
         void ExpandHeap(size_t nextAllocSize);
@@ -41,6 +42,10 @@ namespace Kernel::Memory
 
         void* Alloc(size_t size);
         void Free(void* ptr);
+
+        [[gnu::always_inline]] inline
+        size_t GetBytesUsed() const
+        { return bytesUsed; }
     };
 }
 

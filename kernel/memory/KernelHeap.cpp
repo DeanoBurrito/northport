@@ -24,14 +24,14 @@ namespace Kernel::Memory
     }
 #endif
     
-    void HeapNode::CombineWithNext(KernelHeap& heap)
+    bool HeapNode::CombineWithNext(KernelHeap& heap)
     {
         if (!free)
-            return;
+            return false;
         if (next == nullptr)
-            return;
+            return false;
         if (!next->free)
-            return;
+            return false;
 
         if (heap.tail == next)
             heap.tail = this;
@@ -46,6 +46,7 @@ namespace Kernel::Memory
         if (next)
             SetCanary(next);
 #endif
+        return true;
     }
 
     void HeapNode::CarveOut(size_t allocSize, KernelHeap& heap)
@@ -151,6 +152,7 @@ namespace Kernel::Memory
             if (scan->length == size)
             {
                 scan->free = false;
+                bytesUsed += size;
                 return (void*)((uint64_t)scan + sizeof(HeapNode));
             }
 
@@ -160,6 +162,7 @@ namespace Kernel::Memory
                     scan->CarveOut(size, *this); //carve out space for the next node, ONLY if subdividing would be useful
                 
                 scan->free = false;
+                bytesUsed += size + sizeof(HeapNode);
                 return (void*)((uint64_t)scan + sizeof(HeapNode));
             }
 
@@ -190,8 +193,10 @@ namespace Kernel::Memory
 
         HeapNode* heapNode = where.As<HeapNode>();
         heapNode->free = true;
+        bytesUsed -= heapNode->length;
 
-        heapNode->CombineWithNext(*this);
+        if (heapNode->CombineWithNext(*this))
+            bytesUsed -= sizeof(HeapNode);
         if (heapNode->prev)
             heapNode->prev->CombineWithNext(*this);
     }
