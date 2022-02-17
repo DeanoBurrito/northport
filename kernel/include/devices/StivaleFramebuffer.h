@@ -25,7 +25,7 @@ namespace Kernel::Devices
 
     public:
         void Reset() override;
-        sl::Opt<void*> GetDriverInstance() override;
+        sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
 
         bool CanModeset() const override;
         void SetMode(Interfaces::FramebufferModeset& modeset) override;

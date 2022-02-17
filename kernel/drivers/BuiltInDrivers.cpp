@@ -20,11 +20,7 @@ namespace Kernel::Drivers
             manifest.loadFrom = nullptr;
             manifest.status = sl::EnumSetFlag(DriverStatusFlags::None, DriverStatusFlags::BuiltIn);
             manifest.status = sl::EnumSetFlag(manifest.status, DriverStatusFlags::Loaded); //builtins are always loaded
-            
-            using namespace Kernel::Devices::Pci::BochsGraphics;
-            manifest.InitNew = InitNew;
-            manifest.Destroy = Destroy;
-            manifest.HandleEvent = HandleEvent;
+            manifest.CreateNew = Devices::Pci::CreateNewBgaDriver;
 
             RegisterDriver(manifest);
         }

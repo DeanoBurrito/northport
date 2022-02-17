@@ -9,8 +9,9 @@ namespace Kernel::Devices::Interfaces
     {
     private:
     public:
-        virtual ~GenericGraphicsAdaptor()
-        {};
+        virtual ~GenericGraphicsAdaptor() = default;
+        virtual void Reset() = 0;
+        virtual sl::Opt<Drivers::GenericDriver*> GetDriverInstance() = 0;
 
         virtual size_t GetFramebuffersCount() const = 0;
         virtual GenericFramebuffer* GetFramebuffer(size_t index) const = 0;

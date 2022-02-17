@@ -44,4 +44,10 @@ namespace Kernel::Drivers
         : DriverInitTag(DriverInitTagType::PciFunction), function(func)
         {}
     };
+
+    struct DriverInitInfo
+    {
+        size_t id;
+        DriverInitTag* next;
+    };
 }

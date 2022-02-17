@@ -46,7 +46,7 @@ namespace Kernel::Devices
     void StivaleFramebuffer::Reset()
     { return; }
 
-    sl::Opt<void*> StivaleFramebuffer::GetDriverInstance()
+    sl::Opt<Drivers::GenericDriver*> StivaleFramebuffer::GetDriverInstance()
     { return {}; }
 
     bool StivaleFramebuffer::CanModeset() const

@@ -10,7 +10,7 @@ namespace Kernel::Drivers
     struct DriverExtendedManifest
     {
         DriverManifest manifest;
-        sl::Vector<void*> instances; //instance id is an index into this
+        sl::Vector<GenericDriver*> instances; //instance id is an index into this
 
         DriverExtendedManifest(const DriverManifest& manifest) : manifest(manifest)
         {}
@@ -34,8 +34,8 @@ namespace Kernel::Drivers
         sl::Opt<DriverManifest*> FindDriver(DriverSubsytem subsystem, DriverMachineName machineName);
         bool StartDriver(const DriverManifest* manifest, DriverInitTag* userTags);
         bool StopDriver(const DriverManifest* manifest, size_t instanceNumber);
-        void InjectEvent(const DriverManifest* manifest, size_t instance, void* arg);
+        void InjectEvent(const DriverManifest* manifest, size_t instance, DriverEventType type, void* arg);
 
-        void* GetDriverInstance(const DriverManifest* manifest, size_t instanceNumber);
+        GenericDriver* GetDriverInstance(const DriverManifest* manifest, size_t instanceNumber);
     };
 }

@@ -1,34 +1,23 @@
 #pragma once
 
-#include <drivers/DriverManifest.h>
 #include <devices/PciBridge.h>
+#include <drivers/GenericDriver.h>
 #include <devices/interfaces/GenericGraphicsAdaptor.h>
 
 namespace Kernel::Devices::Pci
 {
-    namespace BochsGraphics
-    {
-        void* InitNew(Drivers::DriverInitInfo* initInfo);
-        void Destroy(void* inst);
-        void HandleEvent(void* inst, Drivers::DriverEventType type, void* arg);
-    }
-
+    Drivers::GenericDriver* CreateNewBgaDriver();
+    
     class BochsGraphicsAdaptor;
-    class BochsGraphicsDriver
+    class BochsGraphicsDriver : public Drivers::GenericDriver
     {
     private:
         BochsGraphicsAdaptor* adaptor;
 
     public:
-        BochsGraphicsDriver(Drivers::DriverInitInfo* info);
-        ~BochsGraphicsDriver();
-
-        BochsGraphicsDriver(const BochsGraphicsDriver& other) = delete;
-        BochsGraphicsDriver& operator=(const BochsGraphicsDriver& other) = delete;
-        BochsGraphicsDriver(BochsGraphicsDriver&& from) = delete;
-        BochsGraphicsDriver& operator=(BochsGraphicsDriver&& from) = delete;
-
-        void HandleEvent(Drivers::DriverEventType type, void* arg);
+        void Init(Drivers::DriverInitInfo* initInfo) override;
+        void Deinit() override;
+        void HandleEvent(Drivers::DriverEventType type, void* arg) override;
     };
     
     class BochsFramebuffer : public Interfaces::GenericFramebuffer
@@ -52,7 +41,7 @@ namespace Kernel::Devices::Pci
         void Init() override;
         void Deinit() override;
         void Reset() override;
-        sl::Opt<void*> GetDriverInstance() override;
+        sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
 
         bool CanModeset() const override;
         void SetMode(Interfaces::FramebufferModeset& modeset) override;
@@ -71,7 +60,7 @@ namespace Kernel::Devices::Pci
 
     public:
         void Reset() override;
-        sl::Opt<void*> GetDriverInstance() override;
+        sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
 
         size_t GetFramebuffersCount() const override;
         Interfaces::GenericFramebuffer* GetFramebuffer(size_t index) const override;

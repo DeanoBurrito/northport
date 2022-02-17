@@ -14,22 +14,12 @@
 
 namespace Kernel::Devices::Pci
 {
-    //peak c++ efficiency right here ;-;
-    namespace BochsGraphics
-    {
-        void* InitNew(Drivers::DriverInitInfo* initInfo)
-        { return new BochsGraphicsDriver(initInfo); }
-
-        void Destroy(void* inst)
-        { delete static_cast<BochsGraphicsDriver*>(inst); }
-
-        void HandleEvent(void* inst, Drivers::DriverEventType type, void* arg)
-        { static_cast<BochsGraphicsDriver*>(inst)->HandleEvent(type, arg); }
-    }
+    Drivers::GenericDriver* CreateNewBgaDriver()
+    { return new BochsGraphicsDriver(); }
 
     using namespace Interfaces;
 
-    BochsGraphicsDriver::BochsGraphicsDriver(Drivers::DriverInitInfo* info)
+    void BochsGraphicsDriver::Init(Drivers::DriverInitInfo* info)
     {
         (void)info;
 
@@ -38,7 +28,7 @@ namespace Kernel::Devices::Pci
         DeviceManager::Global()->SetPrimaryDevice(DeviceType::GraphicsAdaptor, adaptor->GetId());
     }
 
-    BochsGraphicsDriver::~BochsGraphicsDriver()
+    void BochsGraphicsDriver::Deinit()
     {
         delete DeviceManager::Global()->UnregisterDevice(adaptor->GetId());
         adaptor = nullptr;
@@ -176,7 +166,7 @@ namespace Kernel::Devices::Pci
         Init();
     }
 
-    sl::Opt<void*> BochsFramebuffer::GetDriverInstance()
+    sl::Opt<Drivers::GenericDriver*> BochsFramebuffer::GetDriverInstance()
     { return {}; }
 
     bool BochsFramebuffer::CanModeset() const
@@ -236,7 +226,7 @@ namespace Kernel::Devices::Pci
         Init();
     }
 
-    sl::Opt<void*> BochsGraphicsAdaptor::GetDriverInstance()
+    sl::Opt<Drivers::GenericDriver*> BochsGraphicsAdaptor::GetDriverInstance()
     { return {}; }
 
     size_t BochsGraphicsAdaptor::GetFramebuffersCount() const

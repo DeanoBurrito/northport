@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <Optional.h>
+#include <drivers/GenericDriver.h>
 
 namespace Kernel::Devices
 {
@@ -52,7 +53,7 @@ namespace Kernel::Devices
         { return deviceId; }
 
         virtual void Reset() = 0;
-        virtual sl::Opt<void*> GetDriverInstance() = 0;
+        virtual sl::Opt<Drivers::GenericDriver*> GetDriverInstance() = 0;
 
     };
 }

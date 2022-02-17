@@ -32,7 +32,6 @@ namespace Kernel::Drivers
     {
         manifests = new sl::LinkedList<DriverExtendedManifest>;
         RegisterBuiltIns();
-        //TODO: scan any mounted (and trusted) filesystems for a /drivers directory, and load any manifests contained there
         
         Logf("Kernel driver manager initialized, manifests=%u", LogSeverity::Info, manifests->Size());
     }
@@ -83,7 +82,8 @@ namespace Kernel::Drivers
         initInfo.id = index;
         initInfo.next = userTags; //yes, loads of security issues waiting to happen. I know :(
 
-        void* instance = extManifest->manifest.InitNew(&initInfo);
+        GenericDriver* instance = extManifest->manifest.CreateNew();
+        instance->Init(&initInfo);
         if (instance == nullptr)
         {
             Logf("Unable to start driver %s, instance pointer is null. Check relevent logs for more info.", LogSeverity::Error, manifest->name);
@@ -116,15 +116,15 @@ namespace Kernel::Drivers
             Logf("Unable to stop driver %s, no instances.", LogSeverity::Error, manifest->name);
             return false;
         }
-        
         if (instanceNumber >= extManifest->instances.Size() || extManifest->instances[instanceNumber] == nullptr)
         {
             Logf("Unable to stop driver %s:%u, no instance with that id.", LogSeverity::Error, manifest->name, instanceNumber);
             return false;
         }
 
-        void* instance = extManifest->instances[instanceNumber];
-        extManifest->manifest.Destroy(instance);
+        GenericDriver* instance = extManifest->instances[instanceNumber];
+        instance->Deinit();
+        delete instance;
         extManifest->instances[instanceNumber] = nullptr;
         
         //check if we were the last instance
@@ -144,22 +144,33 @@ namespace Kernel::Drivers
         return true;
     }
 
-    void DriverManager::InjectEvent(const DriverManifest* manifest, size_t instance, void* arg)
+    void DriverManager::InjectEvent(const DriverManifest* manifest, size_t instanceNumber, DriverEventType type, void* arg)
     {
         sl::ScopedSpinlock scopeLock(&lock);
         
         DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)
         {
-            Logf("Unable to inject event to driver %s, matching manifest not found.", LogSeverity::Error, manifest->name);
+            Logf("Unable to inject event into driver %s, matching manifest not found.", LogSeverity::Error, manifest->name);
+            return;
+        }
+        if (!sl::EnumHasFlag(extManifest->manifest.status, DriverStatusFlags::Running))
+        {
+            Logf("Unable to inject event into driver %s, no instances.", LogSeverity::Error, manifest->name);
+            return;
+        }
+        
+        if (instanceNumber >= extManifest->instances.Size() || extManifest->instances[instanceNumber] == nullptr)
+        {
+            Logf("Unable to inject event into driver %s:%u, no instance with that id.", LogSeverity::Error, manifest->name, instanceNumber);
             return;
         }
 
-        Log("Driver event injection not supported yet. TODO:", LogSeverity::Fatal);
-        (void)manifest; (void)instance; (void)arg;
+        GenericDriver* instance = extManifest->instances[instanceNumber];
+        instance->HandleEvent(type, arg);
     }
 
-    void* DriverManager::GetDriverInstance(const DriverManifest* manifest, size_t instanceNumber)
+    GenericDriver* DriverManager::GetDriverInstance(const DriverManifest* manifest, size_t instanceNumber)
     {
         sl::ScopedSpinlock scopeLock(&lock);
         

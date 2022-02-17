@@ -29,9 +29,8 @@ namespace Kernel::Devices::Interfaces
         
     public:
         virtual ~GenericFramebuffer() = default;
-
         virtual void Reset() = 0;
-        virtual sl::Opt<void*> GetDriverInstance() = 0;
+        virtual sl::Opt<Drivers::GenericDriver*> GetDriverInstance() = 0;
 
         virtual bool CanModeset() const = 0;
         virtual void SetMode(FramebufferModeset& modeset) = 0;

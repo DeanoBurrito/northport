@@ -2,7 +2,7 @@
 
 #include <NativePtr.h>
 #include <stdint.h>
-#include <drivers/DriverInitTags.h>
+#include <drivers/GenericDriver.h>
 
 namespace Kernel::Drivers
 {
@@ -24,30 +24,14 @@ namespace Kernel::Drivers
         //set if driver is built in to kernel, and always available. Otherwise go fish.
         BuiltIn = 1 << 2,
     };
-
-    enum class DriverEventType : uint64_t
-    {
-        Unknown = 0,
-    };
-
-    struct DriverInitInfo
-    {
-        size_t id;
-        DriverInitTag* next;
-    };
     
-    //returns an instance of a new driver. 
-    using DriverCbInitNew = void* (*)(DriverInitInfo* initInfo);
-    //dispose of an instance of this driver.
-    using DriverCbDestroy = void (*)(void* inst);
-    //kernel is passing on an event for the driver to handle. Inst is an instance returned by InitNew
-    using DriverCbHandleEvent = void (*)(void* inst, DriverEventType type, void* arg);
-
     struct DriverMachineName
     {
         size_t length;
         const uint8_t* name;
     };
+
+    using DriverCreateNewCallback = GenericDriver* (*)();
 
     struct DriverManifest
     {
@@ -57,9 +41,7 @@ namespace Kernel::Drivers
         const char* name; //user-friendly display name
         DriverMachineName machineName; //user-unfriendly name
 
-        //driver callbacks
-        DriverCbInitNew InitNew;
-        DriverCbDestroy Destroy;
-        DriverCbHandleEvent HandleEvent;
+        //returns a pointer to a derived GenericDriver* of the correct type. Thats it.
+        DriverCreateNewCallback CreateNew;
     };
 }
