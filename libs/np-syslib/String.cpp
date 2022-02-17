@@ -192,4 +192,20 @@ namespace sl
 
     const char& String::operator[](size_t index) const
     { return At(index); }
+
+    bool String::operator==(const String& other) const
+    {
+        if (other.length != length)
+            return false;
+        
+        return sl::memcmp(buffer, other.buffer, length) == 0;
+    }
+
+    bool String::operator!=(const String& other) const
+    {
+        if (other.length != length)
+            return true;
+
+        return sl::memcmp(buffer, other.buffer, length) != 0;
+    }
 }

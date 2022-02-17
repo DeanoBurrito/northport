@@ -43,6 +43,9 @@ namespace sl
         const char& At(const size_t index) const;
         char& operator[](size_t index);
         const char& operator[](size_t index) const;
+
+        bool operator==(const String& other) const;
+        bool operator!=(const String& other) const;
     };
 
 }
