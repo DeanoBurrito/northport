@@ -37,15 +37,30 @@ namespace sl
         uint8_t* const di = reinterpret_cast<uint8_t* const>(dest);
 
         for (size_t i = 0; i < count; i++)
-        {
             di[destOffset + i] = si[sourceOffset + i];
-        }
     }
 
     int memcmp(const void* const a, const void* const b, size_t count)
     {
         const uint8_t* const ai = reinterpret_cast<const uint8_t* const>(a);
         const uint8_t* const bi = reinterpret_cast<const uint8_t* const>(b);
+
+        for (size_t i = 0; i < count; i++)
+        {
+            if (ai[i] > bi[i])
+                return 1;
+            else if (bi[i] > ai[i])
+                return -1;
+        }
+        return 0;
+    }
+
+    int memcmp(const void* const a, size_t offsetA, const void* const b, size_t offsetB, size_t count)
+    {
+        const uint8_t* ai = reinterpret_cast<const uint8_t* const>(a);
+        const uint8_t* bi = reinterpret_cast<const uint8_t* const>(b);
+        ai += offsetA;
+        bi += offsetB;
 
         for (size_t i = 0; i < count; i++)
         {

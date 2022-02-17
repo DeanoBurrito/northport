@@ -77,6 +77,7 @@ namespace sl
     void memcopy(const void* const source, size_t sourceOffset, void* const destination, size_t destOffset, size_t count);
 
     int memcmp(const void* const a, const void* const b, size_t count);
+    int memcmp(const void* const a, size_t offsetA, const void* const b, size_t offsetB, size_t count);
 
     size_t memfirst(const void* const buff, uint8_t target, size_t upperLimit);
     size_t memfirst(const void* const buff, size_t offset, uint8_t target, size_t upperLimit);
