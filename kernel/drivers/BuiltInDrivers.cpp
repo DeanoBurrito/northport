@@ -1,5 +1,6 @@
 #include <drivers/DriverManager.h>
 #include <devices/pci/BochsGraphicsAdaptor.h>
+#include <filesystem/InitDiskFSDriver.h>
 
 /*
     Located in a separate file as this may include from lots of different areas,
@@ -8,6 +9,7 @@
 namespace Kernel::Drivers
 {
     constexpr const uint8_t machineName_bochsVideoAdaptor[] = { 0x11, 0x11, 0x34, 0x12 };
+    constexpr const uint8_t machineName_initDiskFs[] = { 'i', 'n', 'i', 't', 'd', 'i', 's', 'k' };
     
     void DriverManager::RegisterBuiltIns()
     {
@@ -18,9 +20,21 @@ namespace Kernel::Drivers
             manifest.machineName.name = machineName_bochsVideoAdaptor;
             manifest.subsystem = DriverSubsytem::PCI;
             manifest.loadFrom = nullptr;
-            manifest.status = sl::EnumSetFlag(DriverStatusFlags::None, DriverStatusFlags::BuiltIn);
-            manifest.status = sl::EnumSetFlag(manifest.status, DriverStatusFlags::Loaded); //builtins are always loaded
+            manifest.status = sl::EnumSetFlag(DriverStatusFlags::Loaded, DriverStatusFlags::BuiltIn); //builtins cant ever be 'unloaded', as that would mean unloading the kernel.
             manifest.CreateNew = Devices::Pci::CreateNewBgaDriver;
+
+            RegisterDriver(manifest);
+        }
+
+        { //initdisk filesystem driver
+            DriverManifest manifest;
+            manifest.name = "InitDisk FS";
+            manifest.machineName.length = 8;
+            manifest.machineName.name = machineName_initDiskFs;
+            manifest.subsystem = DriverSubsytem::Filesystem;
+            manifest.loadFrom = nullptr;
+            manifest.status = sl::EnumSetFlag(DriverStatusFlags::Loaded, DriverStatusFlags::BuiltIn);
+            manifest.CreateNew = Filesystem::CreateNewInitDiskFSDriver;
 
             RegisterDriver(manifest);
         }

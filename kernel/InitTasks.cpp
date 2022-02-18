@@ -40,8 +40,19 @@ void InitPciTask()
 
 void InitManagersTask()
 {
-    Kernel::Devices::DeviceManager::Global()->Init();
-    Kernel::Drivers::DriverManager::Global()->Init();
+    using namespace Kernel::Devices;
+    using namespace Kernel::Drivers;
+    
+    DeviceManager::Global()->Init();
+    DriverManager::Global()->Init();
+
+    //start initdisk driver
+    uint8_t initDiskMachineName[] = { 'i', 'n', 'i', 't', 'd', 'i', 's', 'k' };
+    auto maybeDriver = DriverManager::Global()->FindDriver(DriverSubsytem::Filesystem, { 8, initDiskMachineName });
+    if (maybeDriver)
+        DriverManager::Global()->StartDriver(*maybeDriver, nullptr);
+    else //we should never not have this, its baked into the kernel.
+        Log("Initdisk filesystem driver is not available!", Kernel::LogSeverity::Error);
 
     Scheduler::Global()->CreateThread((size_t)InitPciTask, ThreadFlags::KernelMode)->Start(nullptr);
 }

@@ -22,7 +22,8 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp
 	devices/Ps2Mouse.cpp devices/Keyboard.cpp devices/8254Pit.cpp devices/SystemClock.cpp devices/PciBridge.cpp \
 	devices/pci/BochsGraphicsAdaptor.cpp devices/StivaleFramebuffer.cpp \
 	scheduling/Thread.cpp scheduling/Scheduler.cpp \
-	sanitizers/UBSanitizer.cpp
+	sanitizers/UBSanitizer.cpp \
+	filesystem/Vfs.cpp filesystem/VfsNode.cpp filesystem/FilesystemDriver.cpp filesystem/InitDiskFSDriver.cpp
 	
 ASM_SRCS = 
 

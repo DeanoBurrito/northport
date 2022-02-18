@@ -10,6 +10,7 @@
 #include <devices/SystemClock.h>
 #include <devices/Keyboard.h>
 #include <scheduling/Scheduler.h>
+#include <filesystem/Vfs.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <arch/x86_64/Tss.h>
@@ -116,6 +117,7 @@ namespace Kernel
         SetPitMasked(false);
 
         Keyboard::Global()->Init();
+        Filesystem::VFS::Global()->Init();
 
         stivale2_struct_tag_smp* stivaleSmpTag = FindStivaleTag<stivale2_struct_tag_smp*>(STIVALE2_STRUCT_TAG_SMP_ID);
         if (!stivaleSmpTag)

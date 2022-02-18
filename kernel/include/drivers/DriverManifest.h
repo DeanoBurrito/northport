@@ -11,6 +11,7 @@ namespace Kernel::Drivers
         None = 0,
 
         PCI = 1,
+        Filesystem = 2,
     };
 
     enum class DriverStatusFlags : uint64_t
