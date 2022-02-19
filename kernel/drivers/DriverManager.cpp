@@ -83,6 +83,7 @@ namespace Kernel::Drivers
         initInfo.next = userTags; //yes, loads of security issues waiting to happen. I know :(
 
         GenericDriver* instance = extManifest->manifest.CreateNew();
+        instance->manifest = &extManifest->manifest;
         instance->Init(&initInfo);
         if (instance == nullptr)
         {
