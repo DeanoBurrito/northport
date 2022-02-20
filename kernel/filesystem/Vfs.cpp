@@ -1,12 +1,13 @@
 #include <filesystem/Vfs.h>
 #include <drivers/DriverManifest.h>
+#include <Utilities.h>
 #include <Log.h>
 #include <Locks.h>
 #include <Memory.h>
 
 namespace Kernel::Filesystem
 {
-    VfsNode* VFS::FindNode(const VfsNode* current, const sl::String& path, size_t segmentStart)
+    VfsNode* VFS::FindNode(const VfsNode* current, const sl::String& path, size_t segmentStart) const
     {
         const size_t pathLength = path.EndsWith('/') ? path.Size() : path.Size() + 1;
 
@@ -29,6 +30,9 @@ namespace Kernel::Filesystem
             bool foundChild = false;
             for (size_t i = 0; i < current->children.Size(); i++)
             {
+                if (current->children[i] == nullptr)
+                    continue;
+
                 if (current->children[i]->name.Size() != segmentEnd - segmentStart)
                     continue; 
 
@@ -66,9 +70,7 @@ namespace Kernel::Filesystem
         VfsMountPoint* rootMount = new VfsMountPoint(nullptr, '/', nullptr);
         mountPoints->PushBack(rootMount);
 
-        //TODO: add createnode/removenode API
-        VfsNode* idNode = new VfsNode(rootNode, "initdisk", nullptr, VfsNodeType::Directory);
-        rootNode->children.PushBack(idNode);
+        AddNode(rootNode, "initdisk", VfsNodeType::Directory);
 
         Log("Virtual file system initialized.", LogSeverity::Info);
     }
@@ -182,5 +184,75 @@ namespace Kernel::Filesystem
         const char* driverName = mountPoint->driver == nullptr ? "<no driver name>" : mountPoint->driver->Manifest()->name;
         Logf("Successfully unmounted %s from %s", LogSeverity::Info, driverName, prefix.C_Str());
         delete mountPoint;
+    }
+
+    sl::Opt<VfsNode*> VFS::FindNode(const sl::String& absolutePath) const
+    {
+        VfsNode* found = FindNode(rootNode, absolutePath, 0);
+
+        if (found == nullptr)
+            return {};
+        else
+            return found;
+    }
+
+    bool VFS::AddNode(VfsNode* parent, const sl::String& name, VfsNodeType type)
+    {
+        if (parent == nullptr)
+            return false;
+        
+        size_t firstFreeIndex = (size_t)-1;
+        for (size_t i = 0;i < parent->children.Size(); i++)
+        {
+            if (parent->children.At(i) == nullptr)
+                continue;
+
+            if (parent->children.At(i)->name == name)
+                return false; //already a child with that name
+        }
+
+        VfsNode* newChild = new VfsNode(parent, name, parent->driver, type);
+
+        NodeChangedEventArgs eventArgs(NodeChangedFlags::Added, newChild);
+        if (parent->driver != nullptr)
+            parent->driver->HandleEvent(Drivers::DriverEventType::FilesystemNodeChanged, &eventArgs);
+        if (eventArgs.cancel)
+            return false;
+
+        if (firstFreeIndex == (size_t)-1)
+            parent->children.PushBack(newChild);
+        else
+            parent->children.At(firstFreeIndex) = newChild;
+        return true;
+    }
+
+    bool VFS::RemoveNode(VfsNode* node)
+    {
+        if (node == nullptr || node->parent == nullptr)
+            return false;
+        
+        VfsNode* parent = node->parent;
+        for (size_t i = 0; i < parent->children.Size(); i++)
+        {
+            if (parent->children[i] == nullptr)
+                continue;
+
+            //TODO: notify node of its coming desctruction, so it can flush any buffered operations.
+            if (parent->children.At(i) == node)
+            {
+                NodeChangedEventArgs eventArgs(NodeChangedFlags::Removed, node);
+                if (node->driver != nullptr)
+                    node->driver->HandleEvent(Drivers::DriverEventType::FilesystemNodeChanged, &eventArgs);
+                if (eventArgs.cancel)
+                    return false;
+                
+                parent->children.At(i) = nullptr;
+                delete node;
+                return true;
+            }
+        }
+
+        //weird that we got here, node wasnt in its parent's children?
+        return false;
     }
 }

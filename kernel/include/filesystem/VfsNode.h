@@ -30,9 +30,10 @@ namespace Kernel::Filesystem
         sl::String name;
         FilesystemDriver* driver;
         VfsNodeType type;
+        void* customData;
 
         VfsNode(VfsNode* parent, const sl::String& name, FilesystemDriver* driver, VfsNodeType type) 
-        : parent(parent), name(name), driver(driver), type(type)
+        : parent(parent), name(name), driver(driver), type(type), customData(nullptr)
         {}
 
         ~VfsNode();

@@ -1,17 +1,12 @@
 #pragma once
 
-#include <stdint.h>
 #include <drivers/DriverInitTags.h>
+#include <drivers/DriverEventType.h>
 
 namespace Kernel::Drivers
 {
-    enum class DriverEventType : uint64_t
-    {
-        Unknown = 0,
-    };
-
     class DriverManager;
-    class DriverManifest;
+    struct DriverManifest;
 
     //base class for all drivers, defines the driver API.
     class GenericDriver

@@ -18,7 +18,7 @@ namespace Kernel::Filesystem
         void PopulateNode(VfsNode* root) override;
         bool PrepareForUnmount(bool force) override;
 
-        size_t DoRead(VfsNode* node, size_t fromoffset, uint8_t* toBuffer, size_t toOffset, size_t readLength) override;
+        size_t DoRead(VfsNode* node, size_t fromOffset, uint8_t* toBuffer, size_t toOffset, size_t readLength) override;
         size_t DoWrite(VfsNode* node, size_t toOffset, uint8_t* fromBuffer, size_t fromOffset, size_t writeLength) override;
         void DoFlush(VfsNode* node) override;
 

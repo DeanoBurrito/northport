@@ -19,4 +19,9 @@ namespace Kernel::Filesystem
             child->parent = parent;
         }
     }
+
+    void*& FilesystemDriver::NodeData(VfsNode* node)
+    {
+        return node->customData;
+    }
 }

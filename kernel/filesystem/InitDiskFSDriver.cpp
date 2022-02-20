@@ -3,6 +3,7 @@
 #include <filesystem/Vfs.h>
 #include <formats/Tar.h>
 #include <Memory.h>
+#include <Maths.h>
 #include <Log.h>
 
 //TODO: bootloader abstraction will replace directly using stivale2 header
@@ -39,6 +40,7 @@ namespace Kernel::Filesystem
                 default: Log("Unimplemented tar file type.", LogSeverity::Error); break;
             }
             VfsNode* fileNode = CreateNode(root, tar->Filename(), fileType);
+            NodeData(fileNode) = sl::NativePtr(addr).ptr;
             (void)fileNode; //this is fine as vfs tree now takes responsibility for node pointers.
 
             //align size in bytes up the next sector
@@ -47,20 +49,26 @@ namespace Kernel::Filesystem
         }
     }
 
-    bool InitDiskFSDriver::PrepareForUnmount(bool force)
+    bool InitDiskFSDriver::PrepareForUnmount(bool)
     {
         return false; //just say we're not ready for now, no reason to unload initdisk
     }
 
-    size_t InitDiskFSDriver::DoRead(VfsNode* node, size_t fromoffset, uint8_t* toBuffer, size_t toOffset, size_t readLength)
+    size_t InitDiskFSDriver::DoRead(VfsNode* node, size_t fromOffset, uint8_t* toBuffer, size_t toOffset, size_t readLength)
     {
-        //TODO:
-        return 0;
+        if (node == nullptr || NodeData(node) == nullptr || toBuffer == nullptr)
+            return 0;
+
+        sl::TarHeader* tar = sl::TarHeader::FromExisting(NodeData(node));
+        readLength = sl::min(readLength, tar->SizeInBytes() - fromOffset);
+
+        sl::memcopy(sl::NativePtr(tar).As<void>(sl::TarSectorSize), fromOffset, toBuffer, toOffset, readLength);
+        return readLength;
     }
 
-    size_t InitDiskFSDriver::DoWrite(VfsNode* node, size_t toOffset, uint8_t* fromBuffer, size_t fromOffset, size_t writeLength)
+    size_t InitDiskFSDriver::DoWrite(VfsNode*, size_t, uint8_t*, size_t, size_t)
     {
-        //TODO:
+        Log("InitDisk is read only.", LogSeverity::Error);
         return 0;
     }
 
@@ -104,9 +112,15 @@ no_initdisk_found:
         Log("InitDisk filesystem driver is being unloaded, this should not happen.", LogSeverity::Error);
     }
 
-    void InitDiskFSDriver::HandleEvent(Drivers::DriverEventType, void*)
+    void InitDiskFSDriver::HandleEvent(Drivers::DriverEventType eventType, void* arg)
     {
         if (ramdiskBegin.ptr == nullptr)
             return;
+        
+        if (eventType == Drivers::DriverEventType::FilesystemNodeChanged)
+        {
+            NodeChangedEventArgs* eventArgs = static_cast<NodeChangedEventArgs*>(arg);
+            eventArgs->cancel = true; //cant add or remove files from initdisk.
+        }
     }
 }

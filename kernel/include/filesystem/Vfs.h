@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <String.h>
+#include <Optional.h>
 #include <containers/Vector.h>
 #include <filesystem/FilesystemDriver.h>
 #include <filesystem/VfsNode.h>
@@ -26,7 +27,7 @@ namespace Kernel::Filesystem
 
         char mountLock;
 
-        VfsNode* FindNode(const VfsNode* start, const sl::String& path, size_t pathTrimStart);
+        VfsNode* FindNode(const VfsNode* start, const sl::String& path, size_t pathTrimStart) const;
 
     public:
         static VFS* Global();
@@ -34,5 +35,9 @@ namespace Kernel::Filesystem
 
         bool Mount(FilesystemDriver* driverInstance, const sl::String& prefix);
         void Unmount(const sl::String& prefix, bool force);
+
+        sl::Opt<VfsNode*> FindNode(const sl::String& absolutePath) const;
+        bool AddNode(VfsNode* parent, const sl::String& name, VfsNodeType type);
+        bool RemoveNode(VfsNode* node);
     };
 }
