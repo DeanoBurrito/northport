@@ -10,7 +10,7 @@ CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -I$(LIBS_DIR)/np-example-lib \
 CXX_SRCS =
 
 #LIB_COMMON_MK contains a default `make clean` implementation,
-#as well as a fairly normaly build rule for c++.
+#as well as a fairly normal build rule for c++ source files.
 include $(LIB_COMMON_MK)
 
 .PHONY: all

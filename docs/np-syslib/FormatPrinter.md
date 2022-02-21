@@ -24,7 +24,7 @@ constructor (passing in a `true` after the buffer).
 - `%b/%B` treats the input as a boolean value, printing either true/false (or their capitalized counterparts if `%B` is used).
 
 ## Related source files:
-- [syslib/include/Format.h](../../syslib/include/Format.h)
-- [syslib/include/FormatPrinter.h](../../syslib/include/FormatPrinter.h)
-- [syslib/Format.cpp](../../syslib/Format.cpp)
-- [syslib/FormatPrinter.cpp](../../syslib/FormatPrinter.cpp)
+- [Format.h](../../libs/np-syslib/include/Format.h)
+- [FormatPrinter.h](../../libs/np-syslib/include/FormatPrinter.h)
+- [Format.cpp](../../libs/np-syslib/Format.cpp)
+- [FormatPrinter.cpp](../../libs/np-syslib/FormatPrinter.cpp)

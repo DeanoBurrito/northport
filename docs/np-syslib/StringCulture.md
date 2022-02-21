@@ -15,5 +15,5 @@ This looks a little intimdating as there is a lot, but if your custom culture us
 Check how the default culture uses these for an example.
 
 ## Related source files:
-- [syslib/include/StringCulture.h](../../syslib/include/StringCulture.h)
-- [syslib/StringCulture.cpp](../../syslib/StringCulture.cpp)
+- [StringCulture.h](../../libs/np-syslib/include/StringCulture.h)
+- [StringCulture.cpp](../../libs/np-syslib/StringCulture.cpp)
