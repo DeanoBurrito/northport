@@ -244,6 +244,10 @@ namespace Kernel::Memory
     void PageTableManager::InitClone()
     {
         sl::ScopedSpinlock scopeLock(&lock);
+
+        topLevelAddress = PMM::Global()->AllocPage();
+        sl::memset(topLevelAddress.ptr, 0, sizeof(PageTable));
+        sl::memcopy(Local()->topLevelAddress.ptr, sizeof(PageTable) / 2, topLevelAddress.ptr, sizeof(PageTable) / 2, sizeof(PageTable) / 2);
         
         Log("Freshly cloned page table initialized.", LogSeverity::Info);
     }
@@ -524,7 +528,7 @@ namespace Kernel::Memory
             MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), physAddrBase.raw + (i * PAGE_FRAME_SIZE), pageSize, flags);
     }
 
-    PagingSize PageTableManager::UnmapMemory(sl::NativePtr virtAddr)
+    PagingSize PageTableManager::UnmapMemory(sl::NativePtr virtAddr, bool freePhysicalPage)
     {
         uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
         GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
@@ -581,7 +585,8 @@ namespace Kernel::Memory
         entry = &pageTable->entries[pml1Index];
         if (!entry->HasFlag(PageEntryFlag::Present))
             return PagingSize::NoSize;
-        PMM::Global()->FreePage(entry->GetAddr().ptr);
+        if (freePhysicalPage)
+            PMM::Global()->FreePage(entry->GetAddr().ptr);
         entry->SetAddr(0ul);
         entry->ClearFlag(~PageEntryFlag::None);
         
@@ -590,10 +595,10 @@ namespace Kernel::Memory
         return PagingSize::Physical;
     }
 
-    PagingSize PageTableManager::UnmapRange(sl::NativePtr virtAddrBase, size_t count)
+    PagingSize PageTableManager::UnmapRange(sl::NativePtr virtAddrBase, size_t count, bool freePhysicalPages)
     {
         for (size_t i = 0; i < count; i++)
-            UnmapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE));
+            UnmapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), freePhysicalPages);
 
         return PagingSize::Physical;
     }

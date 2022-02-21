@@ -73,8 +73,8 @@ namespace Kernel::Memory
         void MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags);
 
         //removes a mapping froma virtual region, returns the size of attached page.
-        PagingSize UnmapMemory(sl::NativePtr virtAddr);
-
-        PagingSize UnmapRange(sl::NativePtr virtAddrBase, size_t count);
+        PagingSize UnmapMemory(sl::NativePtr virtAddr, bool freePhysicalPage = true);
+        
+        PagingSize UnmapRange(sl::NativePtr virtAddrBase, size_t count, bool freePhysicalPages = true);
     };
 }
