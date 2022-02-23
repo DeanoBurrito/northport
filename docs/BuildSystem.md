@@ -17,12 +17,19 @@ northport/
     | - libs/
     |   | - Makefile
     |   |
-    |   | - np-syslib
+    |   | - np-syslib/
     |   |   \ - Makefile
     |   |
-    |   | - np-graphics
+    |   | - np-graphics/
     |   |   \ - Makefile
     [ ... other northport libs here]
+    |
+    | - userland/
+    |   | - Makefile
+    |   |
+    |   | - startup/
+    |   |   \ - Makefile
+    [ ... other northport apps here]
     |
     | - misc/
     |   \ - LibCommon.mk
@@ -33,7 +40,8 @@ northport/
 ```
 
 Starting bottom up: the root makefile is a glorified config file and dispatcher really.
-It'll trigger the initdisk, library and kernel to build/clean themselves with the appropriate options.
+It'll first build all the libraries, then the kernel, then any userland apps, and then build the initdisk containing all the apps.
+There is an optional step after this to build a bootable iso with limine installed.
 
 ### BuildPrep.mk
 This file is really just creating the appropriate preprocessor defines to represent the build options chosen in the root makefile. It's separated out here as it's only touched once when a new feature is added. Otherwise it just adds noise to the main file.
@@ -58,3 +66,6 @@ Adding a library to the build system is pretty straight forward:
 4. Profit!
 
 Now you library will be included in the default builds of northport.
+
+## Adding A Userland Application
+The userland part of the build system mirrors how libraries are built, with some slight differences in the details so it outputs runable binaries, instead of static libs.

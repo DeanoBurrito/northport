@@ -37,6 +37,7 @@ endif
 PROJ_INITDISK_DIR = initdisk
 PROJ_KERNEL_DIR = kernel
 PROJ_LIBS_GLUE_DIR = libs
+PROJ_USERLAND_GLUE_DIR = userland
 
 #ENDSECTION
 
@@ -45,10 +46,12 @@ export INITDISK_FULL_FILEPATH = $(abspath $(PROJ_INITDISK_DIR)/$(BUILD_DIR)/nort
 export KERNEL_FILENAME = northport-kernel-$(CPU_ARCH).elf
 export KERNEL_FULL_FILEPATH = $(abspath $(PROJ_KERNEL_DIR)/$(BUILD_DIR)/$(KERNEL_FILENAME))
 
-#where built libraries are going to be stored
+#where built libraries and userland programs are going to be stored
 export LIBS_OUTPUT_DIR = $(abspath libs/$(BUILD_DIR))
 export LIBS_DIR = $(abspath libs/)
 export LIB_COMMON_MK = $(abspath misc/LibCommon.mk)
+export USERLAND_OUTPUT_DIR = $(abspath userland/$(BUILD_DIR))
+export USERLAND_COMMON_MK = $(abspath misc/UserlandCommon.mk)
 
 export CPU_ARCH = x86_64
 export ARCH_TARGET = $(CPU_ARCH)-elf
@@ -78,9 +81,10 @@ all: iso
 
 build-all: prep-build-env
 	@echo "Starting northport full build ..."
-	@cd $(PROJ_INITDISK_DIR); $(MAKE) all $(SUBMAKE_FLAGS);
 	@cd $(PROJ_LIBS_GLUE_DIR); $(MAKE) all -j $(SUBMAKE_FLAGS);
 	@cd $(PROJ_KERNEL_DIR); $(MAKE) all $(SUBMAKE_FLAGS);
+	@cd $(PROJ_USERLAND_GLUE_DIR); $(MAKE) all -j $(SUBMAKE_FLAGS);
+	@cd $(PROJ_INITDISK_DIR); $(MAKE) all $(SUBMAKE_FLAGS);
 	@echo "Build done!"
 
 iso: build-all
@@ -104,6 +108,7 @@ clean:
 	@echo "Cleaning build directories ..."
 	@-cd $(PROJ_INITDISK_DIR); $(MAKE) clean $(SUBMAKE_FLAGS);
 	@-cd $(PROJ_LIBS_GLUE_DIR); $(MAKE) clean $(SUBMAKE_FLAGS);
+	@-cd $(PROJ_USERLAND_GLUE_DIR); $(MAKE) clean $(SUBMAKE_FLAGS);
 	@-cd $(PROJ_KERNEL_DIR); $(MAKE) clean $(SUBMAKE_FLAGS)
 	@echo  "Cleaning done!"
 

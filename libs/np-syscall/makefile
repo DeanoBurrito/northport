@@ -14,4 +14,4 @@ all: $(OBJS)
 	@echo "[$(TARGET)] Creating static library ..."
 	@mkdir -p $(LIBS_OUTPUT_DIR)
 	@$(AR) -rcs $(LIBS_OUTPUT_DIR)/lib$(TARGET).a $(OBJS)
-	@echo "Done."
+	@echo "[$(TARGET)] Done."
