@@ -33,15 +33,48 @@ namespace Kernel::Filesystem
 
             Logf("Found initdisk file: %s", LogSeverity::Verbose, tar->Filename().C_Str());
             VfsNodeType fileType = VfsNodeType::File;
+            size_t filenameBegin = 0, filenameLength = 0;
             switch (tar->Type())
             {
-                case sl::TarEntryType::NormalFile: fileType = VfsNodeType::File; break;
-                case sl::TarEntryType::Directory: fileType = VfsNodeType::Directory; break;
-                default: Log("Unimplemented tar file type.", LogSeverity::Error); break;
+                case sl::TarEntryType::NormalFile: 
+                    fileType = VfsNodeType::File;
+                    filenameBegin = tar->Filename().FindLast('/') + 1;
+                    if (filenameBegin == 1)
+                        filenameBegin = 0;
+                    filenameLength = tar->Filename().Size() - filenameBegin;
+                    break;
+                case sl::TarEntryType::Directory:
+                {
+                    fileType = VfsNodeType::Directory;
+                    string tempFilename = tar->Filename().SubString(0, tar->Filename().Size() - 1);
+                    filenameBegin = tempFilename.FindLast('/');
+                    filenameLength = tempFilename.Size() - filenameBegin;
+                    break;
+                }
+                default: 
+                    Log("Unimplemented tar file type.", LogSeverity::Error); 
+                    break;
             }
-            VfsNode* fileNode = CreateNode(root, tar->Filename(), fileType);
-            NodeData(fileNode) = sl::NativePtr(addr).ptr;
-            (void)fileNode; //this is fine as vfs tree now takes responsibility for node pointers.
+
+            
+            VfsNode* parent = root;
+            if (filenameBegin > 0)
+            {
+                auto maybeParent = VFS::Global()->FindNode(tar->Filename().SubString(0, filenameBegin), root);
+                if (!maybeParent)
+                {
+                    Logf("Could not find parent node for initdisk file %s", LogSeverity::Error, tar->Filename().C_Str());
+                    parent = nullptr;
+                }
+                else
+                    parent = *maybeParent;
+            }
+
+            if (parent)
+            {
+                VfsNode* fileNode = CreateNode(parent, tar->Filename().SubString(filenameBegin, filenameLength), fileType);
+                NodeData(fileNode) = sl::NativePtr(addr).ptr;
+            }
 
             //align size in bytes up the next sector
             size_t sectorsCount = (tar->SizeInBytes() / sl::TarSectorSize + 1);
@@ -74,6 +107,13 @@ namespace Kernel::Filesystem
 
     void InitDiskFSDriver::DoFlush(VfsNode*)
     {}
+
+    FileDetails InitDiskFSDriver::GetDetails(VfsNode* node)
+    {
+        sl::TarHeader* tarHeader = sl::NativePtr(NodeData(node)).As<sl::TarHeader>();
+        
+        return FileDetails(tarHeader->SizeInBytes());
+    }
 
     void InitDiskFSDriver::Init(Drivers::DriverInitInfo*)
     {

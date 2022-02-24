@@ -1,6 +1,7 @@
 #pragma once
 
 #include <drivers/GenericDriver.h>
+#include <filesystem/FileDetails.h>
 #include <String.h>
 
 namespace Kernel::Filesystem
@@ -42,6 +43,7 @@ namespace Kernel::Filesystem
         virtual size_t DoRead(VfsNode* node, size_t fromOffset, uint8_t* toBuffer, size_t toOffset, size_t readLength) = 0;
         virtual size_t DoWrite(VfsNode* node, size_t toOffset, uint8_t* fromBuffer, size_t fromOffset, size_t writeLength) = 0;
         virtual void DoFlush(VfsNode* node) = 0;
+        virtual FileDetails GetDetails(VfsNode* node) = 0;
 
     public:
         virtual void Init(Drivers::DriverInitInfo* initInfo) = 0;

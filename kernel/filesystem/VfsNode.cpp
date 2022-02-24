@@ -36,4 +36,12 @@ namespace Kernel::Filesystem
         (void)control; (void)flags; (void)args;
         return false;
     }
+
+    FileDetails VfsNode::Details()
+    {
+        if (driver)
+            return driver->GetDetails(this);
+        
+        return FileDetails(0);
+    }
 }

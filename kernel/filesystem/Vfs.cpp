@@ -1,53 +1,40 @@
 #include <filesystem/Vfs.h>
 #include <drivers/DriverManifest.h>
-#include <Utilities.h>
+#include <filesystem/FilePath.h>
 #include <Log.h>
 #include <Locks.h>
 #include <Memory.h>
 
 namespace Kernel::Filesystem
 {
-    VfsNode* VFS::FindNode(const VfsNode* current, const sl::String& path, size_t segmentStart) const
+    VfsNode* VFS::FindNode(const VfsNode* current, const FilePath& path, size_t pathTrimStart) const
     {
-        const size_t pathLength = path.EndsWith('/') ? path.Size() : path.Size() + 1;
+        size_t segmentBegin = pathTrimStart;
 
-        if (path.At(0) == '/')
-        {
+        if (path.IsAbsolute())
             current = rootNode;
-            segmentStart++;
-        }
 
-        while (segmentStart < pathLength)
+        const sl::Vector<sl::String> pathSegments = path.Segments();
+        for (size_t i = 0; i < pathSegments.Size(); i++)
         {
-            size_t segmentEnd = sl::memfirst(path.C_Str(), segmentStart, '/', path.Size() - segmentStart);
-            if (segmentEnd == (size_t)-1)
-                segmentEnd = path.Size() - segmentStart;
-            segmentEnd++; //end marker is inclusive
-            
             if (current->children.Empty())
-                return nullptr; //we didnt consume all of the path and ran out of children
-            
+                return nullptr;
+
             bool foundChild = false;
-            for (size_t i = 0; i < current->children.Size(); i++)
+            for (size_t j = 0; j < current->children.Size(); j++)
             {
-                if (current->children[i] == nullptr)
+                if (current->children[j] == nullptr)
                     continue;
-
-                if (current->children[i]->name.Size() != segmentEnd - segmentStart)
-                    continue; 
-
-                if (sl::memcmp(path.C_Str(), segmentStart, current->children[i]->name.C_Str(), 0, segmentEnd - segmentStart) != 0)
-                    continue;
-
-                //names match!
-                foundChild = true;
-                current = current->children[i];
-                segmentStart += current->name.Size() + 1; //+1 for path separator
-
-                if (segmentStart < pathLength)
-                    break;
                 
-                return current->parent->children[i];
+                if (current->children[j]->name != pathSegments[i])
+                    continue;
+
+                foundChild = true;
+                current = current->children[j];
+                if (i == pathSegments.Size() - 1)
+                    return current->parent->children[j];
+                else
+                    break;
             }
 
             if (!foundChild)
@@ -189,6 +176,16 @@ namespace Kernel::Filesystem
     sl::Opt<VfsNode*> VFS::FindNode(const sl::String& absolutePath) const
     {
         VfsNode* found = FindNode(rootNode, absolutePath, 0);
+
+        if (found == nullptr)
+            return {};
+        else
+            return found;
+    }
+
+    sl::Opt<VfsNode*> VFS::FindNode(const sl::String& relativePath, VfsNode* top) const
+    {
+        VfsNode* found = FindNode(top, relativePath, 0);
 
         if (found == nullptr)
             return {};

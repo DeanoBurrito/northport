@@ -47,5 +47,6 @@ namespace Kernel::Filesystem
         size_t Write(size_t toOffset, uint8_t* fromBuffer, size_t fromOffset, size_t writeLength);
         void Flush();
         bool SetIoControl(IoControl control, uint64_t flags, void* args);
+        FileDetails Details();
     };
 }
