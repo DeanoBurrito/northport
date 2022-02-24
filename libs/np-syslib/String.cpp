@@ -102,7 +102,7 @@ namespace sl
 
     String String::SubString(size_t start, size_t len) const
     {
-        if (start + len > length)
+        if (start + len > length || len == (size_t)-1)
             len = length - start;
 
         char* tempBuffer = new char[len + 1];
@@ -142,9 +142,21 @@ namespace sl
         return *this;
     }
 
-    size_t String::Find(const char token, size_t offset)
+    size_t String::Find(const char token, size_t offset) const
     {
         return memfirst(buffer, offset, token, length);
+    }
+
+    size_t String::FindLast(const char token) const
+    {
+        size_t lastFound = 0;
+        size_t nextFound = 0;
+        while (nextFound != (size_t)-1)
+        {
+            lastFound = nextFound;
+            nextFound = memfirst(buffer, lastFound + 1, token, length);
+        }
+        return lastFound;
     }
 
     bool String::BeginsWith(const String& comp) const
@@ -165,12 +177,29 @@ namespace sl
         if (comp.Size() > Size())
             return false;
 
-        for (size_t i = Size() - comp.Size(); i < comp.Size(); i++)
+        for (size_t i = Size() - comp.Size(); i < Size(); i++)
         {
             if (At(i) != comp.At(i))
                 return false;
         }
         return true;
+    }
+
+    void String::TrimStart(size_t amount)
+    {
+        if (length < amount)
+            length = 0;
+        else
+            buffer += amount;
+    }
+
+    void String::TrimEnd(size_t amount)
+    { 
+        if (length < amount)
+            length = 0;
+        else
+            length -= amount;
+        buffer[length] = 0;
     }
 
     char& String::At(size_t index)
