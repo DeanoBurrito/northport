@@ -129,6 +129,7 @@ namespace Kernel::Scheduling
         sl::ScopedSpinlock nextScopeLock(&next->lock);
         next->flags = sl::EnumSetFlag(next->flags, ThreadFlags::Executing);
         GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = next;
+        GetCoreLocal()->ptrs[CoreLocalIndices::CurrentPageMap] = &next->parent->pageTables;
         return LoadContext(next);
     }
 
@@ -148,21 +149,26 @@ namespace Kernel::Scheduling
         return realPressure;
     }
 
+    ThreadGroup* Scheduler::CreateThreadGroup()
+    {
+        ThreadGroup* group = new ThreadGroup();
+        
+        group->id = idAllocator.Alloc();
+        group->PageTables().InitClone();
+
+        return group;
+    }
+
     Thread* Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
     {
         sl::ScopedSpinlock scopeLock(&lock);
         
         if (parent == nullptr)
-        {
-            parent = new ThreadGroup();
-            parent->id = idAllocator.Alloc();
-            // parent->pageTables.InitClone();
-            parent->pageTables = *Memory::PageTableManager::Local();
-        }
+            parent = CreateThreadGroup();
 
         Thread* thread = new Thread();
         thread->id = idAllocator.Alloc();
-        thread->flags = sl::EnumClearFlag(flags, ThreadFlags::Executing); //ensure executing flag is cleared, otherwise itl never run
+        thread->flags = sl::EnumClearFlag(flags, ThreadFlags::Executing); //ensure executing flag is cleared, otherwise itll never run
         thread->runState = ThreadState::PendingStart;
         thread->parent = parent;
         
@@ -221,6 +227,8 @@ namespace Kernel::Scheduling
     {
         auto it = sl::FindIf(allThreads.Begin(), allThreads.End(), [=](auto it)
         {
+            if (*it == nullptr)
+                return false;
             if ((*it)->id == id)
                 return true;
             return false;

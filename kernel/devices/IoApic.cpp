@@ -50,7 +50,7 @@ namespace Kernel::Devices
     {
         baseAddress = address;
         baseAddress.ptr = EnsureHigherHalfAddr(baseAddress.ptr);
-        Memory::PageTableManager::Local()->MapMemory(baseAddress, address, Memory::MemoryMapFlag::AllowWrites);
+        Memory::PageTableManager::Current()->MapMemory(baseAddress, address, Memory::MemoryMapFlag::AllowWrites);
 
         apicId = id;
         this->gsiBase = gsiBase;

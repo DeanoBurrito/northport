@@ -99,6 +99,7 @@ namespace Kernel
         LAPIC,
         TSS,
         CurrentThread,
+        CurrentPageMap,
         
         EnumCount,
     };
@@ -158,4 +159,28 @@ namespace Kernel
             return addr + vmaHighAddr;
         return addr;
     }
+
+    class InterruptLock
+    {
+    private:
+        bool shouldRestore;
+    public:
+        InterruptLock()
+        { 
+            shouldRestore = CPU::InterruptsEnabled(); 
+            CPU::ClearInterruptsFlag();
+        }
+
+        ~InterruptLock()
+        {
+            if (shouldRestore)
+                CPU::SetInterruptsFlag();
+        }
+
+        bool WillRestore()
+        { return shouldRestore; }
+
+        void SetShouldRestore(bool newState)
+        { shouldRestore = newState; }
+    };
 }

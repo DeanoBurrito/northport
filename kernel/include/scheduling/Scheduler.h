@@ -35,6 +35,7 @@ namespace Kernel::Scheduling
 
         size_t GetPressure() const;
 
+        ThreadGroup* CreateThreadGroup();
         Thread* CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent = nullptr);
         void RemoveThread(size_t id);
         Thread* GetThread(size_t id) const;

@@ -84,7 +84,7 @@ namespace Kernel::Memory
 
         if (requiredPages > 1)
             Log("Kernel heap is expanding by more than 1 page.", LogSeverity::Warning);
-        PageTableManager::Local()->MapRange(endOfHeapAddr, requiredPages, MemoryMapFlag::AllowWrites);
+        PageTableManager::Current()->MapRange(endOfHeapAddr, requiredPages, MemoryMapFlag::AllowWrites);
         tail->next = reinterpret_cast<HeapNode*>(endOfHeapAddr);
 
         tail->next->next = nullptr;
@@ -109,7 +109,7 @@ namespace Kernel::Memory
         sl::ScopedSpinlock scopeLock(&lock);
 
         head = base.As<HeapNode>();
-        PageTableManager::Local()->MapMemory(head, MemoryMapFlag::AllowWrites);
+        PageTableManager::Current()->MapMemory(head, MemoryMapFlag::AllowWrites);
 
         tail = head;
         head->next = head->prev = nullptr;

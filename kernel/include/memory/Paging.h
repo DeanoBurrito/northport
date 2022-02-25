@@ -44,7 +44,7 @@ namespace Kernel::Memory
         void InvalidatePage(sl::NativePtr virtualAddr) const;
         
     public:
-        static PageTableManager* Local();
+        static PageTableManager* Current();
         static void Setup();
 
         void InitKernel(bool reuseBootloaderMaps = false);
@@ -54,9 +54,7 @@ namespace Kernel::Memory
         bool IsActive() const;
         bool PageSizeAvailable(PagingSize size) const;
 
-        //checks each level of the paging structure has the appropriate flags to allow access (execute/write/user)
-        bool EnsurePageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteExisting = false);
-
+        bool ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteFlags = false);
         sl::Opt<sl::NativePtr> GetPhysicalAddress(sl::NativePtr virtAddr);
 
         //allocates a physical page and maps it at the specified address.

@@ -102,7 +102,7 @@ namespace Kernel::Devices
 
         baseAddress = (CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + vmaHighAddr;
         bool isX2ApicFeaturePresent = CPU::FeatureSupported(CpuFeature::X2APIC);
-        Memory::PageTableManager::Local()->MapMemory(baseAddress, baseAddress - vmaHighAddr, Memory::MemoryMapFlag::AllowWrites);
+        Memory::PageTableManager::Current()->MapMemory(baseAddress, baseAddress - vmaHighAddr, Memory::MemoryMapFlag::AllowWrites);
         
         timerTicksPerMs = 0;
 

@@ -3,3 +3,4 @@ iso/*
 libs/include
 compile_flags.txt
 .*.sw*
+initdisk/apps/

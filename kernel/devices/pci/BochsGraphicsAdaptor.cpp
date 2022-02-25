@@ -124,7 +124,6 @@ namespace Kernel::Devices::Pci
         else if (pciFunc->GetHeader()->bars[2].size > 0)
             mmioRegsAvailable = true; //bochs standard variant, but BAR2 is populated so mmio regs are available
 
-        using VMM = Memory::PageTableManager;
         linearFramebufferBase.raw = pciFunc->GetHeader()->bars[0].address;
         const size_t fbPageCount = pciFunc->GetHeader()->bars[0].size / PAGE_FRAME_SIZE; //TODO: investigate map issues here, puts framebuffer in a weird state
         // VMM::Local()->MapRange(EnsureHigherHalfAddr(linearFramebufferBase.raw), linearFramebufferBase, fbPageCount, Memory::MemoryMapFlag::AllowWrites);
@@ -134,7 +133,7 @@ namespace Kernel::Devices::Pci
         {
             mmioBase.raw = pciFunc->GetHeader()->bars[2].address;
             const size_t mmioPageCount = pciFunc->GetHeader()->bars[2].size / PAGE_FRAME_SIZE;
-            VMM::Local()->MapRange(EnsureHigherHalfAddr(mmioBase.raw), mmioBase, mmioPageCount, Memory::MemoryMapFlag::AllowWrites);
+            Memory::PageTableManager::Current()->MapRange(EnsureHigherHalfAddr(mmioBase.raw), mmioBase, mmioPageCount, Memory::MemoryMapFlag::AllowWrites);
             mmioBase.raw = EnsureHigherHalfAddr(mmioBase.raw);
 
             Log("Bochs framebuffer is legacy free variant, using mmio registers.", LogSeverity::Verbose);

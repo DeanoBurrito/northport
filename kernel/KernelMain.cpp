@@ -62,8 +62,8 @@ namespace Kernel
         
         PMM::Global()->Init(mmap);
         PageTableManager::Setup();
-        PageTableManager::Local()->InitKernel();
-        PageTableManager::Local()->MakeActive();
+        PageTableManager::Current()->InitKernel();
+        PageTableManager::Current()->MakeActive();
 
         //assign heap to start immediately after last mapped kernel page
         stivale2_struct_tag_pmrs* pmrs = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
@@ -136,6 +136,7 @@ namespace Kernel
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
         coreStore->ptrs[CoreLocalIndices::TSS] = new TaskStateSegment();
         coreStore->ptrs[CoreLocalIndices::CurrentThread] = nullptr;
+        coreStore->ptrs[CoreLocalIndices::CurrentPageMap] = Memory::PageTableManager::Current();
 
         FlushGDT();
         CPU::WriteMsr(MSR_GS_BASE, (size_t)coreStore);
@@ -175,7 +176,7 @@ namespace Kernel
             }
 
             sl::NativePtr stackBase = Memory::PMM::Global()->AllocPage();
-            Memory::PageTableManager::Local()->MapMemory(EnsureHigherHalfAddr(stackBase.raw), stackBase, Memory::MemoryMapFlag::AllowWrites);
+            Memory::PageTableManager::Current()->MapMemory(EnsureHigherHalfAddr(stackBase.raw), stackBase, Memory::MemoryMapFlag::AllowWrites);
 
             smpTag->smp_info[i].target_stack = EnsureHigherHalfAddr(stackBase.raw) + PAGE_FRAME_SIZE;
             smpTag->smp_info[i].goto_address = (uint64_t)_ApEntry;
@@ -202,7 +203,7 @@ extern "C"
     {
         using namespace Kernel;
         //ensure we're using our page map
-        Memory::PageTableManager::Local()->MakeActive();
+        Memory::PageTableManager::Current()->MakeActive();
         smpInfo = EnsureHigherHalfAddr(smpInfo);
 
         InitCore(smpInfo->lapic_id, smpInfo->processor_id);
@@ -225,6 +226,8 @@ extern "C"
 
         CPU::ClearInterruptsFlag();
         CPU::DoCpuId();
+        //PageTableManager::Current() will return the current thread's page tables, or the init set if gs_base is null (i.e no core local yet)
+        CPU::WriteMsr(MSR_GS_BASE, 0);
 
         LoggingInitEarly();
 #ifdef NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT

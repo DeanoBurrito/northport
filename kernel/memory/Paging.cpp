@@ -139,9 +139,12 @@ namespace Kernel::Memory
     }
 
     PageTableManager defaultPageTableManager;
-    PageTableManager* PageTableManager::Local()
+    PageTableManager* PageTableManager::Current()
     {
-        return &defaultPageTableManager;
+        if (CPU::ReadMsr(MSR_GS_BASE) == 0)
+            return &defaultPageTableManager;
+        else
+            return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentPageMap].As<PageTableManager>();
     }
 
     bool PageTableManager::usingExtendedPaging;
@@ -246,13 +249,13 @@ namespace Kernel::Memory
         sl::ScopedSpinlock scopeLock(&lock);
 
         topLevelAddress = PMM::Global()->AllocPage();
-        sl::memset(topLevelAddress.ptr, 0, sizeof(PageTable));
-        sl::memcopy(Local()->topLevelAddress.ptr, sizeof(PageTable) / 2, topLevelAddress.ptr, sizeof(PageTable) / 2, sizeof(PageTable) / 2);
+        sl::memset(EnsureHigherHalfAddr(topLevelAddress.ptr), 0, sizeof(PageTable));
+        sl::memcopy(EnsureHigherHalfAddr(Current()->topLevelAddress.ptr), sizeof(PageTable) / 2, EnsureHigherHalfAddr(topLevelAddress.ptr), sizeof(PageTable) / 2, sizeof(PageTable) / 2);
         
         Log("Freshly cloned page table initialized.", LogSeverity::Info);
     }
 
-    bool PageTableManager::EnsurePageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteExisting)
+    bool PageTableManager::ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteFlags)
     {
         PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
         PageTableEntry* entry;
@@ -267,8 +270,6 @@ namespace Kernel::Memory
             entry = &pageTable->entries[pml5Index];
             if (!entry->HasFlag(PageEntryFlag::Present))
                 return false;
-            if (overwriteExisting)
-                entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
             entry->SetFlag(entryFlags);
             pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
         }
@@ -276,16 +277,12 @@ namespace Kernel::Memory
         entry = &pageTable->entries[pml4Index];
         if (!entry->HasFlag(PageEntryFlag::Present))
             return false;
-        if (overwriteExisting)
-            entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
         entry->SetFlag(entryFlags);
         pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
 
         entry = &pageTable->entries[pml3Index];
         if (!entry->HasFlag(PageEntryFlag::Present))
             return false;
-        if (overwriteExisting)
-            entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
         entry->SetFlag(entryFlags);
         pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
          if (entry->HasFlag(PageEntryFlag::PageSize))
@@ -294,8 +291,6 @@ namespace Kernel::Memory
         entry = &pageTable->entries[pml2Index];
         if (!entry->HasFlag(PageEntryFlag::Present))
             return false;
-        if (overwriteExisting)
-            entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
         entry->SetFlag(entryFlags);
         pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
         if (entry->HasFlag(PageEntryFlag::PageSize))
@@ -304,8 +299,8 @@ namespace Kernel::Memory
         entry = &pageTable->entries[pml1Index];
         if (!entry->HasFlag(PageEntryFlag::Present))
             return false;
-        if (overwriteExisting)
-            entry->ClearFlag(static_cast<PageEntryFlag>((uint64_t)-1));
+        if (overwriteFlags)
+            entry->ClearFlag((PageEntryFlag)(uint64_t)-1);
         entry->SetFlag(entryFlags);
 
         return true;
