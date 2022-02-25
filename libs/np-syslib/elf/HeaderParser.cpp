@@ -20,19 +20,19 @@ namespace sl
         Elf64_Shdr* sectionHeaders = sl::NativePtr((void*)header).As<Elf64_Shdr>(header->e_shoff);
         shdrStringTable = &sectionHeaders[header->e_shstrndx];
 
-        symbolTable = FindSectionHeader(".symtab");
-        stringTable = FindSectionHeader(".strtab");
+        symbolTable = *FindSectionHeader(".symtab");
+        stringTable = *FindSectionHeader(".strtab");
     }
 
-    bool Elf64HeaderParser::IsValidElf()
+    bool Elf64HeaderParser::IsValidElf() const
     {
         return memcmp(header->e_ident, ExpectedMagic, 4) == 0;
     }
 
-    Elf64_Sym* Elf64HeaderParser::GetSymbol(NativePtr where)
+    sl::Opt<Elf64_Sym*> Elf64HeaderParser::GetSymbol(NativePtr where) const
     {
         if (header == nullptr)
-            return nullptr;
+            return {};
         
         Elf64_Sym* symbols = sl::NativePtr((void*)header).As<Elf64_Sym>(symbolTable->sh_offset);
         const size_t symbolCount = symbolTable->sh_size / symbolTable->sh_entsize;
@@ -47,29 +47,29 @@ namespace sl
                 return &symbols[i]; //symbol contains this pointer within it
         }
         
-        return nullptr;
+        return {};
     }
 
-    string Elf64HeaderParser::GetSymbolName(NativePtr where)
+    string Elf64HeaderParser::GetSymbolName(NativePtr where) const
     {
-        Elf64_Sym* sym = GetSymbol(where);
+        sl::Opt<Elf64_Sym*> sym = GetSymbol(where);
 
         if (!sym)
             return "<unknown symbol>";
 
         //DemangleName() will return the original name if it couldn't demangle successfully
-        string rawName = sl::NativePtr((size_t)header + stringTable->sh_offset).As<const char>(sym->st_name);
+        string rawName = sl::NativePtr((size_t)header + stringTable->sh_offset).As<const char>(sym.Value()->st_name);
         return DemangleName(rawName);
     }
 
-    Elf64_Shdr* Elf64HeaderParser::FindSectionHeader(string name)
+    sl::Opt<Elf64_Shdr*> Elf64HeaderParser::FindSectionHeader(const sl::String& name) const
     {
         if (header == nullptr)
-            return nullptr;
+            return {};
         
         Elf64_Shdr* shdrs = sl::NativePtr((void*)header).As<Elf64_Shdr>(header->e_shoff);
 
-        for (size_t i = 1; i < header->e_shnum; i++)
+        for (size_t i = 0; i < header->e_shnum; i++)
         {
             if (shdrs[i].sh_name == 0)
                 continue; //will be an empty string, skip it
@@ -83,6 +83,25 @@ namespace sl
                 return &shdrs[i];
         }
         
-        return nullptr;
+        return {};
+    }
+
+    sl::Vector<Elf64_Phdr*> Elf64HeaderParser::FindProgramHeaders(sl::Opt<Elf64_Word> type) const
+    {
+        if (header == nullptr)
+            return {};
+
+        sl::Vector<Elf64_Phdr*> foundHeaders;
+        Elf64_Phdr* phdrs = sl::NativePtr((void*)header).As<Elf64_Phdr>(header->e_phoff);
+
+        for (size_t i = 0; i < header->e_phnum; i++)
+        {
+            if (type.HasValue() && *type != phdrs[i].p_type)
+                continue;
+
+            foundHeaders.PushBack(&phdrs[i]);
+        }
+
+        return foundHeaders;
     }
 }

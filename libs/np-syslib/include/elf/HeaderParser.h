@@ -2,6 +2,8 @@
 
 #include <elf/Elf64.h>
 #include <NativePtr.h>
+#include <Optional.h>
+#include <containers/Vector.h>
 #include <String.h>
 
 //pointer to the elf of the currently running program
@@ -25,9 +27,10 @@ namespace sl
     public:
         Elf64HeaderParser(NativePtr headerAddr);
 
-        bool IsValidElf();
-        Elf64_Sym* GetSymbol(NativePtr where);
-        string GetSymbolName(NativePtr where);
-        Elf64_Shdr* FindSectionHeader(string name);
+        bool IsValidElf() const;
+        string GetSymbolName(NativePtr where) const;
+        sl::Opt<Elf64_Sym*> GetSymbol(NativePtr where) const;
+        sl::Opt<Elf64_Shdr*> FindSectionHeader(const sl::String& name) const;
+        sl::Vector<Elf64_Phdr*> FindProgramHeaders(sl::Opt<Elf64_Word> type) const;
     };
 }
