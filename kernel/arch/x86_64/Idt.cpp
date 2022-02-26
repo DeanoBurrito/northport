@@ -72,7 +72,7 @@ namespace Kernel
         {
             using namespace Memory;
             nextPage = latestPage + PAGE_FRAME_SIZE;
-            PageTableManager::Current()->MapMemory(nextPage, MemoryMapFlag::AllowExecute | MemoryMapFlag::AllowWrites);
+            PageTableManager::Current()->MapMemory(nextPage, MemoryMapFlags::AllowExecute | MemoryMapFlags::AllowWrites);
         }
 
         uint8_t* handlerData = (uint8_t*)(latestPage + pageOffset);
@@ -111,7 +111,7 @@ namespace Kernel
 
         uint64_t stubsBase = 0xffff'ffff'f000'0000;
         size_t pageOffset = 0;
-        Memory::PageTableManager::Current()->MapMemory(stubsBase, Memory::MemoryMapFlag::AllowExecute | Memory::MemoryMapFlag::AllowWrites);
+        Memory::PageTableManager::Current()->MapMemory(stubsBase, Memory::MemoryMapFlags::AllowExecute | Memory::MemoryMapFlags::AllowWrites);
 
         for (size_t i = 0; i <= HighestUserInterrupt; i++)
         {

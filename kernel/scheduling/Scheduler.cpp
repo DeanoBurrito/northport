@@ -208,7 +208,7 @@ namespace Kernel::Scheduling
         if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
         {
             threadStack.raw -= vmaHighAddr; //user mode thread, use lower half address
-            parent->pageTables.MapMemory(threadStackPhysBase, threadStackPhysBase, Memory::MemoryMapFlag::AllowWrites);
+            parent->pageTables.MapMemory(threadStackPhysBase, threadStackPhysBase, Memory::MemoryMapFlags::AllowWrites);
         }
         thread->programStack = threadStack;
 

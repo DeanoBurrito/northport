@@ -107,15 +107,15 @@ namespace Kernel::Memory
         PageTableEntry entries[512];
     };
 
-    PageEntryFlag GetPageEntryFlags(MemoryMapFlag flags)
+    PageEntryFlag GetPageEntryFlags(MemoryMapFlags flags)
     {
         PageEntryFlag finalFlags = PageEntryFlag::None;
 
-        if (sl::EnumHasFlag(flags, MemoryMapFlag::AllowWrites))
+        if (sl::EnumHasFlag(flags, MemoryMapFlags::AllowWrites))
             finalFlags = finalFlags | PageEntryFlag::RegionWritesAllowed;
-        if (sl::EnumHasFlag(flags, MemoryMapFlag::UserAccessible))
+        if (sl::EnumHasFlag(flags, MemoryMapFlags::UserAccessible))
             finalFlags = finalFlags | PageEntryFlag::UserAccessAllowed;
-        if (CPU::FeatureSupported(CpuFeature::ExecuteDisable) && sl::EnumHasFlag(flags, MemoryMapFlag::AllowExecute))
+        if (CPU::FeatureSupported(CpuFeature::ExecuteDisable) && sl::EnumHasFlag(flags, MemoryMapFlags::AllowExecute))
             finalFlags = finalFlags | PageEntryFlag::ExecuteDisable;
 
         return finalFlags;
@@ -202,11 +202,11 @@ namespace Kernel::Memory
                 const size_t pagesRequired = pmr->length / PAGE_FRAME_SIZE + 1;
                 const uint64_t physBase = baseAddrTag->physical_base_address + (pmr->base - baseAddrTag->virtual_base_address);
 
-                MemoryMapFlag flags = MemoryMapFlag::None;
+                MemoryMapFlags flags = MemoryMapFlags::None;
                 if ((pmr->permissions & STIVALE2_PMR_EXECUTABLE) != 0)
-                    flags = sl::EnumSetFlag(flags, MemoryMapFlag::AllowExecute);
+                    flags = sl::EnumSetFlag(flags, MemoryMapFlags::AllowExecute);
                 if ((pmr->permissions & STIVALE2_PMR_WRITABLE) != 0)
-                    flags = sl::EnumSetFlag(flags, MemoryMapFlag::AllowWrites);
+                    flags = sl::EnumSetFlag(flags, MemoryMapFlags::AllowWrites);
 
                 for (size_t j = 0; j < pagesRequired; j++)
                     MapMemory(pmr->base + (j * PAGE_FRAME_SIZE), physBase + (j * PAGE_FRAME_SIZE), flags);
@@ -216,7 +216,7 @@ namespace Kernel::Memory
             //using 2MB pages here to increase startup time. This is fine as this memory view is always read/write/NX, and only visible to the kernel
             constexpr size_t memUpper = 4 * GB; 
             for (size_t i = 0; i < memUpper; i += (size_t)PagingSize::_2MB)
-                MapMemory(hhdmTag->addr + i, i, PagingSize::_2MB, MemoryMapFlag::AllowWrites);
+                MapMemory(hhdmTag->addr + i, i, PagingSize::_2MB, MemoryMapFlags::AllowWrites);
             
             //map any regions of memory that are above the 4gb mark
             for (size_t i = 0; i < mmapTag->entries; i++)
@@ -233,7 +233,7 @@ namespace Kernel::Memory
                     base = memUpper;
 
                 for (size_t j = 0; j < region->length; j += PAGE_FRAME_SIZE)
-                    MapMemory(hhdmTag->addr + base + j, base + j, MemoryMapFlag::AllowWrites);
+                    MapMemory(hhdmTag->addr + base + j, base + j, MemoryMapFlags::AllowWrites);
             }
 
             MakeActive();
@@ -253,7 +253,7 @@ namespace Kernel::Memory
         Log("Freshly cloned page table initialized.", LogSeverity::Info);
     }
 
-    bool PageTableManager::ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, size_t appliedLevelsBitmap)
+    bool PageTableManager::ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlags flags, size_t appliedLevelsBitmap)
     {
         size_t tableIndices[6];
         GetPageTableIndices(virtAddr, tableIndices);
@@ -345,7 +345,7 @@ namespace Kernel::Memory
         }
     }
 
-    void PageTableManager::MapMemory(sl::NativePtr virtAddr, MemoryMapFlag flags)
+    void PageTableManager::MapMemory(sl::NativePtr virtAddr, MemoryMapFlags flags)
     {
         sl::NativePtr physAddr = PMM::Global()->AllocPage();
         if (physAddr.ptr == nullptr)
@@ -354,12 +354,12 @@ namespace Kernel::Memory
         MapMemory(virtAddr, physAddr, PagingSize::Physical, flags);
     }
 
-    void PageTableManager::MapMemory(sl::NativePtr virtAddr, sl::NativePtr physAddr, MemoryMapFlag flags)
+    void PageTableManager::MapMemory(sl::NativePtr virtAddr, sl::NativePtr physAddr, MemoryMapFlags flags)
     {
         MapMemory(virtAddr, physAddr, PagingSize::Physical, flags);
     }
 
-    void PageTableManager::MapMemory(sl::NativePtr virtAddr, PagingSize pageSize, MemoryMapFlag flags)
+    void PageTableManager::MapMemory(sl::NativePtr virtAddr, PagingSize pageSize, MemoryMapFlags flags)
     {
         if (!PageSizeAvailable(pageSize))
         {
@@ -375,7 +375,7 @@ namespace Kernel::Memory
         MapMemory(virtAddr, physAddr, pageSize, flags);
     }
 
-    void PageTableManager::MapMemory(sl::NativePtr virtAddr, sl::NativePtr physAddr, PagingSize size, MemoryMapFlag flags)
+    void PageTableManager::MapMemory(sl::NativePtr virtAddr, sl::NativePtr physAddr, PagingSize size, MemoryMapFlags flags)
     {
         if (!PageSizeAvailable(size))
         {
@@ -422,25 +422,25 @@ namespace Kernel::Memory
         InvalidatePage(virtAddr);
     }
 
-    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, size_t count, MemoryMapFlag flags)
+    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, size_t count, MemoryMapFlags flags)
     {
         for (size_t i = 0; i < count; i++)
             MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), flags);
     }
 
-    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, MemoryMapFlag flags)
+    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, MemoryMapFlags flags)
     {
         for (size_t i = 0; i < count; i++)
             MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), physAddrBase.raw + (i * PAGE_FRAME_SIZE), flags);
     }
 
-    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags)
+    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, size_t count, PagingSize pageSize, MemoryMapFlags flags)
     {
         for (size_t i = 0; i < count; i++)
             MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), pageSize, flags);
     }
 
-    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, PagingSize pageSize, MemoryMapFlag flags)
+    void PageTableManager::MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, PagingSize pageSize, MemoryMapFlags flags)
     {
         for (size_t i = 0; i < count; i++)
             MapMemory(virtAddrBase.raw + (i * PAGE_FRAME_SIZE), physAddrBase.raw + (i * PAGE_FRAME_SIZE), pageSize, flags);

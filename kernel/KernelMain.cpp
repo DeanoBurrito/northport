@@ -176,7 +176,7 @@ namespace Kernel
             }
 
             sl::NativePtr stackBase = Memory::PMM::Global()->AllocPage();
-            Memory::PageTableManager::Current()->MapMemory(EnsureHigherHalfAddr(stackBase.raw), stackBase, Memory::MemoryMapFlag::AllowWrites);
+            Memory::PageTableManager::Current()->MapMemory(EnsureHigherHalfAddr(stackBase.raw), stackBase, Memory::MemoryMapFlags::AllowWrites);
 
             smpTag->smp_info[i].target_stack = EnsureHigherHalfAddr(stackBase.raw) + PAGE_FRAME_SIZE;
             smpTag->smp_info[i].goto_address = (uint64_t)_ApEntry;
