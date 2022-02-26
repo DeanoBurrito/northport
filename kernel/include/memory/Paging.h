@@ -54,7 +54,7 @@ namespace Kernel::Memory
         bool IsActive() const;
         bool PageSizeAvailable(PagingSize size) const;
 
-        bool ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteFlags = false);
+        bool ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, size_t appliedLevelsBitmap);
         sl::Opt<sl::NativePtr> GetPhysicalAddress(sl::NativePtr virtAddr);
 
         //allocates a physical page and maps it at the specified address.

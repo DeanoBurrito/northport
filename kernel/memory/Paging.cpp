@@ -121,15 +121,14 @@ namespace Kernel::Memory
         return finalFlags;
     }
 
-    FORCE_INLINE void GetPageMapIndices(sl::NativePtr virtAddr, uint64_t* pml5Index, uint64_t* pml4Index, uint64_t* pml3Index, uint64_t* pml2Index, uint64_t* pml1Index)
+    FORCE_INLINE 
+    void GetPageTableIndices(sl::NativePtr virtAddr, size_t* indices)
     {
-        //this works for all levels of paging, since the unused address bits are required to be zero (and ignored).
-        //This of course breaks with 32bit paging (it may work with PAE paging, not tested and not interested).
-        *pml5Index = (virtAddr.raw >> 48) & 0x1FF;
-        *pml4Index = (virtAddr.raw >> 39) & 0x1FF;
-        *pml3Index = (virtAddr.raw >> 30) & 0x1FF;
-        *pml2Index = (virtAddr.raw >> 21) & 0x1FF;
-        *pml1Index = (virtAddr.raw >> 12) & 0x1FF;
+        indices[5] = (virtAddr.raw >> 48) & 0x1FF;
+        indices[4] = (virtAddr.raw >> 39) & 0x1FF;
+        indices[3] = (virtAddr.raw >> 30) & 0x1FF;
+        indices[2] = (virtAddr.raw >> 21) & 0x1FF;
+        indices[1] = (virtAddr.raw >> 12) & 0x1FF;
     }
 
     FORCE_INLINE
@@ -148,7 +147,6 @@ namespace Kernel::Memory
     }
 
     bool PageTableManager::usingExtendedPaging;
-    
     void PageTableManager::Setup()
     {
         Log("Beginning system paging setup for pre-scheduler kernel.", LogSeverity::Info);
@@ -214,7 +212,7 @@ namespace Kernel::Memory
                     MapMemory(pmr->base + (j * PAGE_FRAME_SIZE), physBase + (j * PAGE_FRAME_SIZE), flags);
             }
 
-            //nmap the first 4gb of physical memory at a known address (we're reusing the address specified by hddm tag for now)
+            //map the first 4gb of physical memory at a known address (we're reusing the address specified by hddm tag for now)
             //using 2MB pages here to increase startup time. This is fine as this memory view is always read/write/NX, and only visible to the kernel
             constexpr size_t memUpper = 4 * GB; 
             for (size_t i = 0; i < memUpper; i += (size_t)PagingSize::_2MB)
@@ -255,92 +253,61 @@ namespace Kernel::Memory
         Log("Freshly cloned page table initialized.", LogSeverity::Info);
     }
 
-    bool PageTableManager::ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, bool overwriteFlags)
+    bool PageTableManager::ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlag flags, size_t appliedLevelsBitmap)
     {
+        size_t tableIndices[6];
+        GetPageTableIndices(virtAddr, tableIndices);
+
+        sl::ScopedSpinlock scopeLock(&lock);
+
         PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
+        PageEntryFlag entryFlags = GetPageEntryFlags(flags);
         PageTableEntry* entry;
 
-        uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
-        GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
-
-        PageEntryFlag entryFlags = GetPageEntryFlags(flags);
-
-        if (usingExtendedPaging)
+        for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
         {
-            entry = &pageTable->entries[pml5Index];
+            entry = &pageTable->entries[tableIndices[level]];
             if (!entry->HasFlag(PageEntryFlag::Present))
                 return false;
-            entry->SetFlag(entryFlags);
+
+            if ((appliedLevelsBitmap & (1 << level)) != 0)
+            {
+                bool sizeFlag = entry->HasFlag(PageEntryFlag::PageSize);
+                entry->ClearFlag(~PageEntryFlag::None);
+                entry->SetFlag(entryFlags);
+                if (sizeFlag && level > 1)
+                    entry->SetFlag(PageEntryFlag::PageSize);
+            }
+
+            if (entry->HasFlag(PageEntryFlag::PageSize) && level > 1)
+                return true; //its a 1gb or 2mb page
             pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
         }
-
-        entry = &pageTable->entries[pml4Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-            return false;
-        entry->SetFlag(entryFlags);
-        pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-
-        entry = &pageTable->entries[pml3Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-            return false;
-        entry->SetFlag(entryFlags);
-        pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-         if (entry->HasFlag(PageEntryFlag::PageSize))
-            return true; //1gb page
-
-        entry = &pageTable->entries[pml2Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-            return false;
-        entry->SetFlag(entryFlags);
-        pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-        if (entry->HasFlag(PageEntryFlag::PageSize))
-            return true; //2mb page
-
-        entry = &pageTable->entries[pml1Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-            return false;
-        if (overwriteFlags)
-            entry->ClearFlag((PageEntryFlag)(uint64_t)-1);
-        entry->SetFlag(entryFlags);
 
         return true;
     }
 
     sl::Opt<sl::NativePtr> PageTableManager::GetPhysicalAddress(sl::NativePtr virtAddr)
     {
-        PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
-        PageTableEntry entry(0);
-
-        uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
-        GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
+        sl::ScopedSpinlock scopeLock(&lock);
         
-        if (usingExtendedPaging)
+        PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
+        PageTableEntry* entry;
+
+        size_t tableIndices[6];
+        GetPageTableIndices(virtAddr, tableIndices);
+
+        for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
         {
-            entry = pageTable->entries[pml5Index];
-            if (!entry.HasFlag(PageEntryFlag::Present))
+            entry = &pageTable->entries[tableIndices[level]];
+            
+            if (!entry->HasFlag(PageEntryFlag::Present))
                 return {};
-            pageTable = EnsureHigherHalfAddr(entry.GetAddr().As<PageTable>());
+            if (level > 1 && entry->HasFlag(PageEntryFlag::PageSize))
+                break;
         }
 
-        entry = pageTable->entries[pml4Index];
-        if (!entry.HasFlag(PageEntryFlag::Present))
-            return {};
-        pageTable = EnsureHigherHalfAddr(entry.GetAddr().As<PageTable>());
-
-        entry = pageTable->entries[pml3Index];
-        if (!entry.HasFlag(PageEntryFlag::Present))
-            return {};
-        pageTable = EnsureHigherHalfAddr(entry.GetAddr().As<PageTable>());
-
-        entry = pageTable->entries[pml2Index];
-        if (!entry.HasFlag(PageEntryFlag::Present))
-            return {};
-        pageTable = EnsureHigherHalfAddr(entry.GetAddr().As<PageTable>());
-
-        entry = pageTable->entries[pml1Index];
-        if (!entry.HasFlag(PageEntryFlag::Present))
-            return {};
-        return entry.GetAddr();
+        return entry->GetAddr();
     }
 
     void PageTableManager::MakeActive() const
@@ -410,9 +377,9 @@ namespace Kernel::Memory
 
     void PageTableManager::MapMemory(sl::NativePtr virtAddr, sl::NativePtr physAddr, PagingSize size, MemoryMapFlag flags)
     {
-        if (size == PagingSize::NoSize)
+        if (!PageSizeAvailable(size))
         {
-            Log("Tried to map memory with no page size, ignoring.", LogSeverity::Warning);
+            Log("Cannot map memory, that paging size is not supported on this system.", LogSeverity::Error);
             return;
         }
 
@@ -422,81 +389,37 @@ namespace Kernel::Memory
         PageEntryFlag templateFlags = PageEntryFlag::Present | PageEntryFlag::RegionWritesAllowed;
         //applied to the final entry
         PageEntryFlag finalFlags = PageEntryFlag::Present | GetPageEntryFlags(flags);
+        if (size == PagingSize::_2MB || size == PagingSize::_1GB)
+            finalFlags = finalFlags | PageEntryFlag::PageSize;
 
-        uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
-        GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
+        size_t tableIndices[6];
+        GetPageTableIndices(virtAddr, tableIndices);
 
         PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
         PageTableEntry* entry;
-        if (usingExtendedPaging)
+        for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
         {
-            //handle pml5 table
-            entry = &pageTable->entries[pml5Index];
+            entry = &pageTable->entries[tableIndices[level]];
             
+            if (size == PagingSize::_1GB && level == 3)
+                break;
+            if (size == PagingSize::_2MB && level == 2)
+                break;
+            if (level == 1)
+                break;
+
             if (!entry->HasFlag(PageEntryFlag::Present))
             {
                 entry->SetAddr(PMM::Global()->AllocPage());
-                sl::memset(EnsureHigherHalfAddr(entry->GetAddr().ptr), 0, PAGE_FRAME_SIZE);
                 entry->SetFlag(templateFlags);
+                sl::memset(EnsureHigherHalfAddr(entry->GetAddr().ptr), 0, PAGE_FRAME_SIZE);
             }
-
             pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
         }
 
-        //handle pml4
-        entry = &pageTable->entries[pml4Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-        {
-            entry->SetAddr(PMM::Global()->AllocPage());
-            sl::memset(EnsureHigherHalfAddr(entry->GetAddr().ptr), 0, PAGE_FRAME_SIZE);
-            entry->SetFlag(templateFlags);
-        }
-        pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-
-        //for 1GB pages - early exit
-        entry = &pageTable->entries[pml3Index];
-        if (size == PagingSize::_1GB && CPU::FeatureSupported(CpuFeature::GigabytePages))
-        {
-            entry->SetFlag(finalFlags);
-            entry->SetFlag(PageEntryFlag::PageSize);
-            entry->SetAddr(physAddr);
-            return;
-        }
-
-        //handle pml3
-        if (!entry->HasFlag(PageEntryFlag::Present))
-        {
-            entry->SetAddr(PMM::Global()->AllocPage());
-            sl::memset(EnsureHigherHalfAddr(entry->GetAddr().ptr), 0, PAGE_FRAME_SIZE);
-            entry->SetFlag(templateFlags);
-        }
-        pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-
-        //for 2MB pages - early exit
-        entry = &pageTable->entries[pml2Index];
-        if (size == PagingSize::_2MB)
-        {
-            entry->SetFlag(finalFlags);
-            entry->SetFlag(PageEntryFlag::PageSize); //tell cpu to end it's search here
-            entry->SetAddr(physAddr);
-            return;
-        }
-
-        //handle pml2
-        if (!entry->HasFlag(PageEntryFlag::Present))
-        {
-            entry->SetAddr(PMM::Global()->AllocPage());
-            sl::memset(EnsureHigherHalfAddr(entry->GetAddr().ptr), 0, PAGE_FRAME_SIZE);
-            entry->SetFlag(templateFlags);
-        }
-        pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-
-        //handle pml1
-        entry = &pageTable->entries[pml1Index];
         entry->SetFlag(finalFlags);
         entry->SetAddr(physAddr);
-
-        InvalidatePage(physAddr);
+        InvalidatePage(virtAddr);
     }
 
     void PageTableManager::MapRange(sl::NativePtr virtAddrBase, size_t count, MemoryMapFlag flags)
@@ -525,69 +448,37 @@ namespace Kernel::Memory
 
     PagingSize PageTableManager::UnmapMemory(sl::NativePtr virtAddr, bool freePhysicalPage)
     {
-        uint64_t pml5Index, pml4Index, pml3Index, pml2Index, pml1Index;
-        GetPageMapIndices(virtAddr, &pml5Index, &pml4Index, &pml3Index, &pml2Index, &pml1Index);
-
         sl::ScopedSpinlock scopeLock(&lock);
+
+        size_t tableIndices[6];
+        GetPageTableIndices(virtAddr, tableIndices);
 
         PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
         PageTableEntry* entry;
-        if (usingExtendedPaging)
+        PagingSize freedSize = PagingSize::Physical;
+        for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
         {
-            //pml5
-            entry = &pageTable->entries[pml5Index];
+            entry = &pageTable->entries[tableIndices[level]];
             if (!entry->HasFlag(PageEntryFlag::Present))
-                return PagingSize::NoSize; //page not accessible, about
+                return PagingSize::NoSize; //not even mapped, no page size
+            
+            if (level > 1 && entry->HasFlag(PageEntryFlag::PageSize))
+            {
+                if (level == 3)
+                    freedSize = PagingSize::_1GB;
+                else if (level == 2)
+                    freedSize = PagingSize::_2MB;
+                break;
+            }
+
             pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
         }
 
-        //pml4
-        entry = &pageTable->entries[pml4Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-            return PagingSize::NoSize;
-        pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-
-        //pml3 and 1gb pages
-        entry = &pageTable->entries[pml3Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-            return PagingSize::NoSize;
-        if (entry->HasFlag(PageEntryFlag::PageSize))
-        {
-            //it's a 1gb page
-            PMM::Global()->FreePages(entry->GetAddr().ptr, (uint64_t)PagingSize::_1GB / (uint64_t)PagingSize::Physical);
-            entry->SetAddr(0ul);
-            entry->ClearFlag(~PageEntryFlag::None);
-            return PagingSize::_1GB;
-        }
-        else
-            pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-
-        //pml2 and 2mb pages
-        entry = &pageTable->entries[pml3Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-            return PagingSize::NoSize;
-        if (entry->HasFlag(PageEntryFlag::PageSize))
-        {
-            PMM::Global()->FreePages(entry->GetAddr().ptr, (uint64_t)PagingSize::_2MB / (uint64_t)PagingSize::Physical);
-            entry->SetAddr(0ul);
-            entry->ClearFlag(~PageEntryFlag::None);
-            return PagingSize::_2MB;
-        }
-        else
-            pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-
-        //pml1
-        entry = &pageTable->entries[pml1Index];
-        if (!entry->HasFlag(PageEntryFlag::Present))
-            return PagingSize::NoSize;
         if (freePhysicalPage)
-            PMM::Global()->FreePage(entry->GetAddr().ptr);
-        entry->SetAddr(0ul);
-        entry->ClearFlag(~PageEntryFlag::None);
-        
-        //unmap memory
+            PMM::Global()->FreePages(entry->GetAddr().ptr, (size_t)freedSize / (size_t)PagingSize::Physical);
+        entry->raw = 0ul;
         InvalidatePage(virtAddr);
-        return PagingSize::Physical;
+        return freedSize;
     }
 
     PagingSize PageTableManager::UnmapRange(sl::NativePtr virtAddrBase, size_t count, bool freePhysicalPages)
