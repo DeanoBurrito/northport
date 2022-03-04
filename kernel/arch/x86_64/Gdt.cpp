@@ -26,12 +26,18 @@ namespace Kernel
     {
         const uint32_t descType = 0b1001;
 
-        uint64_t low = (uint16_t)(sizeof(TaskStateSegment) - 1) | newAddr << 16;
-        uint64_t med = (uint8_t)(newAddr >> 16) | (newAddr & 0xFF00'0000) | (descType << 8) | (1 << 15) | (1 << 20); //bit15 = present, bit20 = avail
-        uint64_t high = newAddr >> 32; 
+        uint32_t low = 0xFFFF;
+        low |= (newAddr & 0xFFFF) << 16;
 
-        gdtEntries[5] = low | (med << 32);
-        gdtEntries[6] = high;
+        uint32_t med = (newAddr & 0xFF'0000) >> 16;
+        med |= (uint32_t)descType << 8;
+        med |= (1 << 15) | (1 << 20); //mark as present and available
+        med |= newAddr & 0xFF00'0000;
+
+        uint32_t high = newAddr >> 32;
+
+        gdtEntries[5] = low | ((uint64_t)med << 32);
+        gdtEntries[6] = (uint64_t)high; //upper 32 bits are reserved, this will set them to zero
     }
 
     [[gnu::naked]]
