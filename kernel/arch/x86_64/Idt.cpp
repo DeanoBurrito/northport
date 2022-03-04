@@ -29,7 +29,7 @@ namespace Kernel
     void IdtEntry::SetDetails(uint8_t ist, uint16_t codeSegment, IdtGateType type, uint8_t dpl)
     {
         //the last 1 << 15 is the present flag, and should always be set
-        uint64_t config = (ist & 0b11) | ((type & 0b1111) << 8) | ((dpl & 0b11) << 13) | (1 << 15);
+        uint64_t config = (ist & 0b11) | ((type & 0b1110) << 8) | ((dpl & 0b11) << 13) | (1 << 15);
         low |= codeSegment << 16;
 
         //clear existing config (ensure zeros are still zero), then install our current

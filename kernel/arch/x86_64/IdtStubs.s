@@ -36,6 +36,13 @@ InterruptStub_PatchCall:
 #Dispatch returns the saved stack we should operate on (it can be the same)
 mov %rax, %rsp
 
+#Load the appropriate data segments for the ring we're returning to. Assuming that iret_ss is valid here.
+mov 0xB0(%rsp), %rax
+mov %ax, %ds
+mov %ax, %es
+mov %ax, %fs
+#TODO: ensure gs is what we expect, leaving it alone for now
+
 pop %r15
 pop %r14
 pop %r13
