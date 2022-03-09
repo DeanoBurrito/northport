@@ -23,7 +23,11 @@ namespace Kernel::Scheduling
     {
         sl::ScopedSpinlock scopeLock(&lock);
 
-        sl::NativePtr(programStack).As<StoredRegisters>()->rsi = arg.raw;
+        //we'll need the physical address of the program's stack, and then access it through the hhdm to avoid swapping CR3.
+        auto maybeStack = parent->VMM()->PageTables().GetPhysicalAddress(programStack);
+        sl::NativePtr stackPhys = *maybeStack;
+        stackPhys = EnsureHigherHalfAddr(maybeStack->ptr);
+        stackPhys.As<StoredRegisters>()->rsi = arg.raw;
         runState = ThreadState::Running;
     }
 
@@ -40,12 +44,15 @@ namespace Kernel::Scheduling
     void Thread::Sleep(size_t millis)
     {}
 
-    const sl::Vector<Thread*>& ThreadGroup::GetThreads() const
+    const sl::Vector<Thread*>& ThreadGroup::Threads() const
     { return threads; }
 
-    const Thread* ThreadGroup::GetParent() const
+    const Thread* ThreadGroup::ParentThread() const
     { return parent; }
 
-    size_t ThreadGroup::GetId() const
+    size_t ThreadGroup::Id() const
     { return id; }
+
+    Memory::VirtualMemoryManager* ThreadGroup::VMM()
+    { return &vmm; }
 }

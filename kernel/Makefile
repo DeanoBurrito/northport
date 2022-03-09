@@ -14,8 +14,8 @@ LD_FLAGS = $(LD_LIBS) \
 
 ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
-CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp SyscallDispatch.cpp \
-	memory/PhysicalMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp memory/New.cpp \
+CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp SyscallDispatch.cpp Loader.cpp \
+	memory/PhysicalMemory.cpp memory/VirtualMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp memory/New.cpp \
 	acpi/AcpiTables.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp \
 	devices/LApic.cpp devices/IoApic.cpp devices/Ps2Controller.cpp devices/Ps2Keyboard.cpp devices/DeviceManager.cpp \

@@ -20,7 +20,7 @@ namespace Kernel::Scheduling
     }
 
     using RealStartType = void (*)(sl::NativePtr);
-    void ThreadStartWrapper(sl::NativePtr realStart, sl::NativePtr arg)
+    void KernelThreadStartWrapper(sl::NativePtr realStart, sl::NativePtr arg)
     {
         RealStartType startPtr = (RealStartType)realStart.raw;
         startPtr(arg);
@@ -36,7 +36,7 @@ namespace Kernel::Scheduling
     StoredRegisters* Scheduler::LoadContext(Thread* thread)
     {
         CurrentTss()->rsp0 = thread->kernelStack.raw;
-        thread->parent->pageTables.MakeActive();
+        thread->parent->vmm.PageTables().MakeActive();
 
         return thread->programStack.As<StoredRegisters>();
     }
@@ -60,15 +60,14 @@ namespace Kernel::Scheduling
             allThreads.EmplaceBack(); //default fill = nullptrs
         
         //create idle thread (1 per core)
+        ThreadGroup* idleGroup = CreateThreadGroup();
         for (size_t i = 0; i < coreCount; i++)
         {
-            size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode)->id;
+            size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode, idleGroup)->id;
             idleThreads.PushBack(allThreads[idleId]);
             idleThreads.Back()->Start(nullptr);
         }
 
-        size_t idleId = CreateThread((size_t)IdleMain, ThreadFlags::KernelMode)->id;
-        allThreads[idleId]->Start(nullptr);
         lastSelectedThread = *allThreads.Begin();
         
         Log("Scheduler initialized, waiting for next tick.", LogSeverity::Info);
@@ -129,7 +128,6 @@ namespace Kernel::Scheduling
         sl::ScopedSpinlock nextScopeLock(&next->lock);
         next->flags = sl::EnumSetFlag(next->flags, ThreadFlags::Executing);
         GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = next;
-        GetCoreLocal()->ptrs[CoreLocalIndices::CurrentPageMap] = &next->parent->pageTables;
         return LoadContext(next);
     }
 
@@ -154,7 +152,7 @@ namespace Kernel::Scheduling
         ThreadGroup* group = new ThreadGroup();
         
         group->id = idAllocator.Alloc();
-        group->PageTables().InitClone();
+        group->vmm.Init();
 
         return group;
     }
@@ -187,16 +185,22 @@ namespace Kernel::Scheduling
 
         //setup iret frame
         if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
+        {
             sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_0_DATA);
-        else
-            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_3_DATA);
-        sl::StackPush<NativeUInt>(threadStack, realStackStart);
-        sl::StackPush<NativeUInt>(threadStack, 0x202); //interrupts set, everything else cleared
-        if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
+            sl::StackPush<NativeUInt>(threadStack, realStackStart);
+            sl::StackPush<NativeUInt>(threadStack, 0x202); //interrupts set, everything else cleared
             sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_0_CODE);
+            sl::StackPush<NativeUInt>(threadStack, (NativeUInt)KernelThreadStartWrapper);
+        }
         else
-            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_3_CODE);
-        sl::StackPush<NativeUInt>(threadStack, (NativeUInt)ThreadStartWrapper);
+        {
+            //NOTE: we are setting RPL (lowest 2 bits) of the selectors to 3.
+            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_3_DATA | 3);
+            sl::StackPush<NativeUInt>(threadStack, EnsureLowerHalfAddr(realStackStart));
+            sl::StackPush<NativeUInt>(threadStack, 0x202);
+            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_3_CODE | 3);
+            sl::StackPush<NativeUInt>(threadStack, entryAddress.raw); //TODO: copy start program stub to userspace memory: UserThreadStartWrapper
+        }
 
         //push the rest of a stored registers frame (EC, vector, then 16 registers)
         for (size_t i = 0; i < 18; i++)
@@ -208,7 +212,7 @@ namespace Kernel::Scheduling
         if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
         {
             threadStack.raw -= vmaHighAddr; //user mode thread, use lower half address
-            parent->pageTables.MapMemory(threadStackPhysBase, threadStackPhysBase, Memory::MemoryMapFlags::AllowWrites);
+            parent->VMM()->PageTables().MapMemory(threadStackPhysBase, threadStackPhysBase, Memory::MemoryMapFlags::AllowWrites | Memory::MemoryMapFlags::UserAccessible);
         }
         thread->programStack = threadStack;
 

@@ -2,7 +2,7 @@
 
 #include <Platform.h>
 #include <containers/Vector.h>
-#include <memory/Paging.h>
+#include <memory/VirtualMemory.h>
 #include <Optional.h>
 
 namespace Kernel::Scheduling
@@ -67,14 +67,15 @@ namespace Kernel::Scheduling
         size_t id;
         Thread* parent;
         sl::Vector<Thread*> threads;
-        Memory::PageTableManager pageTables;
+        Memory::VirtualMemoryManager vmm;
         //handles and group events (most of them) stored here
 
         ThreadGroup() = default;
 
     public:
-        const sl::Vector<Thread*>& GetThreads() const;
-        const Thread* GetParent() const;
-        size_t GetId() const;
+        const sl::Vector<Thread*>& Threads() const;
+        const Thread* ParentThread() const;
+        size_t Id() const;
+        Memory::VirtualMemoryManager* VMM();
     };
 }

@@ -99,7 +99,6 @@ namespace Kernel
         LAPIC,
         TSS,
         CurrentThread,
-        CurrentPageMap,
         
         EnumCount,
     };
@@ -157,6 +156,21 @@ namespace Kernel
     {
         if (addr < vmaHighAddr)
             return addr + vmaHighAddr;
+        return addr;
+    }
+
+    template<typename T>
+    FORCE_INLINE T* EnsureLowerHalfAddr(T* existing)
+    {
+        if ((NativeUInt)existing >= vmaHighAddr)
+            return reinterpret_cast<T*>((NativeUInt)existing - vmaHighAddr);
+        return existing;
+    }
+
+    FORCE_INLINE NativeUInt EnsureLowerHalfAddr(NativeUInt addr)
+    {
+        if (addr >= vmaHighAddr)
+            return addr - vmaHighAddr;
         return addr;
     }
 

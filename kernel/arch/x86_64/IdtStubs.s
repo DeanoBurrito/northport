@@ -25,6 +25,14 @@ push %r13
 push %r14
 push %r15
 
+#load kernel data segments, CS is set when jumping to an interrupt handler via the IDT selector field
+mov $0x10, %rax
+mov %ax, %ds
+mov %ax, %ss
+mov %ax, %es
+mov %ax, %fs
+#TODO: use swapgs if needed here, otherwise leave alone.
+
 #top of stack now points to base address of StoredRegisters struct (see Idt.h), setup for a c++ function
 mov %rsp, %rdi
 

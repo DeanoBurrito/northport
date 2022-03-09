@@ -1,5 +1,6 @@
 #include <memory/PhysicalMemory.h>
 #include <memory/Paging.h>
+#include <scheduling/Thread.h>
 #include <Memory.h>
 #include <boot/Stivale2.h>
 #include <Utilities.h>
@@ -115,7 +116,7 @@ namespace Kernel::Memory
             finalFlags = finalFlags | PageEntryFlag::RegionWritesAllowed;
         if (sl::EnumHasFlag(flags, MemoryMapFlags::UserAccessible))
             finalFlags = finalFlags | PageEntryFlag::UserAccessAllowed;
-        if (CPU::FeatureSupported(CpuFeature::ExecuteDisable) && sl::EnumHasFlag(flags, MemoryMapFlags::AllowExecute))
+        if (CPU::FeatureSupported(CpuFeature::ExecuteDisable) && !sl::EnumHasFlag(flags, MemoryMapFlags::AllowExecute))
             finalFlags = finalFlags | PageEntryFlag::ExecuteDisable;
 
         return finalFlags;
@@ -140,10 +141,10 @@ namespace Kernel::Memory
     PageTableManager defaultPageTableManager;
     PageTableManager* PageTableManager::Current()
     {
-        if (CPU::ReadMsr(MSR_GS_BASE) == 0)
+        if (CPU::ReadMsr(MSR_GS_BASE) == 0 || GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
             return &defaultPageTableManager;
-        else
-            return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentPageMap].As<PageTableManager>();
+        else 
+            return &Scheduling::Thread::Current()->GetParent()->VMM()->PageTables(); //ah oops... its starting to look like LINQ
     }
 
     bool PageTableManager::usingExtendedPaging;
@@ -260,8 +261,8 @@ namespace Kernel::Memory
 
         sl::ScopedSpinlock scopeLock(&lock);
 
+        const PageEntryFlag entryFlags = GetPageEntryFlags(flags);
         PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
-        PageEntryFlag entryFlags = GetPageEntryFlags(flags);
         PageTableEntry* entry;
 
         for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
@@ -272,18 +273,26 @@ namespace Kernel::Memory
 
             if ((appliedLevelsBitmap & (1 << level)) != 0)
             {
-                bool sizeFlag = entry->HasFlag(PageEntryFlag::PageSize);
-                entry->ClearFlag(~PageEntryFlag::None);
-                entry->SetFlag(entryFlags);
-                if (sizeFlag && level > 1)
-                    entry->SetFlag(PageEntryFlag::PageSize);
+                PageEntryFlag singleEntryFlags = sl::EnumSetFlag(entryFlags, PageEntryFlag::Present);
+                if (entry->HasFlag(PageEntryFlag::PageSize) && level < 1)
+                    singleEntryFlags = sl::EnumSetFlag(singleEntryFlags, PageEntryFlag::PageSize);
+                sl::NativePtr savedAddr = entry->GetAddr();
+                
+                //NOTE: yes we're re-creating the entry here, but since the whole entry needs to be invalidated there's not much of a performance loss.
+                entry->raw = 0ul;
+                entry->SetAddr(savedAddr);
+                entry->SetFlag(singleEntryFlags);
             }
 
             if (entry->HasFlag(PageEntryFlag::PageSize) && level > 1)
+            {
+                InvalidatePage(virtAddr);
                 return true; //its a 1gb or 2mb page
+            }
             pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
         }
 
+        InvalidatePage(virtAddr);
         return true;
     }
 
@@ -304,10 +313,21 @@ namespace Kernel::Memory
             if (!entry->HasFlag(PageEntryFlag::Present))
                 return {};
             if (level > 1 && entry->HasFlag(PageEntryFlag::PageSize))
+            {
+                //trim the parts of the address we've translated, keep the bits that are used as the offset
+                if (level == 1)
+                    virtAddr.raw &= 0xFFF;
+                else if (level == 2)
+                    virtAddr.raw &= 0x1FFFF;
+                else if (level == 3)
+                    virtAddr.raw &= 0x3FFFFFFF;
                 break;
+            }
+
+            pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
         }
 
-        return entry->GetAddr();
+        return sl::NativePtr(entry->GetAddr().raw + virtAddr.raw);
     }
 
     void PageTableManager::MakeActive() const
@@ -387,6 +407,9 @@ namespace Kernel::Memory
 
         //these are applied to all new entries
         PageEntryFlag templateFlags = PageEntryFlag::Present | PageEntryFlag::RegionWritesAllowed;
+        if (sl::EnumHasFlag(flags, MemoryMapFlags::UserAccessible))
+            templateFlags = sl::EnumSetFlag(templateFlags, PageEntryFlag::UserAccessAllowed);
+
         //applied to the final entry
         PageEntryFlag finalFlags = PageEntryFlag::Present | GetPageEntryFlags(flags);
         if (size == PagingSize::_2MB || size == PagingSize::_1GB)

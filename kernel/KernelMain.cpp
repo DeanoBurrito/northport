@@ -136,7 +136,6 @@ namespace Kernel
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
         coreStore->ptrs[CoreLocalIndices::TSS] = new TaskStateSegment();
         coreStore->ptrs[CoreLocalIndices::CurrentThread] = nullptr;
-        coreStore->ptrs[CoreLocalIndices::CurrentPageMap] = Memory::PageTableManager::Current();
 
         FlushGDT();
         CPU::WriteMsr(MSR_GS_BASE, (size_t)coreStore);
@@ -163,7 +162,7 @@ namespace Kernel
 
             //manually read the apic id, since LApic class isnt initialized yet
             uint32_t apicIdReg = sl::MemRead<uint32_t>(EnsureHigherHalfAddr(CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + 0x20);
-            InitCore(0, 0);
+            InitCore(apicIdReg >> 24, 0);
             return;
         }
 

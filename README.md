@@ -26,7 +26,7 @@ Kernel:
 - Physical memory manager (does page frame allocation, in single or multiple pages).
 - Paging support (4 or 5 levels).
 - GDT and IDT implementations. IDT implementation is nothing unique, but something I think is quite cool.
-- Simple heap for the kernel. It's a linkedlist style heap for now.
+- Simple heap for the kernel. It's a linked list style (for now).
 - Support for simple devices: IO/APIC, Local APIC, PS2 controller/keyboard/mouse, 8254 PIT.
 - Scheduler, with support multiple cores.
 - Stack traces. These can be printed with symbol names of the currently running program (including kernel), and will demangle c++ names.
@@ -41,6 +41,9 @@ Support libraries:
 - np-syscall: c++ wrapper around kernel system call abi.
 - np-syslib: util library, provides parts of STL and std library I miss in a freestanding environment.
 
+Native Applications:
+- startup: currently a test app, but will setup a friendly user environment soon.
+
 # Project layout
 Each of sub-projects are in their own folder:
 - `docs/`: documentation for various parts of the project. 
@@ -50,6 +53,7 @@ Each of sub-projects are in their own folder:
 - `misc/`: contains unrelated project files, limine.cfg lives here.
 - `libs/np-xyz`: contains project files for northport (np) library xyz.
 - `libs/build`: built libraries are stored here, not included in the git repo for obvious reasons.
+- `userspace/xyz`: contains project files for a native app called xyz.
 
 Most sub-projects share a common internal layout:
 - `project_name_here/include/`: header files in here, making installing them later really easy.
