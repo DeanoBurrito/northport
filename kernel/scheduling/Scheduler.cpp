@@ -77,6 +77,9 @@ namespace Kernel::Scheduling
     {
         sl::ScopedSpinlock schedLock(&lock);
 
+        if (suspended)
+            return currentRegs;
+
         Thread* current = Thread::Current();
         if (current != nullptr)
         {

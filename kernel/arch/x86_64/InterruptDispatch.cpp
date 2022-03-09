@@ -1,5 +1,6 @@
 #include <arch/x86_64/Idt.h>
 #include <Log.h>
+#include <Panic.h>
 #include <SyscallDispatch.h>
 #include <devices/LApic.h>
 #include <devices/Ps2Controller.h>
@@ -13,9 +14,6 @@
 */
 namespace Kernel
 {
-    [[noreturn]]
-    extern void PanicInternal(const char* reason, StoredRegisters* regs);
-    
     bool TryHandleNativeException(StoredRegisters* regs)
     {
         switch (regs->vectorNumber)
@@ -48,12 +46,12 @@ namespace Kernel
     {
         StoredRegisters* returnRegs = regs;
 
-        switch (regs->vectorNumber)
+        switch ((uint8_t)regs->vectorNumber)
         {
             case INTERRUPT_GSI_SPURIOUS:
                 return returnRegs; //no need to do EOI here, just return
             case INTERRUPT_GSI_PANIC:
-                PanicInternal((const char*)regs->rdi, regs);
+                PanicInternal(regs);
                 __builtin_unreachable();
             case INTERRUPT_GSI_PS2KEYBOARD:
                 Devices::Ps2Controller::Keyboard()->HandleIrq();

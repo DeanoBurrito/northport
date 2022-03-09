@@ -34,7 +34,6 @@ void InitUserspaceTask()
     }
 
     Thread* startupThread = Scheduler::Global()->GetThread(*maybeThreadId);
-    // return;
     startupThread->Start(nullptr);
 }
 
