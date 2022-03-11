@@ -2,12 +2,12 @@
 
 ## Boot Sequence
 
-The kernel currently has 3 main states during its lifetime. 
+The kernel currently has 3 main states during its lifetime: basic init, threaded init, and post init.
 
 ### Basic Init
 
 The kernel takes control of the machine from the bootloader and sets up a physical memory manager. There is only one per system, so this is the first thing to be started.
-After this an initial set off page tables is constructed. These are modelled after the stivale2 boot protocol.
+After this an initial set of page tables is constructed. These are modelled after the stivale2 boot protocol.
 - A hhdm (**h**igher **h**alf **d**irect **m**ap of physical memory in virtual space) address is decided. This is usually the lowest possible address in the higher half of the virtual address space. If booted via stivale2, we use the provided hhdm address. This changes whether 4 or 5 level paging is used.
 - The first 4GB of physical memory is mapped at the hhdm.
 - Any memory regions marked as 'usable', and above 4GB, are mapped into the hhdm, this includes most of ram.
@@ -40,12 +40,12 @@ After the first part of the boot process, the kernel becomes more of a collectio
 Each is responsible for various things.
 
 The major subsystems currently are:
-- Devices (managed by DeviceManager). These represent hardware or functionality within the system. Usually these are managed by a driver.
-- Drivers (managed by DriverManager). Loadable and unloadable code that manages various parts of the system. These can be device drivers, filesystem drivers or anything else.
-- Filesystem (managed by VFS). Represents the currently mounted filesystens, and the vfs they're mounted to. 
-- PCI (managed by PciBridge). Not a lot happens here, but it provides functionality for dealing with pci devices and functions.
-- Memory (managed by PhysicalMemoryManager and VirtualMemoryManager). Two separate levels of code to manage available physical memory, and how that is mapped into a virtual memory space. There is also a helper class (`Paging`), a high level wrapper around a set of page tables.
-- Scheduling (managed by Scheduler). Northport has a very basic pre-emptive scheduler.
+- Devices (managed by `DeviceManager`). These represent hardware or functionality within the system. Usually these are managed by a driver.
+- Drivers (managed by `DriverManager`). Loadable and unloadable code that manages various parts of the system. These can be device drivers, filesystem drivers or anything else.
+- Filesystem (managed by `VFS`). Represents the currently mounted filesystens, and the vfs they're mounted to. We use a single-root style VFS.
+- PCI (managed by `PciBridge`). Not a lot happens here, but it provides functionality for dealing with pci devices and functions.
+- Memory (managed by `PhysicalMemoryManager` and `VirtualMemoryManager`). Two separate levels of code to manage available physical memory, and how that is mapped into a virtual memory space. There is also a helper class (`Paging`), a high level wrapper around a set of page tables.
+- Scheduling (managed by `Scheduler`). Northport has a very basic pre-emptive scheduler.
 
 There are also a number of generic (coalesced) devices:
 - Keyboard: All keyboards forward their input here to be processed.

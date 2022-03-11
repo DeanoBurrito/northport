@@ -32,6 +32,7 @@ northport/
     [ ... other northport apps here]
     |
     | - misc/
+    |   | - UserlandCommon.mk
     |   \ - LibCommon.mk
     |
     | - BuildPrep.mk
@@ -58,6 +59,9 @@ It requires the following variables to work properly:
 - `CXX_FLAGS`: any c++ compilers flags you want to use. You'll need to include `CXX_GLOBAL_FLAGS` here yourself.
  - `CXX_SRCS`: any c++ source files to compile.
 - `TARGET`: the name of the project. This is used for output diagnostics, and for copying the include files to the correct destination. No file extension should be used.
+
+### misc/UserlandCommon.mk
+Nearly identitcal to `LibCommon.mk` for now. Serves the same purpose.
 
 ## Adding a library
 Adding a library to the build system is pretty straight forward:
