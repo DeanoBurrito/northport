@@ -12,7 +12,7 @@
 ### Setting up the build environment
 
 The root makefile contains a few variables you will need to set for it to build correctly.
-`LIMINE_DIR` will need to point to your limine install directory (where you pointer `git clone` to). If you're using the GCC toolchain, you'll also need to point `TOOLCHAIN_DIR` to the bin directory of your cross-compiler, or point each of lines for the tools to point there directly (see `CXX`, `ASM`, `LD`, `AR`).
+`LIMINE_DIR` will need to point to your limine install directory (where you pointed `git clone` to). If you're using the GCC toolchain, you'll also need to point `TOOLCHAIN_DIR` to the bin directory of your cross-compiler, or point each of lines for the tools to point there directly (see `CXX`, `ASM`, `LD`, `AR`).
 
 There's some notes on compiler-specific setup below, and if you do switch toolchains, its always worth running `make clean` for a fresh build.
 
@@ -59,6 +59,7 @@ There are a number of flags that can be defined at compile time to enable/disabl
     
 - `NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT`: enables logging over debugcon, useful for debugging early boot in VMs.
 - `NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT`: enables logging directly to framebuffer. Messy, but it works.
+- `NORTHPORT_DEBUG_LOGGING_COLOUR_LEVELS`: serial/debugcon logs will use ANSI escape sequences to colour log output. Can be disabled at compile-time if it intereferes with logging.
 </details>
 
 <details>

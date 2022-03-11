@@ -44,6 +44,28 @@ namespace Kernel
     void Log(const char* message, LogSeverity level)
     {   
         const char* headerStr = "\0";
+#ifdef NORTHPORT_DEBUG_LOGGING_COLOUR_LEVELS
+        switch (level) 
+            {
+            case LogSeverity::Info:
+                headerStr = "\033[97m[Info]\033[39m ";
+                break;
+            case LogSeverity::Warning:
+                headerStr = "\033[93m[Warn]\033[39m ";
+                break;;
+            case LogSeverity::Error:
+                headerStr = "\033[91m[Error]\033[39m ";
+                break;
+            case LogSeverity::Fatal:
+                headerStr = "\033[31m[Fatal]\033[39m ";
+                break;
+            case LogSeverity::Verbose:
+                headerStr = "\033[90m[Verbose]\033[39m ";
+                break;
+            default:
+                break;
+            }
+#else
         switch (level) 
         {
         case LogSeverity::Info:
@@ -64,6 +86,7 @@ namespace Kernel
         default:
             break;
         }
+#endif
         
         for (unsigned i = 0; i < (unsigned)LogDestination::EnumCount; i++)
         {

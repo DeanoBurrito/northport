@@ -70,7 +70,7 @@ SUBMAKE_FLAGS = --no-print-directory -j $(shell nproc)
 export CXX_DEBUG_FLAGS = 
 #BuildPrep.mk populates debug flags
 include BuildPrep.mk
-export CXX_GLOBAL_FLAGS = $(OPTIMIZATION_FLAGS) $(CXX_DEBUG_FLAGS)
+export CXX_GLOBAL_FLAGS = $(OPTIMIZATION_FLAGS) $(CXX_DEBUG_FLAGS) -DNORTHPORT_DEBUG_LOGGING_COLOUR_LEVELS
 
 #ENDSECTION
 
