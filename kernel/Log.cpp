@@ -74,6 +74,7 @@ namespace Kernel
             {
             case LogDestination::DebugCon:
                 {
+                    InterruptLock intLock;
                     sl::ScopedSpinlock scopeLock(&debugconLock);
 
                     for (size_t index = 0; headerStr[index] != 0; index++)

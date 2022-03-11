@@ -127,6 +127,7 @@ namespace Kernel::Memory
         if (size == 0)
             return nullptr;
         
+        InterruptLock intLock; //TODO: a better solution than disabling interrupts every alloc()
         sl::ScopedSpinlock scopeLock(&lock);
 
         //align alloc size
@@ -181,6 +182,7 @@ namespace Kernel::Memory
         if (ptr == nullptr)
             return;
         
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
 
         sl::NativePtr where(ptr);
