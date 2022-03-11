@@ -109,7 +109,7 @@ namespace Kernel::Memory
         
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
-            sl::SpinlockAcquire(&region->lock);
+            sl::ScopedSpinlock scopeLock(&region->lock);
             
             if (lowestAddress.raw >= region->baseAddress.raw && highestAddress <= region->baseAddress.raw + region->freePages * PAGE_FRAME_SIZE)
             {
@@ -125,8 +125,6 @@ namespace Kernel::Memory
                     sl::BitmapSet(region->bitmap, localIndex + i);
                 region->freePages -= count;
             }
-
-            sl::SpinlockRelease(&region->lock);
         }
     }
 
@@ -139,7 +137,7 @@ namespace Kernel::Memory
         
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
-            sl::SpinlockAcquire(&region->lock);
+            sl::ScopedSpinlock scopeLock(&region->lock);
             
             if (lowestAddress.raw >= region->baseAddress.raw && highestAddress <= region->baseAddress.raw + region->freePages * PAGE_FRAME_SIZE)
             {
@@ -155,8 +153,6 @@ namespace Kernel::Memory
                     sl::BitmapClear(region->bitmap, localIndex + i);
                 region->freePages += count;
             }
-
-            sl::SpinlockRelease(&region->lock);
         }
     }
 
@@ -167,7 +163,7 @@ namespace Kernel::Memory
             if (region->freePages == 0)
                 continue;
 
-            sl::SpinlockAcquire(&region->lock);
+            sl::ScopedSpinlock regionLock(&region->lock);
 
             for (size_t i = region->bitmapNextAlloc; i < region->pageCount; i++)
             {
@@ -180,16 +176,12 @@ namespace Kernel::Memory
                         region->bitmapNextAlloc = 0;
 
                     region->freePages--;
-                    
-                    sl::SpinlockRelease(&region->lock);
                     return sl::NativePtr(region->baseAddress.raw + i * PAGE_FRAME_SIZE).ptr;
                 }
 
                 if (region->bitmapNextAlloc > 0 && i + 1 == region->pageCount)
                     i = (size_t)-1;
             }
-
-            sl::SpinlockRelease(&region->lock);
         }
         
         Log("Failed to allocate a physical page.", LogSeverity::Error);
@@ -216,9 +208,10 @@ namespace Kernel::Memory
             {
                 //it's this region, do a bounds check, then set the bits
                 size_t bitmapIndex = (addrPtr.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
-                count = sl::min(bitmapIndex + count, region->pageCount);
+                if (bitmapIndex + count > region->pageCount)
+                    count = region->pageCount - bitmapIndex;
 
-                sl::SpinlockAcquire(&region->lock);
+                sl::ScopedSpinlock regionLock(&region->lock);
 
                 for (size_t i = 0; i < count; i++)
                 {
@@ -234,7 +227,6 @@ namespace Kernel::Memory
                         Log("Failed to free a physical page, it was already free.", LogSeverity::Warning);
                 }
 
-                sl::SpinlockRelease(&region->lock);
                 //since we only support operating on 1 region for now, early exit
                 return;
             }

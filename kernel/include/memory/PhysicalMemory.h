@@ -26,15 +26,15 @@ namespace Kernel::Memory
 
         PhysMemoryRegion* InitRegion(stivale2_mmap_entry* mmapEntry);
 
-    public:
-        static PhysicalMemoryAllocator* Global();
-
-        void Init(stivale2_struct_tag_memmap* mmap);
-
         void LockPage(sl::NativePtr address);
         void LockPages(sl::NativePtr lowestAddress, size_t count);
         void UnlockPage(sl::NativePtr address);
         void UnlockPages(sl::NativePtr lowestAddress, size_t count);
+
+    public:
+        static PhysicalMemoryAllocator* Global();
+
+        void Init(stivale2_struct_tag_memmap* mmap);
 
         void* AllocPage();
         void* AllocPages(size_t count);
