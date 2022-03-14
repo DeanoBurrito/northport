@@ -27,14 +27,16 @@ Attempts to get details on the current primary device for a device type. Think o
 
 ### Args:
 - `arg0`: info details. 0 = basic (returned in regs), 1 = advanced (returned as memory block).
-- `arg1`: device type. Corresponds to entries of DeviceType enum found in GenericDevice.h.
+- `arg1`: device type. Corresponds to entries of DeviceType enum found in `libs/np-syslib/include/SyscallEnums.h`.
 - all other args ignored.
 
 ### Returns:
+For all requests in basic mode:
+- `arg0`: device id.
+
 For requests of type GraphicsFramebuffer, in basic mode: 
-- `arg0`: base address
-- `arg1`: bits 31:0 = width in pixels, bits 63:32 = height in pixels
-- `arg2`: bits 31:0 = bits per pixel, bits 63:32 = bpp (bytes per row/stride)
+- `arg1`: 15:0 is the width, 31:16 is the height, 47:32 is the stride, and 63:48 is the bpp of the framebuffer.
+- `arg2`: is the base address in memory of the framebuffer.
 - `arg3`: first 4 bytes are left shifts for red/green/blue/reserved subpixels. Upper 4 bytes are masks for r/g/b/R subpixels.
 
 Requests of type GraphicsAdaptor are currently unsupported.

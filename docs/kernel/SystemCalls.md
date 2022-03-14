@@ -12,12 +12,12 @@ The ABI consists of 5 registers (see platform specific section below, for what t
 | `id` | Syscall number (see [list](SystemCallList.md))     | Status code. 0 for success, 0x404 for invalid syscall number. |
 |`arg0`| 1st argument (primary)        | 1st return value (primary)     |
 |`arg1`| 2nd argument                  | 2nd return value               |
-|`arg2`| 3rd argument                  | 2nd return value               |
-|`arg3`| 4th argument                  | 4th return value               |
+|`arg2`| 3rd argument                  | 2nd return value (count of overflow values) |
+|`arg3`| 4th argument                  | 4th return value (pointer to overflow values) |
 
 These registers are expected to be at least 64 bits wide. They may be wider, but only the lower 64 bits will be utilised.
 
-If more data needs to be returned, `arg3` should contain a pointer to a syscall specific data strcture providing the rest of the data.
+If more data needs to be returned, `arg3` will contain a pointer to a tightly packed array of the returned data type, with `arg2` containing the number of elements packed into the array. The other return values are free for use.
 
 Registers that arent used by a syscall as input, are ignored, and return registers that arent used are in an undefined state (pls do not snoop private kernel data from these registers. Thank you.).
 

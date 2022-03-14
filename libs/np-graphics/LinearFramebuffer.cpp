@@ -1,5 +1,5 @@
 #include <LinearFramebuffer.h>
-#include <Syscalls.h>
+#include <SyscallFunctions.h>
 #include <Memory.h>
 #include <Locks.h>
 #include <Maths.h>
@@ -11,28 +11,29 @@ namespace np::Graphics
     {
         if (primaryFramebuffer == nullptr)
         {
-            sl::Opt<np::Syscall::PrimaryFramebufferData> maybeFbData = Syscall::GetPrimaryFramebuffer();
-            if (!maybeFbData)
+            auto maybeDeviceData = Syscall::GetPrimaryDeviceInfo(Syscall::DeviceType::Framebuffer);
+            if (!maybeDeviceData)
                 return nullptr;
+            Syscall::BasicFramebufferInfo& fbInfo = maybeDeviceData->framebuffer;
             
             primaryFramebuffer = new LinearFramebuffer();
             primaryFramebuffer->doubleBuffered = false;
-            primaryFramebuffer->backBuffer = primaryFramebuffer->frontBuffer = maybeFbData->baseAddress;
-            primaryFramebuffer->stride = maybeFbData->stride;
-            primaryFramebuffer->width = maybeFbData->width;
-            primaryFramebuffer->height = maybeFbData->height;
-            primaryFramebuffer->bitsPerPixel = maybeFbData->bpp;
+            primaryFramebuffer->backBuffer = primaryFramebuffer->frontBuffer = fbInfo.address;
+            primaryFramebuffer->stride = fbInfo.stride;
+            primaryFramebuffer->width = fbInfo.width;
+            primaryFramebuffer->height = fbInfo.height;
+            primaryFramebuffer->bitsPerPixel = fbInfo.bpp;
 
             primaryFramebuffer->bufferFormat = 
             { 
-                maybeFbData->format.redOffset,
-                maybeFbData->format.greenOffset,
-                maybeFbData->format.blueOffset,
-                maybeFbData->format.reserved0,
-                maybeFbData->format.redMask,
-                maybeFbData->format.greenMask,
-                maybeFbData->format.blueMask,
-                maybeFbData->format.reserved1
+                fbInfo.redOffset,
+                fbInfo.greenOffset,
+                fbInfo.blueOffset,
+                fbInfo.reservedOffset,
+                fbInfo.redMask,
+                fbInfo.greenMask,
+                fbInfo.blueMask,
+                fbInfo.reservedMask
             };
         }
         

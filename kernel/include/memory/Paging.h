@@ -24,6 +24,7 @@ namespace Kernel::Memory
         AllowWrites = 1 << 0,
         AllowExecute = 1 << 1,
         UserAccessible = 1 << 2,
+        SystemRegion = 1 << 3,
     };
 
     FORCE_INLINE MemoryMapFlags operator&(const MemoryMapFlags& a, const MemoryMapFlags& b)
