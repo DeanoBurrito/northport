@@ -2,9 +2,12 @@
 
 #include <NativePtr.h>
 #include <Optional.h>
+#include <containers/Vector.h>
+#include <SyscallStructs.h>
+#include <SyscallEnums.h>
 
 namespace np::Syscall
-{   
+{
     struct SyscallData
     { 
         uint64_t id, arg0, arg1, arg2, arg3; 
@@ -36,33 +39,17 @@ namespace np::Syscall
             : "rax", "rdi", "rsi", "rdx", "rcx", "memory"
             );
     }
-    
-    bool SyscallLoopbackSuccess();
-    
-    struct PrimaryFramebufferData
-    {
-        sl::NativePtr baseAddress;
-        NativeUInt width;
-        NativeUInt height;
-        NativeUInt stride;
-        NativeUInt bpp;
 
-        union
-        {
-            struct
-            {
-                uint8_t redOffset;
-                uint8_t greenOffset;
-                uint8_t blueOffset;
-                uint8_t reserved1;
-                uint8_t redMask;
-                uint8_t greenMask;
-                uint8_t blueMask;
-                uint8_t reserved0;
-            };
-            uint64_t raw;
-        } format;
-    };
+    //0x0* - testing 
+    bool LoopbackTest();
 
-    sl::Opt<PrimaryFramebufferData> GetPrimaryFramebuffer();
+    //0x1* - memory
+    MappedMemoryDetails MapMemory(NativeUInt base, size_t bytesLength, MemoryMapFlags flags);
+    NativeUInt UnmapMemory(NativeUInt base, size_t bytesLength);
+    MappedMemoryDetails ModifyMemoryFlags(NativeUInt base, size_t bytesLength, MemoryMapFlags flags);
+
+    //0x2* - devices
+    sl::Opt<BasicDeviceInfo> GetPrimaryDeviceInfo(DeviceType type);
+    sl::Opt<sl::Vector<BasicDeviceInfo>> GetDevicesOfType(DeviceType type);
+    sl::Opt<DetailedDeviceInfo*> GetDeviceInfo(size_t deviceId);
 }

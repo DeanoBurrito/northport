@@ -1,7 +1,7 @@
 #include <arch/x86_64/Idt.h>
 #include <Log.h>
 #include <Panic.h>
-#include <SyscallDispatch.h>
+#include <syscalls/Dispatch.h>
 #include <devices/LApic.h>
 #include <devices/Ps2Controller.h>
 #include <devices/8254Pit.h>
@@ -67,7 +67,7 @@ namespace Kernel
                 Devices::PitHandleIrq();
                 break;
             case INTERRUPT_GSI_SYSCALL:
-                regs = DispatchSyscall(regs);
+                returnRegs = Syscalls::EnterSyscall(regs);
                 break;
             
         default:

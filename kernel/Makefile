@@ -10,11 +10,11 @@ CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
 LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-graphics -lnp-syslib -lnp-syscall
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds
 LD_FLAGS = $(LD_LIBS) \
-	 -nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext
+	-nostdlib -zmax-page-size=0x1000 -static -pie --no-dynamic-linker -ztext
 
 ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
-CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp SyscallDispatch.cpp Loader.cpp \
+CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp Loader.cpp \
 	memory/PhysicalMemory.cpp memory/VirtualMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp memory/New.cpp \
 	acpi/AcpiTables.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp \
@@ -23,6 +23,7 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp
 	devices/pci/BochsGraphicsAdaptor.cpp devices/StivaleFramebuffer.cpp \
 	scheduling/Thread.cpp scheduling/Scheduler.cpp \
 	sanitizers/UBSanitizer.cpp \
+	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp \
 	filesystem/Vfs.cpp filesystem/VfsNode.cpp filesystem/FilesystemDriver.cpp filesystem/InitDiskFSDriver.cpp filesystem/FilePath.cpp
 	
 ASM_SRCS = 
