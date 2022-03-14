@@ -27,7 +27,7 @@ Attempts to get details on the current primary device for a device type. Think o
 
 ### Args:
 - `arg0`: info details. 0 = basic (returned in regs), 1 = advanced (returned as memory block).
-- `arg1`: device type. Corresponds to entries of DeviceType enum found in `libs/np-syslib/include/SyscallEnums.h`.
+- `arg1`: device type. Corresponds to entries of DeviceType enum found in [`SyscallEnums.h`](../../libs/np-syscall/include/SyscallEnums.h).
 - all other args ignored.
 
 ### Returns:
@@ -50,7 +50,7 @@ For example a request for a device of `FramebufferDevice` would return a pointer
 
 # 0x1* - Mapping Memory and Files
 The following functions relate to mapping/unmapping memory regions for a given program. These can only affect other regions of the same program, previously requested by the program. Regions allocated by the system (shared buffer, and the program binary itself) are protected from changes in this manner.
-Userspce programs can only map memory in the lower halt
+Userspace programs can only map memory in the lower half.
 
 ## 0x10 - MapMemory
 Ensures a region of memory is mapped with a specific set of flags.
