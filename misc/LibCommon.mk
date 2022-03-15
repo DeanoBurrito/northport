@@ -11,7 +11,7 @@ OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 clean:
 	@echo "[$(TARGET)] Cleaning build dir ..."
 	@-rm -r $(BUILD_DIR)
-	@-rm -r $(LIBS_OUTPUT_DIR)/$(TARGET).a
+	@-rm -r $(LIBS_OUTPUT_DIR)/lib$(TARGET).a
 	@echo "[$(TARGET)] Done."
 
 $(BUILD_DIR)/%.cpp.o: %.cpp

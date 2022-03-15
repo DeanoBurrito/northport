@@ -157,7 +157,30 @@ namespace sl
             size = 0;
         }
 
-        void DetachData()
+        void Erase(size_t index)
+        {
+            if (index >= size)
+                return;
+            
+            Erase(index, index);
+        }
+
+        void Erase(size_t first, size_t last)
+        {
+            if (first > last || last >= size)
+                return;
+
+            const size_t shuffleCount = size - last - 1;
+            for (size_t i = 0; i < shuffleCount; i++)
+                new(&elements[i + first]) T(sl::Move(elements[i + last + 1]));
+            for (size_t i = last + 1; i < size; i++)
+                elements[i].~T();
+
+            size -= shuffleCount;
+        }
+
+        [[nodiscard]]
+        T* DetachData()
         {
             size = capacity = 0;
             elements = nullptr;
