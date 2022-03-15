@@ -50,4 +50,9 @@ namespace Kernel::Syscalls
     void GetPrimaryDeviceInfo(SyscallRegisters& regs);
     void GetDevicesOfType(SyscallRegisters& regs);
     void GetDeviceInfo(SyscallRegisters& regs);
+
+    //0x3* - filesystem
+    void GetFileInfo(SyscallRegisters& regs);
+    void OpenFile(SyscallRegisters& regs);
+    void CloseFile(SyscallRegisters& regs);
 }

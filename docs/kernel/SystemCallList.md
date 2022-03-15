@@ -7,6 +7,7 @@ Any magic numbers, structures and functions referenced are codified in the follo
 - for structs, see [libs/np-syscall/include/SyscallStructs.h](../../libs/np-syscall/include/SyscallStructs.h)
 - for functions, see [libs/np-syscall/include/SyscallFunctions.h](../../libs/np-syscall/include/SyscallFunctions.h)
 
+
 # 0x0* - Experiments
 The first 16 syscalls are reserved for testing, and should not be considered stable *at all*, and are reserved for development purposes.
 
@@ -108,6 +109,7 @@ Modifies the flags of a region of previously mapped memory.
 ## 0x15 - FlushMappedFile
 //TODO:
 
+
 # 0x2* - Device Management
 
 ## 0x20 - GetPrimaryDeviceInfo
@@ -119,4 +121,57 @@ Modifies the flags of a region of previously mapped memory.
 ## 0x22 - GetDeviceInfo
 //TODO:
 
+
 # 0x3* - Filesystem Operations
+
+## 0x30 - GetFileInfo
+Checks if a file exists, and if it does returning information about the file. Things like file size, attributes/permissions, owner.
+
+### Args:
+- `arg0`: pointer to a c-style string containing the file path. This path must be absolute.
+- all other args are ignored.
+
+### Returns:
+- `arg3`: pointer to a `FileInfo` struct.
+- all other return values should be ignored.
+
+### Notes:
+This function can be used to test if a file exists, and also to get basic info about a file.
+
+## 0x31 - OpenFile
+Attempts to open a file at the given path, returns a non-zero file descriptor if successful.
+
+### Args:
+- `arg0`: pointer to a c-style string containing the file path. This path must be absolute.
+- all other args are ignored.
+
+### Returns:
+- `arg0`: file handle. If syscall was successful, this unsigned integer can be used as handle for other file operations. This is process-local, but shared between threads.
+- all other return values should be ignored.
+
+### Notes:
+- None.
+
+## 0x32 - CloseFile
+Closes (and disposes of) an existing file handle.
+
+### Args:
+- `arg0`: file handle. An unsigned integer returned from OpenFile() or similar sources.
+- all other args are ignored.
+
+### Returns:
+- Nothing.
+
+### Notes:
+- The kernel may re-assign this handle id to something else in the future, and it is up to programmer to ensure they do not accidentally retain the handle anywhere after calling this.
+
+## 0x33 - ReadFromFile
+
+## 0x34 - WriteToFile
+
+## 0x35 - FlushFile
+
+## 0x36 - SetIoControl
+
+
+# 0x4* - Inter-Process Communication

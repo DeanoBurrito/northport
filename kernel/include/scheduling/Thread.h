@@ -4,6 +4,7 @@
 #include <containers/Vector.h>
 #include <memory/VirtualMemory.h>
 #include <Optional.h>
+#include <IdAllocator.h>
 
 namespace Kernel::Scheduling
 {
@@ -23,6 +24,21 @@ namespace Kernel::Scheduling
         KernelMode = (1 << 0),
         //code is currently running on a processor somewhere
         Executing = (1 << 1),
+    };
+
+    enum class ThreadResourceType
+    {
+        Empty, //represents an empty slot
+
+        FileHandle,
+    };
+
+    struct ThreadResource
+    {
+        ThreadResourceType type;
+        sl::NativePtr res;
+
+        ThreadResource(ThreadResourceType t, sl::NativePtr r) : type(t), res(r) {}
     };
 
     class Scheduler;
@@ -69,13 +85,20 @@ namespace Kernel::Scheduling
         sl::Vector<Thread*> threads;
         Memory::VirtualMemoryManager vmm;
         //handles and group events (most of them) stored here
+        sl::UIdAllocator resourceIdAlloc;
+        sl::Vector<ThreadResource> resources;
 
         ThreadGroup() = default;
 
     public:
+        static ThreadGroup* Current();
+
         const sl::Vector<Thread*>& Threads() const;
         const Thread* ParentThread() const;
         size_t Id() const;
         Memory::VirtualMemoryManager* VMM();
+
+        sl::Opt<size_t> AttachResource(ThreadResourceType type, sl::NativePtr resource);
+        bool DetachResource(size_t rid, bool force = false);
     };
 }

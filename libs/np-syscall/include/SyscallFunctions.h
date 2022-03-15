@@ -5,6 +5,7 @@
 #include <containers/Vector.h>
 #include <SyscallStructs.h>
 #include <SyscallEnums.h>
+#include <String.h>
 
 namespace np::Syscall
 {
@@ -52,4 +53,12 @@ namespace np::Syscall
     sl::Opt<BasicDeviceInfo> GetPrimaryDeviceInfo(DeviceType type);
     sl::Opt<sl::Vector<BasicDeviceInfo>> GetDevicesOfType(DeviceType type);
     sl::Opt<DetailedDeviceInfo*> GetDeviceInfo(size_t deviceId);
+
+    //0x3* - filesystem
+    sl::Opt<FileInfo*> GetFileInfo(const sl::String& filepath); 
+    [[nodiscard]]
+    sl::Opt<FileHandle> OpenFile(const sl::String& filepath);
+    void CloseFile(FileHandle handle);
+
+    //TODO: we are returning pointers allocated by the kernel in a few of these. How do we free them? Who is responsible for that memory now?
 }

@@ -3,6 +3,7 @@
 #include <NativePtr.h>
 #include <memory/Paging.h>
 #include <containers/LinkedList.h>
+#include <containers/Vector.h>
 
 namespace Kernel::Memory
 {
@@ -26,9 +27,8 @@ namespace Kernel::Memory
         PageTableManager pageTables;
         sl::LinkedList<VMRange> ranges;
 
-        sl::LinkedList<VMRange> InsertRange(NativeUInt base, size_t length, MemoryMapFlags flags);
-        sl::LinkedList<VMRange> DestroyRange(NativeUInt base, size_t length);
-        MemoryMapFlags MergeFlags(MemoryMapFlags a, MemoryMapFlags b);
+        sl::Vector<VMRange> InsertRange(NativeUInt base, size_t length, MemoryMapFlags flags);
+        sl::Vector<VMRange> DestroyRange(NativeUInt base, size_t length);
 
     public:
         static VirtualMemoryManager* Current();
@@ -38,6 +38,9 @@ namespace Kernel::Memory
         void AddRange(NativeUInt base, size_t length, MemoryMapFlags flags);
         bool RemoveRange(NativeUInt base);
         bool RemoveRange(NativeUInt base, size_t length);
+
+        sl::NativePtr AllocateRange(size_t length, MemoryMapFlags flags);
+        sl::NativePtr AllocateRange(sl::NativePtr physicalBase, size_t length, MemoryMapFlags flags);
     };
 
     using VMM = VirtualMemoryManager;

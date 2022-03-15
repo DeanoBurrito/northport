@@ -21,6 +21,10 @@ namespace np::Syscall
         GetPrimaryDeviceInfo = 0x20,
         GetDevicesOfType = 0x21,
         GetDeviceInfo = 0x22,
+
+        GetFileInfo = 0x30,
+        OpenFile = 0x31,
+        CloseFile = 0x32,
     };
 
     enum class MemoryMapFlags : NativeUInt
@@ -41,5 +45,11 @@ namespace np::Syscall
         FeatureNotAvailable = 1,
         NoPrimaryDevice = 2,
         UnknownDeviceType = 3,
+    };
+
+    enum class FileError : NativeUInt
+    {
+        FileNotFound = 1,
+        NoResourceId = 2,
     };
 }

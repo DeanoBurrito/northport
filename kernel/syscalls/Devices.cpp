@@ -1,6 +1,7 @@
 #include <syscalls/Dispatch.h>
 #include <SyscallEnums.h>
 #include <devices/DeviceManager.h>
+#include <scheduling/Thread.h>
 #include <Log.h>
 
 namespace Kernel::Syscalls
@@ -35,6 +36,16 @@ namespace Kernel::Syscalls
         regs.arg3 |= FORMAT_AT_OFFSET(blueMask, 48);
         regs.arg3 |= FORMAT_AT_OFFSET(alphaMask, 56);
 #undef FORMAT_AT_OFFSET
+
+        //if the requesting thread is running in userspace, we'll need to map the framebuffer into the lower half for them
+        if (sl::EnumHasFlag(Scheduling::Thread::Current()->GetFlags(), Scheduling::ThreadFlags::KernelMode))
+            return;
+
+        using MFlags = Memory::MemoryMapFlags;
+        regs.arg2 = Scheduling::Thread::Current()->GetParent()->VMM()->AllocateRange(
+            EnsureLowerHalfAddr(fb->GetAddress()->raw),
+            (modeset.width * modeset.bitsPerPixel / 8) * modeset.height, 
+            MFlags::AllowWrites | MFlags::UserAccessible | MFlags::SystemRegion).raw;
     }
     
     void GetPrimaryDeviceInfo(SyscallRegisters& regs)

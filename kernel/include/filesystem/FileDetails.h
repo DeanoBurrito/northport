@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stddef.h>
+#include <stdint.h>
 
 namespace Kernel::Filesystem
 {
@@ -8,9 +8,9 @@ namespace Kernel::Filesystem
     {
     private:
     public:
-        const size_t filesize;
+        const uint64_t filesize;
 
-        FileDetails(size_t size) 
+        FileDetails(uint64_t size) 
         : filesize(size)
         {}
     };

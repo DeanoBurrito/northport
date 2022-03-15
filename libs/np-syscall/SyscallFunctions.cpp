@@ -64,4 +64,30 @@ namespace np::Syscall
             return {};
         return sl::NativePtr(data.arg3).As<DetailedDeviceInfo>();
     }
+
+    sl::Opt<FileInfo*> GetFileInfo(const sl::String& filepath)
+    {
+        SyscallData data((uint64_t)SyscallId::GetFileInfo, (uint64_t)filepath.C_Str(), 0, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        return sl::NativePtr(data.arg3).As<FileInfo>();
+    }
+
+    sl::Opt<FileHandle> OpenFile(const sl::String& filepath)
+    {
+        SyscallData data((uint64_t)SyscallId::OpenFile, (uint64_t)filepath.C_Str(), 0, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        return data.arg0;
+    }
+
+    void CloseFile(FileHandle handle)
+    {
+        SyscallData data((uint64_t)SyscallId::CloseFile, handle, 0, 0, 0);
+        DoSyscall(&data);
+    }
 }

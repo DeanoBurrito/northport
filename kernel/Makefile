@@ -23,7 +23,7 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp
 	devices/pci/BochsGraphicsAdaptor.cpp devices/StivaleFramebuffer.cpp \
 	scheduling/Thread.cpp scheduling/Scheduler.cpp \
 	sanitizers/UBSanitizer.cpp \
-	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp \
+	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp syscalls/Filesystem.cpp \
 	filesystem/Vfs.cpp filesystem/VfsNode.cpp filesystem/FilesystemDriver.cpp filesystem/InitDiskFSDriver.cpp filesystem/FilePath.cpp
 	
 ASM_SRCS = 

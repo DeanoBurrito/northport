@@ -59,4 +59,11 @@ namespace np::Syscall
     {
         NativeUInt deviceId;
     };
+
+    struct FileInfo
+    {
+        uint64_t fileSize;
+    };
+
+    using FileHandle = size_t;
 }

@@ -77,6 +77,19 @@ namespace Kernel::Syscalls
                 GetDeviceInfo(syscallRegs);
                 break;
 
+            case SyscallId::GetFileInfo:
+                GetFileInfo(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = 0;
+                break;
+            case SyscallId::OpenFile:
+                OpenFile(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::CloseFile:
+                CloseFile(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+
             default:
                 syscallRegs.id = SyscallNotFound;
                 break;
