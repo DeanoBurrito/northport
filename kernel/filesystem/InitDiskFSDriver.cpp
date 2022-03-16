@@ -25,13 +25,23 @@ namespace Kernel::Filesystem
             return;
         
         //parse tar sequentially, adding vfs nodes are entries are found.
-        for (size_t addr = ramdiskBegin.raw; addr < ramdiskEnd.raw; addr += sl::TarSectorSize)
+        const sl::TarHeader* tar = sl::TarHeader::FromExisting(ramdiskBegin.ptr);
+        while (tar != nullptr && sl::NativePtr((size_t)tar).raw < ramdiskEnd.raw)
         {
-            sl::TarHeader* tar = sl::TarHeader::FromExisting(sl::NativePtr(addr).ptr);
-            if (tar->Filename().Size() == 0)
-                break; //sometimes there seems to be dummy files at the end of a tarball. 
+            if (tar->IsZero())
+            {
+                if ((tar++)->IsZero())
+                    break; //2 sectors zeroed in a row means we've reached the end of the archive.
 
-            Logf("Found initdisk file: %s", LogSeverity::Verbose, tar->Filename().C_Str());
+                //otherwise we just ignore this empty sector
+                tar = tar->Next();
+                continue;
+            }
+
+            if (sl::memcmp(tar->archiveSignature, "ustar", 5) != 0)
+                continue;
+
+            Logf("Found initdisk file: %s, size=%lu", LogSeverity::Verbose, tar->Filename().C_Str(), tar->SizeInBytes());
             VfsNodeType fileType = VfsNodeType::File;
             size_t filenameBegin = 0, filenameLength = 0;
             switch (tar->Type())
@@ -56,7 +66,6 @@ namespace Kernel::Filesystem
                     break;
             }
 
-            
             VfsNode* parent = root;
             if (filenameBegin > 0)
             {
@@ -73,12 +82,10 @@ namespace Kernel::Filesystem
             if (parent)
             {
                 VfsNode* fileNode = CreateNode(parent, tar->Filename().SubString(filenameBegin, filenameLength), fileType);
-                NodeData(fileNode) = sl::NativePtr(addr).ptr;
+                NodeData(fileNode) = sl::NativePtr((size_t)tar).ptr;
             }
 
-            //align size in bytes up the next sector
-            size_t sectorsCount = (tar->SizeInBytes() / sl::TarSectorSize + 1);
-            addr += sectorsCount * sl::TarSectorSize; //header sector will be consumed by for loop, therefore next loop should leave us at the next header.m
+            tar = tar->Next();
         }
     }
 

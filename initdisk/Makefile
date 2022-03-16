@@ -1,4 +1,4 @@
-FILES = example.txt $(shell find apps)
+FILES = example.txt apps/
 
 .PHONY: clean
 

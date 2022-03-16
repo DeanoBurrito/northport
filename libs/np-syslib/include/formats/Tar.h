@@ -53,5 +53,9 @@ namespace sl
         size_t LastModifiedTime() const;
         size_t SizeInBytes() const;
         TarEntryType Type() const;
+        bool IsZero() const;
+
+        //returns the next tar header in an archieve, nullptr if EOF.
+        const TarHeader* Next() const;
     };
 }
