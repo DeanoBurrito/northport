@@ -7,10 +7,6 @@
 #include <filesystem/Vfs.h>
 #include <Loader.h>
 
-//TODO: move graphics init into device manager (init primary devices?)
-#include <LinearFramebuffer.h>
-#include <TerminalFramebuffer.h>
-
 using namespace Kernel::Scheduling;
 ThreadGroup* initTaskThreadGroup;
 
@@ -37,15 +33,6 @@ void InitUserspaceTask()
     startupThread->Start(nullptr);
 }
 
-void InitDisplayAdaptorTask()
-{
-    //just draw a test pattern for now, not much to initialize
-    np::Graphics::LinearFramebuffer::Screen()->DrawTestPattern();
-
-    np::Graphics::TerminalFramebuffer fb(np::Graphics::LinearFramebuffer::Screen());
-    fb.Print("Hello world!", {0, 0});
-}
-
 void InitPs2Task()
 {
     using namespace Kernel::Devices;
@@ -60,8 +47,6 @@ void InitPs2Task()
 void InitPciTask()
 {
     Kernel::Devices::PciBridge::Global()->Init();
-
-    Scheduler::Global()->CreateThread((size_t)InitDisplayAdaptorTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
 }
 
 void InitManagersTask()
