@@ -28,7 +28,7 @@ namespace Kernel::Filesystem
 
         char mountLock;
 
-        VfsNode* FindNode(const VfsNode* start, const FilePath& path, size_t pathTrimStart) const;
+        VfsNode* FindNode(const VfsNode* start, const FilePath& path) const;
 
     public:
         static VFS* Global();

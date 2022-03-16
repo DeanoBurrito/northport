@@ -16,7 +16,7 @@ namespace Kernel::Syscalls
         {}
 
         SyscallRegisters(uint64_t id, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3) 
-        : id(id), arg0(arg0), arg1(arg1), arg2(arg3), arg3(arg3)
+        : id(id), arg0(arg0), arg1(arg1), arg2(arg2), arg3(arg3)
         {}
 
         SyscallRegisters(StoredRegisters* nativeRegs)

@@ -65,7 +65,6 @@ namespace Kernel
         //TODO: would be nice to print details about current thread (id, name, sibling processes. Basic code/data locations)
         //and a stack trace of course!
     
-    final_loop:
         Log("Panic complete. All cores halted indefinitely until manual system reset.", LogSeverity::Info);
     final_loop_no_log:
         while (1)

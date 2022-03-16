@@ -7,10 +7,8 @@
 
 namespace Kernel::Filesystem
 {
-    VfsNode* VFS::FindNode(const VfsNode* current, const FilePath& path, size_t pathTrimStart) const
+    VfsNode* VFS::FindNode(const VfsNode* current, const FilePath& path) const
     {
-        size_t segmentBegin = pathTrimStart;
-
         if (path.IsAbsolute())
             current = rootNode;
 
@@ -94,7 +92,7 @@ namespace Kernel::Filesystem
         }
 
         //NOTE: for now we're only accepting absolute filepaths
-        VfsNode* mountAt = FindNode(rootNode, prefix, 0);
+        VfsNode* mountAt = FindNode(rootNode, prefix);
         if (mountAt == nullptr)
         {
             Logf("VFS mount failed: target path does not exist at %s", LogSeverity::Error, prefix.C_Str());
@@ -175,7 +173,7 @@ namespace Kernel::Filesystem
 
     sl::Opt<VfsNode*> VFS::FindNode(const sl::String& absolutePath) const
     {
-        VfsNode* found = FindNode(rootNode, absolutePath, 0);
+        VfsNode* found = FindNode(rootNode, absolutePath);
 
         if (found == nullptr)
             return {};
@@ -185,7 +183,7 @@ namespace Kernel::Filesystem
 
     sl::Opt<VfsNode*> VFS::FindNode(const sl::String& relativePath, VfsNode* top) const
     {
-        VfsNode* found = FindNode(top, relativePath, 0);
+        VfsNode* found = FindNode(top, relativePath);
 
         if (found == nullptr)
             return {};
