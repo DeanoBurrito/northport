@@ -2,6 +2,7 @@
 
 #include <NativePtr.h>
 #include <boot/Stivale2.h>
+#include <Platform.h>
 
 namespace Kernel::Memory
 {
@@ -17,12 +18,25 @@ namespace Kernel::Memory
         uint8_t* bitmap;
     };
 
+    struct PhysMemoryStats
+    {
+        constexpr static size_t pageSizeInBytes = PAGE_FRAME_SIZE;
+
+        size_t totalPages;
+        size_t usedPages;
+
+        PhysMemoryStats() = default;
+        PhysMemoryStats(size_t total, size_t used) : totalPages(total), usedPages(used)
+        {}
+    };
+
     class PhysicalMemoryAllocator
     {
     private:
         sl::NativePtr allocBuffer;
         size_t allocBufferSize;
         PhysMemoryRegion* rootRegion;
+        PhysMemoryStats stats;
 
         PhysMemoryRegion* InitRegion(stivale2_mmap_entry* mmapEntry);
 
@@ -40,6 +54,10 @@ namespace Kernel::Memory
         void* AllocPages(size_t count);
         void FreePage(void* address);
         void FreePages(void* address, size_t count);
+
+        [[gnu::always_inline]] inline 
+        PhysMemoryStats GetMemoryStats() const
+        { return stats; }
     };
 
     using PMM = PhysicalMemoryAllocator;

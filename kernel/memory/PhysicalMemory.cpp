@@ -47,9 +47,12 @@ namespace Kernel::Memory
 
     void PhysicalMemoryAllocator::Init(stivale2_struct_tag_memmap* mmap)
     {
+        stats.usedPages = stats.totalPages = 0;
+        
         //determine how much space is needed to manage this memory, and find the biggest region
         allocBufferSize = 0;
         size_t biggestRegionIndex = (size_t)-1;
+
         for (size_t i = 0; i < mmap->entries; i++)
         {
             stivale2_mmap_entry* currentEntry = &mmap->memmap[i];
@@ -94,6 +97,8 @@ namespace Kernel::Memory
                 if (prevRegion != nullptr)
                     prevRegion->next = region;
                 prevRegion = region;
+
+                stats.totalPages += region->freePages;
             }
         }
 
@@ -124,6 +129,7 @@ namespace Kernel::Memory
                 for (size_t i = 0; i < count; i++)
                     sl::BitmapSet(region->bitmap, localIndex + i);
                 region->freePages -= count;
+                stats.usedPages += count;
             }
         }
     }
@@ -152,6 +158,7 @@ namespace Kernel::Memory
                 for (size_t i = 0; i < count; i++)
                     sl::BitmapClear(region->bitmap, localIndex + i);
                 region->freePages += count;
+                stats.usedPages -= count;
             }
         }
     }
@@ -176,6 +183,7 @@ namespace Kernel::Memory
                         region->bitmapNextAlloc = 0;
 
                     region->freePages--;
+                    stats.usedPages++;
                     return sl::NativePtr(region->baseAddress.raw + i * PAGE_FRAME_SIZE).ptr;
                 }
 
@@ -219,6 +227,7 @@ namespace Kernel::Memory
                     {
                         sl::BitmapClear(region->bitmap, bitmapIndex + i);
                         region->freePages++;
+                        stats.usedPages++;
 
                         if (bitmapIndex + i < region->bitmapNextAlloc)
                             region->bitmapNextAlloc = bitmapIndex + i;
