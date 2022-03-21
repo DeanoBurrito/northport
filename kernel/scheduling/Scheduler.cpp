@@ -59,16 +59,21 @@ namespace Kernel::Scheduling
         for (size_t i = 0; i < allThreads.Capacity(); i++)
             allThreads.EmplaceBack(); //default fill = nullptrs
         
-        //create idle thread (1 per core)
+        //create processor-specific structs
         ThreadGroup* idleGroup = CreateThreadGroup();
+        while (processorStatus.Size() < coreCount)
+            processorStatus.EmplaceBack(); //will fill with default ctor
+        
         for (size_t i = 0; i < coreCount; i++)
         {
             size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode, idleGroup)->id;
-            idleThreads.PushBack(allThreads[idleId]);
-            idleThreads.Back()->Start(nullptr);
+            processorStatus[i].currentThread = processorStatus[i].idleThread = allThreads[idleId];
+            processorStatus[i].isIdling = true;
+            processorStatus[i].idleThread->Start(nullptr);
         }
 
         lastSelectedThread = *allThreads.Begin();
+        CreateThread((size_t)CleanupThreadMain, ThreadFlags::KernelMode)->Start(&cleanupData);
         
         Log("Scheduler initialized, waiting for next tick.", LogSeverity::Info);
     }
@@ -116,11 +121,15 @@ namespace Kernel::Scheduling
             }
         }
 
+        SchedulerProcessorStatus& localCpuStatus = processorStatus[GetCoreLocal()->apicId];
         if (next == nullptr)
             next = nextBehindIndex; //loop around
         if (next == nullptr)
-            next = idleThreads[GetCoreLocal()->apicId]; //nothing available to run, run idle thread
+            next = localCpuStatus.idleThread; //nothing available to run, run idle thread
         lastSelectedThread = next;
+
+        localCpuStatus.currentThread = next;
+        localCpuStatus.isIdling = (localCpuStatus.currentThread == localCpuStatus.idleThread);
         
         if (current != nullptr)
         {
@@ -179,6 +188,10 @@ namespace Kernel::Scheduling
         //TODO: implement PMM::AllocPages, and alloc multiple here
         NativeUInt threadStackPhysBase = (NativeUInt)Memory::PMM::Global()->AllocPage();
         sl::NativePtr threadStack = EnsureHigherHalfAddr(threadStackPhysBase);
+        if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
+            thread->programStackRange = { Memory::MemoryMapFlags::None, threadStack.raw, PAGE_FRAME_SIZE };
+        else
+            thread->programStackRange = { Memory::MemoryMapFlags::None, EnsureLowerHalfAddr(threadStack.raw), PAGE_FRAME_SIZE };
         threadStack.raw += PAGE_FRAME_SIZE;
 
         //setup dummy frame base and return address
@@ -220,6 +233,7 @@ namespace Kernel::Scheduling
         thread->programStack = threadStack;
 
         sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPage());
+        thread->kernelStackRange = { Memory::MemoryMapFlags::None, kernelStack.raw, PAGE_FRAME_SIZE };
         thread->kernelStack = kernelStack.raw + PAGE_FRAME_SIZE;
 
         return thread;
@@ -227,7 +241,68 @@ namespace Kernel::Scheduling
 
     void Scheduler::RemoveThread(size_t id)
     {
-        Log("RemoveThread() not implemented TODO", LogSeverity::Error);
+        InterruptLock intLock;
+        
+        Thread* thread = GetThread(id);
+        if (thread == nullptr)
+        {
+            Logf("Could not remove thread 0x%lx, no thread with that id.", LogSeverity::Error, id);
+            return;
+        }
+
+        if (thread->runState != ThreadState::PendingCleanup)
+        {
+            Logf("Could not remove thread 0x%lx, runstate != PendingCleanup.", LogSeverity::Error, id);
+            return;
+        }
+
+        //TODO: we should check the thread isnt currently executing somewhere, and wait until that quantum has finished.
+
+        sl::SpinlockAcquire(&lock);
+        allThreads[id] = nullptr;
+        idAllocator.Free(id);
+        sl::SpinlockRelease(&lock);
+
+        //free the program and kernel stacks for this thread
+        Memory::PMM::Global()->FreePages(EnsureLowerHalfAddr(thread->kernelStackRange.base), thread->kernelStackRange.length / PAGE_FRAME_SIZE);
+        Memory::PMM::Global()->FreePages(EnsureLowerHalfAddr(thread->programStackRange.base), thread->programStackRange.length / PAGE_FRAME_SIZE);
+
+        ThreadGroup* parent = thread->parent;
+        sl::SpinlockAcquire(&parent->lock);
+
+        //if this is the last thread in the process, we'll want to free the process too.
+        if (parent->threads.Size() == 1 && parent->threads[0]->id == id)
+        {
+            //we're freeing the parent too
+            parent->threads.Clear();
+
+            sl::SpinlockAcquire(&lock);
+            idAllocator.Free(parent->id);
+            sl::ScopedSpinlock dataLock(&cleanupData.lock);
+            cleanupData.processes.PushBack(parent);
+            sl::SpinlockRelease(&lock);
+        }
+        else
+        {
+            //otherwise we just remove the thread and move on
+            bool removed = false;
+            for (size_t i = 0; i < parent->threads.Size(); i++)
+            {
+                if (parent->threads[i]->id == id)
+                {
+                    parent->threads.Erase(i); 
+                    removed = true;
+                    break;
+                }
+            }
+
+            if (!removed)
+                Logf("Could not find thread %lu in parent %lu.", LogSeverity::Error, id, parent->id);
+            sl::SpinlockRelease(&parent->lock);
+        }
+
+        delete thread;
+        thread = nullptr;
     }
 
     Thread* Scheduler::GetThread(size_t id) const

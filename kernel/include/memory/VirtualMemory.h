@@ -33,6 +33,7 @@ namespace Kernel::Memory
     public:
         static VirtualMemoryManager* Current();
         void Init();
+        void Deinit();
         PageTableManager& PageTables();
 
         void AddRange(NativeUInt base, size_t length, MemoryMapFlags flags);

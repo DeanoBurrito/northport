@@ -33,7 +33,7 @@ namespace sl
 
     String::~String()
     {
-        if (buffer)
+        if (buffer && buffer != emptyString)
             delete[] buffer;
         length = 0;
     }
@@ -51,7 +51,7 @@ namespace sl
 
     String& String::operator=(const String& other)
     {
-        if (buffer)
+        if (buffer && buffer != emptyString)
             delete[] buffer;
 
         length = other.length;
@@ -72,7 +72,7 @@ namespace sl
 
     String& String::operator=(String&& from)
     {
-        if (buffer)
+        if (buffer && buffer != emptyString)
             delete[] buffer;
         
         buffer = nullptr;

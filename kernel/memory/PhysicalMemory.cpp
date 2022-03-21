@@ -47,9 +47,12 @@ namespace Kernel::Memory
 
     void PhysicalMemoryAllocator::Init(stivale2_struct_tag_memmap* mmap)
     {
+        stats.usedPages = stats.totalPages = 0;
+        
         //determine how much space is needed to manage this memory, and find the biggest region
         allocBufferSize = 0;
         size_t biggestRegionIndex = (size_t)-1;
+
         for (size_t i = 0; i < mmap->entries; i++)
         {
             stivale2_mmap_entry* currentEntry = &mmap->memmap[i];
@@ -94,6 +97,8 @@ namespace Kernel::Memory
                 if (prevRegion != nullptr)
                     prevRegion->next = region;
                 prevRegion = region;
+
+                stats.totalPages += region->freePages;
             }
         }
 
@@ -124,6 +129,7 @@ namespace Kernel::Memory
                 for (size_t i = 0; i < count; i++)
                     sl::BitmapSet(region->bitmap, localIndex + i);
                 region->freePages -= count;
+                stats.usedPages += count;
             }
         }
     }
@@ -152,6 +158,7 @@ namespace Kernel::Memory
                 for (size_t i = 0; i < count; i++)
                     sl::BitmapClear(region->bitmap, localIndex + i);
                 region->freePages += count;
+                stats.usedPages -= count;
             }
         }
     }
@@ -176,6 +183,7 @@ namespace Kernel::Memory
                         region->bitmapNextAlloc = 0;
 
                     region->freePages--;
+                    stats.usedPages++;
                     return sl::NativePtr(region->baseAddress.raw + i * PAGE_FRAME_SIZE).ptr;
                 }
 
@@ -193,21 +201,20 @@ namespace Kernel::Memory
         return nullptr;
     }
 
-    void PhysicalMemoryAllocator::FreePage(void* address)
+    void PhysicalMemoryAllocator::FreePage(sl::NativePtr address)
     { FreePages(address, 1); }
 
-    void PhysicalMemoryAllocator::FreePages(void* address, size_t count)
+    void PhysicalMemoryAllocator::FreePages(sl::NativePtr address, size_t count)
     {
-        sl::NativePtr addrPtr = address;
         //NOTE: no need to align the address here, as the divides to get the bitmap index will force alignment.
 
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
             size_t regionTopAddress = region->baseAddress.raw + region->pageCount * PAGE_FRAME_SIZE;
-            if (addrPtr.raw >= region->baseAddress.raw && addrPtr.raw < regionTopAddress)
+            if (address.raw >= region->baseAddress.raw && address.raw < regionTopAddress)
             {
                 //it's this region, do a bounds check, then set the bits
-                size_t bitmapIndex = (addrPtr.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
+                size_t bitmapIndex = (address.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
                 if (bitmapIndex + count > region->pageCount)
                     count = region->pageCount - bitmapIndex;
 
@@ -219,6 +226,7 @@ namespace Kernel::Memory
                     {
                         sl::BitmapClear(region->bitmap, bitmapIndex + i);
                         region->freePages++;
+                        stats.usedPages++;
 
                         if (bitmapIndex + i < region->bitmapNextAlloc)
                             region->bitmapNextAlloc = bitmapIndex + i;

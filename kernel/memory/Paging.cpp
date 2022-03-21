@@ -254,6 +254,39 @@ namespace Kernel::Memory
         Log("Freshly cloned page table initialized.", LogSeverity::Info);
     }
 
+    //helper function for PTM::Teardown()
+    void FreePageTable(PageTable* pt, size_t level, bool includeHigherHalf)
+    {
+        const size_t ptEntryCount = 512;
+        const size_t loopLimit = includeHigherHalf ? ptEntryCount : ptEntryCount / 2;
+        
+        for (size_t i = 0; i < loopLimit; i++)
+        {
+            if (!sl::EnumHasFlag(EnsureHigherHalfAddr(pt->entries[i].raw), PageEntryFlag::Present))
+                continue;
+            
+            sl::NativePtr physAddr = pt->entries[i].raw & ~(0xFFFul | (1ul << 63));
+            if (level == 1)
+                PMM::Global()->FreePage(physAddr.ptr);
+            else if ((level == 3 || level == 2) && sl::EnumHasFlag(EnsureHigherHalfAddr(pt->entries[i].raw), PageEntryFlag::PageSize))
+            {
+                if (level == 3)
+                    PMM::Global()->FreePages(physAddr.ptr, (size_t)PagingSize::_1GB / PAGE_FRAME_SIZE);
+                else
+                    PMM::Global()->FreePages(physAddr.ptr, (size_t)PagingSize::_2MB / PAGE_FRAME_SIZE);
+            }
+            else
+                FreePageTable(EnsureHigherHalfAddr(physAddr.As<PageTable>()), level - 1, true);
+        }
+
+        PMM::Global()->FreePage(EnsureLowerHalfAddr(pt));
+    }
+
+    void PageTableManager::Teardown(bool includeHigherHalf)
+    {
+        FreePageTable(EnsureHigherHalfAddr(topLevelAddress.As<PageTable>()), usingExtendedPaging ? 5 : 4, includeHigherHalf);
+    }
+
     bool PageTableManager::ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlags flags, size_t appliedLevelsBitmap)
     {
         size_t tableIndices[6];
@@ -315,14 +348,14 @@ namespace Kernel::Memory
             if (level > 1 && entry->HasFlag(PageEntryFlag::PageSize))
             {
                 //trim the parts of the address we've translated, keep the bits that are used as the offset
-                if (level == 1)
-                    virtAddr.raw &= 0xFFF;
-                else if (level == 2)
-                    virtAddr.raw &= 0x1FFFF;
+                if (level == 2)
+                    virtAddr.raw &= 0x1FFFFF;
                 else if (level == 3)
                     virtAddr.raw &= 0x3FFFFFFF;
                 break;
             }
+            if (level == 1)
+                virtAddr.raw &= 0xFFF;
 
             pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
         }

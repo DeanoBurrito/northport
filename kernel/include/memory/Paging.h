@@ -50,6 +50,7 @@ namespace Kernel::Memory
 
         void InitKernel(bool reuseBootloaderMaps = false);
         void InitClone();
+        void Teardown(bool includeHigherHalf = false);
 
         void MakeActive() const;
         bool IsActive() const;
