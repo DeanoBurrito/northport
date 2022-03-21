@@ -2,6 +2,7 @@
 
 #include <IdAllocator.h>
 #include <scheduling/Thread.h>
+#include <scheduling/BuiltinThreads.h>
 #include <containers/Vector.h>
 #include <containers/LinkedList.h>
 
@@ -9,6 +10,19 @@
 
 namespace Kernel::Scheduling
 {
+    //holds details about what a particular core is up to
+    struct SchedulerProcessorStatus
+    {
+        bool isIdling = false;
+        Thread* currentThread = nullptr;
+        Thread* idleThread = nullptr;
+
+        //there may be gaps in how we store these (if cpu-ids have gaps in them).
+        [[gnu::always_inline]] inline
+        bool IsPlaceholder()
+        { return currentThread == nullptr && idleThread == nullptr; }
+    };
+
     class Scheduler
     {
     friend Thread;
@@ -18,8 +32,11 @@ namespace Kernel::Scheduling
         size_t realPressure;
         sl::UIdAllocator idAllocator;
         sl::Vector<Thread*> allThreads;
-        sl::Vector<Thread*> idleThreads;
+        sl::Vector<SchedulerProcessorStatus> processorStatus;
         Thread* lastSelectedThread;
+
+        //anything contained here is available to the cleanup thread
+        CleanupData cleanupData;
 
         void SaveContext(Thread* thread, StoredRegisters* regs);
         StoredRegisters* LoadContext(Thread* thread);
