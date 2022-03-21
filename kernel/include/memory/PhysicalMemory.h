@@ -52,8 +52,8 @@ namespace Kernel::Memory
 
         void* AllocPage();
         void* AllocPages(size_t count);
-        void FreePage(void* address);
-        void FreePages(void* address, size_t count);
+        void FreePage(sl::NativePtr address);
+        void FreePages(sl::NativePtr address, size_t count);
 
         [[gnu::always_inline]] inline 
         PhysMemoryStats GetMemoryStats() const

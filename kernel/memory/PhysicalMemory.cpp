@@ -201,21 +201,20 @@ namespace Kernel::Memory
         return nullptr;
     }
 
-    void PhysicalMemoryAllocator::FreePage(void* address)
+    void PhysicalMemoryAllocator::FreePage(sl::NativePtr address)
     { FreePages(address, 1); }
 
-    void PhysicalMemoryAllocator::FreePages(void* address, size_t count)
+    void PhysicalMemoryAllocator::FreePages(sl::NativePtr address, size_t count)
     {
-        sl::NativePtr addrPtr = address;
         //NOTE: no need to align the address here, as the divides to get the bitmap index will force alignment.
 
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
             size_t regionTopAddress = region->baseAddress.raw + region->pageCount * PAGE_FRAME_SIZE;
-            if (addrPtr.raw >= region->baseAddress.raw && addrPtr.raw < regionTopAddress)
+            if (address.raw >= region->baseAddress.raw && address.raw < regionTopAddress)
             {
                 //it's this region, do a bounds check, then set the bits
-                size_t bitmapIndex = (addrPtr.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
+                size_t bitmapIndex = (address.raw - region->baseAddress.raw) / PAGE_FRAME_SIZE;
                 if (bitmapIndex + count > region->pageCount)
                     count = region->pageCount - bitmapIndex;
 
