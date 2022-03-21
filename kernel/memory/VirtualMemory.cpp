@@ -75,6 +75,11 @@ namespace Kernel::Memory
         pageTables.InitClone();
     }
 
+    void VirtualMemoryManager::Deinit()
+    {
+        pageTables.Teardown();
+    }
+
     PageTableManager& VirtualMemoryManager::PageTables()
     { return pageTables; }
 
