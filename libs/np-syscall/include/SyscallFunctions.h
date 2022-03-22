@@ -59,6 +59,8 @@ namespace np::Syscall
     [[nodiscard]]
     sl::Opt<FileHandle> OpenFile(const sl::String& filepath);
     void CloseFile(FileHandle handle);
+    size_t ReadFromFile(FileHandle file, uint32_t readFromOffset, uint32_t outputOffset, const uint8_t* outputBuffer, size_t readLength);
+    size_t WriteToFile(FileHandle handle, uint32_t writeToOffset, uint32_t inputOffset, const uint8_t* inputBuffer, size_t writeLength);
 
     //TODO: we are returning pointers allocated by the kernel in a few of these. How do we free them? Who is responsible for that memory now?
 }

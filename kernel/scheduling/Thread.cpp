@@ -93,4 +93,14 @@ namespace Kernel::Scheduling
         resourceIdAlloc.Free(rid);
         return true;
     }
+
+    sl::Opt<ThreadResource*> ThreadGroup::GetResource(size_t rid)
+    {
+        sl::ScopedSpinlock scopeLock(&lock);
+
+        if (rid > resources.Size() || resources[rid].type == ThreadResourceType::Empty)
+            return {};
+        
+        return &resources[rid];
+    }
 }
