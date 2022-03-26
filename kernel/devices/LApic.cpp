@@ -67,7 +67,7 @@ namespace Kernel::Devices
         sl::ScopedSpinlock scopeLock(&lapicCalibLock);
         
         WriteReg(LocalApicRegister::TimerInitialCount, 0); //ensure timer is stopped before we mess with it
-        WriteReg(LocalApicRegister::TimerLVT, INTERRUPT_GSI_IGNORE); //everything else is set to 0
+        WriteReg(LocalApicRegister::TimerLVT, INT_VECTOR_IGNORE); //everything else is set to 0
         calibratedDivisor = (uint32_t)ApicTimerDivisor::_2;
         WriteReg(LocalApicRegister::TimerDivisor, calibratedDivisor);
         
@@ -161,7 +161,7 @@ namespace Kernel::Devices
         }
 
         //make sure software enable flag is set, and a spurrious vector is set
-        WriteReg(LocalApicRegister::SpuriousInterruptVector, INTERRUPT_GSI_SPURIOUS | (1 << 8));
+        WriteReg(LocalApicRegister::SpuriousInterruptVector, INT_VECTOR_SPURIOUS | (1 << 8));
     }
 
     void LApic::SendEOI() const

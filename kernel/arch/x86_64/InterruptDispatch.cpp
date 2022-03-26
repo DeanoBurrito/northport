@@ -48,25 +48,25 @@ namespace Kernel
 
         switch ((uint8_t)regs->vectorNumber)
         {
-            case INTERRUPT_GSI_SPURIOUS:
+            case INT_VECTOR_SPURIOUS:
                 return returnRegs; //no need to do EOI here, just return
-            case INTERRUPT_GSI_PANIC:
+            case INT_VECTOR_PANIC:
                 PanicInternal(regs);
                 __builtin_unreachable();
-            case INTERRUPT_GSI_PS2KEYBOARD:
+            case INT_VECTOR_PS2KEYBOARD:
                 Devices::Ps2Controller::Keyboard()->HandleIrq();
                 break;
-            case INTERRUPT_GSI_SCHEDULER_NEXT:
+            case INT_VECTOR_SCHEDULER_TICK:
                 if (Devices::UsingApicForUptime() && Devices::LApic::Local()->IsBsp())
                     Devices::IncrementUptime(Devices::LApic::Local()->GetTimerIntervalMS());
                 returnRegs = Scheduling::Scheduler::Global()->Tick(regs);
                 break;
-            case INTERRUPT_GSI_PIT_TICK:
+            case INT_VECTOR_PIT_TICK:
                 if (!Devices::UsingApicForUptime())
                     Devices::IncrementUptime(1); //we hardcore the PIT to ~1ms ticks
                 Devices::PitHandleIrq();
                 break;
-            case INTERRUPT_GSI_SYSCALL:
+            case INT_VECTOR_SYSCALL:
                 returnRegs = Syscalls::EnterSyscall(regs);
                 break;
             
