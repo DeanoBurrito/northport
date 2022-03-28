@@ -38,4 +38,10 @@ extern "C"
     {
         Log("__cxa_pure_virtual called. This should not happen.", Kernel::LogSeverity::Error);
     }
+    
+    void __cxa_atexit()
+    {
+        //if we're here, hilariously that means the kernel program tried to 'exit' :D
+        Log("__cxa_atexit called. This should not happen.", Kernel::LogSeverity::Fatal);
+    }
 }
