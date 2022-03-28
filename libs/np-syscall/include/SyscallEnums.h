@@ -25,6 +25,8 @@ namespace np::Syscall
         GetFileInfo = 0x30,
         OpenFile = 0x31,
         CloseFile = 0x32,
+        ReadFromFile = 0x33,
+        WriteToFile = 0x34,
     };
 
     enum class MemoryMapFlags : NativeUInt
@@ -51,5 +53,6 @@ namespace np::Syscall
     {
         FileNotFound = 1,
         NoResourceId = 2,
+        InvalidBufferRange = 3,
     };
 }

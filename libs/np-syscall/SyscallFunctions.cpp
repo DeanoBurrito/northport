@@ -90,4 +90,20 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::CloseFile, handle, 0, 0, 0);
         DoSyscall(&data);
     }
+
+    size_t ReadFromFile(FileHandle file, uint32_t readFromOffset, uint32_t outputOffset, const uint8_t* outputBuffer, size_t readLength)
+    {
+        const uint64_t arg1 = readFromOffset | (uint64_t)outputOffset << 32;
+        SyscallData data((uint64_t)SyscallId::ReadFromFile, file, arg1, (uint64_t)outputBuffer, readLength);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        return data.arg0;
+    }
+
+    size_t WriteToFile(FileHandle handle, uint32_t writeToOffset, uint32_t inputOffset, const uint8_t* inputBuffer, size_t writeLength)
+    {
+
+    }
 }

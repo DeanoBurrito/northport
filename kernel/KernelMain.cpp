@@ -112,7 +112,7 @@ namespace Kernel
 
         InitPanic();
         IoApic::InitAll();
-        InitPit(0, INTERRUPT_GSI_PIT_TICK);
+        InitPit(0, INT_VECTOR_PIT_TICK);
         SetApicForUptime(false); //use PIT for uptime until first apic is initialized
         SetPitMasked(false);
 
@@ -186,7 +186,7 @@ namespace Kernel
     void ExitInit()
     {
         CPU::SetInterruptsFlag();
-        Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INTERRUPT_GSI_SCHEDULER_NEXT, true);
+        Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INT_VECTOR_SCHEDULER_TICK, true);
         Logf("Core %lu init completed in: %lu ms. Exiting to scheduler ...", LogSeverity::Info, GetCoreLocal()->apicId, Devices::GetUptime());
 
         //NOTE: this time includes local apic timer calibration time (100ms)

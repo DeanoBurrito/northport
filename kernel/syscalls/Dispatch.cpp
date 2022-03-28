@@ -89,6 +89,14 @@ namespace Kernel::Syscalls
                 CloseFile(syscallRegs);
                 syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
+            case SyscallId::ReadFromFile:
+                ReadFromFile(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::WriteToFile:
+                WriteToFile(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
 
             default:
                 syscallRegs.id = SyscallNotFound;

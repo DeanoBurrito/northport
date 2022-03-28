@@ -40,7 +40,7 @@ namespace Kernel
             goto final_loop_no_log;
         
         //this core has already claimed the panic response, all other cores will jump straight to halt
-        Devices::LApic::Local()->BroadcastIpi(INTERRUPT_GSI_PANIC, false);
+        Devices::LApic::Local()->BroadcastIpi(INT_VECTOR_PANIC, false);
         EnableLogDestinaton(LogDestination::FramebufferOverwrite, true);
 
         Logf("Thread %u (core %u) triggered kernel panic.", LogSeverity::Info, Scheduling::Thread::Current()->GetId(), details.responseCore);

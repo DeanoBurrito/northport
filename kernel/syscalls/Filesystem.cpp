@@ -4,6 +4,7 @@
 #include <scheduling/Thread.h>
 #include <SyscallEnums.h>
 #include <SyscallStructs.h>
+#include <Maths.h>
 
 namespace Kernel::Syscalls
 {
@@ -68,5 +69,39 @@ namespace Kernel::Syscalls
         threadGroup->DetachResource(regs.arg0);
 
         regs.id = np::Syscall::SyscallSuccess;
+    }
+
+    void ReadFromFile(SyscallRegisters& regs)
+    {
+        using namespace Filesystem;
+
+        //check we have a valid resource handle, and that it's a file
+        Scheduling::ThreadGroup* threadGroup = Scheduling::ThreadGroup::Current();
+        auto maybeResource = threadGroup->GetResource(regs.arg0);
+        if (!maybeResource)
+        {
+            regs.id = (uint64_t)np::Syscall::FileError::FileNotFound;
+            return;
+        }
+        VfsNode* file = maybeResource.Value()->res.As<VfsNode>();
+
+        //check with the vmm that the buffer region we're reading from is actually mapped.
+        if (!threadGroup->VMM()->RangeExists(regs.arg2 + (regs.arg1 >> 32), regs.arg3))
+        {
+            regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
+            return;
+        }
+
+        //work out how much we can actually read from the file
+        const size_t readEnd = sl::min<size_t>(file->Details().filesize, (uint32_t)regs.arg1 + regs.arg3);
+        const size_t readLength = readEnd - (uint32_t)regs.arg1;
+
+        //read from the file into the buffer, and return it
+        regs.arg0 = file->Read((uint32_t)regs.arg1, sl::NativePtr(regs.arg2).As<uint8_t>(), regs.arg1 >> 32, readLength);
+    }
+
+    void WriteToFile(SyscallRegisters& regs)
+    {
+
     }
 }

@@ -133,7 +133,7 @@ namespace Kernel
             bool userDpl = false;
             switch (i)
             {
-                case INTERRUPT_GSI_SYSCALL:
+                case INT_VECTOR_SYSCALL:
                     userDpl = true;
                     break;
             }

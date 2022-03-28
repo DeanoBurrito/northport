@@ -156,4 +156,12 @@ namespace Kernel::Memory
         pageTables.MapRange(base, physicalBase, length / PAGE_FRAME_SIZE, flags);
         return base;
     }
+
+    bool VirtualMemoryManager::RangeExists(NativeUInt base, size_t length)
+    { return RangeExists(base, length, MemoryMapFlags::None); }
+
+    bool VirtualMemoryManager::RangeExists(NativeUInt base, size_t length, MemoryMapFlags minFlags)
+    {
+        return true; //TODO: implement
+    }
 }

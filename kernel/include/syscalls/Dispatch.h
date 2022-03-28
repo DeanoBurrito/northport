@@ -55,4 +55,6 @@ namespace Kernel::Syscalls
     void GetFileInfo(SyscallRegisters& regs);
     void OpenFile(SyscallRegisters& regs);
     void CloseFile(SyscallRegisters& regs);
+    void ReadFromFile(SyscallRegisters& regs);
+    void WriteToFile(SyscallRegisters& regs);
 }
