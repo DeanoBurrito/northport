@@ -25,6 +25,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <PlacementNew.h>
 #include <Memory.h>
 #include <Utilities.h>
+#include <Maths.h>
 
 namespace sl
 {
@@ -162,21 +163,25 @@ namespace sl
             if (index >= size)
                 return;
             
-            Erase(index, index);
+            Erase(index, 1);
         }
 
-        void Erase(size_t first, size_t last)
+        void Erase(size_t index, size_t count)
         {
-            if (first > last || last >= size)
+            if (count == 0 || index >= size)
                 return;
-
-            const size_t shuffleCount = size - last - 1;
-            for (size_t i = 0; i < shuffleCount; i++)
-                new(&elements[i + first]) T(sl::Move(elements[i + last + 1]));
-            for (size_t i = last + 1; i < size; i++)
-                elements[i].~T();
-
-            size -= shuffleCount;
+            
+            if (count > index)
+                count -= index;
+            for (size_t i = index; i < index + count; i++)
+                At(i).~T();
+            for (size_t i = index + count; i < size; i++)
+            {
+                new (&elements[i - count]) T(sl::Move(At(i)));
+                At(i).~T();
+            }
+            
+            size -= count;
         }
 
         [[nodiscard]]

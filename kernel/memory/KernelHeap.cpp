@@ -154,7 +154,10 @@ namespace Kernel::Memory
             {
                 scan->free = false;
                 bytesUsed += size;
-                return (void*)((uint64_t)scan + sizeof(HeapNode));
+                
+                sl::NativePtr addr((uint64_t)scan + sizeof(HeapNode));
+                sl::memset(addr.As<void>(), 0, size);
+                return addr.As<void>();
             }
 
             if (scan->length > size)
@@ -164,7 +167,10 @@ namespace Kernel::Memory
                 
                 scan->free = false;
                 bytesUsed += size + sizeof(HeapNode);
-                return (void*)((uint64_t)scan + sizeof(HeapNode));
+                
+                sl::NativePtr addr((uint64_t)scan + sizeof(HeapNode));
+                sl::memset(addr.As<void>(), 0, size);
+                return addr.As<void>();
             }
 
             if (scan == tail)

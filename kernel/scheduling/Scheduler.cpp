@@ -276,11 +276,10 @@ namespace Kernel::Scheduling
             //we're freeing the parent too
             parent->threads.Clear();
 
-            sl::SpinlockAcquire(&lock);
+            sl::ScopedSpinlock scopeLock(&lock);
             idAllocator.Free(parent->id);
             sl::ScopedSpinlock dataLock(&cleanupData.lock);
             cleanupData.processes.PushBack(parent);
-            sl::SpinlockRelease(&lock);
         }
         else
         {

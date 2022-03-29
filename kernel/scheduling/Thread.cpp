@@ -21,6 +21,7 @@ namespace Kernel::Scheduling
 
     void Thread::Start(sl::NativePtr arg)
     {
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
 
         //we'll need the physical address of the program's stack, and then access it through the hhdm to avoid swapping CR3.
@@ -69,7 +70,9 @@ namespace Kernel::Scheduling
         if (type == ThreadResourceType::Empty || resource.ptr == nullptr)
             return {}; //haha very funny
         
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
+        
         const size_t id = resourceIdAlloc.Alloc();
         while (resources.Size() <= id)
             resources.PushBack({ThreadResourceType::Empty, nullptr});
@@ -80,6 +83,7 @@ namespace Kernel::Scheduling
 
     bool ThreadGroup::DetachResource(size_t rid, bool force)
     {
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
         
         if (rid > resources.Size())
@@ -96,6 +100,7 @@ namespace Kernel::Scheduling
 
     sl::Opt<ThreadResource*> ThreadGroup::GetResource(size_t rid)
     {
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
 
         if (rid > resources.Size() || resources[rid].type == ThreadResourceType::Empty)
