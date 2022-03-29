@@ -98,6 +98,15 @@ namespace Kernel::Syscalls
                 syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
 
+            case SyscallId::StartIpcStream:
+                StartIpcStream(syscallRegs);
+                syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::StopIpcStream:
+                StopIpcStream(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+
             default:
                 syscallRegs.id = SyscallNotFound;
                 break;

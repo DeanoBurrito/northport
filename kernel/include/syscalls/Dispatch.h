@@ -57,4 +57,8 @@ namespace Kernel::Syscalls
     void CloseFile(SyscallRegisters& regs);
     void ReadFromFile(SyscallRegisters& regs);
     void WriteToFile(SyscallRegisters& regs);
+    
+    //0x4* - ipc
+    void StartIpcStream(SyscallRegisters& regs);
+    void StopIpcStream(SyscallRegisters& regs);
 }

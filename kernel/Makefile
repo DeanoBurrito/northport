@@ -15,7 +15,8 @@ LD_FLAGS = $(LD_LIBS) \
 ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
 CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp Loader.cpp \
-	memory/PhysicalMemory.cpp memory/VirtualMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp memory/New.cpp \
+	memory/PhysicalMemory.cpp memory/VirtualMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp \
+	memory/New.cpp memory/IpcManager.cpp \
 	acpi/AcpiTables.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp \
 	devices/LApic.cpp devices/IoApic.cpp devices/Ps2Controller.cpp devices/Ps2Keyboard.cpp devices/DeviceManager.cpp \
@@ -23,7 +24,7 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp
 	devices/pci/BochsGraphicsAdaptor.cpp devices/StivaleFramebuffer.cpp \
 	scheduling/Thread.cpp scheduling/Scheduler.cpp scheduling/BuiltinThreads.cpp \
 	sanitizers/UBSanitizer.cpp \
-	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp syscalls/Filesystem.cpp \
+	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp syscalls/Filesystem.cpp syscalls/Ipc.cpp \
 	filesystem/Vfs.cpp filesystem/VfsNode.cpp filesystem/FilesystemDriver.cpp filesystem/InitDiskFSDriver.cpp filesystem/FilePath.cpp
 	
 ASM_SRCS = 

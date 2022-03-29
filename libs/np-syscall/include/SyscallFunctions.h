@@ -63,4 +63,7 @@ namespace np::Syscall
     size_t WriteToFile(FileHandle handle, uint32_t writeToOffset, uint32_t inputOffset, const uint8_t* inputBuffer, size_t writeLength);
 
     //TODO: we are returning pointers allocated by the kernel in a few of these. How do we free them? Who is responsible for that memory now?
+
+    sl::Opt<IpcHandle> StartIpcStream(const sl::String& name, IpcStreamFlags flags, size_t& streamSize);
+    void StopIpcStream(IpcHandle handle);
 }

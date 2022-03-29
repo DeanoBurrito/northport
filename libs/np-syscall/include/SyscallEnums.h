@@ -27,6 +27,9 @@ namespace np::Syscall
         CloseFile = 0x32,
         ReadFromFile = 0x33,
         WriteToFile = 0x34,
+
+        StartIpcStream = 0x40,
+        StopIpcStream = 0x41,
     };
 
     enum class MemoryMapFlags : NativeUInt
@@ -42,7 +45,7 @@ namespace np::Syscall
         GraphicsAdaptor = 1,
     };
 
-    enum class GetDeviceError : NativeUInt
+    enum class DeviceError : NativeUInt
     {
         FeatureNotAvailable = 1,
         NoPrimaryDevice = 2,
@@ -52,6 +55,20 @@ namespace np::Syscall
     enum class FileError : NativeUInt
     {
         FileNotFound = 1,
+        NoResourceId = 2,
+        InvalidBufferRange = 3,
+    };
+
+    enum class IpcStreamFlags : NativeUInt
+    {
+        None = 0,
+        //if set, buffer is zero-copy, otherwise buffer is single copy (target->dest).
+        UseSharedMemory = (1 << 0),
+    };
+
+    enum class IpcError : NativeUInt
+    {
+        StreamStartFail = 1,
         NoResourceId = 2,
         InvalidBufferRange = 3,
     };

@@ -66,4 +66,5 @@ namespace np::Syscall
     };
 
     using FileHandle = size_t;
+    using IpcHandle = size_t;
 }

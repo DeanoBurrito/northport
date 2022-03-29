@@ -106,4 +106,22 @@ namespace np::Syscall
     {
 
     }
+
+    sl::Opt<IpcHandle> StartIpcStream(const sl::String& name, IpcStreamFlags flags, size_t& streamSize)
+    {
+        SyscallData data((uint64_t)SyscallId::StartIpcStream, (uint64_t)name.C_Str(), (uint64_t)flags, streamSize, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        
+        streamSize = data.arg1;
+        return data.arg0;
+    }
+
+    void StopIpcStream(IpcHandle handle)
+    {
+        SyscallData data((uint64_t)SyscallId::StopIpcStream, handle, 0, 0, 0);
+        DoSyscall(&data);
+    }
 }

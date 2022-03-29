@@ -3,6 +3,7 @@
 #include <memory/PhysicalMemory.h>
 #include <memory/Paging.h>
 #include <memory/KernelHeap.h>
+#include <memory/IpcManager.h>
 #include <acpi/AcpiTables.h>
 #include <devices/LApic.h>
 #include <devices/IoApic.h>
@@ -118,6 +119,7 @@ namespace Kernel
 
         Keyboard::Global()->Init();
         Filesystem::VFS::Global()->Init();
+        Memory::IpcManager::Global()->Init();
 
         stivale2_struct_tag_smp* stivaleSmpTag = FindStivaleTag<stivale2_struct_tag_smp*>(STIVALE2_STRUCT_TAG_SMP_ID);
         if (!stivaleSmpTag)

@@ -31,6 +31,7 @@ namespace Kernel::Scheduling
         Empty, //represents an empty slot
 
         FileHandle,
+        IpcStream,
     };
 
     struct ThreadResource

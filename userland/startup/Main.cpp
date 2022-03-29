@@ -38,6 +38,17 @@ void Main()
 
     np::Syscall::CloseFile(*maybeFileHandle);
     terminal.PrintLine("File handle is closed.");
+
+    size_t streamSize = 0x900;
+    auto maybeRid = np::Syscall::StartIpcStream("startup/listener", np::Syscall::IpcStreamFlags::UseSharedMemory, streamSize);
+    if (maybeRid)
+        terminal.PrintLine("Successfully started ipc stream.");
+    else
+        terminal.PrintLine("Could not start ipc stream.");
+
+    np::Syscall::StopIpcStream(*maybeRid);
+    terminal.PrintLine("Closed ipc stream.");
+
     Exit(terminal);
 }
 
