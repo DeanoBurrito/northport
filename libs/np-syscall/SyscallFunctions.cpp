@@ -98,12 +98,55 @@ namespace np::Syscall
         DoSyscall(&data);
 
         if (data.id != SyscallSuccess)
-            return {};
+            return 0;
         return data.arg0;
     }
 
     size_t WriteToFile(FileHandle handle, uint32_t writeToOffset, uint32_t inputOffset, const uint8_t* inputBuffer, size_t writeLength)
     {
+        const uint64_t arg1 = writeToOffset | (uint64_t)inputOffset << 32;
+        SyscallData data((uint64_t)SyscallId::WriteToFile, handle, arg1, (uint64_t)inputBuffer, writeLength);
+        DoSyscall(&data);
 
+        if (data.id != SyscallSuccess)
+            return 0;
+        return data.arg0;
+    }
+
+    sl::Opt<IpcHandle> StartIpcStream(const sl::String& name, IpcStreamFlags flags, size_t& streamSize, NativeUInt& bufferAddr)
+    {
+        SyscallData data((uint64_t)SyscallId::StartIpcStream, (uint64_t)name.C_Str(), (uint64_t)flags, streamSize, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        
+        streamSize = data.arg1;
+        bufferAddr = data.arg2;
+        return data.arg0;
+    }
+
+    void StopIpcStream(IpcHandle handle)
+    {
+        SyscallData data((uint64_t)SyscallId::StopIpcStream, handle, 0, 0, 0);
+        DoSyscall(&data);
+    }
+
+    sl::Opt<IpcHandle> OpenIpcStream(const sl::String& name, IpcStreamFlags flags, NativeUInt& bufferAddr)
+    {
+        SyscallData data((uint64_t)SyscallId::OpenIpcStream, (uint64_t)name.C_Str(), (uint64_t)flags, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        
+        bufferAddr = data.arg2;
+        return data.arg0;
+    }
+
+    void CloseIpcStream(IpcHandle handle)
+    {
+        SyscallData data((uint64_t)SyscallId::CloseIpcStream, handle, 0, 0, 0);
+        DoSyscall(&data);
     }
 }

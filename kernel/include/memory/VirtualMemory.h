@@ -43,6 +43,8 @@ namespace Kernel::Memory
         sl::NativePtr AllocateRange(size_t length, MemoryMapFlags flags);
         sl::NativePtr AllocateRange(sl::NativePtr physicalBase, size_t length, MemoryMapFlags flags);
 
+        sl::NativePtr AddSharedPhysicalRange(VirtualMemoryManager* foreignVmm, sl::NativePtr foreignAddr, size_t length, MemoryMapFlags localFlags);
+
         bool RangeExists(NativeUInt base, size_t length);
         bool RangeExists(NativeUInt base, size_t length, MemoryMapFlags minimumFlags);
     };

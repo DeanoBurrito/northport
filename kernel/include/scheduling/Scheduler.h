@@ -32,6 +32,7 @@ namespace Kernel::Scheduling
         size_t realPressure;
         sl::UIdAllocator idAllocator;
         sl::Vector<Thread*> allThreads;
+        sl::LinkedList<ThreadGroup*> threadGroups;
         sl::Vector<SchedulerProcessorStatus> processorStatus;
         Thread* lastSelectedThread;
 
@@ -53,6 +54,8 @@ namespace Kernel::Scheduling
         size_t GetPressure() const;
 
         ThreadGroup* CreateThreadGroup();
+        //TODO: void RemoveThreadGroup(size_t id); //see down below, mirror function to RemoveThread()
+        ThreadGroup* GetThreadGroup(size_t id) const;
         Thread* CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent = nullptr);
         void RemoveThread(size_t id);
         Thread* GetThread(size_t id) const;

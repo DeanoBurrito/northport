@@ -164,40 +164,60 @@ namespace Kernel::Memory
     }
 
     void* PhysicalMemoryAllocator::AllocPage()
-    { 
+    { return AllocPages(1); }
+
+    void* PhysicalMemoryAllocator::AllocPages(size_t count)
+    {
+        auto TryAllocForCount = [&](PhysMemoryRegion* region, size_t& baseIndex)
+        {
+            if (baseIndex + count > region->pageCount)
+            {
+                baseIndex = (size_t)-1;
+                return false;
+            }
+            
+            for (size_t i = 0; i < count; i++)
+            {
+                if (!sl::BitmapGet(region->bitmap, baseIndex + i))
+                    continue;
+                
+                baseIndex = baseIndex + i + 1;
+                return false;
+            }
+
+            //there's enough space, claim it as used, update the stats and return success
+            for (size_t i = 0; i < count; i++)
+                sl::BitmapSet(region->bitmap, baseIndex + i);
+            
+            region->freePages -= count;
+            stats.usedPages += count;
+            region->bitmapNextAlloc += count;
+            if (region->bitmapNextAlloc >= region->pageCount)
+                region->bitmapNextAlloc = 0;
+            return true;
+        };
+
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
-            if (region->freePages == 0)
+            if (region->freePages < count)
+                continue;
+            if (region->bitmapNextAlloc + count > region->pageCount)
                 continue;
 
             sl::ScopedSpinlock regionLock(&region->lock);
 
-            for (size_t i = region->bitmapNextAlloc; i < region->pageCount; i++)
+            size_t tryIndex = region->bitmapNextAlloc;
+            while (tryIndex + count < region->pageCount && tryIndex != (size_t)-1)
             {
-                if (!sl::BitmapGet(region->bitmap, i))
-                {
-                    sl::BitmapSet(region->bitmap, i);
-
-                    region->bitmapNextAlloc++;
-                    if (region->bitmapNextAlloc == region->pageCount)
-                        region->bitmapNextAlloc = 0;
-
-                    region->freePages--;
-                    stats.usedPages++;
-                    return sl::NativePtr(region->baseAddress.raw + i * PAGE_FRAME_SIZE).ptr;
-                }
-
-                if (region->bitmapNextAlloc > 0 && i + 1 == region->pageCount)
-                    i = (size_t)-1;
+                if (TryAllocForCount(region, tryIndex))
+                    return sl::NativePtr(region->baseAddress.raw).As<void>(tryIndex * PAGE_FRAME_SIZE);
             }
         }
-        
-        Log("Failed to allocate a physical page.", LogSeverity::Error);
-        return nullptr;
-    }
 
-    void* PhysicalMemoryAllocator::AllocPages(size_t count)
-    {
+        //PMM runs before we have dynamic memory, and logf() drops any calls before we have a heap setup.
+        //therefore if we fail to allocate before we have a heap, we wouldnt see an error if we only used logf(), hence the double log call.
+        Log("Failed to allocate physical pages.", LogSeverity::Error);
+        Logf("PMM attempted to allocate %lu pages", LogSeverity::Error, count);
         return nullptr;
     }
 
@@ -206,8 +226,6 @@ namespace Kernel::Memory
 
     void PhysicalMemoryAllocator::FreePages(sl::NativePtr address, size_t count)
     {
-        //NOTE: no need to align the address here, as the divides to get the bitmap index will force alignment.
-
         for (PhysMemoryRegion* region = rootRegion; region != nullptr; region = region->next)
         {
             size_t regionTopAddress = region->baseAddress.raw + region->pageCount * PAGE_FRAME_SIZE;

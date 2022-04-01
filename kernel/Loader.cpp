@@ -54,7 +54,7 @@ namespace Kernel
         }
         
         prevPageTables->MakeActive(); //swap back to previous page tables
-        return Scheduling::Scheduler::Global()->CreateThread(ehdr->e_entry, threadFlags, tg)->GetId();
+        return Scheduling::Scheduler::Global()->CreateThread(ehdr->e_entry, threadFlags, tg)->Id();
     }
 
     sl::Opt<size_t> LoadElfFromFile(const sl::String& filename, Scheduling::ThreadFlags threadFlags)

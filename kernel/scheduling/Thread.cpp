@@ -7,16 +7,16 @@ namespace Kernel::Scheduling
     Thread* Thread::Current()
     { return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Thread>(); }
 
-    size_t Thread::GetId() const
+    size_t Thread::Id() const
     { return id; }
 
-    ThreadFlags Thread::GetFlags() const
+    ThreadFlags Thread::Flags() const
     { return flags; }
 
-    ThreadState Thread::GetState() const
+    ThreadState Thread::State() const
     { return runState; }
     
-    ThreadGroup* Thread::GetParent() const
+    ThreadGroup* Thread::Parent() const
     { return parent; }
 
     void Thread::Start(sl::NativePtr arg)
@@ -36,6 +36,7 @@ namespace Kernel::Scheduling
     {
         runState = ThreadState::PendingCleanup;
         Scheduler::Global()->RemoveThread(this->id);
+        //NOTE: after calling exit() this thread's instance is actually deleted, we cannot use any instance variables or use the id for anything.
         Scheduler::Global()->Yield();
     }
 
@@ -49,7 +50,7 @@ namespace Kernel::Scheduling
     {
         Thread* currentThread = Thread::Current();
         if (currentThread != nullptr)
-            return currentThread->GetParent();
+            return currentThread->Parent();
         return nullptr;
     }
 

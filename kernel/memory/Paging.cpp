@@ -144,7 +144,7 @@ namespace Kernel::Memory
         if (CPU::ReadMsr(MSR_GS_BASE) == 0 || GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
             return &defaultPageTableManager;
         else 
-            return &Scheduling::Thread::Current()->GetParent()->VMM()->PageTables(); //ah oops... its starting to look like LINQ
+            return &Scheduling::Thread::Current()->Parent()->VMM()->PageTables(); //ah oops... its starting to look like LINQ
     }
 
     bool PageTableManager::usingExtendedPaging;
@@ -251,7 +251,7 @@ namespace Kernel::Memory
         sl::memset(EnsureHigherHalfAddr(topLevelAddress.ptr), 0, sizeof(PageTable));
         sl::memcopy(EnsureHigherHalfAddr(Current()->topLevelAddress.ptr), sizeof(PageTable) / 2, EnsureHigherHalfAddr(topLevelAddress.ptr), sizeof(PageTable) / 2, sizeof(PageTable) / 2);
         
-        Log("Freshly cloned page table initialized.", LogSeverity::Info);
+        Log("Freshly cloned page table initialized.", LogSeverity::Verbose);
     }
 
     //helper function for PTM::Teardown()

@@ -11,7 +11,7 @@ namespace Kernel::Syscalls
         auto maybeFramebuffer = Devices::DeviceManager::Global()->GetPrimaryDevice(Devices::DeviceType::GraphicsFramebuffer);
         if (!maybeFramebuffer)
         {
-            regs.id = (uint64_t)np::Syscall::GetDeviceError::NoPrimaryDevice;
+            regs.id = (uint64_t)np::Syscall::DeviceError::NoPrimaryDevice;
             return;
         }
 
@@ -38,11 +38,11 @@ namespace Kernel::Syscalls
 #undef FORMAT_AT_OFFSET
 
         //if the requesting thread is running in userspace, we'll need to map the framebuffer into the lower half for them
-        if (sl::EnumHasFlag(Scheduling::Thread::Current()->GetFlags(), Scheduling::ThreadFlags::KernelMode))
+        if (sl::EnumHasFlag(Scheduling::Thread::Current()->Flags(), Scheduling::ThreadFlags::KernelMode))
             return;
 
         using MFlags = Memory::MemoryMapFlags;
-        regs.arg2 = Scheduling::Thread::Current()->GetParent()->VMM()->AllocateRange(
+        regs.arg2 = Scheduling::Thread::Current()->Parent()->VMM()->AllocateRange(
             EnsureLowerHalfAddr(fb->GetAddress()->raw),
             (modeset.width * modeset.bitsPerPixel / 8) * modeset.height, 
             MFlags::AllowWrites | MFlags::UserAccessible | MFlags::SystemRegion).raw;
@@ -57,7 +57,7 @@ namespace Kernel::Syscalls
         if (advancedInfo)
         {
             Log("Getting advanced device info is not supported currently.", LogSeverity::Error);
-            regs.id = (uint64_t)GetDeviceError::FeatureNotAvailable;
+            regs.id = (uint64_t)DeviceError::FeatureNotAvailable;
             return;
         }
 
@@ -69,7 +69,7 @@ namespace Kernel::Syscalls
         
         default:
             Log("Unknown device type for GetPrimaryDeviceInfo().", LogSeverity::Warning);
-            regs.id = (uint64_t)GetDeviceError::UnknownDeviceType;
+            regs.id = (uint64_t)DeviceError::UnknownDeviceType;
             break;
         }
     }

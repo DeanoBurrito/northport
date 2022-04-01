@@ -38,6 +38,28 @@ void Main()
 
     np::Syscall::CloseFile(*maybeFileHandle);
     terminal.PrintLine("File handle is closed.");
+
+    size_t streamSize = 0x900;
+    sl::NativePtr bufferAddr = nullptr;
+    auto maybeRid = np::Syscall::StartIpcStream("startup/listener", np::Syscall::IpcStreamFlags::UseSharedMemory, streamSize, bufferAddr.raw);
+    if (maybeRid)
+        terminal.PrintLine("Successfully started ipc stream.");
+    else
+        terminal.PrintLine("Could not start ipc stream.");
+
+    if (bufferAddr.ptr == nullptr)
+    {
+        terminal.PrintLine("Startup has nullptr buffer address");
+        Exit(terminal);
+    }
+    while (sl::MemRead<uint64_t>(bufferAddr) != 0x1234);
+    terminal.PrintLine("Startup got received ipc.");
+    sl::MemWrite<uint64_t>(bufferAddr, 0x4321);
+    terminal.PrintLine("Startup has written ipc response.");
+
+    // np::Syscall::StopIpcStream(*maybeRid);
+    // terminal.PrintLine("Closed ipc stream.");
+
     Exit(terminal);
 }
 
