@@ -144,9 +144,6 @@ namespace Kernel::Memory
             if (!scan->free)
             {
                 scan = scan->next;
-                if (scan == tail)
-                    ExpandHeap(size);
-                    
                 continue;
             }
 
@@ -173,14 +170,18 @@ namespace Kernel::Memory
                 return addr.As<void>();
             }
 
-            if (scan == tail)
-                ExpandHeap(size);
-
             scan = scan->next;
         }
 
-        Log("Kernel heap could not allocate for requested size.", LogSeverity::Error);
-        return nullptr;
+        ExpandHeap(size);
+        scan = tail;
+        if (scan->length - (size + sizeof(HeapNode)) > HEAP_ALLOC_ALIGN)
+            scan->CarveOut(size, *this);
+        scan->free = false;
+        bytesUsed += size + sizeof(HeapNode);
+        sl::NativePtr addr((uint64_t)scan + sizeof(HeapNode));
+        sl::memset(addr.As<void>(), 0, size);
+        return addr.As<void>(); //TODO: sometimes we're returning a bogus address here, definitely worth investigating.
     }
 
     void KernelHeap::Free(void* ptr)

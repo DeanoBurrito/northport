@@ -69,10 +69,10 @@ namespace Kernel::Scheduling
     public:
         static Thread* Current();
 
-        size_t GetId() const;
-        ThreadFlags GetFlags() const;
-        ThreadState GetState() const;
-        ThreadGroup* GetParent() const;
+        size_t Id() const;
+        ThreadFlags Flags() const;
+        ThreadState State() const;
+        ThreadGroup* Parent() const;
 
         void Start(sl::NativePtr arg);
         void Exit();

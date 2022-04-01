@@ -12,9 +12,13 @@ namespace Kernel::Syscalls
     {
         using namespace Filesystem;
 
-        //TODO: check that regs.arg0 is actually a valid region using the vmm (something like IsValid(base, length))
-        sl::String filename(sl::NativePtr(regs.arg0).As<const char>());
+        if (!Memory::VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        {
+            regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
+            return;
+        }
 
+        sl::String filename(sl::NativePtr(regs.arg0).As<const char>());
         auto maybeFile =  VFS::Global()->FindNode(filename);
         if (!maybeFile)
         {
@@ -36,10 +40,13 @@ namespace Kernel::Syscalls
     void OpenFile(SyscallRegisters& regs)
     {
         using namespace Filesystem;
+        if (!Memory::VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        {
+            regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
+            return;
+        }
         
-        //TODO: check that regs.arg0 is actually a valid region using the vmm (something like IsValid(base, length))
         sl::String filename(sl::NativePtr(regs.arg0).As<const char>());
-
         auto maybeFile =  VFS::Global()->FindNode(filename);
         if (!maybeFile)
         {

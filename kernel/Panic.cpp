@@ -43,7 +43,7 @@ namespace Kernel
         Devices::LApic::Local()->BroadcastIpi(INT_VECTOR_PANIC, false);
         EnableLogDestinaton(LogDestination::FramebufferOverwrite, true);
 
-        Logf("Thread %u (core %u) triggered kernel panic.", LogSeverity::Info, Scheduling::Thread::Current()->GetId(), details.responseCore);
+        Logf("Thread %u (core %u) triggered kernel panic.", LogSeverity::Info, Scheduling::Thread::Current()->Id(), details.responseCore);
         Log("Reason: ", LogSeverity::Info);
         Log(details.message, LogSeverity::Info);
 

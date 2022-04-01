@@ -25,12 +25,12 @@ namespace Kernel::Syscalls
     void MapMemory(SyscallRegisters& regs)
     {
         Scheduling::Thread* currentThread = Scheduling::Thread::Current();
-        bool isUserThread = !sl::EnumHasFlag(currentThread->GetFlags(), Scheduling::ThreadFlags::KernelMode);
+        bool isUserThread = !sl::EnumHasFlag(currentThread->Flags(), Scheduling::ThreadFlags::KernelMode);
         uint64_t mapBase = regs.arg0;
         uint64_t mapLength = (regs.arg1 / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
         Memory::MemoryMapFlags flags = ParseFlags((np::Syscall::MemoryMapFlags)regs.arg2, isUserThread, true);
 
-        currentThread->GetParent()->VMM()->AddRange(mapBase, mapLength, flags);
+        currentThread->Parent()->VMM()->AddRange(mapBase, mapLength, flags);
 
         regs.arg0 = mapBase;
         regs.arg1 = mapLength;

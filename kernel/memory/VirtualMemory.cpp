@@ -11,7 +11,7 @@ namespace Kernel::Memory
         if (CPU::ReadMsr(MSR_GS_BASE) == 0 || GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
             return nullptr;
         else
-            return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Scheduling::Thread>()->GetParent()->VMM();
+            return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Scheduling::Thread>()->Parent()->VMM();
     }
 
     sl::Vector<VMRange> VirtualMemoryManager::InsertRange(NativeUInt base, size_t length, MemoryMapFlags flags)
@@ -85,8 +85,10 @@ namespace Kernel::Memory
 
     void VirtualMemoryManager::AddRange(NativeUInt base, size_t length, MemoryMapFlags flags)
     {
-        length = (length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
-        base = (base / PAGE_FRAME_SIZE) * PAGE_FRAME_SIZE;
+        if (length % PAGE_FRAME_SIZE != 0)
+            length = (length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
+        if (base % PAGE_FRAME_SIZE != 0)
+            base = (base / PAGE_FRAME_SIZE) * PAGE_FRAME_SIZE;
         
         sl::Vector<VMRange> damagedRanges = InsertRange(base, length, flags);
         const size_t bitmapLenBytes = (length / PAGE_FRAME_SIZE + 1) / 8 + 1;
@@ -127,10 +129,10 @@ namespace Kernel::Memory
     }
 
     bool VirtualMemoryManager::RemoveRange(NativeUInt base)
-    {}
+    { return false; }
 
     bool VirtualMemoryManager::RemoveRange(NativeUInt base, size_t length)
-    {}
+    { return false; }
 
     sl::NativePtr VirtualMemoryManager::AllocateRange(size_t length, MemoryMapFlags flags)
     {
@@ -142,7 +144,8 @@ namespace Kernel::Memory
 
     sl::NativePtr VirtualMemoryManager::AllocateRange(sl::NativePtr physicalBase, size_t length, MemoryMapFlags flags)
     {
-        length = (length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
+        if (length % PAGE_FRAME_SIZE != 0)
+            length = (length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
         
         //TODO: this is pretty wasteful, it would be nice to implement a proper search.
         const size_t base = ranges.Last().base + ranges.Last().length;
@@ -154,6 +157,31 @@ namespace Kernel::Memory
         }
 
         pageTables.MapRange(base, physicalBase, length / PAGE_FRAME_SIZE, flags);
+        return base;
+    }
+
+    sl::NativePtr VirtualMemoryManager::AddSharedPhysicalRange(VirtualMemoryManager* foreignVmm, sl::NativePtr foreignAddr, size_t length, MemoryMapFlags localFlags)
+    {
+        //the other vmm is responsible for the physical memory, we're just creating a window to access it from here.
+        localFlags = localFlags | MemoryMapFlags::NonOwning;
+
+        //TODO: we use this in AllocateRange(), we should probably extract this into a separate function that just does that.
+        const size_t base = ranges.Last().base + ranges.Last().length;
+
+        size_t mappedLength = 0;
+        while (mappedLength < length)
+        {
+            auto maybePhysAddr = foreignVmm->pageTables.GetPhysicalAddress(foreignAddr.raw + mappedLength);
+            if (!maybePhysAddr)
+            {
+                Logf("Could not map physical range from foreign VMM, no physical memory @ 0x%lx", LogSeverity::Error, foreignAddr.raw);
+                return nullptr; //TODO: add a range in the foreign vmm that emcompasses this range, and then try again locally.
+            }
+
+            pageTables.MapMemory(base + mappedLength, maybePhysAddr->raw, localFlags);
+            mappedLength += PAGE_FRAME_SIZE;
+        }
+
         return base;
     }
 

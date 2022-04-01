@@ -73,7 +73,7 @@ namespace Kernel::Scheduling
         }
 
         lastSelectedThread = *allThreads.Begin();
-        CreateThread((size_t)CleanupThreadMain, ThreadFlags::KernelMode)->Start(&cleanupData);
+        CreateThread((size_t)CleanupThreadMain, ThreadFlags::KernelMode, idleGroup)->Start(&cleanupData);
         
         Log("Scheduler initialized, waiting for next tick.", LogSeverity::Info);
     }
@@ -165,8 +165,24 @@ namespace Kernel::Scheduling
         
         group->id = idAllocator.Alloc();
         group->vmm.Init();
+        threadGroups.Append(group);
 
         return group;
+    }
+
+    ThreadGroup* Scheduler::GetThreadGroup(size_t id) const
+    {
+        auto foundIterator = sl::FindIf(threadGroups.Begin(), threadGroups.End(), 
+            [&](auto iterator) 
+            {
+                if ((**iterator).id == id)
+                    return true;
+                return false;
+            });
+
+        if (foundIterator != threadGroups.End())
+            return *foundIterator;
+        return nullptr;
     }
 
     Thread* Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
@@ -278,6 +294,11 @@ namespace Kernel::Scheduling
 
             sl::ScopedSpinlock scopeLock(&lock);
             idAllocator.Free(parent->id);
+            auto foundIterator = threadGroups.Find(parent);
+            if (foundIterator != threadGroups.End())
+                threadGroups.Remove(foundIterator);
+            sl::SpinlockRelease(&lock);
+            
             sl::ScopedSpinlock dataLock(&cleanupData.lock);
             cleanupData.processes.PushBack(parent);
         }
@@ -300,6 +321,8 @@ namespace Kernel::Scheduling
             sl::SpinlockRelease(&parent->lock);
         }
 
+        if (thread == Thread::Current())
+            GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = nullptr;
         delete thread;
         thread = nullptr;
     }

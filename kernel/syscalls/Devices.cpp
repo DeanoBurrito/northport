@@ -38,11 +38,11 @@ namespace Kernel::Syscalls
 #undef FORMAT_AT_OFFSET
 
         //if the requesting thread is running in userspace, we'll need to map the framebuffer into the lower half for them
-        if (sl::EnumHasFlag(Scheduling::Thread::Current()->GetFlags(), Scheduling::ThreadFlags::KernelMode))
+        if (sl::EnumHasFlag(Scheduling::Thread::Current()->Flags(), Scheduling::ThreadFlags::KernelMode))
             return;
 
         using MFlags = Memory::MemoryMapFlags;
-        regs.arg2 = Scheduling::Thread::Current()->GetParent()->VMM()->AllocateRange(
+        regs.arg2 = Scheduling::Thread::Current()->Parent()->VMM()->AllocateRange(
             EnsureLowerHalfAddr(fb->GetAddress()->raw),
             (modeset.width * modeset.bitsPerPixel / 8) * modeset.height, 
             MFlags::AllowWrites | MFlags::UserAccessible | MFlags::SystemRegion).raw;
