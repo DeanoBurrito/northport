@@ -175,7 +175,7 @@ namespace Kernel::Memory
             if (!maybePhysAddr)
             {
                 Logf("Could not map physical range from foreign VMM, no physical memory @ 0x%lx", LogSeverity::Error, foreignAddr.raw);
-                return nullptr; //TODO: add a range in the foreign vmm that emcompasses this range, and then try again locally.
+                return nullptr; //TODO: add a range in the foreign vmm that encompasses this range, and then try again locally.
             }
 
             pageTables.MapMemory(base + mappedLength, maybePhysAddr->raw, localFlags);

@@ -54,6 +54,15 @@ namespace Kernel::Memory
         stream->ownerId = Scheduling::ThreadGroup::Current()->Id();
         //we allocate the buffer initially in the host's memory space, any clients will simply point to the physical memory allocate here.
         stream->bufferAddr = VMM::Current()->AllocateRange(length, mappingFlags);
+        if (stream->bufferAddr.ptr == nullptr)
+        {
+            //we failed to allocate a VM region for whatever reason, undo anything we just updated.
+            streams->At(streamId) = nullptr;
+            idAlloc->Free(streamId);
+            delete stream;
+
+            return {};
+        }
 
         return stream;
     }

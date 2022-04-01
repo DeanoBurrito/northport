@@ -36,7 +36,7 @@ namespace Kernel::Scheduling
     {
         runState = ThreadState::PendingCleanup;
         Scheduler::Global()->RemoveThread(this->id);
-        //NOTE: after calling exit() this thread's instance is actually deleted, we cannot any instance variables or use the id for anything.
+        //NOTE: after calling exit() this thread's instance is actually deleted, we cannot use any instance variables or use the id for anything.
         Scheduler::Global()->Yield();
     }
 
