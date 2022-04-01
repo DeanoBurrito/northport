@@ -30,6 +30,8 @@ namespace np::Syscall
 
         StartIpcStream = 0x40,
         StopIpcStream = 0x41,
+        OpenIpcStream = 0x42,
+        CloseIpcStream = 0x43,
     };
 
     enum class MemoryMapFlags : NativeUInt

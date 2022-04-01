@@ -31,6 +31,16 @@ void InitUserspaceTask()
 
     Thread* startupThread = Scheduler::Global()->GetThread(*maybeThreadId);
     startupThread->Start(nullptr);
+    
+    auto maybeWindowid = Kernel::LoadElfFromFile("/initdisk/apps/server-window.elf", ThreadFlags::None);
+    if (!maybeWindowid)
+    {
+        Log("Couldnt load server-window.elf, check error log.", Kernel::LogSeverity::Warning);
+        return;
+    }
+
+    Thread* serverStartupThread = Scheduler::Global()->GetThread(*maybeWindowid);
+    serverStartupThread->Start(nullptr);
 }
 
 void InitPs2Task()

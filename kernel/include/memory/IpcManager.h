@@ -20,6 +20,7 @@ namespace Kernel::Memory
         IpcStreamFlags flags;
         sl::NativePtr bufferAddr;
         size_t bufferLength;
+        size_t ownerId;
         const sl::String name;
 
         IpcStream(const sl::String& name) : name(name) {}
@@ -28,7 +29,7 @@ namespace Kernel::Memory
     class IpcManager
     {
     private:
-        sl::UIdAllocator idAlloc;
+        sl::UIdAllocator* idAlloc;
         sl::Vector<IpcStream*>* streams;
         char lock;
 
@@ -39,5 +40,7 @@ namespace Kernel::Memory
 
         sl::Opt<IpcStream*> StartStream(const sl::String& name, size_t length, IpcStreamFlags flags);
         void StopStream(const sl::String& name);
+        sl::Opt<sl::NativePtr> OpenStream(const sl::String& name, IpcStreamFlags flags);
+        void CloseStream(const sl::String& name);
     };
 }

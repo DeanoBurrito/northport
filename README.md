@@ -18,7 +18,7 @@ I do want to start porting some software at some point (doom, bash).
 
 - A *nice*, if limited, userspace experience. Basic window manager, shell, and other common programs like a file explorer and text editor.
 
-- A port to another hardware platform is something I've been interested in for a while. I'm currently looking at ariscv64i platform, probably just the qemu `virt` platform for now, until I can get some real hardware.
+- A port to another hardware platform is something I've been interested in for a while. I'm currently looking at a riscv64i platform, probably just the qemu `virt` platform for now, until I can get some real hardware.
 
 - Decent documentation! It'd be nice to get some other people to develop small programs or drivers oneday.
 
@@ -33,6 +33,7 @@ Kernel:
 - PCI support, both legacy and ECAM.
 - Loadable drivers. Currently only 2 implemented, for the bochs video adaptor and ram initdisk fs (ustar based).
 - Single-root style VFS, full support for mounting/unmount and file lookup. Currently only has the init ramdisk driver implemented.
+- IPC, both stream and packet based. 
 - System calls. Nothing too technically interesting, but an implementation I'm quite proud of.
 - Optional UBsan. Disabled by default as it has a lot of output, and shows the limitation of my heap (string formatting) quite quickly.
 - Logging layer. Can enable/disable the various backends at runtime. Support for debugcon currently, framebuffer and serial planned.

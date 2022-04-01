@@ -6,6 +6,8 @@ The kernel currently has 3 main states during its lifetime: basic init, threaded
 
 ### Basic Init
 
+*Authors note: This section of the kernel init is highly architecture (and platform) dependent, so the kernel will have separate entry points for each of these, however the general structure is described below.*
+
 The kernel takes control of the machine from the bootloader and sets up a physical memory manager. There is only one per system, so this is the first thing to be started.
 After this an initial set of page tables is constructed. These are modelled after the stivale2 boot protocol.
 - A hhdm (**h**igher **h**alf **d**irect **m**ap of physical memory in virtual space) address is decided. This is usually the lowest possible address in the higher half of the virtual address space. If booted via stivale2, we use the provided hhdm address. This changes whether 4 or 5 level paging is used.
@@ -27,7 +29,8 @@ In this stage, the kernel runs as a multi-threaded program. This allows things l
 The initial tasks run here can be found in `kernel/InitTasks.cpp`, and will fork off into other tasks as time progress.
 
 After all kernel init tasks are done, the kernel runs the program located at `/initdisk/startup`. This can be thought of like the `init` program on linux. It's responsible for setting up userspace, starting the various rpc servers and ultimately providing the appropriate UI to start a user session.
-The `/initdisk/` directory is mounted from the kernel module by the name `northport-initdisk`, so this program must be prepared before the system is started.
+
+The `/initdisk/` directory is mounted from the kernel module by the name `northport-initdisk`, so this program must be prepared before the system is started. Fortunately its only a tar archive so no fancy bootstrapping tools are needed for this.
 
 ### Post Init
 
@@ -46,6 +49,7 @@ The major subsystems currently are:
 - PCI (managed by `PciBridge`). Not a lot happens here, but it provides functionality for dealing with pci devices and functions.
 - Memory (managed by `PhysicalMemoryManager` and `VirtualMemoryManager`). Two separate levels of code to manage available physical memory, and how that is mapped into a virtual memory space. There is also a helper class (`Paging`), a high level wrapper around a set of page tables.
 - Scheduling (managed by `Scheduler`). Northport has a very basic pre-emptive scheduler.
+- IPC (managed by `IpcManager`). IPC is mainly implemented as shared memory, either directly or with the kernel doing a double copy via its own buffers. Mailbox IPC is always double copied, optionally running a function from the user program.
 
 There are also a number of generic (coalesced) devices:
 - Keyboard: All keyboards forward their input here to be processed.

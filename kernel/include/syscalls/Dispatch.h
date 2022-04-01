@@ -61,4 +61,6 @@ namespace Kernel::Syscalls
     //0x4* - ipc
     void StartIpcStream(SyscallRegisters& regs);
     void StopIpcStream(SyscallRegisters& regs);
+    void OpenIpcStream(SyscallRegisters& regs);
+    void CloseIpcStream(SyscallRegisters& regs);
 }
