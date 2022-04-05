@@ -80,6 +80,10 @@ namespace sl
                 token.precision = PRECISION_READ_FROM_INPUT;
                 inputPos++;
             }
+            else
+            {
+                token.precision = PRECISION_DEFAULT;
+            }           
         }
 
         RETURN_IF_INPUT_EXHAUSTED
@@ -241,7 +245,18 @@ namespace sl
         case FormatSpecifier::String:
             {
                 char* source = va_arg(args, char*);
-                const size_t sourceLength = sl::memfirst(source, 0, 0);
+                size_t sourceLength;
+                if (token.precision == PRECISION_DEFAULT) 
+                {
+                    break;
+                }
+                else if (token.precision != PRECISION_UNSPECIFIED)
+                {
+                    sourceLength = token.precision;
+                } else {
+                    sourceLength = sl::memfirst(source, 0, 0);
+                }
+
                 char* str = new char[sourceLength];
                 sl::memcopy(source, str, sourceLength);
 
