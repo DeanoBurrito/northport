@@ -47,6 +47,8 @@ namespace Kernel::Memory
 
         bool RangeExists(NativeUInt base, size_t length);
         bool RangeExists(NativeUInt base, size_t length, MemoryMapFlags minimumFlags);
+
+        void PrintLog();
     };
 
     using VMM = VirtualMemoryManager;

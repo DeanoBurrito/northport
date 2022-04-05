@@ -192,4 +192,12 @@ namespace Kernel::Memory
     {
         return true; //TODO: implement
     }
+
+    void VirtualMemoryManager::PrintLog()
+    {
+        for (auto range = ranges.Begin(); range != ranges.End(); ++range)
+        {
+            Logf("VM range: start=0x%0lx end=0x%0lx length=0x%lx flags=0x%lx", LogSeverity::Info, range->base, range->base + range->length, range->length, (size_t)range->flags);
+        }
+    }
 }
