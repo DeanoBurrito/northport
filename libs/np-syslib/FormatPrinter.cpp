@@ -253,7 +253,9 @@ namespace sl
                 else if (token.precision != PRECISION_UNSPECIFIED)
                 {
                     sourceLength = token.precision;
-                } else {
+                } 
+                else 
+                {
                     sourceLength = sl::memfirst(source, 0, 0);
                 }
 
