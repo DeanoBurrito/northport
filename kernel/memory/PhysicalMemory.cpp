@@ -102,6 +102,9 @@ namespace Kernel::Memory
             }
         }
 
+        //we'll want to reserve the pages at 0x44000 + 0x45000 for AP trampoline code + data
+        LockPages(AP_BOOTSTRAP_BASE, 2);
+
         Log("PMM successfully finished early init.", LogSeverity::Info);
     }
 

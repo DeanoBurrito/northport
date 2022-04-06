@@ -83,7 +83,7 @@ namespace Kernel
         cpuidVendorString[12] = 0; //the all important, null terminator.
 
         //general purpose leaves
-        __get_cpuid(0x8000'0001, &eax, &ebx, &leaf1Ecx, &leaf1Edx);
+        __get_cpuid(0x8000'0001, &eax, &ebx, &extLeaf1Ecx, &extLeaf1Edx);
         __get_cpuid(1, &eax, &ebx, &leaf1Ecx, &leaf1Edx);
 
         //tsc frequency (= ecx * ebx/eax) and core crystal clock frequency in hertz (ecx)
