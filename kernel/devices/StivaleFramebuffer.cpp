@@ -52,7 +52,7 @@ namespace Kernel::Devices
     bool StivaleFramebuffer::CanModeset() const
     { return false; }
 
-    void StivaleFramebuffer::SetMode(Interfaces::FramebufferModeset& modeset)
+    void StivaleFramebuffer::SetMode(Interfaces::FramebufferModeset&)
     { return; }
 
     Interfaces::FramebufferModeset StivaleFramebuffer::GetCurrentMode() const
