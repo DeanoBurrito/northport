@@ -29,6 +29,7 @@ namespace sl
     constexpr static uint64_t PRINT_WIDTH_UNSPECIFIED = (uint64_t)-2;
     constexpr static uint64_t PRECISION_READ_FROM_INPUT = (uint64_t)-1;
     constexpr static uint64_t PRECISION_UNSPECIFIED = (uint64_t)-2;
+    constexpr static uint64_t PRECISION_DEFAULT = (uint64_t) 0;
 
     enum class FormatLengthMod
     {
