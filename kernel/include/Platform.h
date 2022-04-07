@@ -5,6 +5,7 @@
 #include <NativePtr.h>
 
 #define PAGE_FRAME_SIZE 0x1000
+#define AP_BOOTSTRAP_BASE 0x44000
 
 #define PORT_DEBUGCON 0xE9
 #define PORT_PS2_DATA 0x60

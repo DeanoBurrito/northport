@@ -128,6 +128,6 @@ namespace Kernel::Memory
 
     void IpcManager::CloseStream(const sl::String& name)
     {
-
+        //TODO: imeplement CloseStream()
     }
 }

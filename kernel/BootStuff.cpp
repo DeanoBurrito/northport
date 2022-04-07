@@ -8,37 +8,17 @@ static stivale2_tag stivale5LevelPaging
     .next = 0
 };
 
-static stivale2_header_tag_smp stivaleTagSmp
-{
-    .tag =
-    {
-        .identifier = STIVALE2_HEADER_TAG_SMP_ID,
-        .next = (uint64_t)&stivale5LevelPaging
-    },
-    .flags = 0
-};
-
 static stivale2_header_tag_framebuffer stivaleTagFramebuffer
 {
     .tag =
     {
         .identifier = STIVALE2_HEADER_TAG_FRAMEBUFFER_ID,
-        .next = (uint64_t)&stivaleTagSmp
+        .next = (uint64_t)&stivale5LevelPaging
     },
     .framebuffer_width = 0,
     .framebuffer_height = 0,
     .framebuffer_bpp = 0,
     .unused = 0
-};
-
-static stivale2_header_tag_any_video stivaleTagAnyVideo
-{
-    .tag = 
-    { 
-        .identifier = STIVALE2_HEADER_TAG_ANY_VIDEO_ID,
-        .next = (uint64_t)&stivaleTagFramebuffer
-    },
-    .preference = 0
 };
 
 [[gnu::section(".stivale2hdr"), gnu::used]]
@@ -47,5 +27,5 @@ static stivale2_header stivaleHdr
     .entry_point = 0,
     .stack = (uint64_t)kernelStackReserve + sizeof(kernelStackReserve),
     .flags = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4),
-    .tags = (uint64_t)&stivaleTagAnyVideo
+    .tags = (uint64_t)&stivaleTagFramebuffer
 };

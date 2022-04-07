@@ -49,7 +49,7 @@ namespace Kernel::Scheduling
         return globalScheduler; 
     }
 
-    void Scheduler::Init(size_t coreCount)
+    void Scheduler::Init(size_t baseProcessorId)
     {
         sl::SpinlockRelease(&lock);
 
@@ -61,21 +61,33 @@ namespace Kernel::Scheduling
         
         //create processor-specific structs
         ThreadGroup* idleGroup = CreateThreadGroup();
-        while (processorStatus.Size() < coreCount)
-            processorStatus.EmplaceBack(); //will fill with default ctor
-        
-        for (size_t i = 0; i < coreCount; i++)
-        {
-            size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode, idleGroup)->id;
-            processorStatus[i].currentThread = processorStatus[i].idleThread = allThreads[idleId];
-            processorStatus[i].isIdling = true;
-            processorStatus[i].idleThread->Start(nullptr);
-        }
+        while (processorStatus.Size() <= baseProcessorId)
+            processorStatus.EmplaceBack();
+
+        const size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode, idleGroup)->id;
+        processorStatus[baseProcessorId].currentThread = processorStatus[baseProcessorId].idleThread = allThreads[idleId];
+        processorStatus[baseProcessorId].isIdling = true;
+        processorStatus[baseProcessorId].idleThread->Start(nullptr);
 
         lastSelectedThread = *allThreads.Begin();
         CreateThread((size_t)CleanupThreadMain, ThreadFlags::KernelMode, idleGroup)->Start(&cleanupData);
         
         Log("Scheduler initialized, waiting for next tick.", LogSeverity::Info);
+    }
+
+    void Scheduler::AddProcessor(size_t id)
+    {
+        sl::SpinlockAcquire(&lock);
+
+        ThreadGroup* idleGroup = processorStatus[0].idleThread->parent;
+        while (processorStatus.Size() <= id)
+            processorStatus.EmplaceBack();
+        
+        sl::SpinlockRelease(&lock);
+        const size_t idleId = CreateThread((NativeUInt)IdleMain, ThreadFlags::KernelMode, idleGroup)->id;
+        processorStatus[id].currentThread = processorStatus[id].idleThread = allThreads[idleId];
+        processorStatus[id].isIdling = true;
+        processorStatus[id].idleThread->Start(nullptr);
     }
 
     StoredRegisters* Scheduler::Tick(StoredRegisters* currentRegs)

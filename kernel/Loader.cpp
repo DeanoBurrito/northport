@@ -36,6 +36,8 @@ namespace Kernel
             sl::memset(sl::NativePtr(phdrs[i]->p_vaddr).As<void>(phdrs[i]->p_filesz), 0, phdrs[i]->p_memsz - phdrs[i]->p_filesz);
         }
 
+        //this is a hack until we properly implement the VMM to allow copying to foreign VM ranges. TODO:
+        bool allowNextExecutable = false;
         for (size_t i = 0; i < phdrs.Size(); i++)
         {
             const size_t lowestPage = phdrs[i]->p_vaddr / PAGE_FRAME_SIZE;
@@ -46,8 +48,12 @@ namespace Kernel
                 Memory::MemoryMapFlags requestedFlags = Memory::MemoryMapFlags::UserAccessible;
                 if (phdrs[i]->p_flags & sl::PF_W)
                     requestedFlags = sl::EnumSetFlag(requestedFlags, Memory::MemoryMapFlags::AllowWrites);
-                if (phdrs[i]->p_flags & sl::PF_X)
+                if (phdrs[i]->p_flags & sl::PF_X || allowNextExecutable)
+                {
                     requestedFlags = sl::EnumSetFlag(requestedFlags, Memory::MemoryMapFlags::AllowExecute);
+                    if (page + 1 == highestPage)
+                        allowNextExecutable = true;
+                }
 
                 tg->VMM()->PageTables().ModifyPageFlags(page * PAGE_FRAME_SIZE, requestedFlags, (size_t)-1);
             }

@@ -4,6 +4,7 @@
 #include <devices/LApic.h>
 #include <devices/DeviceManager.h>
 #include <scheduling/Scheduler.h>
+#include <StackTrace.h>
 
 namespace Kernel
 {
@@ -36,6 +37,8 @@ namespace Kernel
 
     void PanicInternal(StoredRegisters* regs)
     {
+        const Scheduling::Thread* currentThread = Scheduling::Thread::Current();
+
         if (details.responseCore != GetCoreLocal()->apicId)
             goto final_loop_no_log;
         
@@ -62,9 +65,20 @@ namespace Kernel
         Logf("code:  0x%x:0x%lx", LogSeverity::Info, regs->iret_cs, regs->iret_rip);
         Logf("flags: 0x%lx", LogSeverity::Info, regs->iret_flags);
 
+        if (currentThread == nullptr)
+            goto final_loop;
+        
+        Log("---- Thread: ----", LogSeverity::Info);
+        Logf("id: %u, flags:0x%lx, state:%x", LogSeverity::Info, currentThread->Id(), (size_t)currentThread->Flags(), (size_t)currentThread->State());
+        if (currentThread->Parent() == nullptr)
+            goto final_loop;
+        Logf("parent id: %u", LogSeverity::Info, currentThread->Parent()->Id());
+
+        Log("---- Virtual Memory Ranges: ----", LogSeverity::Info);
+        currentThread->Parent()->VMM()->PrintLog();
         //TODO: would be nice to print details about current thread (id, name, sibling processes. Basic code/data locations)
         //and a stack trace of course!
-    
+    final_loop:
         Log("Panic complete. All cores halted indefinitely until manual system reset.", LogSeverity::Info);
     final_loop_no_log:
         while (1)
