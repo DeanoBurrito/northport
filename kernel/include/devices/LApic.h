@@ -128,6 +128,7 @@ namespace Kernel::Devices
 
         void SendIpi(uint32_t destId, uint8_t vector);
         void BroadcastIpi(uint8_t vector, bool includeSelf);
+        void SendStartup(uint32_t destId, uint8_t vector);
 
         void SetLvtMasked(LocalApicRegister lvtReg, bool masked) const;
         bool GetLvtMasked(LocalApicRegister lvtReg) const;

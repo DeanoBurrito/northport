@@ -119,7 +119,7 @@ namespace Kernel::Devices
                 apic_msr_base = apic_msr_base | (1 << 10);
                 CPU::WriteMsr(MSR_APIC_BASE, apic_msr_base);
                 if(IsBsp())
-                    Log("System Succesfully initialized X2Apic", LogSeverity::Verbose);
+                    Log("System successfully initialized X2APIC", LogSeverity::Verbose);
             } 
             else
             {
@@ -176,11 +176,8 @@ namespace Kernel::Devices
 
     size_t LApic::GetId() const
     { 
-        if(x2ModeEnabled)
-        {
-            return ReadReg(LocalApicRegister::Id);
-        } 
-        return ReadReg(LocalApicRegister::Id) >> 24; 
+        size_t id = ReadReg(LocalApicRegister::Id);
+        return x2ModeEnabled ? id : id >> 24;
     }
 
     void LApic::SendIpi(uint32_t destId, uint8_t vector)
@@ -189,32 +186,48 @@ namespace Kernel::Devices
         uint32_t high = (x2ModeEnabled ? destId : destId << 24);
 
         //everything else is fine as default here, all zeros.
-        if(!x2ModeEnabled)
+        if (x2ModeEnabled)
         {
-            WriteReg(LocalApicRegister::ICR1, high);
-            //writing to low dword sends IPI
-            WriteReg(LocalApicRegister::ICR0, low);
-        } 
+            CPU::WriteMsr(ExtractX2Offset(LocalApicRegister::ICR0), ((uint64_t)high << 32 | (uint32_t)low));
+        }
         else
         {
-            uint64_t x2IcrRegisterValue = ((uint64_t) high << 32 | (uint32_t) low);
-            WriteReg(LocalApicRegister::ICR0, x2IcrRegisterValue);
+            //writing to low dword sends IPI
+            WriteReg(LocalApicRegister::ICR1, high);
+            WriteReg(LocalApicRegister::ICR0, low);
         }
     }
 
     void LApic::BroadcastIpi(uint8_t vector, bool includeSelf)
     {
         uint32_t low = vector | (includeSelf ? (0b10 << 18) : (0b11 << 18));
-        if(!x2ModeEnabled)
+        if (x2ModeEnabled)
+        {
+            CPU::WriteMsr(ExtractX2Offset(LocalApicRegister::ICR0), low);
+        }
+        else
         {
             WriteReg(LocalApicRegister::ICR1, 0); //destination is ignored when using shorthand
             //writing to low dword sends IPI
             WriteReg(LocalApicRegister::ICR0, low);
         }
+    }
+
+    void LApic::SendStartup(uint32_t destId, uint8_t vector)
+    {
+        //send init, sipi, sipi
+        if (x2ModeEnabled)
+        {
+            CPU::WriteMsr(ExtractX2Offset(LocalApicRegister::ICR0), ((uint64_t)destId << 32) | 0b101 << 8);
+            CPU::WriteMsr(ExtractX2Offset(LocalApicRegister::ICR0), ((uint64_t)destId << 32) | 0b110 << 8 | vector);
+            CPU::WriteMsr(ExtractX2Offset(LocalApicRegister::ICR0), ((uint64_t)destId << 32) | 0b110 << 8 | vector);
+        }
         else
         {
-            uint64_t x2IcrRegisterValue = ((uint64_t) 0 << 32| (uint32_t) low);
-            WriteReg(LocalApicRegister::ICR0, x2IcrRegisterValue);
+            WriteReg(LocalApicRegister::ICR1, destId << 24);
+            WriteReg(LocalApicRegister::ICR0, 0b101 << 8);
+            WriteReg(LocalApicRegister::ICR0, 0b110 << 8 | vector);
+            WriteReg(LocalApicRegister::ICR0, 0b110 << 8 | vector);
         }
     }
 

@@ -15,6 +15,7 @@
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <arch/x86_64/Tss.h>
+#include <arch/x86_64/ApBoot.h>
 #include <boot/Stivale2.h>
 #include <Panic.h>
 
@@ -26,7 +27,7 @@ NativeUInt Kernel::vmaHighAddr;
 extern "C"
 {
     [[gnu::used, noreturn]]
-    void _ApEntry(stivale2_smp_info* smpInfo);
+    void _ApEntry(Kernel::SmpCoreInfo* smpInfo);
 }
 
 namespace Kernel
@@ -121,11 +122,8 @@ namespace Kernel
         Filesystem::VFS::Global()->Init();
         Memory::IpcManager::Global()->Init();
 
-        stivale2_struct_tag_smp* stivaleSmpTag = FindStivaleTag<stivale2_struct_tag_smp*>(STIVALE2_STRUCT_TAG_SMP_ID);
-        if (!stivaleSmpTag)
-            Scheduling::Scheduler::Global()->Init(1);
-        else
-            Scheduling::Scheduler::Global()->Init(stivaleSmpTag->cpu_count);
+        const uint32_t baseProcessorId = sl::MemRead<uint32_t>(EnsureHigherHalfAddr(CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + 0x20);
+        Scheduling::Scheduler::Global()->Init(baseProcessorId);
 
         Log("Platform init complete.", LogSeverity::Info);
     }
@@ -153,34 +151,40 @@ namespace Kernel
 
     void SetupAllCores()
     {
-        stivale2_struct_tag_smp* smpTag = FindStivaleTag<stivale2_struct_tag_smp*>(STIVALE2_STRUCT_TAG_SMP_ID);
-#ifdef NORTHPORT_DEBUG_DISABLE_SMP_BOOT
-        if (true)
-#else
-        if (smpTag == nullptr)
-#endif
-        {
-            Log("SMP not available on this system.", LogSeverity::Info);
+        //we'll need the bsp setup properly in order to boot APs
+        const uint32_t apicIdReg = sl::MemRead<uint32_t>(EnsureHigherHalfAddr(CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + 0x20);
+        InitCore(apicIdReg >> 24, 0);
 
-            //manually read the apic id, since LApic class isnt initialized yet
-            uint32_t apicIdReg = sl::MemRead<uint32_t>(EnsureHigherHalfAddr(CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + 0x20);
-            InitCore(apicIdReg >> 24, 0);
-            return;
-        }
-
-        for (size_t i = 0; i < smpTag->cpu_count; i++)
+        SmpInfo* smpInfo = BootAPs();
+        for (size_t i = 0; smpInfo->cores[i].apicId != AP_BOOT_APIC_ID_END; i++)
         {
-            if (smpTag->smp_info[i].lapic_id == smpTag->bsp_lapic_id)
+            SmpCoreInfo* coreInfo = &smpInfo->cores[i];
+
+            if (coreInfo->apicId == smpInfo->bspApicId)
             {
-                InitCore(smpTag->smp_info[i].lapic_id, smpTag->smp_info[i].processor_id);
+                GetCoreLocal()->acpiProcessorId = coreInfo->acpiProcessorId;
+#ifdef NORTHPORT_DEBUG_DISABLE_SMP_BOOT
+                Log("SMP support disabled at compile-time, running in single core mode.", LogSeverity::Info);
+                break;
+#else
                 continue;
+#endif
             }
+#ifdef NORTHPORT_DEBUG_DISABLE_SMP_BOOT
+            continue;
+#endif
+            //unused apic id, ignore it
+            if (coreInfo->apicId == AP_BOOT_APIC_ID_INVALID)
+                continue;
 
+            Scheduling::Scheduler::Global()->AddProcessor(coreInfo->apicId);
+            
+            //allocate an init stack for this core and populate its info
             sl::NativePtr stackBase = Memory::PMM::Global()->AllocPage();
             Memory::PageTableManager::Current()->MapMemory(EnsureHigherHalfAddr(stackBase.raw), stackBase, Memory::MemoryMapFlags::AllowWrites);
 
-            smpTag->smp_info[i].target_stack = EnsureHigherHalfAddr(stackBase.raw) + PAGE_FRAME_SIZE;
-            smpTag->smp_info[i].goto_address = (uint64_t)_ApEntry;
+            coreInfo->stack = EnsureHigherHalfAddr(stackBase.raw + PAGE_FRAME_SIZE);
+            coreInfo->gotoAddress = (uint64_t)_ApEntry;
         }
     }
 
@@ -200,14 +204,14 @@ namespace Kernel
 extern "C"
 {
     [[gnu::used, noreturn]]
-    void _ApEntry(stivale2_smp_info* smpInfo)
+    void _ApEntry(Kernel::SmpCoreInfo* smpInfo)
     {
         using namespace Kernel;
         //ensure we're using our page map
         Memory::PageTableManager::Current()->MakeActive();
         smpInfo = EnsureHigherHalfAddr(smpInfo);
 
-        InitCore(smpInfo->lapic_id, smpInfo->processor_id);
+        InitCore(smpInfo->apicId, smpInfo->acpiProcessorId);
 
         ExitInit();
         __builtin_unreachable();

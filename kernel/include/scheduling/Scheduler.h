@@ -52,7 +52,8 @@ namespace Kernel::Scheduling
     public:
         static Scheduler* Global();
 
-        void Init(size_t coreCount);
+        void Init(size_t baseProcessorId);
+        void AddProcessor(size_t id);
         StoredRegisters* Tick(StoredRegisters* current);
         [[noreturn]]
         void Yield();
