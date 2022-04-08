@@ -11,7 +11,7 @@
 
 asm("\
 ApTrampolineBegin: \n\
-    .incbin \"build/arch/x86_64/ApTrampoline.s.o\" \n\
+    .incbin \"build/arch/x86_64/asm/ApTrampoline.s.o\" \n\
 ApTrampolineEnd: \n\
 ");
 
