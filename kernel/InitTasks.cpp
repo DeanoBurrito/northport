@@ -82,6 +82,7 @@ void InitManagersTask()
 extern "C" void QueueInitTasks()
 {
     initTaskThreadGroup = Scheduler::Global()->CreateThreadGroup();
+    initTaskThreadGroup->Name() = "InitTasks";
 
     Scheduler::Global()->CreateThread((size_t)InitPs2Task, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
     Scheduler::Global()->CreateThread((size_t)InitManagersTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);

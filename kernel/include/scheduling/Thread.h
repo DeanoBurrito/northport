@@ -47,6 +47,8 @@ namespace Kernel::Scheduling
         Memory::VMRange programStackRange;
         Memory::VMRange kernelStackRange;
 
+        sl::String name;
+
         Thread() = default;
         
     public:
@@ -60,6 +62,10 @@ namespace Kernel::Scheduling
         { return runState; }
         FORCE_INLINE ThreadGroup* Parent() const
         { return parent; }
+        FORCE_INLINE sl::String& Name()
+        { return name; }
+        FORCE_INLINE const sl::String& Name() const
+        { return name; }
 
         void Start(sl::NativePtr arg);
         void Exit();
