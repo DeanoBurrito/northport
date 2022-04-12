@@ -96,7 +96,7 @@ namespace sl
         Optional(Optional&& from) : isValid(from.isValid)
         {
             if (isValid)
-                new (store) T(move(*from.Get()));
+                new (store) T(sl::Move(*from.Get()));
         }
 
         Optional& operator=(Optional&& from)
@@ -104,11 +104,11 @@ namespace sl
             if (from.isValid)
             {
                 if (isValid)
-                    *Get() = move(*from.Get());
+                    *Get() = sl::Move(*from.Get());
                 else
                 {
                     isValid = true;
-                    new (store) T(move (*from.Get()));
+                    new (store) T(sl::Move (*from.Get()));
                 }
             }
             else
@@ -148,11 +148,11 @@ namespace sl
             if (from.isValid)
             {
                 if (isValid)
-                    *Get() = move(*from.Get());
+                    *Get() = sl::Move(*from.Get());
                 else
                 {
                     isValid = true;
-                    new (store) T(move (*from.Get()));
+                    new (store) T(sl::Move (*from.Get()));
                 }
             }
             else
