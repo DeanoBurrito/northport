@@ -80,6 +80,13 @@ namespace Kernel
             return {};
         }
 
-        return LoadElfFromMemory(buffer, threadFlags);
+        sl::Opt<size_t> maybeThread = LoadElfFromMemory(buffer, threadFlags);
+        if (maybeThread)
+        {
+            Scheduling::Thread* thread = Scheduling::Scheduler::Global()->GetThread(*maybeThread);
+            thread->Name() = "Main thread";
+            thread->Parent()->Name() = filename;
+        }
+        return maybeThread;
     }
 }

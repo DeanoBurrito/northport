@@ -67,15 +67,15 @@ namespace Kernel
 
         if (currentThread == nullptr)
             goto final_loop;
-        
-        Log("---- Thread: ----", LogSeverity::Info);
-        Logf("id: %u, flags:0x%lx, state:%x", LogSeverity::Info, currentThread->Id(), (size_t)currentThread->Flags(), (size_t)currentThread->State());
-        if (currentThread->Parent() == nullptr)
-            goto final_loop;
-        Logf("parent id: %u", LogSeverity::Info, currentThread->Parent()->Id());
 
         Log("---- Virtual Memory Ranges: ----", LogSeverity::Info);
         currentThread->Parent()->VMM()->PrintLog();
+
+        Log("---- Process & Thread ----", LogSeverity::Info);
+        Logf("threadId: %u, threadName: %s", LogSeverity::Info, currentThread->Id(), currentThread->Name().C_Str());
+        Logf("threadFlags: 0x%x, threadState: 0x%x", LogSeverity::Info, (size_t)currentThread->Flags(), (size_t)currentThread->State());
+        Logf("processId: %u, processName: %s", LogSeverity::Info, currentThread->Parent()->Id(), currentThread->Parent()->Name().C_Str());
+
         //TODO: would be nice to print details about current thread (id, name, sibling processes. Basic code/data locations)
         //and a stack trace of course!
     final_loop:

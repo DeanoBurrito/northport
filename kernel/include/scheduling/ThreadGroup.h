@@ -2,6 +2,7 @@
 
 #include <IdAllocator.h>
 #include <memory/VirtualMemory.h>
+#include <String.h>
 
 namespace Kernel::Scheduling
 {
@@ -36,6 +37,7 @@ namespace Kernel::Scheduling
         //handles and group events (most of them) stored here
         sl::UIdAllocator resourceIdAlloc;
         sl::Vector<ThreadResource> resources;
+        sl::String name;
 
         ThreadGroup() = default;
 
@@ -50,6 +52,8 @@ namespace Kernel::Scheduling
         { return id; }
         FORCE_INLINE Memory::VirtualMemoryManager* VMM()
         { return &vmm; }
+        FORCE_INLINE sl::String& Name()
+        { return name; }
 
         sl::Opt<size_t> AttachResource(ThreadResourceType type, sl::NativePtr resource);
         bool DetachResource(size_t rid, bool force = false);
