@@ -221,6 +221,28 @@ namespace np::Graphics
         }
     }
 
+    void LinearFramebuffer::DrawImage(const GenericImage& image, sl::Vector2u where)
+    {
+        sl::ScopedSpinlock scopeLock(&lock);
+
+        for (size_t y = 0; y < image.Size().y; y++)
+        {
+            const size_t fbY = where.y + y;
+            for (size_t x = 0; x < image.Size().x; x++)
+            {
+                const size_t fbX = where.x + x;
+                if (fbX >= width)
+                    break;
+
+                const size_t offset = (fbY * stride) + (fbX * bitsPerPixel / 8);
+                sl::MemWrite<uint32_t>(backBuffer.raw + offset, image.Data()[y * image.Size().x + x]);
+            }
+
+            if (fbY >= height)
+                break;
+        }
+    }
+
     void LinearFramebuffer::DrawUsing(SimpleRenderCallback drawFunc, sl::Vector2u where, Colour colour)
     {
         sl::ScopedSpinlock scopeLock(&lock);

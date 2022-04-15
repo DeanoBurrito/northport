@@ -30,4 +30,34 @@ namespace sl
             return upper;
         return v;
     }
+
+    constexpr bool IsBigEndian()
+    {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return true;
+#else 
+        return false;
+#endif
+    }
+
+    constexpr bool IsLittleEndian()
+    {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return true;
+#else 
+        return false;
+#endif
+    }
+
+    constexpr uint8_t SwapEndianness(uint8_t value)
+    { return value; }
+
+    constexpr uint16_t SwapEndianness(uint16_t value)
+    { return __builtin_bswap16(value); }
+
+    constexpr uint32_t SwapEndianness(uint32_t value)
+    { return __builtin_bswap32(value); }
+
+    constexpr uint64_t SwapEndianness(uint64_t value)
+    { return __builtin_bswap64(value); }
 }

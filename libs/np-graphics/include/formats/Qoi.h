@@ -20,7 +20,7 @@ namespace np::Graphics
         constexpr uint8_t Magic2 = 'i';
         constexpr uint8_t Magic3 = 'f';
         
-        struct Header
+        struct [[gnu::packed]] Header
         {
             uint8_t magic[4];
             uint32_t width;

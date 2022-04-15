@@ -5,6 +5,7 @@
 #include <NativePtr.h>
 #include <Vectors.h>
 #include <Rects.h>
+#include <formats/GenericImage.h>
 
 namespace np::Graphics
 {
@@ -60,6 +61,8 @@ namespace np::Graphics
         //draws a rectangle. Filled sets whether just the outlines or the full thing are drawn.
         void DrawRect(sl::UIntRect rect, Colour colour, bool filled);
         void DrawRect(sl::UIntRect rect, Colour colour, bool filled, FramebufferNoLockType noLock);
+        //draws an image onto the framebuffer
+        void DrawImage(const GenericImage& image, sl::Vector2u where);
 
         //draws a complex output using the callback function, passing through the position and colour info
         void DrawUsing(SimpleRenderCallback drawFunc, sl::Vector2u where, Colour colour);
