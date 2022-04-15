@@ -258,3 +258,21 @@ Closes an open stream handle. This does not stop the stream, it only detaches it
 ## 0x47 - DestroyMailbox
 
 ## 0x48 - PostToMailbox
+
+# 0x5* - General Utilities
+This gorup of system calls is a collection of unrelated utilties.
+
+## 0x50 - Log
+Writes a log entry to the global log.
+
+### Args:
+- `arg0`: pointer to a c-string containing the text to be logged.
+- `arg1`: level of log to be written: 0 = info, 1 = warning, 2 = error, 4 = verbose.
+- all other args ignored.
+
+### Returns:
+- Nothing.
+
+### Notes:
+- Unlike the kernel function `logf()` this syscall does not provide any formatting support for security reasons. It writes the input string to the currently active log backendds verbatim.
+- The logging level values mirror those in the kernel logging system, with the exception of the `fatal` level not being available. Any attempts to issue a fatal log result in the log being emitted as an error instead.

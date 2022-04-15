@@ -63,4 +63,7 @@ namespace Kernel::Syscalls
     void StopIpcStream(SyscallRegisters& regs);
     void OpenIpcStream(SyscallRegisters& regs);
     void CloseIpcStream(SyscallRegisters& regs);
+
+    //0x5* - utilities
+    void Log(SyscallRegisters& regs);
 }

@@ -32,6 +32,8 @@ namespace np::Syscall
         StopIpcStream = 0x41,
         OpenIpcStream = 0x42,
         CloseIpcStream = 0x43,
+
+        Log = 0x50
     };
 
     enum class MemoryMapFlags : NativeUInt
@@ -72,6 +74,21 @@ namespace np::Syscall
     {
         StreamStartFail = 1,
         NoResourceId = 2,
+        InvalidBufferRange = 3,
+    };
+
+    enum class LogLevel : NativeUInt
+    {
+        Info = 0,
+        Warning = 1,
+        Error = 2,
+        //Fatal is not available to userspace, hopefully for obvious reasons.
+        Verbose = 4,
+    };
+
+    enum class LogError : NativeUInt
+    {
+        BadLogLevel = 1,
         InvalidBufferRange = 3,
     };
 }

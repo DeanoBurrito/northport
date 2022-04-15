@@ -114,6 +114,11 @@ namespace Kernel::Syscalls
                 CloseIpcStream(syscallRegs);
                 syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
+            
+            case SyscallId::Log:
+                Log(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
 
             default:
                 syscallRegs.id = SyscallNotFound;

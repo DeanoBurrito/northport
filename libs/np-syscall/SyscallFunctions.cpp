@@ -149,4 +149,10 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::CloseIpcStream, handle, 0, 0, 0);
         DoSyscall(&data);
     }
+
+    void Log(const sl::String& text, LogLevel level)
+    {
+        SyscallData data((uint64_t)SyscallId::Log, (uint64_t)text.C_Str(), (uint64_t)level, 0, 0);
+        DoSyscall(&data);
+    }
 }
