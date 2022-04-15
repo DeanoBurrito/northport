@@ -230,6 +230,9 @@ namespace np::Graphics
             const size_t fbY = where.y + y;
             for (size_t x = 0; x < image.Size().x; x++)
             {
+                if ((image.Data()[y * image.Size().x + x] >> 24) < 0xFF)
+                    continue; //pixel is transparent, we dont support that for now TODO:
+                
                 const size_t fbX = where.x + x;
                 if (fbX >= width)
                     break;

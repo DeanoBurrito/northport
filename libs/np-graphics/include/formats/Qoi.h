@@ -15,10 +15,8 @@ namespace np::Graphics
 {
     namespace Qoi
     {
-        constexpr uint8_t Magic0 = 'q';
-        constexpr uint8_t Magic1 = 'o';
-        constexpr uint8_t Magic2 = 'i';
-        constexpr uint8_t Magic3 = 'f';
+        constexpr uint8_t Magic[] = { 'q', 'o', 'i', 'f' };
+        constexpr size_t MagicLength = 4;
         
         struct [[gnu::packed]] Header
         {
