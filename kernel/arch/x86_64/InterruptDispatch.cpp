@@ -19,18 +19,21 @@ namespace Kernel
         switch (regs->vectorNumber)
         {
         case NativeExceptions::GeneralProtectionFault:
+            SetPanicOverrideRegs(regs);
             Log("General Protection fault.", LogSeverity::Fatal);
             while (1)
                 asm("hlt");
             return true;
 
         case NativeExceptions::DoubleFault:
+            SetPanicOverrideRegs(regs);
             Log("Double fault.", LogSeverity::Fatal);
             while (1)
                 asm("hlt");
             return true;
             
         case NativeExceptions::PageFault:
+            SetPanicOverrideRegs(regs);
             Log("Page fault.", LogSeverity::Fatal);
             while (1)
                 asm("hlt");

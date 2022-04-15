@@ -11,6 +11,8 @@ namespace Kernel
     struct PanicData
     {
         const char* message;
+        StoredRegisters overrideRegisters;
+        bool useOverrideRegs;
         uint8_t responseCore; //which core is handling the panic response, all others halt
         char lock;
     };
@@ -19,7 +21,14 @@ namespace Kernel
     void InitPanic()
     {
         details.message = "";
+        details.useOverrideRegs = false;
         sl::SpinlockRelease(&details.lock);
+    }
+
+    void SetPanicOverrideRegs(StoredRegisters* regs)
+    {
+        details.overrideRegisters = *regs;
+        details.useOverrideRegs = true;
     }
 
     [[noreturn]]
@@ -37,6 +46,8 @@ namespace Kernel
 
     void PanicInternal(StoredRegisters* regs)
     {
+        if (details.useOverrideRegs)
+            regs = &details.overrideRegisters;
         const Scheduling::Thread* currentThread = Scheduling::Thread::Current();
 
         if (details.responseCore != GetCoreLocal()->apicId)

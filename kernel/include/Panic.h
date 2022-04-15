@@ -5,6 +5,7 @@
 namespace Kernel
 {
     void InitPanic();
+    void SetPanicOverrideRegs(StoredRegisters* regs);
 
     [[noreturn]]
     void Panic(const char* reason);
