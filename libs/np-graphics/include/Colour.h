@@ -22,6 +22,8 @@ namespace np::Graphics
         : redOffset(r_o), greenOffset(g_o), blueOffset(b_o), alphaOffset(a_o), redMask(r_m), greenMask(g_m), blueMask(b_m), alphaMask(a_m)
         {}
     };
+
+    constexpr static inline ColourFormat RGBA32(0, 8, 16, 24, 0xFF, 0xFF, 0xFF, 0xFF);
     
     struct Colour
     {
