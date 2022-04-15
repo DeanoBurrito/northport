@@ -1,4 +1,4 @@
-FILES = example.txt apps/ config/ 
+FILES = example.txt apps/ config/ icons/
 
 .PHONY: clean
 

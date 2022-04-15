@@ -118,10 +118,8 @@ namespace np::Graphics
             current.raw++;
 
             indexBuffer[HashQoiIndex(workingPixel)] = workingPixel;
-            workingPixel = workingPixel;
 
-            // outputBuffer[pixelsDecoded] = workingPixel.Pack(RGBA32);
-            outputBuffer[pixelsDecoded] = (uint32_t)-1;
+            outputBuffer[pixelsDecoded] = workingPixel.Pack(RGBA32);
             pixelsDecoded++;
         }
 

@@ -44,9 +44,18 @@ namespace np::Graphics
     {
         LinearFramebuffer fb;
         
-        //TODO: cache hinting in memmaps, specifically write-combine
-        //TODO: implement LinearFramebuffer::Create()
-
+        //TODO: memory hinting in allocations, will probably need to map via the kernel and add flags there
+        fb.doubleBuffered = doubleBuffered;
+        fb.owningBuffer = true;
+        fb.width = width;
+        fb.height = height;
+        fb.bitsPerPixel = bpp;
+        fb.bufferFormat = format;
+        fb.stride = width * (bpp / 8);
+        fb.backBuffer.ptr = new uint32_t[width * height];
+        fb.frontBuffer.ptr = new uint32_t[width * height];
+        
+        sl::SpinlockRelease(&fb.lock);
         return fb;
     }
 
@@ -62,8 +71,21 @@ namespace np::Graphics
         fb.stride = stride;
         fb.bitsPerPixel = bpp;
         fb.bufferFormat = format;
+        fb.owningBuffer = false;
 
         return fb;
+    }
+
+    LinearFramebuffer::~LinearFramebuffer()
+    {
+        sl::ScopedSpinlock scopeLock(&lock);
+        
+        if (owningBuffer)
+        {
+            delete[] backBuffer.As<uint8_t>();
+            delete[] frontBuffer.As<uint8_t>();
+        }
+        width = height = stride = bitsPerPixel = 0;
     }
 
     void LinearFramebuffer::Clear(Colour colour)

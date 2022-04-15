@@ -42,6 +42,7 @@ Support libraries:
 - np-graphics: cpu-driven graphics, limited drawing functions.
     - A basic linear framebuffer, and terminal (characters-based) renderer implementation. With simple drawing functions.
     - A baked in psf1 & psf2 font, both supported by the terminal renderer.
+    - QOI format decoder.
 - np-syscall: friendly c++ wrapper around kernel system calls.
     - There is also the abi [description](docs/kernel/SystemCalls.md) and [spec](docs/kernel/SystemCallList.md) itself you want to go that route.
 - np-syslib: utility library. It provides parts of the STL and std library I miss in a freestanding environment.
@@ -58,6 +59,7 @@ Build System:
 
 Native Applications:
 - startup: currently a test app, but will setup a friendly user environment soon.
+- server-window: responsible for managing and rendering windows, communicates to other processes via IPC.
 
 # Project layout
 Each of sub-projects are in their own folder:

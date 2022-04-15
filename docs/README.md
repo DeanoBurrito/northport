@@ -23,3 +23,6 @@ Outside the scope of this project, but a collection of things I've found useful 
 - *Operating Systems Development Discord Server*. Wont link to avoid attracting spam from web scrapers, great place to for realtime Q/A.
 - *The ELF format specification, ELF64 and System V ABI platform extensions*. Great reference point for all things ABI, parsing kernel symbol tables and loading your own ELFs.
 - *[Agner Fog - Calling Conventions](https://www.agner.org/optimize/calling_conventions.pdf)*. Comparison and light documenation of calling conventions, C++ name mangling, executable formats and more. 
+
+# Unrelated Resources
+- *[qoi](https://github.com/phoboslab/qoi)*. The 'Quite Okay Image' format, an extremely simple alternative to PNG. Check the official website for more details, used as the native image format due to a number of reasons (simple implementatin mainly, but the spec is public domain too which is nice).
