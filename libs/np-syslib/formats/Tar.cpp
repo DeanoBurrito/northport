@@ -87,7 +87,7 @@ namespace sl
         
         while (test->IsZero())
         {
-            if (test->Next()->IsZero())
+            if (sl::NativePtr((size_t)test).As<TarHeader>(TarSectorSize)->IsZero())
                 return nullptr;
             
             test = test->Next();

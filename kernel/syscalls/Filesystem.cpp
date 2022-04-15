@@ -29,6 +29,7 @@ namespace Kernel::Syscalls
         VfsNode* file = *maybeFile;
         using np::Syscall::FileInfo;
         FileInfo* userCopy = Memory::VMM::Current()->AllocateRange(sizeof(FileInfo), Memory::MemoryMapFlags::UserAccessible).As<FileInfo>();
+        regs.arg3 = (uint64_t)userCopy;
 
         //populate user's copy of the file details
         userCopy->fileSize = file->Details().filesize;
