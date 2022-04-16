@@ -53,23 +53,33 @@ namespace Kernel
         {
             case INT_VECTOR_SPURIOUS:
                 return returnRegs; //no need to do EOI here, just return
+
             case INT_VECTOR_PANIC:
                 PanicInternal(regs);
                 __builtin_unreachable();
+
             case INT_VECTOR_PS2KEYBOARD:
                 if (Devices::Ps2::Ps2Driver::Keyboard() != nullptr)
                     Devices::Ps2::Ps2Driver::Keyboard()->HandleIrq();
                 break;
+
+            case INT_VECTOR_PS2MOUSE:
+                if (Devices::Ps2::Ps2Driver::Mouse() != nullptr)
+                    Devices::Ps2::Ps2Driver::Mouse()->HandleIrq();
+                break;
+
             case INT_VECTOR_SCHEDULER_TICK:
                 if (Devices::UsingApicForUptime() && Devices::LApic::Local()->IsBsp())
                     Devices::IncrementUptime(Devices::LApic::Local()->GetTimerIntervalMS());
                 returnRegs = Scheduling::Scheduler::Global()->Tick(regs);
                 break;
+
             case INT_VECTOR_PIT_TICK:
                 if (!Devices::UsingApicForUptime())
-                    Devices::IncrementUptime(1); //we hardcore the PIT to ~1ms ticks
+                    Devices::IncrementUptime(1); //we hardcode the PIT to ~1ms ticks
                 Devices::PitHandleIrq();
                 break;
+
             case INT_VECTOR_SYSCALL:
                 returnRegs = Syscalls::EnterSyscall(regs);
                 break;

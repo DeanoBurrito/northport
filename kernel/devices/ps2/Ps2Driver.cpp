@@ -9,29 +9,19 @@
 
 namespace Kernel::Devices::Ps2
 {
-    GenericDriver* CreateNewPs2Driver()
-    { return new Ps2Driver(); }
-    
-    constexpr static inline uint8_t ReadConfig = 0x20;
-    constexpr static inline uint8_t WriteConfig = 0x60;
-    constexpr static inline uint8_t EnableKeyboardPort = 0xAE;
-    constexpr static inline uint8_t DisableKeyboardPort = 0xAD;
-    constexpr static inline uint8_t EnableMousePort = 0xA8;
-    constexpr static inline uint8_t DisableMousePort = 0xA7;
-    
-    bool Ps2Driver::OutputBufferEmpty()
-    { return (CPU::PortRead8(PORT_PS2_COMMAND_STATUS) & (1 << 0)) == 0; }
-
-    bool Ps2Driver::InputBufferEmpty()
+    bool InputBufferEmpty()
     { return (CPU::PortRead8(PORT_PS2_COMMAND_STATUS) & (1 << 1)) == 0; }
 
-    void Ps2Driver::WriteCmd(uint8_t cmd)
+    bool OutputBufferEmpty()
+    { return (CPU::PortRead8(PORT_PS2_COMMAND_STATUS) & (1 << 0)) == 0; }
+    
+    void WriteCmd(uint8_t cmd)
     {
         while (!InputBufferEmpty());
         CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
     }
 
-    void Ps2Driver::WriteCmd(uint8_t cmd, uint8_t data)
+    void WriteCmd(uint8_t cmd, uint8_t data)
     {
         while (!InputBufferEmpty());
         CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
@@ -40,7 +30,7 @@ namespace Kernel::Devices::Ps2
         CPU::PortWrite8(PORT_PS2_DATA, data);
     }
 
-    uint8_t Ps2Driver::ReadCmd(uint8_t cmd)
+    uint8_t ReadCmd(uint8_t cmd)
     {
         while (!InputBufferEmpty());
         CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
@@ -48,6 +38,24 @@ namespace Kernel::Devices::Ps2
         while (OutputBufferEmpty());
         return CPU::PortRead8(PORT_PS2_DATA);
     }
+
+    void WriteData(bool secondary, uint8_t data)
+    {
+        if (secondary)
+            CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, Cmds::NextDataToPortB);
+        
+        while (!InputBufferEmpty());
+        CPU::PortWrite8(PORT_PS2_DATA, data);
+    }
+    
+    uint8_t ReadData()
+    {
+        while (OutputBufferEmpty());
+        return CPU::PortRead8(PORT_PS2_DATA);
+    }
+    
+    GenericDriver* CreateNewPs2Driver()
+    { return new Ps2Driver(); }
 
     bool Ps2Driver::Available()
     {
@@ -87,26 +95,26 @@ namespace Kernel::Devices::Ps2
             ps2DriverInstance = this;
         
         //start by setting up the ps2 controller: disabling both ports so we dont get interactions while configuring the controller
-        WriteCmd(DisableKeyboardPort);
-        WriteCmd(DisableMousePort);
+        WriteCmd(Cmds::DisableKeyboardPort);
+        WriteCmd(Cmds::DisableMousePort);
         
         while (!OutputBufferEmpty())
             CPU::PortRead8(PORT_PS2_DATA);
         
-        uint8_t config = ReadCmd(ReadConfig);
+        uint8_t config = ReadCmd(Cmds::ReadConfig);
         config &= 0b1011'1100; //preserve reserved bits, disable interrupts for both ports/
-        WriteCmd(WriteConfig, config);
+        WriteCmd(Cmds::WriteConfig, config);
 
         //TODO: check which ports have devices attached, and what they are (we should support all configs).
         bool keyboardSupported = true;
         bool mouseSupported = true;
 
-        WriteCmd(EnableKeyboardPort);
-        WriteCmd(EnableMousePort);
+        WriteCmd(Cmds::EnableKeyboardPort);
+        WriteCmd(Cmds::EnableMousePort);
 
-        config = ReadCmd(ReadConfig);
+        config = ReadCmd(Cmds::ReadConfig);
         config |= 0b11; //bits for ports 1 & 2
-        WriteCmd(WriteConfig, config);
+        WriteCmd(Cmds::WriteConfig, config);
 
         Log("PS/2 controller initialized, registering devices on active ports.", LogSeverity::Info);
 
@@ -134,8 +142,8 @@ namespace Kernel::Devices::Ps2
     void Ps2Driver::Deinit()
     {
         //disable ps2 ports
-        WriteCmd(DisableKeyboardPort);
-        WriteCmd(DisableMousePort);
+        WriteCmd(Cmds::DisableKeyboardPort);
+        WriteCmd(Cmds::DisableMousePort);
         
         if (keyboard != nullptr)
         {
@@ -154,4 +162,9 @@ namespace Kernel::Devices::Ps2
 
     void Ps2Driver::HandleEvent(DriverEventType, void*)
     { }
+
+    void Ps2Driver::ResetSystem()
+    {
+        WriteCmd(Cmds::TheBigReset);
+    }
 }

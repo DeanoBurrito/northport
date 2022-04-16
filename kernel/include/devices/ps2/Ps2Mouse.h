@@ -14,6 +14,10 @@ namespace Kernel::Devices::Ps2
         size_t inputLength;
         uint8_t* inputBuffer;
 
+        bool leftMousePrevDown;
+        bool middleMousePrevDown;
+        bool rightMousePrevDown;
+
         void Init() override;
         void Deinit() override;
 
@@ -24,5 +28,6 @@ namespace Kernel::Devices::Ps2
 
         size_t ButtonCount() override;
         size_t AxisCount() override;
+        void HandleIrq();
     };
 }
