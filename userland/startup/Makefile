@@ -5,7 +5,7 @@ CXX_FLAGS = -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include -I$
 	-mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow \
 	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
 
-LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-graphics -lnp-userland -lnp-syslib -lnp-syscall
+LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-graphics -lnp-syslib -lnp-syscall -lnp-userland
 LD_FLAGS = $(LD_LIBS) -nostdlib -zmax-page-size=0x1000 --no-dynamic-linker
 
 CXX_SRCS = Main.cpp
