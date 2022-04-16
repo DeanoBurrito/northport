@@ -8,7 +8,7 @@ namespace Kernel::Drivers
 {
     //NOTE: DriverManager::LoadBuiltIns() is contained in BuiltInDrivers.cpp
 
-    DriverExtendedManifest* DriverManager::GetExtendedManifest(const DriverSubsytem subsystem, const DriverMachineName& machineName)
+    DriverExtendedManifest* DriverManager::GetExtendedManifest(const DriverSubsystem subsystem, const DriverMachineName& machineName)
     {
         for (auto it = manifests->Begin(); it != manifests->End(); ++it)
         {
@@ -43,7 +43,7 @@ namespace Kernel::Drivers
         Logf("New driver registered: name=%s, subsystem=0x%lx", LogSeverity::Verbose, manifest.name, (size_t)manifest.subsystem);
     }
 
-    sl::Opt<DriverManifest*> DriverManager::FindDriver(DriverSubsytem subsystem, DriverMachineName machineName)
+    sl::Opt<DriverManifest*> DriverManager::FindDriver(DriverSubsystem subsystem, DriverMachineName machineName)
     {
         sl::ScopedSpinlock scopeLock(&lock);
 

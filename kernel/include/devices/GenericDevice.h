@@ -23,6 +23,8 @@ namespace Kernel::Devices
         
         GraphicsAdaptor,
         GraphicsFramebuffer,
+        Keyboard,
+        Mouse,
 
         EnumCount,
     };

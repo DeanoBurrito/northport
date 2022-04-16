@@ -1,5 +1,6 @@
 #include <drivers/DriverManager.h>
 #include <devices/pci/BochsGraphicsAdaptor.h>
+#include <devices/ps2/Ps2Driver.h>
 #include <filesystem/InitDiskFSDriver.h>
 
 /*
@@ -9,7 +10,8 @@
 namespace Kernel::Drivers
 {
     constexpr const uint8_t machineName_bochsVideoAdaptor[] = { 0x11, 0x11, 0x34, 0x12 };
-    constexpr const uint8_t machineName_initDiskFs[] = { 'i', 'n', 'i', 't', 'd', 'i', 's', 'k' };
+    constexpr const uint8_t machineName_initDiskFs[] = { "initdisk" };
+    constexpr const uint8_t machineName_ps2[] = { "x86ps2"};
     
     void DriverManager::RegisterBuiltIns()
     {
@@ -18,7 +20,7 @@ namespace Kernel::Drivers
             manifest.name = "Bochs Graphics Adaptor";
             manifest.machineName.length = 4;
             manifest.machineName.name = machineName_bochsVideoAdaptor;
-            manifest.subsystem = DriverSubsytem::PCI;
+            manifest.subsystem = DriverSubsystem::PCI;
             manifest.loadFrom = nullptr;
             manifest.status = sl::EnumSetFlag(DriverStatusFlags::Loaded, DriverStatusFlags::BuiltIn); //builtins cant ever be 'unloaded', as that would mean unloading the kernel.
             manifest.CreateNew = Devices::Pci::CreateNewBgaDriver;
@@ -31,10 +33,23 @@ namespace Kernel::Drivers
             manifest.name = "InitDisk FS";
             manifest.machineName.length = 8;
             manifest.machineName.name = machineName_initDiskFs;
-            manifest.subsystem = DriverSubsytem::Filesystem;
+            manifest.subsystem = DriverSubsystem::Filesystem;
             manifest.loadFrom = nullptr;
             manifest.status = sl::EnumSetFlag(DriverStatusFlags::Loaded, DriverStatusFlags::BuiltIn);
             manifest.CreateNew = Filesystem::CreateNewInitDiskFSDriver;
+
+            RegisterDriver(manifest);
+        }
+
+        { //ps2 driver
+            DriverManifest manifest;
+            manifest.name = "PS/2 peripherals";
+            manifest.machineName.length = 6;
+            manifest.machineName.name = machineName_ps2;
+            manifest.subsystem = DriverSubsystem::None;
+            manifest.loadFrom = nullptr;
+            manifest.status = sl::EnumSetFlag(DriverStatusFlags::Loaded, DriverStatusFlags::BuiltIn);
+            manifest.CreateNew = Devices::Ps2::CreateNewPs2Driver;
 
             RegisterDriver(manifest);
         }

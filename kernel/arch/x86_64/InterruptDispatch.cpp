@@ -3,7 +3,7 @@
 #include <Panic.h>
 #include <syscalls/Dispatch.h>
 #include <devices/LApic.h>
-#include <devices/Ps2Controller.h>
+#include <devices/ps2/Ps2Driver.h>
 #include <devices/8254Pit.h>
 #include <devices/SystemClock.h>
 #include <scheduling/Scheduler.h>
@@ -57,7 +57,8 @@ namespace Kernel
                 PanicInternal(regs);
                 __builtin_unreachable();
             case INT_VECTOR_PS2KEYBOARD:
-                Devices::Ps2Controller::Keyboard()->HandleIrq();
+                if (Devices::Ps2::Ps2Driver::Keyboard() != nullptr)
+                    Devices::Ps2::Ps2Driver::Keyboard()->HandleIrq();
                 break;
             case INT_VECTOR_SCHEDULER_TICK:
                 if (Devices::UsingApicForUptime() && Devices::LApic::Local()->IsBsp())

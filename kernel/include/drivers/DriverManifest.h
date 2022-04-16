@@ -6,7 +6,7 @@
 
 namespace Kernel::Drivers
 {
-    enum class DriverSubsytem
+    enum class DriverSubsystem
     {
         None = 0,
 
@@ -36,7 +36,7 @@ namespace Kernel::Drivers
 
     struct DriverManifest
     {
-        DriverSubsytem subsystem;
+        DriverSubsystem subsystem;
         DriverStatusFlags status;
         const char* loadFrom; //filepath of driver file, nullptr if builtin
         const char* name; //user-friendly display name

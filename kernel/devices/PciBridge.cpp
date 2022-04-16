@@ -131,7 +131,7 @@ namespace Kernel::Devices
             
             //check if there's a driver available for the function, create an instance if required
             using namespace Drivers;
-            sl::Opt<DriverManifest*> driver = DriverManager::Global()->FindDriver(DriverSubsytem::PCI, DriverMachineName {.length = 4, .name = machName});
+            sl::Opt<DriverManifest*> driver = DriverManager::Global()->FindDriver(DriverSubsystem::PCI, DriverMachineName {.length = 4, .name = machName});
 
             if (driver) //queue driver for loading after pci tree has been fully populated
                 PciBridge::Global()->pendingDriverLoads->EmplaceBack(&functions.Back(), driver.Value());

@@ -1,52 +1,17 @@
-#include <devices/Ps2Controller.h>
-#include <devices/Keyboard.h>
+#include <devices/ps2/Ps2Keyboard.h>
+#include <devices/ps2/Ps2Driver.h>
 #include <devices/IoApic.h>
+#include <devices/Keyboard.h>
+#include <drivers/DriverManager.h>
+#include <Locks.h>
+#include <Cpu.h>
 #include <Log.h>
 
-#define BEGIN_BREAK_PACKET 0xF0
-#define BEGIN_EXTENDED_PACKET 0xE0
-
-namespace Kernel::Devices
+namespace Kernel::Devices::Ps2
 {
-    void Ps2Keyboard::Init(bool usePort2)
-    {
-        useSecondaryPort = usePort2;
-        available = true;
-        inputBuffer = new uint8_t[inputMaxLenth];
-        inputLength = 0;
-        currentSet = Ps2ScancodeSet::Set2;
-
-        //map whatever used to be old school irq1 to our keyboard idt number
-        auto overrideDetails = IoApic::TranslateToGsi(1);
-        IoApic::Global(overrideDetails.gsiNum)->WriteRedirect(0, overrideDetails);
-        IoApic::Global(overrideDetails.gsiNum)->SetPinMask(overrideDetails.irqNum, false);
-    }
-
-    void Ps2Keyboard::HandleIrq()
-    {
-        //we're in set2 here, so 1 byte make packets/2 byte break packets. +1 byte for extended keycodes
-        //extended make begins with 0xE0, extended keyboards lead with 0xF0 (after extended byte).
-        //there are some exceptions: pause and print screen, we just ignore those as they're a crazy 7 bytes long (why)
-
-        uint8_t incoming = ReadByte(true); //can ignore output status flag, since an interrupt was triggered.
-        if (incoming == BEGIN_BREAK_PACKET && inputLength > 0)
-        {
-            //Incoplete existing data, not sure why it wasnt translated, drop it.
-            Log("Ps2 keyboard dropped partial packet data before BEGIN_BREAK_PACKET.", LogSeverity::Warning);
-            inputLength = 0;
-        }
-
-        inputBuffer[inputLength] = incoming;
-        inputLength++;
-
-        if (inputBuffer[inputLength - 1] != BEGIN_BREAK_PACKET && inputBuffer[inputLength - 1] != BEGIN_EXTENDED_PACKET)
-        {
-            Translate(); //we know if those were last written, there's more to the packet, otherwise try translate it
-        }
-
-        if (inputLength == inputMaxLenth)
-            inputLength = 0; //full packet, but it couldnt be translated. Drop it.
-    }
+    constexpr size_t inputMaxLength = 16;
+    constexpr uint8_t BEGIN_BREAK_PACKET = 0xF0;
+    constexpr uint8_t BEGIN_EXTENDED_PACKET = 0xE0;
 
     using KI = KeyIdentity; //trying to make this easy on myself
     constexpr static inline KeyIdentity ps2Set2Identities[] = 
@@ -130,6 +95,52 @@ namespace Kernel::Devices
         }
     }
 #undef RETURN_IF_CASE
+    
+    uint8_t Ps2Keyboard::ReadByte()
+    {
+        //since we got an irq, no need to flags for whether data is available
+        return CPU::PortRead8(PORT_PS2_DATA);
+    }
+
+    void Ps2Keyboard::TranslateAndStore()
+    {
+        //easy early exits
+        if (inputBuffer[0] == BEGIN_BREAK_PACKET && inputLength < 2)
+            return;
+        if (inputBuffer[0] == BEGIN_EXTENDED_PACKET && inputLength < 2)
+            return;
+        if (inputLength == 2 && inputBuffer[0] == BEGIN_BREAK_PACKET && inputBuffer[1] == BEGIN_EXTENDED_PACKET)
+            return;
+
+        size_t scan = 0;
+        bool released = false;
+        if (inputBuffer[0] == BEGIN_BREAK_PACKET)
+        {
+            scan = 1;
+            released = true;
+        }
+
+        KeyIdentity keyId;
+        if (inputBuffer[scan] == BEGIN_EXTENDED_PACKET)
+            keyId = GetExtendedKeyIdentity(inputBuffer[scan + 1]);
+        else
+            keyId = ps2Set2Identities[inputBuffer[scan]];
+
+        UpdateModifiers(keyId, released);
+        
+        //apply input metadata
+        KeyEvent e;
+        e.id = keyId;
+        e.mods = currentModifiers;
+        e.inputDeviceId = (uint8_t)BuiltInInputDevices::Ps2Keyboard;
+        ApplyKeyTags(e, released);
+
+        //store it in global keyboard 
+        Keyboard::Global()->PushKeyEvent(e);
+        
+        //reset input
+        inputLength = 0;
+    }
 
     void Ps2Keyboard::ApplyKeyTags(KeyEvent& ev, bool released)
     {
@@ -190,44 +201,68 @@ namespace Kernel::Devices
             return;
         }
     }
+    
+    void Ps2Keyboard::Init()
+    {
+        state = DeviceState::Initializing;
+        type = DeviceType::Keyboard;
 
-    void Ps2Keyboard::Translate()
-    {    
-        //easy early exits
-        if (inputBuffer[0] == BEGIN_BREAK_PACKET && inputLength < 2)
-            return;
-        if (inputBuffer[0] == BEGIN_EXTENDED_PACKET && inputLength < 2)
-            return;
-        if (inputLength == 2 && inputBuffer[0] == BEGIN_BREAK_PACKET && inputBuffer[1] == BEGIN_EXTENDED_PACKET)
-            return;
+        inputBuffer = new uint8_t[inputMaxLength];
+        inputLength = 0;
+        currentSet = Ps2ScancodeSet::Set2;
 
-        size_t scan = 0;
-        bool released = false;
-        if (inputBuffer[0] == BEGIN_BREAK_PACKET)
+        //remap irq1 to our current keyboard vector
+        auto overrideDetails = IoApic::TranslateToGsi(1);
+        IoApic::Global(overrideDetails.gsiNum)->WriteRedirect(0, overrideDetails);
+        IoApic::Global(overrideDetails.gsiNum)->SetPinMask(overrideDetails.irqNum, false);
+
+        state = DeviceState::Ready;
+    }
+
+    void Ps2Keyboard::Deinit()
+    {
+        state = DeviceState::Shutdown;
+    }
+
+    void Ps2Keyboard::Reset()
+    {
+        Deinit();
+        Init();
+    }
+
+    extern Ps2Driver* ps2DriverInstance;
+    sl::Opt<Drivers::GenericDriver*> Ps2Keyboard::GetDriverInstance()
+    {
+        if (ps2DriverInstance == nullptr)
+            return {};
+        return ps2DriverInstance;
+    }
+
+    void Ps2Keyboard::HandleIrq()
+    {
+        sl::ScopedSpinlock scopeLock(&lock);
+        
+        //we're in set2 here, so 1 byte make packets/2 byte break packets. +1 byte for extended keycodes
+        //extended make begins with 0xE0, extended keyboards lead with 0xF0 (after extended byte).
+        //there are some exceptions: pause and print screen, we just ignore those as they're a crazy 7 bytes long (why)
+
+        uint8_t incoming = ReadByte();
+        if (incoming == BEGIN_BREAK_PACKET && inputLength > 0)
         {
-            scan = 1;
-            released = true;
+            //Incoplete existing data, not sure why it wasnt translated, drop it.
+            Log("Ps2 keyboard dropped partial packet data before BEGIN_BREAK_PACKET.", LogSeverity::Warning);
+            inputLength = 0;
         }
 
-        KeyIdentity keyId;
-        if (inputBuffer[scan] == BEGIN_EXTENDED_PACKET)
-            keyId = GetExtendedKeyIdentity(inputBuffer[scan + 1]);
-        else
-            keyId = ps2Set2Identities[inputBuffer[scan]];
+        inputBuffer[inputLength] = incoming;
+        inputLength++;
 
-        UpdateModifiers(keyId, released);
-        
-        //apply input metadata
-        KeyEvent e;
-        e.id = keyId;
-        e.mods = currentModifiers;
-        e.inputDeviceId = (uint8_t)BuiltInInputDevices::Ps2Keyboard;
-        ApplyKeyTags(e, released);
+        if (inputBuffer[inputLength - 1] != BEGIN_BREAK_PACKET && inputBuffer[inputLength - 1] != BEGIN_EXTENDED_PACKET)
+        {
+            TranslateAndStore(); //we know if those were last written, there's more to the packet, otherwise try translate it
+        }
 
-        //store it in global keyboard 
-        Keyboard::Global()->PushKeyEvent(e);
-        
-        //reset input
-        inputLength = 0;
+        if (inputLength == inputMaxLength)
+            inputLength = 0; //full packet, but it couldnt be translated. Drop it.
     }
 }

@@ -23,7 +23,7 @@ namespace Kernel::Drivers
         sl::LinkedList<DriverExtendedManifest>* manifests;
 
         void RegisterBuiltIns();
-        DriverExtendedManifest* GetExtendedManifest(const DriverSubsytem subsystem, const DriverMachineName& machineName);
+        DriverExtendedManifest* GetExtendedManifest(const DriverSubsystem subsystem, const DriverMachineName& machineName);
 
     public:
         static DriverManager* Global();
@@ -31,7 +31,7 @@ namespace Kernel::Drivers
         void Init();
         void RegisterDriver(const DriverManifest& manifest);
 
-        sl::Opt<DriverManifest*> FindDriver(DriverSubsytem subsystem, DriverMachineName machineName);
+        sl::Opt<DriverManifest*> FindDriver(DriverSubsystem subsystem, DriverMachineName machineName);
         bool StartDriver(const DriverManifest* manifest, DriverInitTag* userTags);
         bool StopDriver(const DriverManifest* manifest, size_t instanceNumber);
         void InjectEvent(const DriverManifest* manifest, size_t instance, DriverEventType type, void* arg);
