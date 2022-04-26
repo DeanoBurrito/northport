@@ -1,0 +1,64 @@
+# Northport Roadmap
+Listed below is the tentative list of supported platforms and devices, as well as one I'd like to support in the future.
+
+- [x] Core infrastructure
+    - [x] Kernel memory management: PMM and heap.
+    - [x] Centralized logging.
+    - [x] ACPI tables.
+        - [ ] ACPI runtime.
+        - [ ] AML intepreter.
+    - [x] Device manager.
+        - [ ] Input forwarding to userspace.
+    - [x] Driver manager.
+    - [x] Scheduler.
+        - [ ] Rewrite: per-core thread queue to reduce use of the main lock.
+        - [x] Threads and processes.
+        - [x] Process resource handles.
+    - [x] Virtual file system.
+        - [x] Loadable filesystem drivers.
+        - [x] Init-time FS (ustar based).
+        - [ ] ext2 filesystem driver.
+        - [ ] FAT 12/16/32 drivers.
+    - [x] Inter process communication.
+        - [x] Stream-based.
+        - [ ] Message-based.
+    - [x] System call spec.
+    - [x] Timekeeping: uptime and wall clock time.
+    - [x] Undefined behaviour sanitizer.
+    - [x] Panic().
+    - [ ] Networking stack.
+        - [ ] Ethernet layer.
+        - [ ] ARP.
+        - [ ] IPv4/IPv6.
+
+- [x] x86_64
+    - [x] IDT, GDT, TSS.
+    - [x] Paging: 4 and 5 levels.
+    - [x] PIT.
+    - [x] FPU support.
+    - [x] LAPIC + IOAPIC.
+        - [x] X2APIC support.
+    - [x] Multicore booting.
+    - [x] Multicore scheduling.
+    - [x] PS2 peripherals.
+    - [x] PCI.
+    - [x] System calls.
+    - [x] Extended CPU state (sse/avx).
+        - [ ] XSAVE support.
+    
+- [ ] rv64
+    - [ ] SBI stivale2 boot shim.
+    - [ ] Paging: 3 and 4 levels.
+    - [ ] Vector support.
+    - [ ] PLIC.
+    - [ ] CLINT.
+
+- [ ] Devices
+    - [x] Bochs Graphics.
+    - [ ] E1000 network driver.
+    - [ ] VirtIO Block.
+    - [ ] VirtIO Network.
+    - [ ] VirtIO Graphics.
+    - [ ] Intel AC97 audio.
+    - [ ] Intel HD audio.
+    - [ ] NVME controllers.

@@ -18,7 +18,8 @@ I do want to start porting some software at some point (doom, bash).
 
 - A *nice*, if limited, userspace experience. Basic window manager, shell, and other common programs like a file explorer and text editor.
 
-- A port to another hardware platform is something I've been interested in for a while. I'm currently looking at a riscv64i platform, probably just the qemu `virt` platform for now, until I can get some real hardware.
+- A port to another hardware platform is something I've been interested in for a while. I'm currently looking at a riscv64i platform, probably just the qemu `virt` platform for now, until I can get some real hardware. 
+    - Update: a WIP bootloader for rv64 is in progress. Proper rv64 support will come once we have virtio graphics/block devices supported by the kernel.
 
 - Decent documentation! It'd be nice to get some other people to develop small programs or drivers oneday.
 
@@ -60,6 +61,8 @@ Build System:
 Native Applications:
 - startup: currently a test app, but will setup a friendly user environment soon.
 - server-window: responsible for managing and rendering windows, communicates to other processes via IPC.
+
+A breakdown of supported (and soon to be supported) features and hardware can be found [here](docs/Roadmap.md).
 
 # Project layout
 Each of sub-projects are in their own folder:
