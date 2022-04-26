@@ -18,9 +18,13 @@ namespace Kernel::Syscalls
             return;
         }
 
+        //we'll need to separate the access flags (upper 4 bits) from the incoming flags
+        IpcAccessFlags accessFlags = (IpcAccessFlags)(regs.arg1 >> 60);
+        regs.arg1 = regs.arg1 & ~((uint64_t)0xF << 60);
+
         //try to start an ipc stream
         sl::String streamName(sl::NativePtr(regs.arg0).As<const char>());
-        auto maybeStream = IpcManager::Global()->StartStream(streamName, regs.arg2, (IpcStreamFlags)regs.arg1);
+        auto maybeStream = IpcManager::Global()->StartStream(streamName, regs.arg2, (IpcStreamFlags)regs.arg1, accessFlags);
         if (!maybeStream)
         {
             regs.id = (uint64_t)np::Syscall::IpcError::StreamStartFail;
@@ -110,5 +114,58 @@ namespace Kernel::Syscalls
         IpcStream* stream = maybeResource.Value()->res.As<IpcStream>();
         Scheduling::ThreadGroup::Current()->DetachResource(regs.arg0);
         IpcManager::Global()->CloseStream(stream->name);
+    }
+
+    void ModifyIpcConfig(SyscallRegisters& regs)
+    {
+        using namespace Memory;
+        using np::Syscall::IpcConfigOperation;
+        auto maybeResource = Scheduling::ThreadGroup::Current()->GetResource(regs.arg1);
+
+        if (!maybeResource)
+            return;
+        IpcStream* stream = maybeResource.Value()->res.As<IpcStream>();
+        
+        //TODO: locking on individual streams. We're messing with the internals here without ensuring exclusivity.
+        IpcConfigOperation op = (IpcConfigOperation)regs.arg0;
+        switch (op)
+        {
+        case IpcConfigOperation::AddAccessId:
+        {
+            for (size_t i = 0; i < stream->accessList.Size(); i++)
+            {
+                if (stream->accessList[i] == regs.arg2)
+                    return;
+            }
+            
+            stream->accessList.PushBack(regs.arg2);
+            return;
+        }
+
+        case IpcConfigOperation::RemoveAccessId:
+        {
+            for (size_t i = 0; i < stream->accessList.Size(); i++)
+            {
+                if (stream->accessList[i] == regs.arg2)
+                {
+                    stream->accessList.Erase(i);
+                    break;
+                }
+            }
+            return;
+        }
+
+        case IpcConfigOperation::ChangeAccessFlags:
+            stream->accessFlags = (IpcAccessFlags)(regs.arg2 >> 60);
+            return;
+
+        case IpcConfigOperation::TransferOwnership:
+            //TODO: we probably want to check this new process exists, and if not assume the stream to be abandoned and clean it up.
+            stream->ownerId = regs.arg2;
+            return;
+
+        default:
+            return;
+        }
     }
 }

@@ -27,7 +27,7 @@ namespace Kernel::Memory
         Log("Global IPC manager initialized.", LogSeverity::Info);
     }
 
-    sl::Opt<IpcStream*> IpcManager::StartStream(const sl::String& name, size_t length, IpcStreamFlags flags)
+    sl::Opt<IpcStream*> IpcManager::StartStream(const sl::String& name, size_t length, IpcStreamFlags flags, IpcAccessFlags accessFlags)
     {
         if (!sl::EnumHasFlag(flags, IpcStreamFlags::UseSharedMemory))
         {
@@ -51,8 +51,10 @@ namespace Kernel::Memory
 
         stream->bufferLength = pageCount * PAGE_FRAME_SIZE;
         stream->flags = flags;
+        stream->accessFlags = accessFlags;
         stream->ownerId = Scheduling::ThreadGroup::Current()->Id();
-        //we allocate the buffer initially in the host's memory space, any clients will simply point to the physical memory allocate here.
+
+        //we allocate the buffer initially in the host's memory space, any clients will simply point to the physical memory allocated here.
         stream->bufferAddr = VMM::Current()->AllocateRange(pageCount * PAGE_FRAME_SIZE, mappingFlags);
         if (stream->bufferAddr.ptr == nullptr)
         {
@@ -114,6 +116,24 @@ namespace Kernel::Memory
                 flags = flags | MemoryMapFlags::UserAccessible;
             
             IpcStream* existingStream = streams->At(i);
+
+            //check if we are allowed to access this stream
+            if (existingStream->accessFlags == IpcAccessFlags::Disallowed)
+                return {};
+            if (existingStream->accessFlags == IpcAccessFlags::Private || existingStream->accessFlags == IpcAccessFlags::SelectedOnly)
+            {
+                Scheduling::Thread* currentThread = Scheduling::Thread::Current();
+                for (size_t index = 0; index < existingStream->accessList.Size(); index++)
+                {
+                    if (existingStream->accessList[index] == currentThread->Id() 
+                        || existingStream->accessList[index] == currentThread->Parent()->Id())
+                        goto access_allowed;
+                }
+
+                return {};
+            }
+access_allowed:
+
             const sl::NativePtr base = Scheduling::ThreadGroup::Current()->VMM()->AddSharedPhysicalRange(
                 Scheduling::Scheduler::Global()->GetThreadGroup(existingStream->ownerId)->VMM(), 
                 existingStream->bufferAddr, 

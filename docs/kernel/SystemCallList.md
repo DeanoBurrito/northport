@@ -179,7 +179,13 @@ Writes bytes from a user buffer to a file handle.
 
 
 # 0x4* - Inter-Process Communication
-Two flavours of IPC are supported: discrete messages (or packets, mailbox style) and continuous streams (memory buffers style).
+Two flavours of IPC are supported: discrete messages (or packets, mailbox style) and continuous streams (memory buffers style). Access to IPC is described using a 4bit integer, occupying bits 63:60 of the flags argument. The access list for an ipc endpoint can be modified using the `ModifyIpcConfig` system call.
+Ids can be either thread or process ids, with a process id allowing all it's threads the same access.
+They accept the following values:
+- `0`: No read/write allowed at all. Effectively disables this operation on the IPC endpoint.
+- `1`: Public. Any process can read or write to this endpoint.
+- `2`: Selected only. Only pre-approved process ids can access this endpoint. This list of ids starts empty and can be modified by the ModifyIpcConfig syscall.
+- `3`: Private. This forces 1-to-1 communication, only a single remote process can access this endpoint.
 
 For stream-based IPC, the server can start or stop a listener, while a number of clients can open or close connections to said server. Sending data is done using the read/write ipc syscalls. 
 Streams are named, but as IPC subsystem is separate to the vfs there are no conflicts. This also means you cannot access IPC streams from the filesystem.
@@ -258,6 +264,21 @@ Closes an open stream handle. This does not stop the stream, it only detaches it
 ## 0x47 - DestroyMailbox
 
 ## 0x48 - PostToMailbox
+
+## 0x49 - ModifyIpcConfig
+Configures an existing IPC stream or mailbox. Args 2 and 3 change their function depending on arg0, which determines the operation to perform. Arg1 is the ipc endpoint (stream or mailbox) to operate on. The currently supported operations (`arg0`) are listed below:
+
+- 0: reserved.
+- 1: add an ID to the ipc access list. `arg2` is the id.
+- 2: remove an ID from the ipc access list. `arg2` is the id.
+- 3: change the ipc access flags. `arg2` is the new flags (in bits 60:63)
+- 4: transfer ownership. `arg2` is the process id of the new owner. 
+
+### Returns:
+- Nothing.
+
+### Notes:
+- Only the owner of the endpoint can use this system call. This id has a process-level granuality (i.e. any thread in the owner process is granted owner-level access).
 
 # 0x5* - General Utilities
 This gorup of system calls is a collection of unrelated utilties.

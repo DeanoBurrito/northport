@@ -32,6 +32,7 @@ namespace np::Syscall
         StopIpcStream = 0x41,
         OpenIpcStream = 0x42,
         CloseIpcStream = 0x43,
+        ModifyIpcConfig = 0x49,
 
         Log = 0x50
     };
@@ -68,13 +69,30 @@ namespace np::Syscall
         None = 0,
         //if set, buffer is zero-copy, otherwise buffer is single copy (target->dest).
         UseSharedMemory = (1 << 0),
+
+        AccessNone = (0ul << 60),
+        AccessPublic = (1ul << 60),
+        AccessSelectedOnly = (2ul << 60),
+        AccessPrivate = (3ul << 60),
     };
+
+    [[gnu::always_inline]] inline
+    IpcStreamFlags operator|(const IpcStreamFlags& a, const IpcStreamFlags& b)
+    { return (IpcStreamFlags)((size_t)a | (size_t)b); }
 
     enum class IpcError : NativeUInt
     {
         StreamStartFail = 1,
         NoResourceId = 2,
         InvalidBufferRange = 3,
+    };
+
+    enum class IpcConfigOperation : NativeUInt
+    {
+        AddAccessId = 1,
+        RemoveAccessId = 2,
+        ChangeAccessFlags = 3,
+        TransferOwnership = 4,
     };
 
     enum class LogLevel : NativeUInt

@@ -150,6 +150,12 @@ namespace np::Syscall
         DoSyscall(&data);
     }
 
+    void ModifyIpcConfig(IpcConfigOperation op, NativeUInt arg1, NativeUInt arg2, NativeUInt arg3)
+    {
+        SyscallData data((uint64_t)SyscallId::ModifyIpcConfig, (uint64_t)op, arg1, arg2, arg3);
+        DoSyscall(&data);
+    }
+
     void Log(const sl::String& text, LogLevel level)
     {
         SyscallData data((uint64_t)SyscallId::Log, (uint64_t)text.C_Str(), (uint64_t)level, 0, 0);

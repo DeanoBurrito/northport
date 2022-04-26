@@ -65,10 +65,13 @@ namespace np::Syscall
     //TODO: we are returning pointers allocated by the kernel in a few of these. How do we free them? Who is responsible for that memory now?
 
     //0x4* - ipc
+    [[nodiscard]]
     sl::Opt<IpcHandle> StartIpcStream(const sl::String& name, IpcStreamFlags flags, size_t& streamSize, NativeUInt& bufferAddress);
     void StopIpcStream(IpcHandle handle);
+    [[nodiscard]]
     sl::Opt<IpcHandle> OpenIpcStream(const sl::String& name, IpcStreamFlags flags, NativeUInt& bufferAddress);
     void CloseIpcStream(IpcHandle handle);
+    void ModifyIpcConfig(IpcConfigOperation op, NativeUInt arg1 = 0, NativeUInt arg2 = 0, NativeUInt arg3 = 0);
 
     //0x5* - utilties
     void Log(const sl::String& text, LogLevel level);

@@ -10,7 +10,7 @@ namespace WindowServer
         keepRunning = true;
 
         size_t streamSize = 0x1000;
-        auto maybeIpcHandle = StartIpcStream("WindowServer/Listener", IpcStreamFlags::UseSharedMemory, streamSize, listenerBuffer.raw);
+        auto maybeIpcHandle = StartIpcStream("WindowServer/Listener", IpcStreamFlags::UseSharedMemory | IpcStreamFlags::AccessPublic, streamSize, listenerBuffer.raw);
         if (!maybeIpcHandle)
         {
             Log("Window server could not start ipc listener, aborting init.", LogLevel::Error);
