@@ -48,8 +48,8 @@ The major subsystems currently are:
 - Filesystem (managed by `VFS`). Represents the currently mounted filesystens, and the vfs they're mounted to. We use a single-root style VFS.
 - PCI (managed by `PciBridge`). Not a lot happens here, but it provides functionality for dealing with pci devices and functions.
 - Memory (managed by `PhysicalMemoryManager` and `VirtualMemoryManager`). Two separate levels of code to manage available physical memory, and how that is mapped into a virtual memory space. There is also a helper class (`Paging`), a high level wrapper around a set of page tables.
-- Scheduling (managed by `Scheduler`). Northport has a very basic pre-emptive scheduler.
-- IPC (managed by `IpcManager`). IPC is mainly implemented as shared memory, either directly or with the kernel doing a double copy via its own buffers. Mailbox IPC is always double copied, optionally running a function from the user program.
+- Scheduling (managed by `Scheduler`). Northport has a very basic pre-emptive multi-core scheduler. The scheduler maintains a single list of threads, and each core grabs the next available task.
+- IPC (managed by `IpcManager`). IPC is mainly implemented as shared memory, either directly or with the kernel doing a double copy via its own buffers. Mailbox IPC is single copied, from the sender's memory into the receivers memory using the kernel hhdm.
 
 There are also a number of generic (coalesced) devices:
 - Keyboard: All keyboards forward their input here to be processed.

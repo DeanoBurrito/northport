@@ -14,9 +14,6 @@ namespace np::Syscall
         MapMemory = 0x10,
         UnmapMemory = 0x11,
         ModifyMemoryFlags = 0x12,
-        MemoryMapFile = 0x13,
-        UnmapFile = 0x14,
-        FlushMappedFile = 0x15,
 
         GetPrimaryDeviceInfo = 0x20,
         GetDevicesOfType = 0x21,
@@ -27,14 +24,24 @@ namespace np::Syscall
         CloseFile = 0x32,
         ReadFromFile = 0x33,
         WriteToFile = 0x34,
+        FlushFile = 0x35,
 
         StartIpcStream = 0x40,
         StopIpcStream = 0x41,
         OpenIpcStream = 0x42,
         CloseIpcStream = 0x43,
+        ReadFromIpcStream = 0x44,
+        WriteToIpcStream = 0x45,
+        CreateMailbox = 0x46,
+        DestroyMailbox = 0x47,
+        PostToMailbox = 0x48,
         ModifyIpcConfig = 0x49,
 
-        Log = 0x50
+        Log = 0x50,
+
+        PeekNextEvent = 0x60,
+        ConsumeNextEvent = 0x61,
+        GetPendingEventCount = 0x62,
     };
 
     enum class MemoryMapFlags : NativeUInt
@@ -46,8 +53,10 @@ namespace np::Syscall
 
     enum class DeviceType : NativeUInt
     {
-        Framebuffer = 0,
-        GraphicsAdaptor = 1,
+        GraphicsAdaptor = 0,
+        Framebuffer = 1,
+        Keyboard = 2,
+        Mouse = 3,
     };
 
     enum class DeviceError : NativeUInt
@@ -76,6 +85,8 @@ namespace np::Syscall
         AccessPrivate = (3ul << 60),
     };
 
+    using IpcMailboxFlags = IpcStreamFlags;
+
     [[gnu::always_inline]] inline
     IpcStreamFlags operator|(const IpcStreamFlags& a, const IpcStreamFlags& b)
     { return (IpcStreamFlags)((size_t)a | (size_t)b); }
@@ -85,6 +96,8 @@ namespace np::Syscall
         StreamStartFail = 1,
         NoResourceId = 2,
         InvalidBufferRange = 3,
+        NonExistentMailbox = 4,
+        MailDeliveryFailed = 5,
     };
 
     enum class IpcConfigOperation : NativeUInt

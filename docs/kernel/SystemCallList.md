@@ -2,12 +2,15 @@
 This is the official spec for northport system calls, see the other document on implementation details. 
 System calls are grouped into ranges of related functions.
 
+System calls return a status code in the `id` register. `0` and `0x404` are special values meaning success and system call not found respectively. All other values differ in meaning by the type of system call, and are documented below in their own sections.
+
 Any magic numbers, structures and functions referenced are codified in the following files:
 - for magic numbers, see [libs/np-syscall/include/SyscallEnums.h](../../libs/np-syscall/include/SyscallEnums.h)
 - for structs, see [libs/np-syscall/include/SyscallStructs.h](../../libs/np-syscall/include/SyscallStructs.h)
 - for functions, see [libs/np-syscall/include/SyscallFunctions.h](../../libs/np-syscall/include/SyscallFunctions.h)
 
 
+----
 # 0x0* - Experiments
 The first 16 syscalls are reserved for testing, and should not be considered stable *at all*, and are reserved for development purposes.
 
@@ -27,6 +30,12 @@ Does nothing and returns immediately, used for testing syscalls work at all.
 # 0x1* - Mapping Memory and Files
 The following functions relate to mapping/unmapping memory regions for a given program. These can only affect other regions of the same program, previously requested by the program. Regions allocated by the system (shared buffer, and the program binary itself) are protected from changes in this manner.
 Userspace programs can only map memory in the lower half.
+
+A number of these functions take a bitfield of memory flags as an argument, which are defined as the following:
+- `bit 0`: write enable, otherwise memory will be read-only.
+- `bit 1`: execute enable. Set to allow instruction fetches from this memory.
+- `bit 2`: user-visible. This is forced on for user processes, but this may have other applications for kernel level programs (drivers).
+- `bits 3 and 4`: reserved, ignored if set.
 
 ## 0x10 - MapMemory
 Ensures a region of memory is mapped with a specific set of flags.
@@ -66,6 +75,7 @@ Modifies the flags of a region of previously mapped memory.
 ### Args
 - `arg0`: base address of modified region. This is rounded down to the nearest native page.
 - `arg1`: number of bytes to modify, this will round up to the nearest native page.
+- `arg2`: memory flags to apply to new region.
 - all other args ignored.
 
 ### Returns:
@@ -73,19 +83,22 @@ Modifies the flags of a region of previously mapped memory.
 - `arg1`: number of bytes modified.
 
 ### Notes:
-- This will affect any regions or parts of inside of the specified region. Any memory inside the specified area, that is not already mapped will be ignored.
-
-## 0x13 - MemoryMapFile
-//TODO: 
-
-## 0x14 - UnmapFile
-//TODO:
-
-## 0x15 - FlushMappedFile
-//TODO:
+- This will affect any regions or parts of inside of the specified region. Any memory inside the specified area that is not already mapped will be ignored.
+- Processes cannot modify flags for regions marked as `system`, only the kernel can.
 
 
+----
 # 0x2* - Device Management
+Functions for iterating through devices, and setting up ways to communicate further with them. A number of these functions will take a device type, which is defined as follows:
+- `0`: Graphics adaptor.
+- `1`: Graphics framebuffer.
+- `2`: Keyboard.
+- `3`: Mouse.
+
+Device functions can also return the following errors in the `id` register:
+- `1`: The requested feature is not available.
+- `2`: No primary device exists for this type.
+- `3`: The specified device type is unknown, cannot return any data about it.
 
 ## 0x20 - GetPrimaryDeviceInfo
 //TODO:
@@ -96,9 +109,14 @@ Modifies the flags of a region of previously mapped memory.
 ## 0x22 - GetDeviceInfo
 //TODO:
 
-
+----
 # 0x3* - Filesystem Operations
 The filesystem uses a single root style (unix, rather than NT), and URL-style protocols are not currently supported (and will return an error).
+
+Filesystem functions can return the following errors in the `id` register:
+- `1`: No file or directory was found with that name.
+- `2`: No resource id. The operation could not be completed as the resource could not be attached to this process.
+- `3`: Invalid buffer range. A buffer access of some kind (including strings of filenames) failed.
 
 ## 0x30 - GetFileInfo
 Checks if a file exists, and if it does returning information about the file. Things like file size, attributes/permissions, owner.
@@ -175,9 +193,8 @@ Writes bytes from a user buffer to a file handle.
 
 ## 0x35 - FlushFile
 
-## 0x36 - SetIoControl
 
-
+----
 # 0x4* - Inter-Process Communication
 Two flavours of IPC are supported: discrete messages (or packets, mailbox style) and continuous streams (memory buffers style). Access to IPC is described using a 4bit integer, occupying bits 63:60 of the flags argument. The access list for an ipc endpoint can be modified using the `ModifyIpcConfig` system call.
 Ids can be either thread or process ids, with a process id allowing all it's threads the same access.
@@ -187,10 +204,22 @@ They accept the following values:
 - `2`: Selected only. Only pre-approved process ids can access this endpoint. This list of ids starts empty and can be modified by the ModifyIpcConfig syscall.
 - `3`: Private. This forces 1-to-1 communication, only a single remote process can access this endpoint.
 
+Some IPC functions will take a flags argument, which is a bitfield defined as:
+- `bit 0`: Use shared physical memory. Also known as 'zero copy' as both processes are directly writing to the same underlying memory, the kernel is never involved.
+- `bits 60 to 63 (inclusive)`: reserved for the access modifiers (see above).
+
 For stream-based IPC, the server can start or stop a listener, while a number of clients can open or close connections to said server. Sending data is done using the read/write ipc syscalls. 
 Streams are named, but as IPC subsystem is separate to the vfs there are no conflicts. This also means you cannot access IPC streams from the filesystem.
 
-For message-based IPC, the server creates a mailbox with a callback function for when messages are received, and clients can use PostToMailbox to send messages. The server can then destroy the mailbox when it is done. Posting to an non-existent mailbox returns an error.
+For message-based IPC, the server creates a named mailbox and clients can use PostToMailbox to send messages. The server can then destroy the mailbox when it is done. Posting to an non-existent mailbox returns an error.
+When mail is sent to the mailbox's process, an event with type `IncomingMail` is posted into the process's event queue.
+
+IPC functions can return the following errors:
+- `1`: Could not start the IPC stream.
+- `2`: Unable to attach the stream as a process resource. Stream was closed automatically.
+- `3`: A buffer operation (including reading the stream name string) failed.
+- `4`: No mailbox exists with that name.
+- `5`: Mailbox exists, but mail could not be delivered.
 
 ## 0x40 - StartIpcStream
 Opens an IPC stream with the requested permissions. This stream is always read/write.
@@ -260,19 +289,57 @@ Closes an open stream handle. This does not stop the stream, it only detaches it
 ## 0x45 - WriteToIpcStream
 
 ## 0x46 - CreateMailbox
+Creates an IPC mailbox with the requested flags. For each mail that is received the process will be noticified by an `IncomingMail` event.
+
+### Args:
+- `arg0`: pointer to a c-string with the requested mailbox name.
+- `arg1`: bitfield of requested flags.
+- all other args ignored.
+
+### Returns:
+- `arg0`: handle of the IPC mailbox, for config purposes.
+- all other return values should be ignored.
+
+### Notes:
+- All ipc endpoints share the same namespace, meaning a mailbox and stream cannot have the same name.
+- Currently mailboxes are implemented *on top* of an IPC stream, meaning there are a number of config tricks that can be performed with the returned handle. However this is not in the spec for a reason, and may change, so don't rely on this functionality.
 
 ## 0x47 - DestroyMailbox
+Destroys an existing mailbox, any unread or currently sending mail will be discarded. 
+
+### Args:
+- `arg0`: mailbox handle, returned from CreateMailbox().
+- all other args ignored.
+
+### Returns:
+- Nothing.
+
+### Notes:
+- None.
 
 ## 0x48 - PostToMailbox
+Sends mail to a remote mailbox. Will return an error if mail could not be delivered for any reason.
+
+### Args:
+- `arg0`: pointer to a c-string containing the mailbox name.
+- `arg1`: base address of the mail to send.
+- `arg2`: length in bytes of mail to send.
+- all other args ignored.
+
+### Returns:
+- Nothing.
+
+### Notes:
+- None.
 
 ## 0x49 - ModifyIpcConfig
 Configures an existing IPC stream or mailbox. Args 2 and 3 change their function depending on arg0, which determines the operation to perform. Arg1 is the ipc endpoint (stream or mailbox) to operate on. The currently supported operations (`arg0`) are listed below:
 
-- 0: reserved.
-- 1: add an ID to the ipc access list. `arg2` is the id.
-- 2: remove an ID from the ipc access list. `arg2` is the id.
-- 3: change the ipc access flags. `arg2` is the new flags (in bits 60:63)
-- 4: transfer ownership. `arg2` is the process id of the new owner. 
+- `0`: reserved.
+- `1`: add an ID to the ipc access list. `arg2` is the id.
+- `2`: remove an ID from the ipc access list. `arg2` is the id.
+- `3`: change the ipc access flags. `arg2` is the new flags (in bits 60:63)
+- `4`: transfer ownership. `arg2` is the process id of the new owner. 
 
 ### Returns:
 - Nothing.
@@ -280,8 +347,10 @@ Configures an existing IPC stream or mailbox. Args 2 and 3 change their function
 ### Notes:
 - Only the owner of the endpoint can use this system call. This id has a process-level granuality (i.e. any thread in the owner process is granted owner-level access).
 
+
+----
 # 0x5* - General Utilities
-This gorup of system calls is a collection of unrelated utilties.
+This group of system calls is a collection of unrelated utilties.
 
 ## 0x50 - Log
 Writes a log entry to the global log.
@@ -295,5 +364,27 @@ Writes a log entry to the global log.
 - Nothing.
 
 ### Notes:
-- Unlike the kernel function `logf()` this syscall does not provide any formatting support for security reasons. It writes the input string to the currently active log backendds verbatim.
+- Unlike the kernel function `logf()` this syscall does not provide any formatting support for security reasons. It writes the input string to the currently active log backends verbatim.
 - The logging level values mirror those in the kernel logging system, with the exception of the `fatal` level not being available. Any attempts to issue a fatal log result in the log being emitted as an error instead.
+
+
+----
+# 0x6* - Program Events
+A process can have events send to it over it's lifetime. These share a common header, and then an optional data section.
+
+The header is 2x unsigned 32-bit integers, the first being the type of event and the second being the length of the data following the header (size does not include the header). This header is usually passed around in a single 64-bit integer, with the upper 32 bits being the length and the lower 32 bits being the type. The most significant bit of the type field is a flag indicating whether the type is a built in (listed below) event type, or a custom event type. When this flag is cleared the type is application defined.
+
+Built in event types:
+- `0, Null`: If this is received an error has occured, and this event should be discarded.
+- `1, ExitGracefully`: The process is being requested to close and exit on it's own.
+- `2, ExitImmediately`: A process will never actually process this event, it'll kill the process upon being being received.
+- `3, IncomingMail`: A process has received IPC mail.
+
+## 0x60 - PeekNextEvent
+Returns the header of the next pending event, without consuming it.
+
+## 0x61 - ConsumeNextEvent
+Consumes the next event, and if given a non-null buffer will copy the data into it before removing it on the kernel side.
+
+## 0x62 - GetPendingEventCount
+Returns the number of unprocessed events.
