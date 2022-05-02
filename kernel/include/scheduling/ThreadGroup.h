@@ -7,8 +7,6 @@
 
 namespace Kernel::Scheduling
 {
-    constexpr size_t ThreadGroupEventQueueLength = 512;
-    
     class Scheduler;
     class Thread;
 

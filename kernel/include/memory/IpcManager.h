@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <String.h>
 #include <NativePtr.h>
+#include <BufferView.h>
 #include <Optional.h>
 #include <IdAllocator.h>
 #include <containers/Vector.h>
@@ -55,6 +56,12 @@ namespace Kernel::Memory
         sl::Opt<sl::NativePtr> OpenStream(const sl::String& name, IpcStreamFlags flags);
         void CloseStream(const sl::String& name);
         //NOTE: this returns source details, and addresses will be relative to the owner's vmm.
-        sl::Opt<const IpcStream*> GetStreamDetails(const sl::String& name);
+        sl::Opt<IpcStream*> GetStreamDetails(const sl::String& name);
+
+        sl::Opt<IpcStream*> CreateMailbox(const sl::String& mailbox, IpcStreamFlags flags, IpcAccessFlags accessFlags);
+        void DestroyMailbox(const sl::String& mailbox);
+        bool PostMail(const sl::String& destMailbox, const sl::BufferView data);
+        bool MailAvailable(const sl::String& mailbox);
+        void ReceiveMail(IpcStream* hostStream, sl::BufferView receiveInto);
     };
 }

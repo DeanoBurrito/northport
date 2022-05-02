@@ -401,7 +401,6 @@ Consumes the next event, and if given a non-null buffer will copy the data into 
 
 ### Args: 
 - `arg0`: buffer to write event data into
-- `arg1`: buffer length. Ignored if buffer is null.
 - All other args are ignored.
 
 ### Returns:

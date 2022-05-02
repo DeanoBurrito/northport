@@ -129,4 +129,10 @@ namespace np::Syscall
         ExitImmediately = 2,
         IncomingMail = 3,
     };
+
+    //TODO: this is not necessary, lets move to errors 1-32 being generic errors usable by all
+    enum class ProgramEventError : NativeUInt
+    {
+        InvalidBufferRange = 3,
+    };
 }

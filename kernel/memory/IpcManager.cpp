@@ -1,5 +1,6 @@
 #include <memory/IpcManager.h>
 #include <memory/VirtualMemory.h>
+#include <memory/IpcMailbox.h>
 #include <scheduling/Thread.h>
 #include <scheduling/Scheduler.h>
 #include <Platform.h>
@@ -164,7 +165,7 @@ access_allowed:
         //TODO: imeplement CloseStream()
     }
 
-    sl::Opt<const IpcStream*> IpcManager::GetStreamDetails(const sl::String& name)
+    sl::Opt<IpcStream*> IpcManager::GetStreamDetails(const sl::String& name)
     {
         sl::ScopedSpinlock scopeLock(&lock);
 
@@ -179,5 +180,115 @@ access_allowed:
         }
 
         return {};
+    }
+
+    sl::Opt<IpcStream*> IpcManager::CreateMailbox(const sl::String& mailbox, IpcStreamFlags flags, IpcAccessFlags accessFlags)
+    {
+        auto maybeStream = StartStream(mailbox, MailboxDefaultSize, flags, accessFlags);
+        if (!maybeStream)
+            return {};
+
+        IpcMailboxControl* mailControl = maybeStream.Value()->bufferAddr.As<IpcMailboxControl>();
+        mailControl->head = mailControl->tail = 0;
+        sl::SpinlockRelease(&mailControl->lock);
+
+        return *maybeStream;
+    }
+
+    void IpcManager::DestroyMailbox(const sl::String& mailbox)
+    {
+        //TODO: implement DestroyMailbox()
+    }
+
+    /*  TODO: decide on a policy here.
+    /   Opening/Closing a stream is an expensive operation, especially for something small like sending a message.
+    /   For the moment I'm going to leave the stream open, but for a process that only makes a few requests this is kind of annoying.
+    /   It's another linked process accessing shared memory that dosnt need to be.
+    /   For now I've chosen the speedy approach of opening the stream once,
+    /   and then checking if its exists on subsequent sends. I would like to come up with a better solution in the future though.
+    /
+    /   Perhaps we could include a flag in the syscall that hints as whether this is a single call,
+    /   or part of a series of multiple calls that are occuring. "KeepAlive"?
+    */
+    bool IpcManager::PostMail(const sl::String& destMailbox, const sl::BufferView data)
+    {
+        auto maybeDetails = GetStreamDetails(destMailbox);
+        if (!maybeDetails)
+            return false;
+
+        const IpcStream* streamDetails = *maybeDetails;
+        if (Scheduling::ThreadGroup::Current()->Id() == streamDetails->ownerId)
+            return false; //no lookback support for now.
+
+        //TODO: we're forcing use of shared memory, but not when the mailbox is created.
+        auto maybeMailbox = OpenStream(destMailbox, IpcStreamFlags::UseSharedMemory);
+        if (!maybeMailbox)
+            return false;
+
+        IpcMailboxControl* mailControl = maybeMailbox->As<IpcMailboxControl>();
+        sl::ScopedSpinlock mailLock(&mailControl->lock);
+
+        //determine where the next message will go
+        IpcMailHeader* nextBlank = sl::NativePtr(mailControl + 1).As<IpcMailHeader>();
+        if (mailControl->head > 0)
+        {
+            //there is data, jump to the end and check if there is enough space.
+            sl::NativePtr scan = mailControl->Last()->Next();
+            if (scan.raw + sizeof(IpcMailHeader) + data.length > streamDetails->bufferLength)
+            {
+                //TODO: we should implement this as a circular buffer
+                return false; //buffer is full, cannot receive mail
+            }
+            nextBlank = scan.As<IpcMailHeader>();
+        }
+
+        nextBlank->length = data.length;
+        nextBlank->positionInStream = sl::NativePtr(nextBlank).raw - sl::NativePtr(mailControl).raw;
+        nextBlank->Next()->length = 0;
+        sl::memcopy(data.base.ptr, nextBlank->data, data.length);
+
+        mailControl->tail = nextBlank->positionInStream;
+        if ((size_t)(mailControl + 1) == (size_t)nextBlank)
+            mailControl->head = nextBlank->positionInStream;
+
+        //send an event to the target process
+        Scheduling::ThreadGroup* ownerGroup = Scheduling::Scheduler::Global()->GetThreadGroup(streamDetails->ownerId);
+        if (ownerGroup == nullptr)
+            return false;
+        
+        //the process will be expected addresses in *it's* address space, not ours.
+        ownerGroup->PushEvent({ Scheduling::ThreadGroupEventType::IncomingMail, (uint32_t)data.length, (void*)streamDetails });
+        return true;
+    }
+
+    bool IpcManager::MailAvailable(const sl::String& mailbox)
+    {
+        auto maybeDetails = GetStreamDetails(mailbox);
+        if (!maybeDetails)
+            return false;
+        
+        IpcMailboxControl* mailControl = maybeDetails.Value()->bufferAddr.As<IpcMailboxControl>();
+        sl::ScopedSpinlock scopeLock(&mailControl->lock);
+        return mailControl->head > 0;
+    }
+
+    void IpcManager::ReceiveMail(IpcStream* hostStream, sl::BufferView receiveInto)
+    {
+        if (hostStream->ownerId != Scheduling::ThreadGroup::Current()->Id())
+            return;
+
+        IpcMailboxControl* mailControl = hostStream->bufferAddr.As<IpcMailboxControl>();
+        sl::ScopedSpinlock mailLock(&mailControl->lock);
+        IpcMailHeader* latestMail = mailControl->First();
+        
+        //copy mail data if we have somewhere to put it
+        if (receiveInto.base.ptr != nullptr && latestMail->length > 0)
+            sl::memcopy(latestMail->data, receiveInto.base.ptr, latestMail->length);
+        
+        //update head + tail pointers
+        if (latestMail->Next()->length > 0)
+            mailControl->head = (size_t)latestMail->Next() - (size_t)mailControl;
+        else
+            mailControl->head = mailControl->tail = 0;
     }
 }

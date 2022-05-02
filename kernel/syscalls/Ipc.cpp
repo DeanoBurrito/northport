@@ -1,5 +1,6 @@
 #include <syscalls/Dispatch.h>
 #include <memory/IpcManager.h>
+#include <memory/IpcMailbox.h>
 #include <scheduling/Thread.h>
 #include <scheduling/Scheduler.h>
 #include <SyscallEnums.h>
@@ -8,32 +9,6 @@
 
 namespace Kernel::Syscalls
 {
-    struct IpcMailHeader
-    {
-        uint64_t length;
-        uint8_t data[];
-
-        IpcMailHeader* Next()
-        { return sl::NativePtr(this).As<IpcMailHeader>(length); }
-    };
-
-    struct IpcMailboxControl
-    {
-        uint8_t lock;
-        uint8_t reserved0[7];
-        uint64_t head;
-        uint64_t tail;
-        uint64_t reserved1;
-
-        IpcMailHeader* First()
-        { return sl::NativePtr(this).As<IpcMailHeader>(head); }
-
-        IpcMailHeader* Last()
-        { return sl::NativePtr(this).As<IpcMailHeader>(tail); }
-    };
-    
-    constexpr size_t MailboxDefaultSize = 0x1000;
-
     void StartIpcStream(SyscallRegisters& regs)
     {
         using namespace Memory;
@@ -145,9 +120,7 @@ namespace Kernel::Syscalls
 
     void CreateMailbox(SyscallRegisters& regs)
     {
-        //the first section is just setting up an ipc stream. 
         using namespace Memory;
-        
         if (!VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
         {
             regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
@@ -157,35 +130,29 @@ namespace Kernel::Syscalls
         IpcAccessFlags accessFlags = (IpcAccessFlags)(regs.arg1 >> 60);
         regs.arg1 = regs.arg1 & ~((uint64_t)0xF << 60);
 
-        sl::String streamName(sl::NativePtr(regs.arg0).As<const char>());
-        auto maybeStream = IpcManager::Global()->StartStream(streamName, MailboxDefaultSize, (IpcStreamFlags)regs.arg1, accessFlags);
-        if (!maybeStream)
+        sl::String mailboxName(sl::NativePtr(regs.arg0).As<const char>());
+        auto maybeMailbox = IpcManager::Global()->CreateMailbox(mailboxName, (IpcStreamFlags)regs.arg1, accessFlags);
+        if (!maybeMailbox)
         {
             regs.id = (uint64_t)np::Syscall::IpcError::StreamStartFail;
             return;
         }
 
         using namespace Scheduling;
-        auto maybeResId = ThreadGroup::Current()->AttachResource(ThreadResourceType::IpcMailbox, *maybeStream);
+        auto maybeResId = ThreadGroup::Current()->AttachResource(ThreadResourceType::IpcMailbox, *maybeMailbox);
         if (!maybeResId)
         {
-            IpcManager::Global()->StopStream(streamName);
+            IpcManager::Global()->DestroyMailbox(mailboxName);
             regs.id = (uint64_t)np::Syscall::IpcError::NoResourceId;
             return;
         }
-
-        //we reserve 4x uint64s at the beginning (lock, head, tail and a reserve u64), and ensure lock is cleared
-        sl::memsetT<uint64_t>(maybeStream.Value()->bufferAddr.ptr, 0, 4);
-        sl::SpinlockRelease(maybeStream.Value()->bufferAddr.ptr);
 
         regs.arg0 = *maybeResId;
     }
 
     void DestroyMailbox(SyscallRegisters& regs)
     {
-        //remove any pending mail events, and remove any pending mail data
-        
-        //close the stream
+        //scrub incoming data, and call IpcManager::DestroyMailbox
     }
 
     void PostToMailbox(SyscallRegisters& regs)
@@ -203,62 +170,12 @@ namespace Kernel::Syscalls
             return;
         }
 
-        //try to access our destination
-        sl::String streamName(sl::NativePtr(regs.arg0).As<const char>());
-        //TODO: we're forcing the use of shared memory here, we should also force it in mailbox creation too.
-        auto maybeStream = IpcManager::Global()->OpenStream(streamName, IpcStreamFlags::UseSharedMemory);
-        if (!maybeStream)
+        sl::String mailboxName(sl::NativePtr(regs.arg0).As<const char>());
+        if (!IpcManager::Global()->PostMail(mailboxName, {regs.arg1, regs.arg2}))
         {
             regs.id = (uint64_t)np::Syscall::IpcError::MailDeliveryFailed;
             return;
         }
-        IpcMailboxControl* mailControl = maybeStream->As<IpcMailboxControl>();
-
-        /*  TODO: decide on a policy here.
-        /   Opening/Closing a stream is an expensive operation, especially for something small like sending a message.
-        /   For the moment I'm going to leave the stream open, but for a process that only makes a few requests this is kind of annoying.
-        /   It's another linked process accessing shared memory that dosnt need to be.
-        /   For now I've chosen the speedy approach of opening the stream once,
-        /   and then checking if its exists on subsequent sends. I would like to come up with a better solution in the future though.
-        /
-        /   Perhaps we could include a flag in the syscall that hints as whether this is a single call,
-        /   or part of a series of multiple calls that are occuring. "KeepAlive"?
-        */
-
-        {
-            //lock the mailbox, and copy the data into it, updating the pointers as we go.
-            sl::ScopedSpinlock streamLock(&mailControl->lock);
-            sl::NativePtr mailBuffer = mailControl + 1;
-
-            if (mailControl->head > 0)
-            {
-                IpcMailHeader* scan = mailControl->First();
-                while (scan != mailControl->Last())
-                    scan = scan->Next();
-                mailBuffer = scan->Next();
-                //TODO: we never check if there is actually enough buffer space to send this mail
-                //We'll need more details like the stream size for this
-            }
-
-            mailBuffer.As<IpcMailHeader>()->length = regs.arg2;
-            sl::memcopy((void*)regs.arg1, mailBuffer.As<IpcMailHeader>()->data, regs.arg2);
-
-            //for head and tail we store relative offsets to the stream base
-            if (mailBuffer.raw == (uint64_t)(mailControl + 1))
-                mailControl->head = sizeof(IpcMailboxControl);
-            mailControl->tail = mailBuffer.raw - maybeStream->raw;
-        }
-
-        const IpcStream* streamDetails = *IpcManager::Global()->GetStreamDetails(streamName);
-        //post an event to the target processs
-        Scheduling::ThreadGroup* ownerGroup = Scheduling::Scheduler::Global()->GetThreadGroup(streamDetails->ownerId);
-        if (ownerGroup == nullptr)
-        {
-            Log("IPC send mail failed as owning thread could not recieve event.", LogSeverity::Warning);
-            return;
-        }
-
-        ownerGroup->PushEvent({Scheduling::ThreadGroupEventType::IncomingMail, (uint32_t)regs.arg2, regs.arg1 });
     }
 
     void ModifyIpcConfig(SyscallRegisters& regs)
