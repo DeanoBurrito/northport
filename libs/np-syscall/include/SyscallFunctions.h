@@ -74,7 +74,7 @@ namespace np::Syscall
     void CloseIpcStream(IpcHandle handle);
     sl::Opt<IpcHandle> CreateMailbox(const sl::String& name, IpcMailboxFlags flags);
     void DestroyMailbox(IpcHandle handle);
-    void PostToMailbox(const sl::String& name, sl::BufferView data);
+    bool PostToMailbox(const sl::String& name, sl::BufferView data);
     void ModifyIpcConfig(IpcConfigOperation op, NativeUInt arg1 = 0, NativeUInt arg2 = 0, NativeUInt arg3 = 0);
 
     //0x5* - utilties

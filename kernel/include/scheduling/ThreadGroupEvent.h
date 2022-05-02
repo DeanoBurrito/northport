@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <NativePtr.h>
 
 namespace Kernel::Scheduling
 {
@@ -16,9 +17,9 @@ namespace Kernel::Scheduling
     {
         ThreadGroupEventType type;
         uint32_t length;
-        uint64_t address;
+        sl::NativePtr address;
 
-        ThreadGroupEvent(ThreadGroupEventType type, uint32_t len, uint64_t addr)
+        ThreadGroupEvent(ThreadGroupEventType type, uint32_t len, sl::NativePtr addr)
         : type(type), length(len), address(addr)
         {}
     };

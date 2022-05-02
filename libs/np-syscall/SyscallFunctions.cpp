@@ -167,10 +167,12 @@ namespace np::Syscall
         DoSyscall(&data);
     }
 
-    void PostToMailbox(const sl::String& name, sl::BufferView mail)
+    bool PostToMailbox(const sl::String& name, sl::BufferView mail)
     {
         SyscallData data((uint64_t)SyscallId::PostToMailbox, (uint64_t)name.C_Str(), mail.base.raw, mail.length, 0);
         DoSyscall(&data);
+
+        return data.id == SyscallSuccess;
     }
 
     void ModifyIpcConfig(IpcConfigOperation op, NativeUInt arg1, NativeUInt arg2, NativeUInt arg3)

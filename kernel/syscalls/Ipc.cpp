@@ -1,5 +1,6 @@
 #include <syscalls/Dispatch.h>
 #include <memory/IpcManager.h>
+#include <memory/IpcMailbox.h>
 #include <scheduling/Thread.h>
 #include <scheduling/Scheduler.h>
 #include <SyscallEnums.h>
@@ -8,32 +9,6 @@
 
 namespace Kernel::Syscalls
 {
-    struct IpcMailHeader
-    {
-        uint64_t length;
-        uint8_t data[];
-
-        IpcMailHeader* Next()
-        { return sl::NativePtr(this).As<IpcMailHeader>(length); }
-    };
-
-    struct IpcMailboxControl
-    {
-        uint8_t lock;
-        uint8_t reserved0[7];
-        uint64_t head;
-        uint64_t tail;
-        uint64_t reserved1;
-
-        IpcMailHeader* First()
-        { return sl::NativePtr(this).As<IpcMailHeader>(head); }
-
-        IpcMailHeader* Last()
-        { return sl::NativePtr(this).As<IpcMailHeader>(tail); }
-    };
-    
-    constexpr size_t MailboxDefaultSize = 0x1000;
-
     void StartIpcStream(SyscallRegisters& regs)
     {
         using namespace Memory;
@@ -225,10 +200,10 @@ namespace Kernel::Syscalls
         /   or part of a series of multiple calls that are occuring. "KeepAlive"?
         */
 
+        sl::NativePtr mailBuffer = mailControl + 1;
         {
             //lock the mailbox, and copy the data into it, updating the pointers as we go.
             sl::ScopedSpinlock streamLock(&mailControl->lock);
-            sl::NativePtr mailBuffer = mailControl + 1;
 
             if (mailControl->head > 0)
             {
@@ -240,8 +215,11 @@ namespace Kernel::Syscalls
                 //We'll need more details like the stream size for this
             }
 
-            mailBuffer.As<IpcMailHeader>()->length = regs.arg2;
-            sl::memcopy((void*)regs.arg1, mailBuffer.As<IpcMailHeader>()->data, regs.arg2);
+            IpcMailHeader* header = mailBuffer.As<IpcMailHeader>();
+            header->length = regs.arg2;
+            header->positionInStream = mailBuffer.raw - maybeStream->raw;
+            header->Next()->length = 0; //ensure next entry is empty
+            sl::memcopy((void*)regs.arg1, header->data, regs.arg2);
 
             //for head and tail we store relative offsets to the stream base
             if (mailBuffer.raw == (uint64_t)(mailControl + 1))
@@ -255,10 +233,11 @@ namespace Kernel::Syscalls
         if (ownerGroup == nullptr)
         {
             Log("IPC send mail failed as owning thread could not recieve event.", LogSeverity::Warning);
+            regs.id = (uint64_t)np::Syscall::IpcError::MailDeliveryFailed;
             return;
         }
 
-        ownerGroup->PushEvent({Scheduling::ThreadGroupEventType::IncomingMail, (uint32_t)regs.arg2, regs.arg1 });
+        ownerGroup->PushEvent({ Scheduling::ThreadGroupEventType::IncomingMail, (uint32_t)regs.arg2, mailBuffer });
     }
 
     void ModifyIpcConfig(SyscallRegisters& regs)

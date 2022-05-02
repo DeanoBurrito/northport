@@ -21,7 +21,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] FAT 12/16/32 drivers.
     - [x] Inter process communication.
         - [x] Stream-based.
-        - [ ] Message-based.
+        - [x] Message-based.
     - [x] System call spec.
     - [x] Timekeeping: uptime and wall clock time.
     - [x] Undefined behaviour sanitizer.
