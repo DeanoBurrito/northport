@@ -199,7 +199,7 @@ Writes bytes from a user buffer to a file handle.
 Two flavours of IPC are supported: discrete messages (or packets, mailbox style) and continuous streams (memory buffers style). Access to IPC is described using a 4bit integer, occupying bits 63:60 of the flags argument. The access list for an ipc endpoint can be modified using the `ModifyIpcConfig` system call.
 Ids can be either thread or process ids, with a process id allowing all it's threads the same access.
 They accept the following values:
-- `0`: No read/write allowed at all. Effectively disables this operation on the IPC endpoint.
+- `0`: No read/write allowed at all. Effectively disables operation on the IPC endpoint.
 - `1`: Public. Any process can read or write to this endpoint.
 - `2`: Selected only. Only pre-approved process ids can access this endpoint. This list of ids starts empty and can be modified by the ModifyIpcConfig syscall.
 - `3`: Private. This forces 1-to-1 communication, only a single remote process can access this endpoint.
@@ -218,8 +218,7 @@ IPC functions can return the following errors:
 - `1`: Could not start the IPC stream.
 - `2`: Unable to attach the stream as a process resource. Stream was closed automatically.
 - `3`: A buffer operation (including reading the stream name string) failed.
-- `4`: No mailbox exists with that name.
-- `5`: Mailbox exists, but mail could not be delivered.
+- `4`: Mail could not be delivered.
 
 ## 0x40 - StartIpcStream
 Opens an IPC stream with the requested permissions. This stream is always read/write.
@@ -302,7 +301,7 @@ Creates an IPC mailbox with the requested flags. For each mail that is received 
 
 ### Notes:
 - All ipc endpoints share the same namespace, meaning a mailbox and stream cannot have the same name.
-- Currently mailboxes are implemented *on top* of an IPC stream, meaning there are a number of config tricks that can be performed with the returned handle. However this is not in the spec for a reason, and may change, so don't rely on this functionality.
+- Currently mailboxes are implemented *on top* of an IPC stream, meaning that the usual IPC config operations can be performed with the returned handle. However, internally mailboxes use several structures inside of the shared buffer, so while it can be accessed directly, it is ill-advised. 
 
 ## 0x47 - DestroyMailbox
 Destroys an existing mailbox, any unread or currently sending mail will be discarded. 
@@ -370,9 +369,13 @@ Writes a log entry to the global log.
 
 ----
 # 0x6* - Program Events
-A process can have events send to it over it's lifetime. These share a common header, and then an optional data section.
+A process can have events sent to it over it's lifetime. These share a common header, and can optionally describe a buffer of attached data.
 
-The header is 2x unsigned 32-bit integers, the first being the type of event and the second being the length of the data following the header (size does not include the header). This header is usually passed around in a single 64-bit integer, with the upper 32 bits being the length and the lower 32 bits being the type. The most significant bit of the type field is a flag indicating whether the type is a built in (listed below) event type, or a custom event type. When this flag is cleared the type is application defined.
+The common header is 2x unsigned 32-bit integers (first indicating the type of the event - see below, second indicating the length of the optional data section), followed by an unsigned 64-bit integer containing the address of the data. If the length field is zero, there is no data section and this address field is undefined.
+
+Commonly these values are compressed into 2 64-bit ints, with the event type (as the lower 32-bits), and length (as the upper 32-bits) being compacted into a single value.
+
+The most significant bit of the event type is a flag indicating whether the event type is application defined (if set), or a built in event type (if cleared). 
 
 Built in event types:
 - `0, Null`: If this is received an error has occured, and this event should be discarded.
@@ -383,8 +386,40 @@ Built in event types:
 ## 0x60 - PeekNextEvent
 Returns the header of the next pending event, without consuming it.
 
+### Args:
+- All args ignored.
+
+### Returns:
+- `arg0`: bits 31:0 are the event type, bits 63:32 are the data length.
+- All other return values should be ignored.
+
+### Notes:
+- None.
+
 ## 0x61 - ConsumeNextEvent
 Consumes the next event, and if given a non-null buffer will copy the data into it before removing it on the kernel side.
 
+### Args: 
+- `arg0`: buffer to write event data into
+- `arg1`: buffer length. Ignored if buffer is null.
+- All other args are ignored.
+
+### Returns:
+- `arg0`: bits 31:0 are the event type, bits 63:32 are the data length.
+- All other return values should be ignored.
+
+### Notes:
+- None.
+
 ## 0x62 - GetPendingEventCount
 Returns the number of unprocessed events.
+
+### Args:
+- None.
+
+### Returns:
+- `arg0`: Number of pending events for this process.
+- All other return values should be ignored.
+
+### Notes:
+- Not sure why I implemented this, not much you can do with it.

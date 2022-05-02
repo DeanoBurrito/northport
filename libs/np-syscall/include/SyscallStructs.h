@@ -1,6 +1,7 @@
 #pragma once
 
 #include <NativePtr.h>
+#include <SyscallEnums.h>
 
 namespace np::Syscall
 {
@@ -67,4 +68,10 @@ namespace np::Syscall
 
     using FileHandle = size_t;
     using IpcHandle = size_t;
+
+    struct ProgramEvent
+    {
+        ProgramEventType type;
+        uint32_t dataLength;
+    };
 }

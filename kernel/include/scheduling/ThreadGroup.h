@@ -64,6 +64,9 @@ namespace Kernel::Scheduling
         bool DetachResource(size_t rid, bool force = false);
         sl::Opt<ThreadResource*> GetResource(size_t rid);
         
+        size_t PendingEventCount() const;
         void PushEvent(const ThreadGroupEvent& event);
+        sl::Opt<ThreadGroupEvent> PeekEvent();
+        sl::Opt<ThreadGroupEvent> ConsumeEvent();
     };
 }

@@ -56,11 +56,37 @@ namespace Kernel::Scheduling
         return &resources[rid];
     }
 
+    size_t ThreadGroup::PendingEventCount() const
+    { return events.Size(); }
+
     void ThreadGroup::PushEvent(const ThreadGroupEvent& event)
     {
         InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
 
         events.PushBack(event);
+    }
+
+    sl::Opt<ThreadGroupEvent> ThreadGroup::PeekEvent()
+    {
+        InterruptLock intLock;
+        sl::ScopedSpinlock scopeLock(&lock);
+
+        if (events.Empty())
+            return {};
+        return events.Front();
+    }
+
+    sl::Opt<ThreadGroupEvent> ThreadGroup::ConsumeEvent()
+    {
+        InterruptLock intLock;
+        sl::ScopedSpinlock scopeLock(&lock);
+
+        if (events.Empty())
+            return {};
+        
+        ThreadGroupEvent ev = events.Front();
+        events.Erase(0);
+        return ev;
     }
 }

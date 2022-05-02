@@ -79,4 +79,9 @@ namespace np::Syscall
 
     //0x5* - utilties
     void Log(const sl::String& text, LogLevel level);
+
+    //0x6* - program events
+    sl::Opt<ProgramEvent> PeekNextEvent();
+    sl::Opt<ProgramEvent> ConsumeNextEvent(sl::BufferView buffer);
+    size_t GetPendingEventCount();
 }

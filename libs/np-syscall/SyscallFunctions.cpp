@@ -184,4 +184,42 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::Log, (uint64_t)text.C_Str(), (uint64_t)level, 0, 0);
         DoSyscall(&data);
     }
+    
+    sl::Opt<ProgramEvent> PeekNextEvent()
+    {
+        SyscallData data((uint64_t)SyscallId::PeekNextEvent, 0, 0, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        
+        ProgramEvent event;
+        event.type = static_cast<ProgramEventType>(data.arg0 & 0xFFFF'FFFF);
+        event.dataLength = data.arg0 >> 32;
+        return event;
+    }
+
+    sl::Opt<ProgramEvent> ConsumeNextEvent(sl::BufferView buffer)
+    {
+        SyscallData data((uint64_t)SyscallId::ConsumeNextEvent, buffer.base.raw, buffer.length, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        
+        ProgramEvent event;
+        event.type = static_cast<ProgramEventType>(data.arg0 & 0xFFFF'FFFF);
+        event.dataLength = data.arg0 >> 32;
+        return event;
+    }
+
+    size_t GetPendingEventCount()
+    {
+        SyscallData data((uint64_t)SyscallId::GetPendingEventCount, 0, 0, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id == SyscallSuccess)
+            return data.arg0;
+        return 0;
+    }
 }

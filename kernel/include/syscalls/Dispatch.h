@@ -70,4 +70,9 @@ namespace Kernel::Syscalls
 
     //0x5* - utilities
     void Log(SyscallRegisters& regs);
+
+    //0x6* - program events
+    void PeekNextEvent(SyscallRegisters& regs);
+    void ConsumeNextEvent(SyscallRegisters& regs);
+    void GetPendingEventCount(SyscallRegisters& regs);
 }

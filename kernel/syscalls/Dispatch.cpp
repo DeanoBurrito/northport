@@ -136,6 +136,19 @@ namespace Kernel::Syscalls
                 syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
 
+            case SyscallId::PeekNextEvent:
+                PeekNextEvent(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::ConsumeNextEvent:
+                ConsumeNextEvent(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::GetPendingEventCount:
+                GetPendingEventCount(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+
             default:
                 syscallRegs.id = SyscallNotFound;
                 break;

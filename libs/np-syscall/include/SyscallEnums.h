@@ -121,4 +121,12 @@ namespace np::Syscall
         BadLogLevel = 1,
         InvalidBufferRange = 3,
     };
+
+    enum class ProgramEventType : uint32_t
+    {
+        Null = 0,
+        ExitGracefully = 1,
+        ExitImmediately = 2,
+        IncomingMail = 3,
+    };
 }
