@@ -2,10 +2,13 @@
 
 #include <IdAllocator.h>
 #include <memory/VirtualMemory.h>
+#include <scheduling/ThreadGroupEvent.h>
 #include <String.h>
 
 namespace Kernel::Scheduling
 {
+    constexpr size_t ThreadGroupEventQueueLength = 512;
+    
     class Scheduler;
     class Thread;
 
@@ -15,6 +18,7 @@ namespace Kernel::Scheduling
 
         FileHandle,
         IpcStream,
+        IpcMailbox,
     };
     
     struct ThreadResource
@@ -32,12 +36,13 @@ namespace Kernel::Scheduling
         char lock;
         size_t id;
         Thread* parent;
+        sl::String name;
         sl::Vector<Thread*> threads;
         Memory::VirtualMemoryManager vmm;
-        //handles and group events (most of them) stored here
+        
         sl::UIdAllocator resourceIdAlloc;
         sl::Vector<ThreadResource> resources;
-        sl::String name;
+        sl::Vector<ThreadGroupEvent> events;
 
         ThreadGroup() = default;
 
@@ -58,5 +63,7 @@ namespace Kernel::Scheduling
         sl::Opt<size_t> AttachResource(ThreadResourceType type, sl::NativePtr resource);
         bool DetachResource(size_t rid, bool force = false);
         sl::Opt<ThreadResource*> GetResource(size_t rid);
+        
+        void PushEvent(const ThreadGroupEvent& event);
     };
 }

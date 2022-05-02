@@ -114,6 +114,22 @@ namespace Kernel::Syscalls
                 CloseIpcStream(syscallRegs);
                 syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
+            case SyscallId::CreateMailbox:
+                CreateMailbox(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::DestroyMailbox:
+                DestroyMailbox(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::PostToMailbox:
+                PostToMailbox(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::ModifyIpcConfig:
+                ModifyIpcConfig(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
             
             case SyscallId::Log:
                 Log(syscallRegs);

@@ -55,4 +55,12 @@ namespace Kernel::Scheduling
         
         return &resources[rid];
     }
+
+    void ThreadGroup::PushEvent(const ThreadGroupEvent& event)
+    {
+        InterruptLock intLock;
+        sl::ScopedSpinlock scopeLock(&lock);
+
+        events.PushBack(event);
+    }
 }

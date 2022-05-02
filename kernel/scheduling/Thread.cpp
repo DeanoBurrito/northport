@@ -33,4 +33,9 @@ namespace Kernel::Scheduling
 
     void Thread::Sleep(size_t millis)
     {}
+
+    void Thread::SleepUntilEvent(size_t timeout)
+    {
+        runState = ThreadState::WaitingForEvents;
+    }
 }

@@ -51,8 +51,8 @@ namespace Kernel::Syscalls
     void GetPrimaryDeviceInfo(SyscallRegisters& regs)
     { 
         using namespace np::Syscall;
-        bool advancedInfo = (regs.arg0 != 0);
-        DeviceType devType = static_cast<np::Syscall::DeviceType>(regs.arg1);
+        bool advancedInfo = (regs.arg1 != 0);
+        DeviceType devType = static_cast<np::Syscall::DeviceType>(regs.arg0);
         
         if (advancedInfo)
         {

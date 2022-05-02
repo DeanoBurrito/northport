@@ -36,6 +36,19 @@ namespace Kernel::Memory
         }
 
         sl::ScopedSpinlock scopeLock(&lock);
+
+        //check that this name is available
+        for (size_t i = 0; i < streams->Size(); i++)
+        {
+            if (streams->At(i) == nullptr)
+                continue;
+
+            if (streams->At(i)->name == name)
+            {
+                Logf("Attempted to create duplicate stream of: %s", LogSeverity::Error, name.C_Str());
+                return {};
+            }
+        }
         
         const size_t pageCount = (length / PAGE_FRAME_SIZE + 1);
         const size_t streamId = idAlloc->Alloc();
@@ -149,5 +162,22 @@ access_allowed:
     void IpcManager::CloseStream(const sl::String& name)
     {
         //TODO: imeplement CloseStream()
+    }
+
+    sl::Opt<const IpcStream*> IpcManager::GetStreamDetails(const sl::String& name)
+    {
+        sl::ScopedSpinlock scopeLock(&lock);
+
+        for (size_t i = 0; i < streams->Size(); i++)
+        {
+            if (streams->At(i) == nullptr)
+                continue;
+            if (streams->At(i)->name != name)
+                continue;
+            
+            return streams->At(i);
+        }
+
+        return {};
     }
 }

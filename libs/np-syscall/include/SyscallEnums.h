@@ -96,8 +96,7 @@ namespace np::Syscall
         StreamStartFail = 1,
         NoResourceId = 2,
         InvalidBufferRange = 3,
-        NonExistentMailbox = 4,
-        MailDeliveryFailed = 5,
+        MailDeliveryFailed = 4,
     };
 
     enum class IpcConfigOperation : NativeUInt

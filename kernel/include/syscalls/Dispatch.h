@@ -63,6 +63,9 @@ namespace Kernel::Syscalls
     void StopIpcStream(SyscallRegisters& regs);
     void OpenIpcStream(SyscallRegisters& regs);
     void CloseIpcStream(SyscallRegisters& regs);
+    void CreateMailbox(SyscallRegisters& regs);
+    void DestroyMailbox(SyscallRegisters& regs);
+    void PostToMailbox(SyscallRegisters& regs);
     void ModifyIpcConfig(SyscallRegisters& regs);
 
     //0x5* - utilities

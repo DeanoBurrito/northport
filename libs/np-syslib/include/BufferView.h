@@ -18,7 +18,5 @@ namespace sl
 
         BufferView(sl::NativePtr base, size_t len) : base(base), length(len)
         {}
-
-        ~BufferView() = delete;
     };
 }

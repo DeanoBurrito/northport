@@ -150,6 +150,29 @@ namespace np::Syscall
         DoSyscall(&data);
     }
 
+    sl::Opt<IpcHandle> CreateMailbox(const sl::String& name, IpcMailboxFlags flags)
+    {
+        SyscallData data((uint64_t)SyscallId::CreateMailbox, (uint64_t)name.C_Str(), (uint64_t)flags, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+
+        return data.arg0;
+    }
+
+    void DestroyMailbox(IpcHandle handle)
+    {
+        SyscallData data((uint64_t)SyscallId::DestroyMailbox, handle, 0, 0, 0);
+        DoSyscall(&data);
+    }
+
+    void PostToMailbox(const sl::String& name, sl::BufferView mail)
+    {
+        SyscallData data((uint64_t)SyscallId::PostToMailbox, (uint64_t)name.C_Str(), mail.base.raw, mail.length, 0);
+        DoSyscall(&data);
+    }
+
     void ModifyIpcConfig(IpcConfigOperation op, NativeUInt arg1, NativeUInt arg2, NativeUInt arg3)
     {
         SyscallData data((uint64_t)SyscallId::ModifyIpcConfig, (uint64_t)op, arg1, arg2, arg3);

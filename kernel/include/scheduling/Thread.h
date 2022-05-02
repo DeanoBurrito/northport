@@ -17,6 +17,7 @@ namespace Kernel::Scheduling
         PendingCleanup,
         Running,
         Waiting,
+        WaitingForEvents,
     };
 
     enum class ThreadFlags
@@ -37,7 +38,6 @@ namespace Kernel::Scheduling
         ThreadFlags flags;
         ThreadState runState;
         size_t id;
-        sl::Vector<size_t> waitReasons;
         ThreadGroup* parent;
 
         //there are actually where the stacks are
@@ -71,5 +71,6 @@ namespace Kernel::Scheduling
         void Exit();
         void Kill();
         void Sleep(size_t millis);
+        void SleepUntilEvent(size_t timeout); //timeout of 0 means indefinite
     };
 }
