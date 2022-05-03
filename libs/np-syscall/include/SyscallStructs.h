@@ -2,6 +2,8 @@
 
 #include <NativePtr.h>
 #include <SyscallEnums.h>
+#include <Vectors.h>
+#include <Keys.h>
 
 namespace np::Syscall
 {
@@ -11,7 +13,12 @@ namespace np::Syscall
         NativeUInt length;
     };
     
-    struct BasicFramebufferInfo
+    struct GraphicsAdaptorInfo
+    {
+
+    };
+
+    struct FramebufferInfo
     {
         uint16_t width;
         uint16_t height;
@@ -28,12 +35,19 @@ namespace np::Syscall
         uint8_t reservedMask;
     };
 
-    struct BasicGraphicsAdaptorInfo
+    struct KeyboardInfo
     {
+        uint64_t aggregateId;
+    };
 
+    struct MouseInfo
+    {
+        uint64_t aggregateId;
+        uint16_t axisCount;
+        uint16_t buttonCount;
     };
     
-    struct BasicDeviceInfo
+    struct DeviceInfo
     {
         NativeUInt deviceId;
         union 
@@ -44,21 +58,18 @@ namespace np::Syscall
                 uint64_t mid;
                 uint64_t high;
             } words;
-            BasicFramebufferInfo framebuffer;
-            BasicGraphicsAdaptorInfo graphicsAdaptor;
+            FramebufferInfo framebuffer;
+            GraphicsAdaptorInfo graphicsAdaptor;
+            KeyboardInfo keyboard;
+            MouseInfo mouse;
         };
 
-        BasicDeviceInfo(uint64_t id, uint64_t low, uint64_t mid, uint64_t high) : deviceId(id)
+        DeviceInfo(uint64_t id, uint64_t low, uint64_t mid, uint64_t high) : deviceId(id)
         {
             words.low = low;
             words.mid = mid;
             words.high = high;
         }
-    };
-
-    struct DetailedDeviceInfo
-    {
-        NativeUInt deviceId;
     };
 
     struct FileInfo
@@ -73,5 +84,12 @@ namespace np::Syscall
     {
         ProgramEventType type;
         uint32_t dataLength;
+    };
+
+    using KeyboardEvent = KeyEvent;
+
+    struct MouseEvent
+    {
+        sl::Vector2i cursorRelative;
     };
 }

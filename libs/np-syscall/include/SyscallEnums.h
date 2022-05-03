@@ -18,6 +18,8 @@ namespace np::Syscall
         GetPrimaryDeviceInfo = 0x20,
         GetDevicesOfType = 0x21,
         GetDeviceInfo = 0x22,
+        EnableDeviceEvents = 0x23,
+        DisableDeviceEvents = 0x24,
 
         GetFileInfo = 0x30,
         OpenFile = 0x31,
@@ -64,6 +66,8 @@ namespace np::Syscall
         FeatureNotAvailable = 1,
         NoPrimaryDevice = 2,
         UnknownDeviceType = 3,
+        MismatchedDeviceType = 4,
+        InvalidDeviceId = 5,
     };
 
     enum class FileError : NativeUInt
@@ -128,6 +132,8 @@ namespace np::Syscall
         ExitGracefully = 1,
         ExitImmediately = 2,
         IncomingMail = 3,
+        KeyboardEvent = 4,
+        MouseEvent = 5,
     };
 
     //TODO: this is not necessary, lets move to errors 1-32 being generic errors usable by all

@@ -63,7 +63,7 @@ Unmaps a region of memory.
 - all other args ignored.
 
 ### Returns:
-- `arg0`:`0 if region completely unmapped, 1 or 2 if memory was splintered on the left or right sides, and 3 if splintered on both sides.
+- `arg0`: if region completely unmapped, 1 or 2 if memory was splintered on the left or right sides, and 3 if splintered on both sides.
 - all other return values should be ignored.
 
 ### Notes:
@@ -100,14 +100,84 @@ Device functions can also return the following errors in the `id` register:
 - `2`: No primary device exists for this type.
 - `3`: The specified device type is unknown, cannot return any data about it.
 
+Device info will be returned as a 32-byte structure across the syscall registers, where `arg0` is the low bytes and `arg3` is the high bytes. 
+The layouts of these structs are defined below.
+
+### Device type 0, Graphics Adaptor:
+- `u64`: device id
+
+### Device type 1, Graphics Framebuffer:
+- `u64`: device id
+- `u16`: width
+- `u16`: height
+- `u16`: stride (bytes per scanline)
+- `u16`: bits per pixel
+- `u64`: framebuffer base address
+- `u8`: red offset
+- `u8`: green offset
+- `u8`: blue offset
+- `u8`: reserved
+- `u8`: red bits mask
+- `u8`: green bits mask
+- `u8`: blue bits mask
+- `u8`: reserved.
+
+### Device type 2, Keyboard:
+- `u64`: device id
+- `u64`: aggregate keyboard device id
+
+### Device type 3, Mouse:
+- `u64`: device id
+- `u64`: aggregate mouse device id
+- `u16`: axis count
+- `u16`: button count
+
 ## 0x20 - GetPrimaryDeviceInfo
-//TODO:
+Returns the device id and some basic (device-dependent) info about the primary device for a category.
+
+### Args:
+- `arg0`: The device type to query (see above).
+- `arg1`: Set to a non-zero value to get more detailed info about a device. 
+- All other args are ignored.
+
+### Returns:
+The return values depend on the device type, and whether basic or advanced info was queried. See their description above.
+
+### Notes:
+- The idea of there being a single primary device for some device types shouldn't be taken too seriously. For example if there are multiple monitors connected, the primary framebuffer will always be the main monitor. Application developers using a framebuffer directly will want to iterate through
+the available choices, and pick the most appropriate one in that case. Primary devices are just a hint.
 
 ## 0x21 - GetDevicesOfType
 //TODO:
 
 ## 0x22 - GetDeviceInfo
 //TODO:
+
+## 0x23 - EnableDeviceEvents
+Tells a device to start sending events to this process. The events received are device specific, for example a keyboard will send key press events, a mouse will send mouse movements, an audio device might send requests for more buffer data.
+
+### Args:
+- `arg0`: Id of the device to receive events from.
+- All other args are ignored.
+
+### Returns:
+- Nothing.
+
+### Notes:
+- Some device types (keyboard and mouse) will forward their inputs into an aggregate device. The id of this device is usually avaiable in their device info structures. Unless a program only wants to receive events from a specific device, they should enable/disable events from the aggregate device instead.
+
+## 0x24 - DisableDeviceEvents
+Disables receiving events from this device.
+
+### Args:
+- `arg0`: Id of the device to stop receiving events from.
+- All other args are ignored.
+
+### Returns:
+- Nothing.
+
+### Notes:
+- None.
 
 ----
 # 0x3* - Filesystem Operations
@@ -382,6 +452,8 @@ Built in event types:
 - `1, ExitGracefully`: The process is being requested to close and exit on it's own.
 - `2, ExitImmediately`: A process will never actually process this event, it'll kill the process upon being being received.
 - `3, IncomingMail`: A process has received IPC mail.
+- `4, KeyEvent`: A keyboard event, forwarded from the aggregate keyboad device (all keyboards forward their inputs here).
+- `5, MouseEvent`: A mouse event, forwarded from the aggregate mouse device (all other mice forward their inputs here).
 
 ## 0x60 - PeekNextEvent
 Returns the header of the next pending event, without consuming it.

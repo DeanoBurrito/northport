@@ -2,6 +2,8 @@
 #include <Locks.h>
 #include <Log.h>
 #include <devices/StivaleFramebuffer.h>
+#include <devices/Keyboard.h>
+#include <devices/Mouse.h>
 
 namespace Kernel::Devices
 {
@@ -15,7 +17,10 @@ namespace Kernel::Devices
         allDevices = new sl::Vector<GenericDevice*>();
 
         for (size_t i = 0; i < (size_t)DeviceType::EnumCount; ++i)
+        {
             primaryDevices[i] = nullptr;
+            aggregateIds[i] = (size_t)-1;
+        }
         sl::SpinlockRelease(&allDevicesLock);
         sl::SpinlockRelease(&primaryDevicesLock);
         
@@ -27,6 +32,9 @@ namespace Kernel::Devices
         bootloaderFramebuffer = new StivaleFramebuffer();
         RegisterDevice(bootloaderFramebuffer);
         SetPrimaryDevice(DeviceType::GraphicsFramebuffer, bootloaderFramebuffer->deviceId);
+
+        aggregateIds[(size_t)DeviceType::Keyboard] = RegisterDevice(Keyboard::Global());
+        aggregateIds[(size_t)DeviceType::Mouse] = RegisterDevice(Mouse::Global());
     }
 
     size_t DeviceManager::RegisterDevice(GenericDevice* device)
@@ -132,6 +140,9 @@ namespace Kernel::Devices
 
         Logf("Device %u reset.", LogSeverity::Verbose, deviceId);
     }
+
+    size_t DeviceManager::GetAggregateId(DeviceType type) const
+    { return aggregateIds[(size_t)type]; }
 
     sl::Vector<size_t> DeviceManager::FindDevicesOfType(DeviceType type)
     {

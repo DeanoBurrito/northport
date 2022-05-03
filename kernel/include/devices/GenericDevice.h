@@ -19,8 +19,6 @@ namespace Kernel::Devices
 
     enum class DeviceType : size_t
     {
-        Unknown,
-        
         GraphicsAdaptor,
         GraphicsFramebuffer,
         Keyboard,
@@ -39,7 +37,7 @@ namespace Kernel::Devices
 
     protected:
         DeviceState state = DeviceState::Unknown;
-        DeviceType type = DeviceType::Unknown;
+        DeviceType type;
         char lock;
 
         virtual void Init() = 0;
@@ -53,6 +51,9 @@ namespace Kernel::Devices
 
         inline size_t GetId() const
         { return deviceId; }
+
+        inline DeviceType DeviceType() const
+        { return type; }
 
         virtual void Reset() = 0;
         virtual sl::Opt<Drivers::GenericDriver*> GetDriverInstance() = 0;

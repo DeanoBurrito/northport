@@ -14,7 +14,7 @@ namespace np::Graphics
             auto maybeDeviceData = Syscall::GetPrimaryDeviceInfo(Syscall::DeviceType::Framebuffer);
             if (!maybeDeviceData)
                 return nullptr;
-            Syscall::BasicFramebufferInfo& fbInfo = maybeDeviceData->framebuffer;
+            Syscall::FramebufferInfo& fbInfo = maybeDeviceData->framebuffer;
             
             primaryFramebuffer = new LinearFramebuffer();
             primaryFramebuffer->doubleBuffered = false;

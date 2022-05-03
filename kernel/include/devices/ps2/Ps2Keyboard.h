@@ -1,7 +1,7 @@
 #pragma once
 
 #include <devices/interfaces/GenericKeyboard.h>
-#include <devices/Keys.h>
+#include <Keys.h>
 
 namespace Kernel::Devices::Ps2
 {

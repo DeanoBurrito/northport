@@ -2,6 +2,7 @@
 #include <devices/ps2/Ps2Driver.h>
 #include <devices/IoApic.h>
 #include <devices/Keyboard.h>
+#include <devices/Mouse.h>
 #include <Platform.h>
 #include <Cpu.h>
 
@@ -89,7 +90,7 @@ namespace Kernel::Devices::Ps2
         if (inputBuffer[0] & (1 << 5))
             relativeY |= 0xFFFFFF00;
 
-        //TODO: store these values somewhere
+        Mouse::Global()->PushMouseEvent({ relativeX, relativeY });
 
         if ((inputBuffer[0] & 0b001) != 0 && !leftMousePrevDown)
             Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseLeft, true));
