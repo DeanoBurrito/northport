@@ -24,12 +24,15 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [x] Message-based.
     - [x] System call spec.
     - [x] Timekeeping: uptime and wall clock time.
+        - [ ] RTC real-time read.
     - [x] Undefined behaviour sanitizer.
     - [x] Panic().
+        - [ ] Graphical output.
     - [ ] Networking stack.
         - [ ] Ethernet layer.
         - [ ] ARP.
         - [ ] IPv4/IPv6.
+    - [ ] Reclaiming bootloader and boot shim memory.
 
 - [x] x86_64
     - [x] IDT, GDT, TSS.
@@ -49,9 +52,9 @@ Listed below is the tentative list of supported platforms and devices, as well a
 - [ ] rv64
     - [ ] SBI stivale2 boot shim.
     - [ ] Paging: 3 and 4 levels.
-    - [ ] Vector support.
     - [ ] PLIC.
     - [ ] CLINT.
+    - [ ] Vector extension support.
 
 - [ ] Devices
     - [x] Bochs Graphics.
@@ -62,3 +65,10 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] Intel AC97 audio.
     - [ ] Intel HD audio.
     - [ ] NVME controllers.
+
+- [ ] Userspace
+    - [ ] Window server.
+    - [ ] Shell.
+    - [ ] Terminal emulator.
+    - [ ] ELF library (move existing stuff from syslib).
+    - [ ] Dynamic linker.
