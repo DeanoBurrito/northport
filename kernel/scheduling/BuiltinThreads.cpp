@@ -1,9 +1,12 @@
 #include <scheduling/BuiltinThreads.h>
 #include <scheduling/Scheduler.h>
+#include <devices/DeviceManager.h>
 #include <Locks.h>
 
 namespace Kernel::Scheduling
 {
+    constexpr size_t SchedulerCleanupThreadFreq = 10;
+    
     void CleanupThreadMain(void* arg)
     {
         CleanupData* data = reinterpret_cast<CleanupData*>(arg);
@@ -19,7 +22,7 @@ namespace Kernel::Scheduling
             data->processes.Clear();
 
             sl::SpinlockRelease(&data->lock);
-            Thread::Current()->Sleep(1000 / SCHEDULER_CLEANUP_THREAD_FREQ);
+            Thread::Current()->Sleep(1000 / SchedulerCleanupThreadFreq);
         }
     }
 }

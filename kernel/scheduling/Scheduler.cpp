@@ -1,5 +1,6 @@
 #include <scheduling/Scheduler.h>
 #include <memory/PhysicalMemory.h>
+#include <devices/SystemClock.h>
 #include <arch/x86_64/Tss.h>
 #include <Platform.h>
 #include <Algorithms.h>
@@ -107,11 +108,21 @@ namespace Kernel::Scheduling
         Thread* next = nullptr;
         Thread* nextBehindIndex = nullptr;
         bool behindIndex = true;
+        bool foundNext = false;
+        const uint64_t tickTimeMs = Devices::GetUptime();
+
         for (auto it = allThreads.Begin(); it != allThreads.End(); ++it)
         {
             Thread* scan = *it;
             if (scan == nullptr)
                 continue;
+
+            //again, since we're iterating here, lets do wakeup checks on any sleeping threads
+            if (scan->runState == ThreadState::Sleeping || scan->runState == ThreadState::SleepingForEvents)
+            {
+                if (scan->wakeTime <= tickTimeMs && scan->wakeTime != 0)
+                    scan->runState = ThreadState::Running;
+            }
             
             if (behindIndex)
             {
@@ -126,10 +137,13 @@ namespace Kernel::Scheduling
                 continue;
             }
 
+            if (foundNext) //anything below here is part of the search for the next thread to run
+                continue;
+            
             if (scan->runState == ThreadState::Running && !sl::EnumHasFlag(scan->flags, ThreadFlags::Executing))
             {
                 next = scan;
-                break;
+                foundNext = true;
             }
         }
 
@@ -155,12 +169,10 @@ namespace Kernel::Scheduling
         return LoadContext(next);
     }
 
-    [[noreturn]]
     void Scheduler::Yield()
     {
         //NOTE: this is hardcoded to the scheduler tick interrupt
         asm("int $0x22"); 
-        __builtin_unreachable();
     }
 
     void Scheduler::Suspend(bool suspendScheduling)

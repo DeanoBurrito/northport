@@ -1,5 +1,6 @@
 #include <scheduling/Thread.h>
 #include <scheduling/Scheduler.h>
+#include <devices/SystemClock.h>
 #include <Locks.h>
 
 namespace Kernel::Scheduling
@@ -32,10 +33,25 @@ namespace Kernel::Scheduling
     {}
 
     void Thread::Sleep(size_t millis)
-    {}
+    {
+        {
+            sl::ScopedSpinlock scopeLock(&lock);
+            runState = ThreadState::Sleeping;
+            wakeTime = Devices::GetUptime() + millis;
+        }
+        Scheduling::Scheduler::Global()->Yield();
+    }
 
     void Thread::SleepUntilEvent(size_t timeout)
     {
-        runState = ThreadState::WaitingForEvents;
+        {
+            sl::ScopedSpinlock scopeLock(&lock);
+            runState = ThreadState::SleepingForEvents;
+            if (timeout > 0)
+                wakeTime = Devices::GetUptime() + timeout;
+            else
+                wakeTime = 0;
+        }
+        Scheduling::Scheduler::Global()->Yield();
     }
 }
