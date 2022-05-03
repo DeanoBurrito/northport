@@ -358,7 +358,7 @@ Closes an open stream handle. This does not stop the stream, it only detaches it
 ## 0x45 - WriteToIpcStream
 
 ## 0x46 - CreateMailbox
-Creates an IPC mailbox with the requested flags. For each mail that is received the process will be noticified by an `IncomingMail` event.
+Creates an IPC mailbox with the requested flags. For each mail that is received the process will be notified by an `IncomingMail` event.
 
 ### Args:
 - `arg0`: pointer to a c-string with the requested mailbox name.
@@ -450,7 +450,7 @@ The most significant bit of the event type is a flag indicating whether the even
 Built in event types:
 - `0, Null`: If this is received an error has occured, and this event should be discarded.
 - `1, ExitGracefully`: The process is being requested to close and exit on it's own.
-- `2, ExitImmediately`: A process will never actually process this event, it'll kill the process upon being being received.
+- `2, ExitImmediately`: A process will never actually process this event, it'll kill the process upon being received.
 - `3, IncomingMail`: A process has received IPC mail.
 - `4, KeyEvent`: A keyboard event, forwarded from the aggregate keyboad device (all keyboards forward their inputs here).
 - `5, MouseEvent`: A mouse event, forwarded from the aggregate mouse device (all other mice forward their inputs here).
