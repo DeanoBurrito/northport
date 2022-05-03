@@ -11,6 +11,8 @@ namespace Kernel::Scheduling
         ExitGracefully = 1,
         ExitImmediatelly = 2,
         IncomingMail = 3,
+        KeyEvent = 4,
+        MouseEvent = 5,
     };
 
     struct ThreadGroupEvent

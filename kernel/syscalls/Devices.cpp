@@ -121,5 +121,13 @@ namespace Kernel::Syscalls
     void GetDeviceInfo(SyscallRegisters& regs)
     { regs.id = 1; }
 
-    
+    void EnableDeviceEvents(SyscallRegisters& regs)
+    {
+        Devices::DeviceManager::Global()->SubscribeToDeviceEvents(regs.arg0);
+    }
+
+    void DisableDeviceEvents(SyscallRegisters& regs)
+    {
+        Devices::DeviceManager::Global()->UnsubscribeFromDeviceEvents(regs.arg0);
+    }
 }

@@ -15,6 +15,8 @@ namespace WindowServer
             return;
         }
 
+        EnableDeviceEvents(1);
+        EnableDeviceEvents(2);
         Log("Window server started, listening at ipc address: \"WindowServer/Incoming\"", LogLevel::Info);
     }
 
@@ -105,9 +107,18 @@ namespace WindowServer
                     uint8_t buffer[maybeProgEvent->dataLength];
                     ProgramEvent ev = *ConsumeNextEvent({ buffer, maybeProgEvent->dataLength });
                     wm.ProcessPacket(buffer);
-
                     break;
                 }
+
+            case ProgramEventType::KeyboardEvent:
+                Log("Got keyboard input", LogLevel::Info);
+                ConsumeNextEvent({});
+                break;
+
+            case ProgramEventType::MouseEvent:
+                Log("Got mouse input", LogLevel::Info);
+                ConsumeNextEvent({});
+                break;
 
             default:
                 ConsumeNextEvent({}); //just consume the event, its not something we care about.

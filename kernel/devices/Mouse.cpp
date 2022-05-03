@@ -1,13 +1,13 @@
 #include <devices/Mouse.h>
-#include <Memory.h>
-#include <Platform.h>
+#include <scheduling/Scheduler.h>
 #include <Locks.h>
-#include <Log.h>
 
 namespace Kernel::Devices
 {
     constexpr size_t MouseBufferSize = 0x1000;
     constexpr size_t MouseEventCompactorHits = 10;
+    constexpr size_t MouseEventMaxCap = 512;
+    constexpr size_t MouseEventDefaultCap = 256;
     
     void Mouse::Deinit()
     {}
@@ -24,9 +24,33 @@ namespace Kernel::Devices
     size_t Mouse::AxisCount()
     { return 0; }
 
+    void Mouse::EventPump()
+    {
+        FlushCompactor();
+
+        using namespace Scheduling;
+        sl::Vector<ThreadGroupEvent> convEvents;
+        {
+            sl::ScopedSpinlock scopeLock(&lock);
+            convEvents.EnsureCapacity(moveEvents.Size());
+
+            for (size_t i = 0; i < moveEvents.Size(); i++)
+                convEvents.EmplaceBack(ThreadGroupEventType::MouseEvent, sizeof(sl::Vector2i), nullptr);
+            
+            moveEvents.Clear();
+        }
+
+        for (size_t i = 0; i < eventSubscribers->Size(); i++)
+        {
+            ThreadGroup* destGroup = Scheduler::Global()->GetThreadGroup(eventSubscribers->At(i));
+            destGroup->PushEvents(convEvents);
+        }
+    }
+
     void Mouse::FlushCompactor()
     {
-        moveEvents->PushBack(eventCompactor);
+        if (eventCompactor.x != 0 || eventCompactor.y != 0)
+            moveEvents.PushBack(eventCompactor);
         eventCompactor.x = eventCompactor.y = 0;
         compactorHits = 0;
     }
@@ -41,11 +65,12 @@ namespace Kernel::Devices
 
     void Mouse::Init()
     {
+        state = DeviceState::Ready;
         if (initialized)
             return;
 
         initialized = true;
-        moveEvents = new sl::CircularQueue<sl::Vector2i>(MouseBufferSize);
+        eventSubscribers = new sl::Vector<size_t>();
         sl::SpinlockRelease(&lock);
     }
 
@@ -64,25 +89,5 @@ namespace Kernel::Devices
 
         if (compactorHits >= MouseEventCompactorHits)
             FlushCompactor();
-    }
-
-    size_t Mouse::EventsPending()
-    {
-        return moveEvents->Size();
-    }
-
-    sl::Vector<sl::Vector2i> Mouse::GetEvents()
-    {
-        sl::ScopedSpinlock scopeLock(&lock);
-        FlushCompactor();
-
-        const size_t bufferSize = moveEvents->Size();
-        sl::Vector2i* buffer = new sl::Vector2i[bufferSize];
-        const size_t poppedSize = moveEvents->PopInto(buffer, bufferSize);
-        if (bufferSize != poppedSize)
-            Log("Ruh roh, Mouse::GetEvents() got 2 different sizes despite holding the lock.", LogSeverity::Warning);
-
-        //use owning ctor so buffer is freed properly
-        return sl::Vector<sl::Vector2i>(buffer, poppedSize);
     }
 }

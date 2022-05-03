@@ -72,6 +72,7 @@ namespace Kernel::Scheduling
 
         lastSelectedThread = *allThreads.Begin();
         CreateThread((size_t)CleanupThreadMain, ThreadFlags::KernelMode, idleGroup)->Start(&cleanupData);
+        CreateThread((size_t)DeviceEventPump, ThreadFlags::KernelMode, idleGroup)->Start(nullptr);
         
         Log("Scheduler initialized, waiting for next tick.", LogSeverity::Info);
     }

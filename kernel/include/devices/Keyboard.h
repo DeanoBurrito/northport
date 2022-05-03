@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdint.h>
-#include <containers/CircularQueue.h>
 #include <containers/Vector.h>
 #include <Keys.h>
 #include <devices/interfaces/GenericKeyboard.h>
@@ -15,18 +13,17 @@ namespace Kernel::Devices
     private:
         char lock;
         bool initialized;
-        sl::CircularQueue<KeyEvent>* keyEvents;
+        sl::Vector<KeyEvent> events;
 
         void Deinit() override;
         void Reset() override;
         sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
+        void EventPump() override;
 
     public:
         static Keyboard* Global();
         void Init() override;
 
         void PushKeyEvent(const KeyEvent& event);
-        size_t EventsPending();
-        sl::Vector<KeyEvent> GetEvents();
     };
 }

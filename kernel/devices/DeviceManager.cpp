@@ -4,6 +4,7 @@
 #include <devices/StivaleFramebuffer.h>
 #include <devices/Keyboard.h>
 #include <devices/Mouse.h>
+#include <scheduling/ThreadGroup.h>
 
 namespace Kernel::Devices
 {
@@ -13,6 +14,10 @@ namespace Kernel::Devices
 
     void DeviceManager::Init()
     {
+        if (initialized)
+            return;
+        initialized = true;
+        
         idAlloc = new sl::UIdAllocator();
         allDevices = new sl::Vector<GenericDevice*>();
 
@@ -59,7 +64,7 @@ namespace Kernel::Devices
         sl::SpinlockRelease(&allDevicesLock);
 
         device->Init();
-        const bool initError = (device->state == DeviceState::Error) || (device->state == DeviceState::Unknown);
+        const bool initError = device->state != DeviceState::Ready;
         Logf("New device registered: id=%u, initError=%b", LogSeverity::Verbose, device->deviceId, initError);
 
         return device->deviceId;
@@ -103,7 +108,7 @@ namespace Kernel::Devices
             dev->Deinit();
         }
 
-        Logf("Device unregistered: id=%u, shutdownError=%b", LogSeverity::Verbose, dev->deviceId, dev->state == DeviceState::Shutdown);
+        Logf("Device unregistered: id=%u, shutdownError=%b", LogSeverity::Verbose, dev->deviceId, dev->state != DeviceState::Shutdown);
 
         idAlloc->Free(dev->deviceId);
         dev->deviceId = 0;
@@ -184,5 +189,55 @@ namespace Kernel::Devices
         
         sl::ScopedSpinlock scopeLock(&primaryDevicesLock); //probably unnecessary as this will be an atomic write anyway.
         primaryDevices[(size_t)type] = *maybeDevice;
+    }
+
+    void DeviceManager::SubscribeToDeviceEvents(size_t deviceId)
+    {
+        auto maybeDevice = GetDevice(deviceId);
+        if (!maybeDevice)
+            return;
+
+        if (maybeDevice.Value()->eventSubscribers == nullptr)
+            return;
+
+        sl::ScopedSpinlock scopeLock(&maybeDevice.Value()->lock);
+        maybeDevice.Value()->eventSubscribers->PushBack(Scheduling::ThreadGroup::Current()->Id());
+    }
+
+    void DeviceManager::UnsubscribeFromDeviceEvents(size_t deviceId)
+    {
+        auto maybeDevice = GetDevice(deviceId);
+        if (!maybeDevice)
+            return;
+
+        if (maybeDevice.Value()->eventSubscribers == nullptr)
+            return;
+        
+        const size_t tgid = Scheduling::ThreadGroup::Current()->Id();
+        sl::ScopedSpinlock scopeLock(&maybeDevice.Value()->lock);
+        for (size_t i = 0; i < maybeDevice.Value()->eventSubscribers->Size(); i++)
+        {
+            if (maybeDevice.Value()->eventSubscribers->At(i) == tgid)
+            {
+                maybeDevice.Value()->eventSubscribers->Erase(i);
+                return;
+            }
+        }
+    }
+
+    void DeviceManager::EventPump()
+    {
+        if (!initialized)
+            return;
+        
+        sl::ScopedSpinlock scopeLock(&allDevicesLock);
+
+        for (size_t i = 0; i < allDevices->Size(); i++)
+        {
+            if (allDevices->At(i) == nullptr)
+                continue;
+
+            allDevices->At(i)->EventPump();
+        }
     }
 }

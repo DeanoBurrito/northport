@@ -54,6 +54,8 @@ namespace np::Syscall
     sl::Opt<DeviceInfo> GetPrimaryDeviceInfo(DeviceType type);
     sl::Opt<sl::Vector<DeviceInfo>> GetDevicesOfType(DeviceType type);
     sl::Opt<DeviceInfo> GetDeviceInfo(size_t deviceId);
+    void EnableDeviceEvents(size_t deviceId);
+    void DisableDeviceEvents(size_t deviceId);
 
     //0x3* - filesystem
     sl::Opt<FileInfo*> GetFileInfo(const sl::String& filepath); 

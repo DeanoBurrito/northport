@@ -6,6 +6,7 @@
 namespace Kernel::Scheduling
 {
     constexpr size_t SchedulerCleanupThreadFreq = 10;
+    constexpr size_t DeviceEventPumpFreq = 100;
     
     void CleanupThreadMain(void* arg)
     {
@@ -23,6 +24,16 @@ namespace Kernel::Scheduling
 
             sl::SpinlockRelease(&data->lock);
             Thread::Current()->Sleep(1000 / SchedulerCleanupThreadFreq);
+        }
+    }
+
+    void DeviceEventPump(void*)
+    {
+        while (true)
+        {
+            Devices::DeviceManager::Global()->EventPump();
+
+            Thread::Current()->Sleep(1000 / DeviceEventPumpFreq);
         }
     }
 }

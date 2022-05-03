@@ -65,6 +65,33 @@ namespace Kernel::Scheduling
         sl::ScopedSpinlock scopeLock(&lock);
 
         events.PushBack(event);
+
+        for (size_t i = 0; i < threads.Size(); i++)
+        {
+            if (threads[i]->runState == ThreadState::SleepingForEvents)
+            {
+                threads[i]->runState = ThreadState::Running;
+                threads[i]->wakeTime = 0;
+            }
+        }
+    }
+
+    void ThreadGroup::PushEvents(const sl::Vector<ThreadGroupEvent>& eventList)
+    {
+        InterruptLock intLock;
+        sl::ScopedSpinlock scopeLock(&lock);
+
+        for (size_t i = 0 ;i < eventList.Size(); i++)
+            events.EmplaceBack(eventList[i]);
+
+        for (size_t i = 0; i < threads.Size(); i++)
+        {
+            if (threads[i]->runState == ThreadState::SleepingForEvents)
+            {
+                threads[i]->runState = ThreadState::Running;
+                threads[i]->wakeTime = 0;
+            }
+        }
     }
 
     sl::Opt<ThreadGroupEvent> ThreadGroup::PeekEvent()

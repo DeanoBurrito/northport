@@ -58,7 +58,11 @@ namespace Kernel::Devices
         inline DeviceType Type() const
         { return type; }
 
+        //functions required to be implemented by derived devices
         virtual void Reset() = 0;
         virtual sl::Opt<Drivers::GenericDriver*> GetDriverInstance() = 0;
+
+        //optional functions for derivatives
+        virtual void EventPump();
     };
 }

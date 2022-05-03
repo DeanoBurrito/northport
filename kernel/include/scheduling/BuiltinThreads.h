@@ -12,4 +12,5 @@ namespace Kernel::Scheduling
     };
 
     void CleanupThreadMain(void* arg);
+    void DeviceEventPump(void* arg);
 }

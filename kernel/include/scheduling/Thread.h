@@ -10,6 +10,7 @@
 namespace Kernel::Scheduling
 {
     class Scheduler;
+    class ThreadGroup;
 
     enum class ThreadState
     {
@@ -34,6 +35,7 @@ namespace Kernel::Scheduling
     class Thread
     {
     friend Scheduler;
+    friend ThreadGroup;
     private:
         char lock;
         ThreadFlags flags;

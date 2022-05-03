@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Vectors.h>
-#include <containers/CircularQueue.h>
 #include <containers/Vector.h>
 #include <devices/interfaces/GenericMouse.h>
 
@@ -12,7 +11,7 @@ namespace Kernel::Devices
     private:
         char lock;
         bool initialized;
-        sl::CircularQueue<sl::Vector2i>* moveEvents;
+        sl::Vector<sl::Vector2i> moveEvents;
 
         sl::Vector2i eventCompactor;
         size_t compactorHits;
@@ -23,6 +22,7 @@ namespace Kernel::Devices
         size_t ButtonCount() override;
         size_t AxisCount() override;
 
+        void EventPump() override;
         void FlushCompactor();
 
     public:
@@ -30,7 +30,5 @@ namespace Kernel::Devices
         void Init() override;
 
         void PushMouseEvent(const sl::Vector2i relativeMove);
-        size_t EventsPending();
-        sl::Vector<sl::Vector2i> GetEvents();
     };
 }

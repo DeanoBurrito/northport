@@ -8,7 +8,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] ACPI runtime.
         - [ ] AML intepreter.
     - [x] Device manager.
-        - [ ] Input forwarding to userspace.
+        - [x] Input forwarding to userspace.
     - [x] Driver manager.
     - [x] Scheduler.
         - [ ] Rewrite: per-core thread queue to reduce use of the main lock.
@@ -32,6 +32,9 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] Ethernet layer.
         - [ ] ARP.
         - [ ] IPv4/IPv6.
+        - [ ] ICMP.
+        - [ ] UDP.
+        - [ ] TCP.
     - [ ] Reclaiming bootloader and boot shim memory.
 
 - [x] x86_64
@@ -65,6 +68,10 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] Intel AC97 audio.
     - [ ] Intel HD audio.
     - [ ] NVME controllers.
+    - [ ] EHCI (usb 2).
+        - [ ] OHCI.
+        - [ ] UHCI.
+    - [ ] xHCI (usb 3).
 
 - [ ] Userspace
     - [ ] Window server.

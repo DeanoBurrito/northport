@@ -64,6 +64,7 @@ namespace Kernel::Scheduling
         
         size_t PendingEventCount() const;
         void PushEvent(const ThreadGroupEvent& event);
+        void PushEvents(const sl::Vector<ThreadGroupEvent>& eventList);
         sl::Opt<ThreadGroupEvent> PeekEvent();
         sl::Opt<ThreadGroupEvent> ConsumeEvent();
     };

@@ -18,6 +18,7 @@ namespace Kernel::Devices
 
         char allDevicesLock;
         char primaryDevicesLock;
+        bool initialized = false;
 
         StivaleFramebuffer* bootloaderFramebuffer;
 
@@ -35,5 +36,9 @@ namespace Kernel::Devices
         sl::Vector<size_t> FindDevicesOfType(DeviceType type);
         sl::Opt<GenericDevice*> GetPrimaryDevice(DeviceType type) const;
         void SetPrimaryDevice(DeviceType type, size_t deviceId);
+
+        void SubscribeToDeviceEvents(size_t deviceId);
+        void UnsubscribeFromDeviceEvents(size_t deviceId);
+        void EventPump();
     };
 }
