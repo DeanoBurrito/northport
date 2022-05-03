@@ -8,48 +8,31 @@ namespace WindowServer
     {
         using namespace np::Syscall;
         keepRunning = true;
-
-        size_t streamSize = 0x1000;
-        auto maybeIpcHandle = StartIpcStream("WindowServer/Listener", IpcStreamFlags::UseSharedMemory | IpcStreamFlags::AccessPublic, streamSize, listenerBuffer.raw);
+        auto maybeIpcHandle = CreateMailbox("WindowServer/Incoming", IpcMailboxFlags::UseSharedMemory | IpcStreamFlags::AccessPublic);
         if (!maybeIpcHandle)
         {
             Log("Window server could not start ipc listener, aborting init.", LogLevel::Error);
             return;
         }
 
-        listenerIpcHandle = *maybeIpcHandle;
-        sl::memset(listenerBuffer.ptr, 0, streamSize);
-        Log("Window server started, listening at ipc address: \"WindowServer/Listener\"", LogLevel::Info);
+        Log("Window server started, listening at ipc address: \"WindowServer/Incoming\"", LogLevel::Info);
     }
 
-    void WindowManager::ProcessPacket()
+    void WindowManager::ProcessPacket(uint8_t* buffer)
     {
-        ProtocolControlBlock* controlBlock = listenerBuffer.As<ProtocolControlBlock>();
-        controlBlock->responseType = ResponseType::NotReady;
-
-        switch (controlBlock->requestType)
+        const BaseRequest* req = sl::NativePtr(buffer).As<const BaseRequest>();
+        switch (req->type)
         {
         case RequestType::CreateWindow:
-            CreateWindow(listenerBuffer.As<CreateWindowRequest>(sizeof(ProtocolControlBlock)), controlBlock);
-            break;
-        case RequestType::DestroyWindow:
-            DestroyWindow(listenerBuffer.As<DestroyWindowRequest>(sizeof(ProtocolControlBlock)), controlBlock);
-            break;
-        case RequestType::MoveWindow:
-            break;
-        case RequestType::ResizeWindow:
-            break;
-        case RequestType::InvalidateContents:
+            CreateWindow(static_cast<const CreateWindowRequest*>(req));
             break;
         default:
-            controlBlock->responseType = ResponseType::RequestNotSupported;
+            np::Syscall::Log("WindowServer received unknown request type, dropping packet.", np::Syscall::LogLevel::Error);
+            break;
         }
-
-        //clear request type so we dont keep processing the same request
-        controlBlock->requestType = RequestType::NotReady;
     }
 
-    void WindowManager::CreateWindow(const CreateWindowRequest* request, ProtocolControlBlock* control)
+    void WindowManager::CreateWindow(const CreateWindowRequest* request)
     {
         WindowDescriptor* window = new WindowDescriptor;
         window->windowId = (size_t)-1;
@@ -84,31 +67,53 @@ namespace WindowServer
             );
         Log(formattedString, np::Syscall::LogLevel::Info);
 
-        sl::NativePtr response((size_t)request);
-        *response.As<size_t>() = window->windowId;
-        
-        control->responseType = ResponseType::Ready;
+        //send window id to requested mailbox
     }
 
-    void WindowManager::DestroyWindow(const DestroyWindowRequest* request, ProtocolControlBlock* control)
-    {}
+    // // void WindowManager::DestroyWindow(const DestroyWindowRequest* request, ProtocolControlBlock* control)
+    // // {}
 
-    void WindowManager::MoveWindow(const MoveWindowRequest* request, ProtocolControlBlock* control)
-    {}
+    // // void WindowManager::MoveWindow(const MoveWindowRequest* request, ProtocolControlBlock* control)
+    // // {}
 
-    void WindowManager::ResizeWindow(const ResizeWindowRequest* request, ProtocolControlBlock* control)
-    {}
+    // // void WindowManager::ResizeWindow(const ResizeWindowRequest* request, ProtocolControlBlock* control)
+    // // {}
 
     void WindowManager::Run()
     {
         WindowManager wm;
         while (wm.keepRunning)
         {
+            //SleepUntilEvent(0);
+            
+            using namespace np::Syscall;
+            auto maybeProgEvent = PeekNextEvent();
+            
             //TODO: would be nice to sleep on events, something like a high-level mwait
-            while (sl::MemRead<uint64_t>(wm.listenerBuffer) == 0);
-            wm.ProcessPacket();
+            //NOTE: we are using mailboxes now, so we'll be using SleepUntilEvents(0)
+            if (!maybeProgEvent)
+                continue;
+            
+            switch (maybeProgEvent->type)
+            {
+            case ProgramEventType::ExitGracefully:
+                Log("WindowServer requested to exit, doing as requested ...", LogLevel::Warning);
+                return;
 
-            // wm.ProcessPacket();
+            case ProgramEventType::IncomingMail:
+                {
+                    uint8_t buffer[maybeProgEvent->dataLength];
+                    ProgramEvent ev = *ConsumeNextEvent({ buffer, maybeProgEvent->dataLength });
+                    wm.ProcessPacket(buffer);
+
+                    break;
+                }
+
+            default:
+                ConsumeNextEvent({}); //just consume the event, its not something we care about.
+                break;
+            }
+
             wm.compositor.DrawAll(wm.windows);
         }
     }

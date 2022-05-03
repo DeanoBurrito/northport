@@ -9,34 +9,29 @@ namespace WindowServer
 {    
     enum class RequestType : uint64_t
     {
-        NotReady = 0,
-        CreateWindow = 1,
-        DestroyWindow = 2,
-        MoveWindow = 3,
-        ResizeWindow = 4,
-        InvalidateContents = 5,
+        CreateWindow = 0,
+        DestroyWindow = 1,
+        MoveWindow = 2,
+        ResizeWindow = 3,
+        InvalidateContents = 4,
     };
 
-    enum class ResponseType : uint64_t
+    struct BaseRequest
     {
-        NotReady = 0,
-        RequestNotSupported = 1,
-        Ready = 2,
+        const RequestType type;
+
+        BaseRequest(RequestType t) : type(t) {}
     };
 
-    struct ProtocolControlBlock
-    {
-        RequestType requestType;
-        ResponseType responseType;
-    };
-
-    struct CreateWindowRequest
+    struct CreateWindowRequest : public BaseRequest
     {
         sl::Vector2u size;
         sl::Vector2u position;
         uint64_t monitor;
         WindowFlags flags;
         char titleStr[];
+
+        CreateWindowRequest() : BaseRequest(RequestType::CreateWindow) {}
     };
 
     struct DestroyWindowRequest

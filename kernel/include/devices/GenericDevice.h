@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <Optional.h>
+#include <containers/Vector.h>
 #include <drivers/GenericDriver.h>
 
 namespace Kernel::Devices
@@ -39,6 +40,8 @@ namespace Kernel::Devices
         DeviceState state = DeviceState::Unknown;
         DeviceType type;
         char lock;
+        //nullptr if device does not public events
+        sl::Vector<size_t>* eventSubscribers = nullptr;
 
         virtual void Init() = 0;
         virtual void Deinit() = 0;
@@ -52,11 +55,10 @@ namespace Kernel::Devices
         inline size_t GetId() const
         { return deviceId; }
 
-        inline DeviceType DeviceType() const
+        inline DeviceType Type() const
         { return type; }
 
         virtual void Reset() = 0;
         virtual sl::Opt<Drivers::GenericDriver*> GetDriverInstance() = 0;
-
     };
 }

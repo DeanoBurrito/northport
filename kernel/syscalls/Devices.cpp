@@ -12,7 +12,7 @@ if (!maybeDevice) \
     regs.id = (uint64_t)np::Syscall::DeviceError::InvalidDeviceId; \
     return; \
 } \
-if (maybeDevice.Value()->DeviceType() != DeviceType::expectedType) \
+if (maybeDevice.Value()->Type() != DeviceType::expectedType) \
 { \
     regs.id = (uint64_t)np::Syscall::DeviceError::MismatchedDeviceType; \
     return; \
@@ -121,9 +121,5 @@ namespace Kernel::Syscalls
     void GetDeviceInfo(SyscallRegisters& regs)
     { regs.id = 1; }
 
-    void EnableDeviceEvents(SyscallRegisters& regs)
-    { regs.id = 1; }
-
-    void DisableDeviceEvents(SyscallRegisters& regs)
-    { regs.id = 1; }
+    
 }

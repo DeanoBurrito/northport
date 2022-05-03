@@ -55,7 +55,6 @@ namespace Kernel::Scheduling
         void Init(size_t baseProcessorId);
         void AddProcessor(size_t id);
         StoredRegisters* Tick(StoredRegisters* current);
-        [[noreturn]]
         void Yield();
         void Suspend(bool suspendScheduling = true);
 

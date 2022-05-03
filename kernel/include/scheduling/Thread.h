@@ -17,7 +17,8 @@ namespace Kernel::Scheduling
         PendingCleanup,
         Running,
         Waiting,
-        WaitingForEvents,
+        Sleeping,
+        SleepingForEvents,
     };
 
     enum class ThreadFlags
@@ -48,6 +49,7 @@ namespace Kernel::Scheduling
         Memory::VMRange kernelStackRange;
 
         sl::String name;
+        size_t wakeTime;
 
         Thread() = default;
         

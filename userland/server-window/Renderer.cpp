@@ -23,6 +23,8 @@ namespace WindowServer
                 image = np::Graphics::DecodeQoi(fileBuffer, maybeFileInfo.Value()->fileSize);
             else
                 Log("requested file has incorrect file header.", LogLevel::Error);
+
+            CloseFile(*maybeFileHandle);
         }
     }
     
