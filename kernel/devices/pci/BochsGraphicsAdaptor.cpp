@@ -208,6 +208,8 @@ namespace Kernel::Devices::Pci
             DeviceManager::Global()->RegisterDevice(framebuffer);
             DeviceManager::Global()->SetPrimaryDevice(DeviceType::GraphicsFramebuffer, framebuffer->GetId());
         }
+
+        state = DeviceState::Ready;
     }
 
     void BochsGraphicsAdaptor::Deinit()

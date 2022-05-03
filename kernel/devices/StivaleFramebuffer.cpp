@@ -41,7 +41,9 @@ namespace Kernel::Devices
     }
 
     void StivaleFramebuffer::Deinit()
-    { return; }
+    { 
+        state = DeviceState::Shutdown;
+    }
 
     void StivaleFramebuffer::Reset()
     { return; }
