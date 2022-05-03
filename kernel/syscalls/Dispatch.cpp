@@ -76,6 +76,14 @@ namespace Kernel::Syscalls
             case SyscallId::GetDeviceInfo:
                 GetDeviceInfo(syscallRegs);
                 break;
+            case SyscallId::EnableDeviceEvents:
+                EnableDeviceEvents(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
+            case SyscallId::DisableDeviceEvents:
+                DisableDeviceEvents(syscallRegs);
+                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
 
             case SyscallId::GetFileInfo:
                 GetFileInfo(syscallRegs);

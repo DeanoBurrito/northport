@@ -76,12 +76,29 @@ namespace Kernel::Devices
     }
 #undef RETURN_IF_CASE
 
-    Keyboard globalKeyboardInstance;
+    void Keyboard::Deinit()
+    {}
+
+    void Keyboard::Reset()
+    {}
+
+    sl::Opt<Drivers::GenericDriver*> Keyboard::GetDriverInstance()
+    { return {}; }
+
+    Keyboard* globalKeyboardInstance = nullptr;
     Keyboard* Keyboard::Global()
-    { return &globalKeyboardInstance; }
+    { 
+        if (globalKeyboardInstance == nullptr)
+            globalKeyboardInstance = new Keyboard();
+        return globalKeyboardInstance;
+    }
 
     void Keyboard::Init()
     {
+        if (initialized)
+            return;
+        
+        initialized = true;
         keyEvents = new sl::CircularQueue<KeyEvent>(KEYBOARD_BUFFER_SIZE);
         sl::SpinlockRelease(&lock);
     }
@@ -92,20 +109,20 @@ namespace Kernel::Devices
         keyEvents->PushBack(event);
     }
 
-    size_t Keyboard::KeyEventsPending()
+    size_t Keyboard::EventsPending()
     {
         return keyEvents->Size();
     }
 
-    sl::Vector<KeyEvent> Keyboard::GetKeyEvents()
+    sl::Vector<KeyEvent> Keyboard::GetEvents()
     {
         sl::ScopedSpinlock scopeLock(&lock);
 
-        size_t bufferSize = keyEvents->Size();
+        const size_t bufferSize = keyEvents->Size();
         KeyEvent* buffer = new KeyEvent[bufferSize];
-        size_t poppedSize = keyEvents->PopInto(buffer, bufferSize);
+        const size_t poppedSize = keyEvents->PopInto(buffer, bufferSize);
         if (bufferSize != poppedSize)
-            Log("Keyboard::GetKeyEvents() got 2 different buffer sizes despite scope lock.", LogSeverity::Warning);
+            Log("Keyboard::GetEvents() got 2 different buffer sizes despite scope lock.", LogSeverity::Warning);
 
         return sl::Vector<KeyEvent>(buffer, poppedSize); //use the size of the data that was returned, not what we allocated.
     }

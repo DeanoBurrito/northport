@@ -9,7 +9,6 @@
 #include <devices/IoApic.h>
 #include <devices/8254Pit.h>
 #include <devices/SystemClock.h>
-#include <devices/Keyboard.h>
 #include <scheduling/Scheduler.h>
 #include <filesystem/Vfs.h>
 #include <arch/x86_64/Gdt.h>
@@ -118,7 +117,6 @@ namespace Kernel
         SetApicForUptime(false); //use PIT for uptime until first apic is initialized
         SetPitMasked(false);
 
-        Keyboard::Global()->Init();
         Filesystem::VFS::Global()->Init();
         Memory::IpcManager::Global()->Init();
 

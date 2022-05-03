@@ -51,9 +51,9 @@ namespace np::Syscall
     MappedMemoryDetails ModifyMemoryFlags(NativeUInt base, size_t bytesLength, MemoryMapFlags flags);
 
     //0x2* - devices
-    sl::Opt<BasicDeviceInfo> GetPrimaryDeviceInfo(DeviceType type);
-    sl::Opt<sl::Vector<BasicDeviceInfo>> GetDevicesOfType(DeviceType type);
-    sl::Opt<DetailedDeviceInfo*> GetDeviceInfo(size_t deviceId);
+    sl::Opt<DeviceInfo> GetPrimaryDeviceInfo(DeviceType type);
+    sl::Opt<sl::Vector<DeviceInfo>> GetDevicesOfType(DeviceType type);
+    sl::Opt<DeviceInfo> GetDeviceInfo(size_t deviceId);
 
     //0x3* - filesystem
     sl::Opt<FileInfo*> GetFileInfo(const sl::String& filepath); 

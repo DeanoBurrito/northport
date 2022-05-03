@@ -14,6 +14,7 @@ namespace Kernel::Devices
         sl::UIdAllocator* idAlloc;
         sl::Vector<GenericDevice*>* allDevices;
         GenericDevice* primaryDevices[(size_t)DeviceType::EnumCount];
+        size_t aggregateIds[(size_t)DeviceType::EnumCount];
 
         char allDevicesLock;
         char primaryDevicesLock;
@@ -30,6 +31,7 @@ namespace Kernel::Devices
         sl::Opt<GenericDevice*> GetDevice(size_t deviceId);
         void ResetDevice(size_t deviceId);
 
+        size_t GetAggregateId(DeviceType type) const;
         sl::Vector<size_t> FindDevicesOfType(DeviceType type);
         sl::Opt<GenericDevice*> GetPrimaryDevice(DeviceType type) const;
         void SetPrimaryDevice(DeviceType type, size_t deviceId);
