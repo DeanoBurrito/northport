@@ -258,6 +258,7 @@ access_allowed:
         
         //the process will be expected addresses in *it's* address space, not ours.
         ownerGroup->PushEvent({ Scheduling::ThreadGroupEventType::IncomingMail, (uint32_t)data.length, (void*)streamDetails });
+        CloseStream(destMailbox);
         return true;
     }
 

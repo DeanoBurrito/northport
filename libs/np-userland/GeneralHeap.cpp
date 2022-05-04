@@ -66,6 +66,11 @@ namespace np::Userland
             Syscall::Log("Could not expand heap, mapping failed.", Syscall::LogLevel::Error);
             return;
         }
+        else if (result.length == 0)
+        {
+            Syscall::Log("Attempted to expand user heap: expaned into already mapped region?", Syscall::LogLevel::Error);
+            return;
+        }
 
         tail->next = sl::NativePtr(endOfHeapAddr).As<GeneralHeapNode>();
         GeneralHeapNode* next = tail->next;
@@ -74,6 +79,7 @@ namespace np::Userland
         next->prev = tail;
         next->free = true;
         next->length = requiredBytes - sizeof(GeneralHeapNode);
+        tail = next;
     }
 
     GeneralHeap defaultGeneralHeap;
@@ -115,8 +121,6 @@ namespace np::Userland
             if (!scan->free)
             {
                 scan = scan->next;
-                if (scan == tail)
-                    Expand(size);
                 continue;
             }
 
@@ -137,13 +141,15 @@ namespace np::Userland
                 return sl::NativePtr(scan).As<void>(sizeof(GeneralHeapNode));
             }
 
-            if (scan == tail)
-                Expand(size);
-
             scan = scan->next;
         }
-
-        return nullptr;
+        
+        Expand(size);
+        scan = tail;
+        scan->Split(size, *this);
+        scan->free = false;
+        bytesUsed += size + sizeof(GeneralHeapNode);
+        return sl::NativePtr(scan).As<void>(sizeof(GeneralHeapNode));
     }
 
     void GeneralHeap::Free(void* ptr)
