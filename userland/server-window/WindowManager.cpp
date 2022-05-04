@@ -1,6 +1,7 @@
 #include <WindowManager.h>
 #include <SyscallFunctions.h>
 #include <Format.h>
+#include <Maths.h>
 
 namespace WindowServer
 {
@@ -14,6 +15,8 @@ namespace WindowServer
             Log("Window server could not start ipc listener, aborting init.", LogLevel::Error);
             return;
         }
+        listenerIpcHandle = *maybeIpcHandle;
+        damageRects.PushBack({0, 0, compositor.Size().x, compositor.Size().y});
 
         EnableDeviceEvents(1);
         EnableDeviceEvents(2);
@@ -56,18 +59,21 @@ namespace WindowServer
         }
 
         window->monitorIndex = request->monitor;
-        window->flags = request->flags;
+        window->controlFlags = request->flags;
         window->size = request->size;
         window->position = request->position;
         window->title = request->titleStr;
+        window->statusFlags = WindowStatusFlags::None;
 
         const string formattedString = sl::FormatToString("New window created: w=%u, h=%u, x=%u, y=%u, flags=0x%x, title=%s", 0, 
             window->size.x, window->size.y,
             window->position.x, window->position.y,
-            (size_t)window->flags,
+            (size_t)window->controlFlags,
             window->title.C_Str()
             );
         Log(formattedString, np::Syscall::LogLevel::Info);
+
+        damageRects.PushBack(window->BorderRect());
 
         //send window id to requested mailbox
     }
@@ -86,13 +92,11 @@ namespace WindowServer
         WindowManager wm;
         while (wm.keepRunning)
         {
-            //SleepUntilEvent(0);
+            //SleepUntilEvent(0); TODO:
             
             using namespace np::Syscall;
             auto maybeProgEvent = PeekNextEvent();
             
-            //TODO: would be nice to sleep on events, something like a high-level mwait
-            //NOTE: we are using mailboxes now, so we'll be using SleepUntilEvents(0)
             if (!maybeProgEvent)
                 continue;
             
@@ -105,7 +109,7 @@ namespace WindowServer
             case ProgramEventType::IncomingMail:
                 {
                     uint8_t buffer[maybeProgEvent->dataLength];
-                    ProgramEvent ev = *ConsumeNextEvent({ buffer, maybeProgEvent->dataLength });
+                    ConsumeNextEvent({ buffer, maybeProgEvent->dataLength });
                     wm.ProcessPacket(buffer);
                     break;
                 }
@@ -116,16 +120,28 @@ namespace WindowServer
                 break;
 
             case ProgramEventType::MouseEvent:
-                Log("Got mouse input", LogLevel::Info);
-                ConsumeNextEvent({});
+            {
+                sl::Vector2i cursorOffset;
+                ConsumeNextEvent({ &cursorOffset, sizeof(cursorOffset)});
+
+                wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
+                wm.cursorPos.x = sl::clamp<long>(wm.cursorPos.x + cursorOffset.x, 0, wm.compositor.Size().x);
+                wm.cursorPos.y = sl::clamp<long>(wm.cursorPos.y -cursorOffset.y, 0, wm.compositor.Size().y);
+                wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
+
                 break;
+            }
 
             default:
                 ConsumeNextEvent({}); //just consume the event, its not something we care about.
                 break;
             }
 
-            wm.compositor.DrawAll(wm.windows);
+            if (!wm.damageRects.Empty())
+            {
+                wm.compositor.Redraw(wm.damageRects, wm.windows, { (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y });
+                wm.damageRects.Clear();
+            }
         }
     }
 }

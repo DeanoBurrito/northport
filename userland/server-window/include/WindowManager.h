@@ -11,10 +11,12 @@ namespace WindowServer
     {
     private:
         Renderer compositor;
-        sl::Vector<WindowDescriptor*> windows;
         bool keepRunning;
-
         size_t listenerIpcHandle;
+
+        sl::Vector<WindowDescriptor*> windows;
+        sl::Vector<sl::UIntRect> damageRects;
+        sl::Vector2i cursorPos;
 
         WindowManager();
         void ProcessPacket(uint8_t* buffer);

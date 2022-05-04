@@ -31,52 +31,67 @@ namespace WindowServer
     void Renderer::DrawWindow(WindowDescriptor* window)
     {
         using namespace np::Graphics;
-        const size_t titlebarHeight = 32;
-        const size_t borderThickness = 4;
         
         //first draw the titlebar + decorations
-        outputFb->DrawRect({ window->position.x - borderThickness, window->position.y - titlebarHeight, window->size.x + (2 * borderThickness), titlebarHeight}, Colours::DarkGrey, true);
-        const size_t titleTop = window->position.y - titlebarHeight;
-        const size_t titleLeft = window->position.x + window->size.x + borderThickness;
-        outputFb->DrawImage(closeImage, { titleLeft - closeImage.Size().x, titleTop });
-        outputFb->DrawImage(maxImage, { titleLeft - closeImage.Size().x - maxImage.Size().x, titleTop });
-        outputFb->DrawImage(minImage, { titleLeft - closeImage.Size().x - maxImage.Size().x - minImage.Size().x, titleTop });
+        mainFb.DrawRect({ window->position.x - windowBorderWidth, window->position.y - windowTitleHeight, window->size.x + (2 * windowBorderWidth), windowTitleHeight}, Colours::DarkGrey, true);
+        const size_t titleTop = window->position.y - windowTitleHeight;
+        const size_t titleLeft = window->position.x + window->size.x + windowBorderWidth;
+        mainFb.DrawImage(closeImage, { titleLeft - closeImage.Size().x, titleTop });
+        mainFb.DrawImage(maxImage, { titleLeft - closeImage.Size().x - maxImage.Size().x, titleTop });
+        mainFb.DrawImage(minImage, { titleLeft - closeImage.Size().x - maxImage.Size().x - minImage.Size().x, titleTop });
 
         //next draw the window frame
-        outputFb->DrawRect({ window->position.x - borderThickness, window->position.y, borderThickness, window->size.y}, Colours::DarkGrey, true);
-        outputFb->DrawRect({ window->position.x + window->size.x, window->position.y, borderThickness, window->size.y}, Colours::DarkGrey, true);
-        outputFb->DrawRect({ window->position.x - borderThickness, window->position.y + window->size.y, window->size.x + (2 * borderThickness), borderThickness}, Colours::DarkGrey, true);
+        mainFb.DrawRect({ window->position.x - windowBorderWidth, window->position.y, windowBorderWidth, window->size.y}, Colours::DarkGrey, true);
+        mainFb.DrawRect({ window->position.x + window->size.x, window->position.y, windowBorderWidth, window->size.y}, Colours::DarkGrey, true);
+        mainFb.DrawRect({ window->position.x - windowBorderWidth, window->position.y + window->size.y, window->size.x + (2 * windowBorderWidth), windowBorderWidth}, Colours::DarkGrey, true);
 
         //then the background colour
-        outputFb->DrawRect({ window->position.x, window->position.y, window->size.x, window->size.y }, Colours::DarkCyan, true);
-    }
-
-    void Renderer::DrawCursor(sl::Vector2u where)
-    {
-
+        mainFb.DrawRect({ window->position.x, window->position.y, window->size.x, window->size.y }, Colours::DarkCyan, true);
     }
     
     Renderer::Renderer()
     {
-        outputFb = np::Graphics::LinearFramebuffer::Screen();
-        outputFb->Clear(np::Graphics::Colours::Black);
+        screenFb = np::Graphics::LinearFramebuffer::Screen();
+        mainFb = np::Graphics::LinearFramebuffer::Create(screenFb->Size().x, screenFb->Size().y, 32, false, screenFb->GetBufferFormat());
+        mainFb.Clear(np::Graphics::Colours::Black);
+        screenFb->Clear(np::Graphics::Colours::Yellow);
 
-        LoadFile("/initdisk/icons/cursor-default.qoi", cursorImage);
+        // LoadFile("/initdisk/icons/cursor-default.qoi", cursorImage);
+        LoadFile("/initdisk/icons/window-close.qoi", cursorImage);
         LoadFile("/initdisk/icons/window-close.qoi", closeImage);
         LoadFile("/initdisk/icons/window-min.qoi", minImage);
         LoadFile("/initdisk/icons/window-max.qoi", maxImage);
     }
 
-    void Renderer::DrawAll(const sl::Vector<WindowDescriptor*> windows)
+    void Renderer::Redraw(const sl::Vector<sl::UIntRect> damageRects, const sl::Vector<WindowDescriptor*> windows, sl::Vector2u cursor)
     {
-        for (size_t i = 0; i < windows.Size(); i++)
+        const sl::UIntRect cursorRect = { cursor.x, cursor.y, CursorSize().x, CursorSize().y };
+        
+        for (size_t rectIndex = 0; rectIndex < damageRects.Size(); rectIndex++)
         {
-            if (windows[i] == nullptr)
-                continue;
+            mainFb.DrawRect(damageRects[rectIndex], np::Graphics::Colours::Black, true);
 
-            DrawWindow(windows[i]);
+            for (size_t winIndex = 0; winIndex < windows.Size(); winIndex++)
+            {
+                WindowDescriptor* window = windows[winIndex];
+                if (sl::EnumHasFlag(window->statusFlags, WindowStatusFlags::Minimized))
+                    continue;
+                
+                if (damageRects[rectIndex].Intersects(window->BorderRect()))
+                    DrawWindow(window);
+            }
+
+            if (damageRects[rectIndex].Intersects(cursorRect))
+                mainFb.DrawImage(cursorImage, cursor);
+
+            mainFb.SwapBuffers();
+            screenFb->CopyFromFront(mainFb, { damageRects[rectIndex].left, damageRects[rectIndex].top }, damageRects[rectIndex] );
         }
-
-        DrawCursor({100, 100});
     }
+
+    sl::Vector2u Renderer::Size() const
+    { return mainFb.Size(); }
+
+    sl::Vector2u Renderer::CursorSize() const
+    { return cursorImage.Size(); }
 }

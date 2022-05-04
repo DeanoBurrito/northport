@@ -28,7 +28,7 @@ namespace WindowServer
         sl::Vector2u size;
         sl::Vector2u position;
         uint64_t monitor;
-        WindowFlags flags;
+        WindowControlFlags flags;
         char titleStr[];
 
         CreateWindowRequest() : BaseRequest(RequestType::CreateWindow) {}

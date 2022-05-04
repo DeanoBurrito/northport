@@ -13,9 +13,8 @@ namespace WindowServer
     class Renderer
     {
     private:
-        sl::Vector<sl::UIntRect> invalidRects;
-        np::Graphics::LinearFramebuffer* outputFb;
-        bool renderDebugOverlay;
+        np::Graphics::LinearFramebuffer* screenFb;
+        np::Graphics::LinearFramebuffer mainFb;
 
         GenericImage cursorImage;
         GenericImage closeImage;
@@ -24,11 +23,12 @@ namespace WindowServer
 
         void LoadFile(const sl::String& name, GenericImage& image);
         void DrawWindow(WindowDescriptor* window);
-        void DrawCursor(sl::Vector2u where);
 
     public:
         Renderer();
 
-        void DrawAll(const sl::Vector<WindowDescriptor*> windows);
+        void Redraw(const sl::Vector<sl::UIntRect> damageRects, const sl::Vector<WindowDescriptor*> windows, sl::Vector2u cursor);
+        sl::Vector2u Size() const;
+        sl::Vector2u CursorSize() const;
     };
 }

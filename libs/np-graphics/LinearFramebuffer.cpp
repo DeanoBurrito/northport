@@ -52,8 +52,12 @@ namespace np::Graphics
         fb.bitsPerPixel = bpp;
         fb.bufferFormat = format;
         fb.stride = width * (bpp / 8);
-        fb.backBuffer.ptr = new uint32_t[width * height];
+        
         fb.frontBuffer.ptr = new uint32_t[width * height];
+        if (doubleBuffered)
+            fb.backBuffer.ptr = new uint32_t[width * height];
+        else
+            fb.backBuffer = fb.frontBuffer;
         
         sl::SpinlockRelease(&fb.lock);
         return fb;
@@ -63,7 +67,7 @@ namespace np::Graphics
     {
         LinearFramebuffer fb;
         
-        fb.doubleBuffered = frontBuffer.raw == backBuffer.raw;
+        fb.doubleBuffered = (frontBuffer.raw == backBuffer.raw);
         fb.frontBuffer = frontBuffer;
         fb.backBuffer = backBuffer;
         fb.width = width;
@@ -82,8 +86,9 @@ namespace np::Graphics
         
         if (owningBuffer)
         {
-            delete[] backBuffer.As<uint8_t>();
             delete[] frontBuffer.As<uint8_t>();
+            if (doubleBuffered)
+                delete[] backBuffer.As<uint8_t>();
         }
         width = height = stride = bitsPerPixel = 0;
     }
@@ -98,7 +103,10 @@ namespace np::Graphics
     }
 
     void LinearFramebuffer::SwapBuffers()
-    {}
+    {
+        sl::ScopedSpinlock scopeLock(&lock);
+        sl::Swap(frontBuffer.ptr, backBuffer.ptr);
+    }
 
     void LinearFramebuffer::SetBufferFormat(const ColourFormat& format)
     { 
@@ -112,6 +120,30 @@ namespace np::Graphics
     sl::Vector2u LinearFramebuffer::Size() const
     {
         return { width, height };
+    }
+
+    void LinearFramebuffer::CopyFromFront(LinearFramebuffer& source, sl::Vector2u destPos, sl::UIntRect srcRect)
+    {
+        //TODO: would be nice to have more granular locking. One lock per buffer so we can still render to back buffer while front buffer is locked.
+        //TODO: we assume both buffers are using the same colour format here
+        sl::ScopedSpinlock sourceLock(&source.lock);
+        sl::ScopedSpinlock localLock(&lock);
+
+        srcRect.left = sl::clamp(srcRect.left, 0ul, source.width);
+        srcRect.top = sl::clamp(srcRect.top, 0ul, source.height);
+        srcRect.width = sl::min(srcRect.width, source.width - srcRect.left);
+        srcRect.width = sl::min<unsigned long>(srcRect.width, width - destPos.x);
+        srcRect.height = sl::min(srcRect.height, source.height - srcRect.top);
+        srcRect.height = sl::min<unsigned long>(srcRect.height, height - destPos.y);
+
+        const size_t srcBytesPerPixel = source.bitsPerPixel / 8;
+
+        for (size_t i = 0; i < srcRect.height; i++)
+            sl::memcopy(
+                source.frontBuffer.As<void>((srcRect.top + i) * source.stride + (srcRect.left * srcBytesPerPixel)), 
+                backBuffer.As<void>((i + destPos.y) * stride + (destPos.x * bitsPerPixel / 8)), 
+                srcRect.width * srcBytesPerPixel
+                );
     }
 
     char* LinearFramebuffer::GetLock()
@@ -250,6 +282,9 @@ namespace np::Graphics
         for (size_t y = 0; y < image.Size().y; y++)
         {
             const size_t fbY = where.y + y;
+            if (fbY >= height)
+                break;
+            
             for (size_t x = 0; x < image.Size().x; x++)
             {
                 if ((image.Data()[y * image.Size().x + x] >> 24) < 0xFF)
@@ -262,9 +297,6 @@ namespace np::Graphics
                 const size_t offset = (fbY * stride) + (fbX * bitsPerPixel / 8);
                 sl::MemWrite<uint32_t>(backBuffer.raw + offset, image.Data()[y * image.Size().x + x]);
             }
-
-            if (fbY >= height)
-                break;
         }
     }
 
