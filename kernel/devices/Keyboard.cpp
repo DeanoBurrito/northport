@@ -114,7 +114,7 @@ namespace Kernel::Devices
 
             for (size_t i = 0; i < events.Size(); i++)
             {
-                convEvents.EmplaceBack(ThreadGroupEventType::KeyEvent, sizeof(KeyEvent), nullptr);
+                convEvents.EmplaceBack(ThreadGroupEventType::KeyEvent, sizeof(KeyEvent), events[i].Pack());
 
                 //to trigger a crash on ctrl+alt+shift+c
                 if (events[i].id == KeyIdentity::C && events[i].tags == KeyTags::Pressed

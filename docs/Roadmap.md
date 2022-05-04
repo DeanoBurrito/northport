@@ -75,6 +75,8 @@ Listed below is the tentative list of supported platforms and devices, as well a
 
 - [ ] Userspace
     - [ ] Window server.
+        - [x] Damage-region based rendering.
+        - [ ] Multi-monitor support.
     - [ ] Shell.
     - [ ] Terminal emulator.
     - [ ] ELF library (move existing stuff from syslib).

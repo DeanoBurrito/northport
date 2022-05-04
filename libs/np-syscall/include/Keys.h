@@ -204,4 +204,21 @@ struct KeyEvent
     KeyEvent() = default;
     KeyEvent(KeyIdentity identity, KeyModFlags mod, KeyTags tag) : id(identity), mods(mod), tags(tag), inputDeviceId(0)
     {}
+
+    [[gnu::always_inline]] inline
+    static KeyEvent Unpack(uint64_t value)
+    {
+        KeyEvent ev;
+        ev.id = (KeyIdentity)(value & 0xFFFF'FFFF);
+        ev.mods = (KeyModFlags)((value >> 32) & 0xFFFF);
+        ev.tags = (KeyTags)((value >> 48) & 0xFF);
+        ev.inputDeviceId = value >> 56;
+        return ev;
+    }
+
+    [[gnu::always_inline]] inline
+    uint64_t Pack() const
+    {
+        return (uint64_t)id | ((uint64_t)mods << 32) | ((uint64_t)tags << 48) | ((uint64_t)inputDeviceId << 56);
+    }
 };

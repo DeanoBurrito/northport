@@ -4,7 +4,6 @@
 
 namespace Kernel::Devices
 {
-    constexpr size_t MouseBufferSize = 0x1000;
     constexpr size_t MouseEventCompactorHits = 10;
     constexpr size_t MouseEventMaxCap = 512;
     constexpr size_t MouseEventDefaultCap = 256;
@@ -35,7 +34,10 @@ namespace Kernel::Devices
             convEvents.EnsureCapacity(moveEvents.Size());
 
             for (size_t i = 0; i < moveEvents.Size(); i++)
-                convEvents.EmplaceBack(ThreadGroupEventType::MouseEvent, sizeof(sl::Vector2i), nullptr);
+            {
+                const uint64_t packed = (uint32_t)moveEvents[i].x | (uint64_t)moveEvents[i].y << 32;
+                convEvents.EmplaceBack(ThreadGroupEventType::MouseEvent, sizeof(sl::Vector2i), packed);
+            }
             
             moveEvents.Clear();
         }
@@ -51,8 +53,12 @@ namespace Kernel::Devices
     {
         if (eventCompactor.x != 0 || eventCompactor.y != 0)
             moveEvents.PushBack(eventCompactor);
+        
         eventCompactor.x = eventCompactor.y = 0;
         compactorHits = 0;
+
+        if (moveEvents.Size() >= MouseEventMaxCap)
+            moveEvents.Erase(0, MouseEventMaxCap / 4);
     }
 
     Mouse* globalMouseInstance = nullptr;
@@ -71,6 +77,7 @@ namespace Kernel::Devices
 
         initialized = true;
         eventSubscribers = new sl::Vector<size_t>();
+        moveEvents.EnsureCapacity(MouseEventDefaultCap);
         sl::SpinlockRelease(&lock);
     }
 

@@ -3,6 +3,7 @@
 #include <memory/IpcMailbox.h>
 #include <memory/IpcManager.h>
 #include <SyscallEnums.h>
+#include <Vectors.h>
 #include <Locks.h>
 
 namespace Kernel::Syscalls
@@ -36,13 +37,28 @@ namespace Kernel::Syscalls
             return;
         }
 
-        //some event types require custom processing
+        //some event types require custom processing:
+        /*
+            One particular thing I've done for events that return a small (< 8 bytes) of data is to put it in the address field of the event.
+            Meaning the length is still how much data there is, but the address field *is* the data. Means no need to worry about managing
+            a buffer elsewhere. This works great for key and mouse inputs.
+        */
         using Kernel::Scheduling::ThreadGroupEventType;
         switch (maybeEvent->type) 
         {
         case ThreadGroupEventType::IncomingMail:
             //the event data is the address of the mailbox control/ipc stream
             Memory::IpcManager::Global()->ReceiveMail(maybeEvent->address.As<Memory::IpcStream>(), { regs.arg0, maybeEvent->length});
+            break;
+
+        case ThreadGroupEventType::KeyEvent:
+            if (regs.arg0 > 0)
+                *sl::NativePtr(regs.arg0).As<uint64_t>() = maybeEvent->address.raw;
+            break;
+
+        case ThreadGroupEventType::MouseEvent:
+            if (regs.arg0 > 0)
+                *sl::NativePtr(regs.arg0).As<sl::Vector2i>() = { (int32_t)maybeEvent->address.raw, (int32_t)(maybeEvent->address.raw >> 32)};
             break;
 
         default:
