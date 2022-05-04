@@ -1,6 +1,7 @@
 #include <devices/Keyboard.h>
 #include <scheduling/Scheduler.h>
 #include <Locks.h>
+#include <Panic.h>
 
 namespace Kernel::Devices
 { 
@@ -112,7 +113,16 @@ namespace Kernel::Devices
             convEvents.EnsureCapacity(events.Size());
 
             for (size_t i = 0; i < events.Size(); i++)
+            {
                 convEvents.EmplaceBack(ThreadGroupEventType::KeyEvent, sizeof(KeyEvent), nullptr);
+
+                //to trigger a crash on ctrl+alt+shift+c
+                if (events[i].id == KeyIdentity::C && events[i].tags == KeyTags::Pressed
+                    && sl::EnumHasFlag(events[i].mods, KeyModFlags::BothControlsMask)
+                    && sl::EnumHasFlag(events[i].mods, KeyModFlags::BothAltsMask)
+                    && sl::EnumHasFlag(events[i].mods, KeyModFlags::BothShiftsMask))
+                        Panic("Called via key combination ctrl+shift+alt+c.");
+            }
             
             events.Clear();
         }

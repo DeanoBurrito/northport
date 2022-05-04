@@ -48,6 +48,7 @@ namespace np::Syscall
 
     enum class MemoryMapFlags : NativeUInt
     {
+        None = 0,
         Writable = (1 << 0),
         Executable = (1 << 1),
         UserVisible = (1 << 2),

@@ -174,28 +174,28 @@ namespace Kernel::Devices::Ps2
         switch (id)
         {
         case KeyIdentity::LeftShift:
-            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftShift, released);
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftShift, !released);
             break;
         case KeyIdentity::RightShift:
-            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightShift, released);
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightShift, !released);
             break;
         case KeyIdentity::LeftAlt:
-            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftAlt, released);
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftAlt, !released);
             break;
         case KeyIdentity::RightAlt:
-            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightAlt, released);
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightAlt, !released);
             break;
         case KeyIdentity::LeftControl:
-            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftControl, released);
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftControl, !released);
             break;
         case KeyIdentity::RightControl:
-            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightControl, released);
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightControl, !released);
             break;
         case KeyIdentity::LeftGui:
-            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftGui, released);
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::LeftGui, !released);
             break;
         case KeyIdentity::RightGui:
-            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightGui, released);
+            currentModifiers = sl::EnumSetFlagState(currentModifiers, KeyModFlags::RightGui, !released);
             break;
         default:
             return;

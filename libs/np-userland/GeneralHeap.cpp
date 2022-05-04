@@ -60,7 +60,12 @@ namespace np::Userland
         const size_t requiredBytes = ((sizeof(GeneralHeapNode) + requiredLength) / heapExpandRequestSize + 1) * heapExpandRequestSize;
         uintptr_t endOfHeapAddr = (uintptr_t)tail + tail->length + sizeof(GeneralHeapNode);
 
-        //TODO: map more memory where we need it, and update the above variables with that info
+        auto result = Syscall::MapMemory(endOfHeapAddr, requiredBytes * heapExpandFactor, Syscall::MemoryMapFlags::Writable);
+        if (result.base == 0)
+        {
+            Syscall::Log("Could not expand heap, mapping failed.", Syscall::LogLevel::Error);
+            return;
+        }
 
         tail->next = sl::NativePtr(endOfHeapAddr).As<GeneralHeapNode>();
         GeneralHeapNode* next = tail->next;
