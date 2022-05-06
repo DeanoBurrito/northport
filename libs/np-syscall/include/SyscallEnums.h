@@ -44,6 +44,9 @@ namespace np::Syscall
         PeekNextEvent = 0x60,
         ConsumeNextEvent = 0x61,
         GetPendingEventCount = 0x62,
+
+        Sleep = 0x70,
+        Exit = 0x71,
     };
 
     enum class MemoryMapFlags : NativeUInt

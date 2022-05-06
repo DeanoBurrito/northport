@@ -77,4 +77,9 @@ namespace Kernel::Syscalls
     void PeekNextEvent(SyscallRegisters& regs);
     void ConsumeNextEvent(SyscallRegisters& regs);
     void GetPendingEventCount(SyscallRegisters& regs);
+
+    //0x7* - local thread control
+    void Sleep(SyscallRegisters& regs);
+    [[noreturn]]
+    void Exit(SyscallRegisters& regs);
 }

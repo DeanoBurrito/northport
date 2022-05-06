@@ -86,4 +86,9 @@ namespace np::Syscall
     sl::Opt<ProgramEvent> PeekNextEvent();
     sl::Opt<ProgramEvent> ConsumeNextEvent(sl::BufferView buffer);
     size_t GetPendingEventCount();
+
+    //0x7* - local thread control
+    void Sleep(size_t timeout, bool wakeOnEvents);
+    [[noreturn]]
+    void Exit(unsigned long exitCode);
 }

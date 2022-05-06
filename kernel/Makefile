@@ -26,7 +26,7 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp
 	scheduling/Thread.cpp scheduling/ThreadGroup.cpp scheduling/Scheduler.cpp scheduling/BuiltinThreads.cpp \
 	sanitizers/UBSanitizer.cpp \
 	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp syscalls/Filesystem.cpp syscalls/Ipc.cpp \
-	syscalls/Utilities.cpp syscalls/ProgramEvents.cpp \
+	syscalls/Utilities.cpp syscalls/ProgramEvents.cpp syscalls/LocalThreadControl.cpp \
 	filesystem/Vfs.cpp filesystem/VfsNode.cpp filesystem/FilesystemDriver.cpp filesystem/InitDiskFSDriver.cpp \
 	filesystem/FilePath.cpp
 	

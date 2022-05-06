@@ -494,3 +494,37 @@ Returns the number of unprocessed events.
 
 ### Notes:
 - Not sure why I implemented this, not much you can do with it.
+
+
+----
+# 0x7* - Local Thread Control
+Functions for controlling how the local (currently running) thread is handled. For interacting with remote threads and programs see group 0x8 (remote program control).
+
+## 0x70 - Sleep
+Does as you expect, prevents the current thread from running until the requested time has passed. Should not be used for time-sensitive things, as the thread may not be re-scheduled until slightly after the timeout window, depending on when the schdeduler next ticks.
+
+### Args:
+- `arg0`: Timeout. Measured in milliseconds, how long until this function returns.
+- `arg1`: Wake on event. If non-zero, enables this thread to woken when the process receives an event, regardless of sleep time remaining.
+- All other args ignored.
+
+### Returns:
+- Nothing
+
+### Notes:
+- A timeout of 0 is treated as 'no timeout'. If wake-on-events is not set, the thread is effectively dead until another thread chooses to wake it.
+- If wake-on-event is set, and no events are received within the timeout window, the function will still return. It is up to the programmer to determine what to do here, or use a timeout of `0`.
+
+## 0x72 - Exit
+Causes the current thread to exit, and be destroyed. If this thread is the last thread in a process, the owning process is destroyed as well.
+
+### Args:
+- `arg0`: Exit code. 0 is the default, and is used to indicate exiting successfully. All other values are treated as errors.
+- All other args ignored.
+
+### Notes:
+- For hopefully obvious reasons, this function will never return.
+
+----
+# 0x8* - Remote Thread and Program Control
+Functions for controlling how remote threads in the same process, or child processes behave. These functions cannot affect threads that this process has not started.

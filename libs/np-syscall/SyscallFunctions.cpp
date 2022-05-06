@@ -236,4 +236,18 @@ namespace np::Syscall
             return data.arg0;
         return 0;
     }
+
+    void Sleep(size_t timeout, bool wakeOnEvents)
+    {
+        SyscallData data((uint64_t)SyscallId::Sleep, timeout, wakeOnEvents ? 1 : 0, 0, 0);
+        DoSyscall(&data);
+    }
+
+    [[noreturn]]
+    void Exit(unsigned long exitCode)
+    {
+        SyscallData data((uint64_t)SyscallId::Exit, exitCode, 0, 0, 0);
+        DoSyscall(&data);
+        __builtin_unreachable();
+    }
 }

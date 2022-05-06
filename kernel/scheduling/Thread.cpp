@@ -23,10 +23,18 @@ namespace Kernel::Scheduling
 
     void Thread::Exit()
     {
-        runState = ThreadState::PendingCleanup;
-        Scheduler::Global()->RemoveThread(this->id);
         //NOTE: after calling exit() this thread's instance is actually deleted, we cannot use any instance variables or use the id for anything.
-        Scheduler::Global()->Yield();
+        bool localExit = false;
+        {
+            InterruptLock intLock;
+            runState = ThreadState::PendingCleanup;
+            localExit = (Thread::Current() == this);
+            Scheduler::Global()->RemoveThread(this->id);
+        }
+
+        //we only want to reschedule if we are exiting the current thread
+        if (localExit)
+            Scheduler::Global()->Yield();
     }
 
     void Thread::Kill()
@@ -35,16 +43,22 @@ namespace Kernel::Scheduling
     void Thread::Sleep(size_t millis)
     {
         {
+            InterruptLock intLock;
             sl::ScopedSpinlock scopeLock(&lock);
             runState = ThreadState::Sleeping;
-            wakeTime = Devices::GetUptime() + millis;
+            if (millis > 0)
+                wakeTime = Devices::GetUptime() + millis;
+            else
+                wakeTime = 0;
         }
+
         Scheduling::Scheduler::Global()->Yield();
     }
 
     void Thread::SleepUntilEvent(size_t timeout)
     {
         {
+            InterruptLock intLock;
             sl::ScopedSpinlock scopeLock(&lock);
             runState = ThreadState::SleepingForEvents;
             if (timeout > 0)
@@ -52,6 +66,7 @@ namespace Kernel::Scheduling
             else
                 wakeTime = 0;
         }
+
         Scheduling::Scheduler::Global()->Yield();
     }
 }
