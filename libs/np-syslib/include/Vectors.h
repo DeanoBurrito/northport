@@ -16,16 +16,74 @@ namespace sl
 
         constexpr Vector2(T x, T y) : x(x), y(y)
         {}
-
-        constexpr bool operator==(const Vector2& other)
-        { return x == other.x && y == other.y; }
         
-        constexpr bool operator!=(const Vector2& other)
-        { return x != other.x || y != other.y; }
+        constexpr Vector2& operator+=(const Vector2& b)
+        {
+            x += b.x;
+            y += b.y;
+            return *this;
+        }
+
+        constexpr Vector2& operator-=(const Vector2& b)
+        {
+            x -= b.x;
+            y -= b.y;
+            return *this;
+        }
+
+        constexpr Vector2& operator*=(const Vector2& b)
+        {
+            x *= b.x;
+            y *= b.y;
+            return *this;
+        }
+
+        constexpr Vector2& operator/=(const Vector2& b)
+        {
+            x /= b.x;
+            y /= b.y;
+            return *this;
+        }
+
+        constexpr T operator[](unsigned index)
+        {
+            switch (index)
+            {
+                case 0: return x;
+                case 1: return y;
+                case 'x': return x; //very cursed, but I really like it.
+                case 'y': return y; //I impress myself sometimes hahaha.
+                default: return 0;
+            }
+        }
     };
 
-    using Vector2i = Vector2<long long>;
-    using Vector2u = Vector2<unsigned long long>;
+    template<typename T>
+    constexpr bool operator==(const Vector2<T> a, const Vector2<T>& b)
+    { return a.x == b.x && a.y == b.y; }
+    
+    template<typename T>
+    constexpr bool operator!=(const Vector2<T> a, const Vector2<T>& b)
+    { return a.x != b.x || a.y != b.y; }
+
+    template<typename T>
+    constexpr Vector2<T> operator+(const Vector2<T> a, const Vector2<T>& b)
+    { return { a.x + b.x , a.y + b.y }; }
+
+    template<typename T>
+    constexpr Vector2<T> operator-(const Vector2<T> a, const Vector2<T>& b)
+    { return { a.x - b.x , a.y - b.y }; }
+
+    template<typename T>
+    constexpr Vector2<T> operator*(const Vector2<T> a, const Vector2<T>& b)
+    { return { a.x * b.x , a.y * b.y }; }
+
+    template<typename T>
+    constexpr Vector2<T> operator/(const Vector2<T> a, const Vector2<T>& b)
+    { return { a.x / b.x , a.y / b.y }; }
+
+    using Vector2i = Vector2<long>;
+    using Vector2u = Vector2<unsigned long>;
     using Vector2f = Vector2<float>;
     using Vector2d = Vector2<double>;
 
@@ -50,10 +108,80 @@ namespace sl
 
         constexpr bool operator!=(const Vector3& other)
         { return x != other.x || y != other.y || z != other.z; }
+
+        constexpr Vector3& operator+=(const Vector3& b)
+        {
+            x += b.x;
+            y += b.y;
+            z += b.z;
+            return *this;
+        }
+
+        constexpr Vector3& operator-=(const Vector3& b)
+        {
+            x -= b.x;
+            y -= b.y;
+            z -= b.z;
+            return *this;
+        }
+
+        constexpr Vector3& operator*=(const Vector3& b)
+        {
+            x *= b.x;
+            y *= b.y;
+            z *= b.z;
+            return *this;
+        }
+
+        constexpr Vector3& operator/=(const Vector3& b)
+        {
+            x /= b.x;
+            y /= b.y;
+            z /= b.z;
+            return *this;
+        }
+
+        constexpr T operator[](unsigned index)
+        {
+            switch (index)
+            {
+                case 0: return x;
+                case 1: return y;
+                case 2: return z;
+                case 'x': return x;
+                case 'y': return y;
+                case 'z': return z;
+                default: return 0;
+            }
+        }
     };
 
-    using Vector3i = Vector3<long long>;
-    using Vector3u = Vector3<unsigned long long>;
+    template<typename T>
+    constexpr bool operator==(const Vector3<T> a, const Vector3<T>& b)
+    { return a.x == b.x && a.y == b.y && a.z == b.z; }
+    
+    template<typename T>
+    constexpr bool operator!=(const Vector3<T> a, const Vector3<T>& b)
+    { return a.x != b.x || a.y != b.y || a.z != b.z; }
+
+    template<typename T>
+    constexpr Vector3<T> operator+(const Vector3<T> a, const Vector3<T>& b)
+    { return { a.x + b.x , a.y + b.y, a.z + b.z }; }
+
+    template<typename T>
+    constexpr Vector3<T> operator-(const Vector3<T> a, const Vector3<T>& b)
+    { return { a.x - b.x , a.y - b.y, a.z - b.z }; }
+
+    template<typename T>
+    constexpr Vector3<T> operator*(const Vector3<T> a, const Vector3<T>& b)
+    { return { a.x * b.x , a.y * b.y, a.z * b.z }; }
+
+    template<typename T>
+    constexpr Vector3<T> operator/(const Vector3<T> a, const Vector3<T>& b)
+    { return { a.x / b.x , a.y / b.y, a.z / b.z }; }
+
+    using Vector3i = Vector3<long>;
+    using Vector3u = Vector3<unsigned long>;
     using Vector3f = Vector3<float>;
     using Vector3d = Vector3<double>;
 
@@ -79,10 +207,62 @@ namespace sl
 
         constexpr bool operator!=(const Vector4& other)
         { return x != other.x || y != other.y || z != other.z || w != other.w; }
+
+        constexpr Vector4& operator+=(const Vector4& b)
+        {
+            x += b.x;
+            y += b.y;
+            z += b.z;
+            w += b.w;
+            return *this;
+        }
+
+        constexpr Vector4& operator-=(const Vector4& b)
+        {
+            x -= b.x;
+            y -= b.y;
+            z -= b.z;
+            w -= b.w;
+            return *this;
+        }
+
+        constexpr Vector4& operator*=(const Vector4& b)
+        {
+            x *= b.x;
+            y *= b.y;
+            z *= b.z;
+            w *= b.w;
+            return *this;
+        }
+
+        constexpr Vector4& operator/=(const Vector4& b)
+        {
+            x /= b.x;
+            y /= b.y;
+            z /= b.z;
+            w /= b.w;
+            return *this;
+        }
+
+        constexpr T operator[](unsigned index)
+        {
+            switch (index)
+            {
+                case 0: return x;
+                case 1: return y;
+                case 2: return z;
+                case 3: return w;
+                case 'x': return x;
+                case 'y': return y;
+                case 'z': return z;
+                case 'w': return w;
+                default: return 0;
+            }
+        }
     };
 
-    using Vector4i = Vector4<long long>;
-    using Vector4u = Vector4<unsigned long long>;
+    using Vector4i = Vector4<long>;
+    using Vector4u = Vector4<unsigned long>;
     using Vector4f = Vector4<float>;
     using Vector4d = Vector4<double>;
 }
