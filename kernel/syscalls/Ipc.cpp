@@ -170,8 +170,9 @@ namespace Kernel::Syscalls
             return;
         }
 
+        const bool leaveOpenHint = (regs.arg3 != 0);
         sl::String mailboxName(sl::NativePtr(regs.arg0).As<const char>());
-        if (!IpcManager::Global()->PostMail(mailboxName, {regs.arg1, regs.arg2}))
+        if (!IpcManager::Global()->PostMail(mailboxName, {regs.arg1, regs.arg2}, leaveOpenHint))
         {
             regs.id = (uint64_t)np::Syscall::IpcError::MailDeliveryFailed;
             return;

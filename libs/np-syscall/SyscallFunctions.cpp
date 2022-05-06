@@ -179,9 +179,9 @@ namespace np::Syscall
         DoSyscall(&data);
     }
 
-    bool PostToMailbox(const sl::String& name, sl::BufferView mail)
+    bool PostToMailbox(const sl::String& name, sl::BufferView mail, bool leaveOpenHint)
     {
-        SyscallData data((uint64_t)SyscallId::PostToMailbox, (uint64_t)name.C_Str(), mail.base.raw, mail.length, 0);
+        SyscallData data((uint64_t)SyscallId::PostToMailbox, (uint64_t)name.C_Str(), mail.base.raw, mail.length, leaveOpenHint ? 1 : 0);
         DoSyscall(&data);
 
         return data.id == SyscallSuccess;

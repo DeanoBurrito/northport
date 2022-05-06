@@ -276,6 +276,8 @@ They accept the following values:
 
 Some IPC functions will take a flags argument, which is a bitfield defined as:
 - `bit 0`: Use shared physical memory. Also known as 'zero copy' as both processes are directly writing to the same underlying memory, the kernel is never involved.
+- `bit 1`: reserved, will be ignored if set.
+- `bit 2`: supresses user access to the shared memory. Mostly intended for internal purposes, but might have use in drivers.
 - `bits 60 to 63 (inclusive)`: reserved for the access modifiers (see above).
 
 For stream-based IPC, the server can start or stop a listener, while a number of clients can open or close connections to said server. Sending data is done using the read/write ipc syscalls. 
@@ -393,6 +395,7 @@ Sends mail to a remote mailbox. Will return an error if mail could not be delive
 - `arg0`: pointer to a c-string containing the mailbox name.
 - `arg1`: base address of the mail to send.
 - `arg2`: length in bytes of mail to send.
+- `arg3`: a hint to that further messages will be sent to this mailbox, saves a lot of overhead when sending a lot of messages. Set to non-zero to enable.
 - all other args ignored.
 
 ### Returns:

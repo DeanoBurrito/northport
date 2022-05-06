@@ -14,6 +14,8 @@ namespace Kernel::Memory
     {
         None = 0,
         UseSharedMemory = (1 << 0),
+        KeepMailboxOpen = (1 << 1),
+        SuppressUserAccess = (1 << 2),
     };
 
     enum class IpcAccessFlags : uint8_t
@@ -60,7 +62,7 @@ namespace Kernel::Memory
 
         sl::Opt<IpcStream*> CreateMailbox(const sl::String& mailbox, IpcStreamFlags flags, IpcAccessFlags accessFlags);
         void DestroyMailbox(const sl::String& mailbox);
-        bool PostMail(const sl::String& destMailbox, const sl::BufferView data);
+        bool PostMail(const sl::String& destMailbox, const sl::BufferView data, bool keepOpenHint);
         bool MailAvailable(const sl::String& mailbox);
         void ReceiveMail(IpcStream* hostStream, sl::BufferView receiveInto);
     };

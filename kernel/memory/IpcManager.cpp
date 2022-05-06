@@ -126,7 +126,8 @@ namespace Kernel::Memory
                 continue;
             
             MemoryMapFlags flags = MemoryMapFlags::SystemRegion | MemoryMapFlags::AllowWrites;
-            if (!sl::EnumHasFlag(Scheduling::Thread::Current()->Flags(), Scheduling::ThreadFlags::KernelMode))
+            if (!sl::EnumHasFlag(Scheduling::Thread::Current()->Flags(), Scheduling::ThreadFlags::KernelMode)
+                && !sl::EnumHasFlag(flags, IpcStreamFlags::SuppressUserAccess))
                 flags = flags | MemoryMapFlags::UserAccessible;
             
             IpcStream* existingStream = streams->At(i);
@@ -184,6 +185,12 @@ access_allowed:
 
     sl::Opt<IpcStream*> IpcManager::CreateMailbox(const sl::String& mailbox, IpcStreamFlags flags, IpcAccessFlags accessFlags)
     {
+        if (!sl::EnumHasFlag(flags, IpcStreamFlags::UseSharedMemory))
+        {
+            Log("IPC mailboxes must use shared memory.", LogSeverity::Error);
+            return {};
+        }
+
         auto maybeStream = StartStream(mailbox, MailboxDefaultSize, flags, accessFlags);
         if (!maybeStream)
             return {};
@@ -200,17 +207,7 @@ access_allowed:
         //TODO: implement DestroyMailbox()
     }
 
-    /*  TODO: decide on a policy here.
-    /   Opening/Closing a stream is an expensive operation, especially for something small like sending a message.
-    /   For the moment I'm going to leave the stream open, but for a process that only makes a few requests this is kind of annoying.
-    /   It's another linked process accessing shared memory that dosnt need to be.
-    /   For now I've chosen the speedy approach of opening the stream once,
-    /   and then checking if its exists on subsequent sends. I would like to come up with a better solution in the future though.
-    /
-    /   Perhaps we could include a flag in the syscall that hints as whether this is a single call,
-    /   or part of a series of multiple calls that are occuring. "KeepAlive"?
-    */
-    bool IpcManager::PostMail(const sl::String& destMailbox, const sl::BufferView data)
+    bool IpcManager::PostMail(const sl::String& destMailbox, const sl::BufferView data, bool keepOpenHint)
     {
         auto maybeDetails = GetStreamDetails(destMailbox);
         if (!maybeDetails)
@@ -221,7 +218,7 @@ access_allowed:
             return false; //no lookback support for now.
 
         //TODO: we're forcing use of shared memory, but not when the mailbox is created.
-        auto maybeMailbox = OpenStream(destMailbox, IpcStreamFlags::UseSharedMemory);
+        auto maybeMailbox = OpenStream(destMailbox, sl::EnumSetFlag(IpcStreamFlags::UseSharedMemory, IpcStreamFlags::SuppressUserAccess));
         if (!maybeMailbox)
             return false;
 
@@ -258,7 +255,11 @@ access_allowed:
         
         //the process will be expected addresses in *it's* address space, not ours.
         ownerGroup->PushEvent({ Scheduling::ThreadGroupEventType::IncomingMail, (uint32_t)data.length, (void*)streamDetails });
-        CloseStream(destMailbox);
+
+        //close the stream if user thinks that's wise
+        if (!keepOpenHint)
+            CloseStream(destMailbox);
+        
         return true;
     }
 
