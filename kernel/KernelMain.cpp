@@ -82,6 +82,75 @@ namespace Kernel
         Log("Memory init complete.", LogSeverity::Info);
     }
 
+    //this function does nothing interesting, just prints info I find neat. Useful for remote debugging.
+    void PrintBootAndMemoryInfo()
+    {
+        Log("Bootloader provided info:", LogSeverity::Verbose);
+
+        Logf("Bootloader used: %s, %s", LogSeverity::Verbose, stivale2Struct->bootloader_brand, stivale2Struct->bootloader_version);
+
+        stivale2_struct_tag_memmap* mmap = FindStivaleTag<stivale2_struct_tag_memmap*>(STIVALE2_STRUCT_TAG_MEMMAP_ID);
+        Logf("Memory regions: %lu", LogSeverity::Verbose, mmap->entries);
+        for (size_t i = 0; i < mmap->entries; i++)
+        {
+            const stivale2_mmap_entry* entry = &mmap->memmap[i];
+            const char* typeString = "unknown";
+
+            switch (entry->type)
+            {
+                case STIVALE2_MMAP_USABLE: 
+                    typeString = "usable"; break;
+                case STIVALE2_MMAP_RESERVED: 
+                    typeString = "reserved"; break;
+                case STIVALE2_MMAP_ACPI_RECLAIMABLE: 
+                    typeString = "acpi reclaim"; break;
+                case STIVALE2_MMAP_ACPI_NVS: 
+                    typeString = "acpi nvs"; break;
+                case STIVALE2_MMAP_BAD_MEMORY: 
+                    typeString = "bad"; break;
+                case STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE: 
+                    typeString = "bootloader reclaim"; break;
+                case STIVALE2_MMAP_KERNEL_AND_MODULES: 
+                    typeString = "kernel/modules"; break;
+                case STIVALE2_MMAP_FRAMEBUFFER: 
+                    typeString = "boot framebuffer"; break;
+            }
+
+            Logf("region %u: base=0x%0lx, length=0x%0lx, type=%s", LogSeverity::Verbose, i, entry->base, entry->length, typeString);
+        }
+
+        stivale2_struct_tag_framebuffer* stivaleFb = reinterpret_cast<stivale2_struct_tag_framebuffer*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID));
+        if (stivaleFb != nullptr)
+        {
+            Logf("Bootloader framebuffer: w=%u, h=%u, stride=0x%x, bpp=%u", LogSeverity::Verbose, 
+                stivaleFb->framebuffer_width, stivaleFb->framebuffer_height, stivaleFb->framebuffer_pitch, stivaleFb->framebuffer_bpp);
+            Logf("Framebuffer colour format: r=%u bits << %u, g=%u bits << %u, b=%u bits << %u", LogSeverity::Verbose,
+                stivaleFb->red_mask_size, stivaleFb->red_mask_shift,
+                stivaleFb->green_mask_size, stivaleFb->green_mask_shift,
+                stivaleFb->blue_mask_size, stivaleFb->blue_mask_shift);
+        }
+        else
+            Log("No bootloader framebuffer detected.", LogSeverity::Verbose);
+
+        stivale2_struct_tag_edid* edid = reinterpret_cast<stivale2_struct_tag_edid*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_EDID_ID));
+        if (edid != nullptr)
+            Log("EDID available.", LogSeverity::Verbose);
+
+        stivale2_struct_tag_epoch* epoch = reinterpret_cast<stivale2_struct_tag_epoch*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_EPOCH_ID));
+        if (epoch != nullptr)
+            Logf("Epoch at boot: %lu", LogSeverity::Verbose, epoch->epoch);
+
+        stivale2_struct_tag_firmware* firmware = reinterpret_cast<stivale2_struct_tag_firmware*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_FIRMWARE_ID));
+        if (firmware != nullptr)
+            Logf("Booted by BIOS (false means UEFI): %b", LogSeverity::Verbose, firmware->flags);
+        
+        stivale2_struct_tag_smbios* smbios = reinterpret_cast<stivale2_struct_tag_smbios*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_SMBIOS_ID));
+        if (smbios != nullptr)
+            Logf("SM BIOS entry points: 32bit=0x%x, 64bit=0x%lx", LogSeverity::Verbose, smbios->smbios_entry_32, smbios->smbios_entry_64);
+
+        Log("End of bootloader info.", LogSeverity::Verbose);
+    }
+
     void InitPlatform()
     {
         using namespace Devices;
@@ -242,6 +311,7 @@ extern "C"
 
         InitMemory();
         LoggingInitFull();
+        PrintBootAndMemoryInfo(); //stuff we couldnt print until memory was setup
 
         InitPlatform();
         SetupAllCores();
