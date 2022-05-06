@@ -13,4 +13,9 @@ namespace np::Userland
         //VMM::AllocateRange() works (a bump allocator based on the highest address so far)
         np::Syscall::MapMemory(heapGuardAddr, 0x1000, np::Syscall::MemoryMapFlags::None);
     }
+
+    void ExitUserlandApp(unsigned long exitCode)
+    {
+        np::Syscall::Exit(exitCode);
+    }
 }

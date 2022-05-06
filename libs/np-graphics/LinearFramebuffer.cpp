@@ -132,9 +132,9 @@ namespace np::Graphics
         srcRect.left = sl::clamp(srcRect.left, 0ul, source.width);
         srcRect.top = sl::clamp(srcRect.top, 0ul, source.height);
         srcRect.width = sl::min(srcRect.width, source.width - srcRect.left);
-        srcRect.width = sl::min<unsigned long>(srcRect.width, width - destPos.x);
+        srcRect.width = sl::min(srcRect.width, width - destPos.x);
         srcRect.height = sl::min(srcRect.height, source.height - srcRect.top);
-        srcRect.height = sl::min<unsigned long>(srcRect.height, height - destPos.y);
+        srcRect.height = sl::min(srcRect.height, height - destPos.y);
 
         const size_t srcBytesPerPixel = source.bitsPerPixel / 8;
 
@@ -255,8 +255,8 @@ namespace np::Graphics
 
     void LinearFramebuffer::DrawRect(sl::UIntRect rect, Colour colour, bool filled, FramebufferNoLockType)
     {
-        sl::Vector2u topLeft { rect.left, rect.top };
-        sl::Vector2u size { rect.width, rect.height };
+        sl::Vector2u topLeft = rect.TopLeft();
+        sl::Vector2u size = rect.Size();
         
         if (filled)
         {
