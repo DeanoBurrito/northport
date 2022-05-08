@@ -47,7 +47,7 @@ namespace Kernel::Memory
 
     void PhysicalMemoryAllocator::Init(stivale2_struct_tag_memmap* mmap)
     {
-        stats.usedPages = stats.totalPages = 0;
+        stats.usedPages = stats.totalPages = stats.kernelPages = stats.reclaimablePages = stats.reservedBytes = 0;
         
         //determine how much space is needed to manage this memory, and find the biggest region
         allocBufferSize = 0;
@@ -99,6 +99,23 @@ namespace Kernel::Memory
                 prevRegion = region;
 
                 stats.totalPages += region->freePages;
+            }
+
+            //nothing interesting happening here, just keeping track of stuff for fun stats
+            switch (mmap->memmap[i].type)
+            {
+            case STIVALE2_MMAP_RESERVED:
+            case STIVALE2_MMAP_BAD_MEMORY:
+                stats.reservedBytes += mmap->memmap[i].length;
+                break;
+            case STIVALE2_MMAP_ACPI_RECLAIMABLE: //acpi reclaimable dosnt need to be page-aligned, but often is.
+            case STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE:
+                stats.reclaimablePages += mmap->memmap[i].length / PAGE_FRAME_SIZE;
+                break;
+            case STIVALE2_MMAP_KERNEL_AND_MODULES:
+                stats.kernelPages += mmap->memmap[i].length / PAGE_FRAME_SIZE;
+                stats.totalPages += mmap->memmap[i].length / PAGE_FRAME_SIZE; //these are placed in ram, so they're part of the total, even if we can never allocate them
+                break;
             }
         }
 

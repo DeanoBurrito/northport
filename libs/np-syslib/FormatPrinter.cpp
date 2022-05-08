@@ -201,6 +201,16 @@ namespace sl
             token.specifier = FormatSpecifier::CUSTOM_Bool;
             inputPos++;
             break;
+        
+        case 'U':
+            token.specifier = FormatSpecifier::CUSTOM_Units;
+            inputPos++;
+            break;
+
+
+        default: //just consume something, even if its an unknown, to avoid infinite loops.
+            inputPos++;
+            break;
         }
 
         return token;
@@ -340,6 +350,50 @@ namespace sl
                 OUTPUT_SIMPLE_TOKEN(Literals[literalOffset], LiteralSizes[literalOffset]);
                 break;
             }
+
+        case FormatSpecifier::CUSTOM_Units:
+            {
+                size_t unitIndex = 0;
+                uint64_t source;
+                switch (token.lengthMod)
+                {
+                case FormatLengthMod::Long:
+                    source = va_arg(args, unsigned long);
+                    break;
+                case FormatLengthMod::LongLong:
+                    source = va_arg(args, unsigned long long);
+                    break;
+                default:
+                    source = va_arg(args, unsigned int);
+                    break;
+                }
+
+                uint64_t minorUnits = 0;
+                uint64_t majorUnits = 0;
+                while (source > 0)
+                {
+                    unitIndex++;
+                    minorUnits = majorUnits;
+                    majorUnits = source;
+                    source /= KB;
+                }
+                if (unitIndex > 0)
+                    unitIndex--;
+
+                string strValue = StringCulture::current->ToString(majorUnits, Base::DECIMAL);
+                outputPos += strValue.Size();
+                bufferLengths.PushBack(strValue.Size());
+                outputBuffers.Append(strValue.DetachBuffer());
+                OUTPUT_SIMPLE_TOKEN(Literals[6], LiteralSizes[6]);
+
+                strValue = StringCulture::current->ToString(minorUnits % KB, Base::DECIMAL);
+                outputPos += strValue.Size();
+                bufferLengths.PushBack(strValue.Size());
+                outputBuffers.Append(strValue.DetachBuffer());
+
+                //output the unit as a simple token
+                OUTPUT_SIMPLE_TOKEN(Literals[7 + unitIndex], LiteralSizes[7 + unitIndex]);
+            }
         }
     }
 
@@ -408,6 +462,6 @@ namespace sl
 
     void FormatPrinter::OutputToBuffer(char* buffer, size_t bufferLength)
     {
-
+        //TODO: an easy sunday morning job...
     }
 }

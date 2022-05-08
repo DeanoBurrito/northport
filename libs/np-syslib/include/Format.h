@@ -36,6 +36,7 @@ C-Style printf format spec:
 
 Northport specific:
         - 'b'/'B' outputs true/TRUE or false/FALSE depending on whether a number is non-zero.
+        - 'U' outputs in binary units (KB/MB/GB/TB) and will scale and add the appropriate prefix. Precision is number of digits after the decimal place.
 */
 
 /*

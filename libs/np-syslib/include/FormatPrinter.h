@@ -60,6 +60,7 @@ namespace sl
         CustomImplementation,
 
         CUSTOM_Bool,
+        CUSTOM_Units,
     };
 
     struct FormatToken
@@ -91,12 +92,14 @@ namespace sl
         constexpr static inline const char* Literals[] =
         {
             "false", "true", "FALSE", "TRUE",
-            "UnsupportedFormat", "%"
+            "UnsupportedFormat", "%", ".",
+            "B", "KB", "MB", "GB", "TB", "PT",
         };
         constexpr static inline size_t LiteralSizes[] =
         {
             5, 4, 5, 4,
-            17, 1
+            17, 1, 1,
+            1, 2, 2, 2, 2, 2,
         };
 
         const char* inputBuffer;

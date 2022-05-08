@@ -151,10 +151,11 @@ namespace Kernel
 
         Log("End of bootloader info.", LogSeverity::Verbose);
 
-        auto pmmStats = Memory::PMM::Global()->GetMemoryStats();
-        Logf("Physical memory detected: %U (%u bytes)", LogSeverity::Info, pmmStats.totalPages * pmmStats.pageSizeInBytes);
-        Logf("Currently in use: %U/%U", LogSeverity::Verbose, pmmStats.usedPages * pmmStats.pageSizeInBytes, pmmStats.totalPages * pmmStats.pageSizeInBytes);
-        Logf("Kernel heap base: 0x%lx", LogSeverity::Verbose, Memory::KernelHeap::Global()->GetBaseAddress());
+        auto pmmStats = Memory::PMM::Global()->GetStats();
+        Logf("Physical memory detected: %U (%u bytes)", LogSeverity::Info, pmmStats.totalPages * pmmStats.pageSizeInBytes, pmmStats.totalPages * pmmStats.pageSizeInBytes);
+        Logf("Breakdown of physical memory: %U/%U in use, %U reserved, %U reclaimable, %U in use by kernel.", LogSeverity::Verbose, 
+            pmmStats.usedPages * pmmStats.pageSizeInBytes, pmmStats.totalPages * pmmStats.pageSizeInBytes,
+            pmmStats.reservedBytes, pmmStats.reclaimablePages * pmmStats.pageSizeInBytes, pmmStats.kernelPages * pmmStats.pageSizeInBytes);
 
         Log("End of memory info.", LogSeverity::Verbose);
     }

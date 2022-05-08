@@ -24,6 +24,10 @@ namespace Kernel::Memory
 
         size_t totalPages;
         size_t usedPages;
+        //the following 3 are not guarenteed to be overlapping, and are more suggestions.
+        size_t reservedBytes;
+        size_t kernelPages; //this also includes modules loaded with the kernel
+        size_t reclaimablePages;
 
         PhysMemoryStats() = default;
         PhysMemoryStats(size_t total, size_t used) : totalPages(total), usedPages(used)
@@ -56,7 +60,7 @@ namespace Kernel::Memory
         void FreePages(sl::NativePtr address, size_t count);
 
         [[gnu::always_inline]] inline 
-        PhysMemoryStats GetMemoryStats() const
+        PhysMemoryStats GetStats() const
         { return stats; }
     };
 

@@ -22,6 +22,7 @@ constructor (passing in a `true` after the buffer).
 
 ## Format specifier extensions
 - `%b/%B` treats the input as a boolean value, printing either true/false (or their capitalized counterparts if `%B` is used).
+- `%U` Yes a lowercase 'u' means unsigned, but I've taken uppercase to mean `U`nits, specifically binary units. It will print the output in a nice format of KB/MB/GB etc.
 
 ## Related source files:
 - [Format.h](../../libs/np-syslib/include/Format.h)
