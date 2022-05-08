@@ -1,6 +1,7 @@
 #include <memory/VirtualMemory.h>
 #include <memory/PhysicalMemory.h>
 #include <scheduling/Thread.h>
+#include <Format.h>
 #include <Log.h>
 #include <Maths.h>
 
@@ -193,11 +194,17 @@ namespace Kernel::Memory
         return true; //TODO: implement
     }
 
-    void VirtualMemoryManager::PrintLog()
+    void VirtualMemoryManager::PrintLog(sl::NativePtr highlightRangeOf)
     {
         for (auto range = ranges.Begin(); range != ranges.End(); ++range)
         {
-            Logf("VM range: start=0x%0lx end=0x%0lx length=0x%lx flags=0x%lx", LogSeverity::Info, range->base, range->base + range->length, range->length, (size_t)range->flags);
+            const string logStr = sl::FormatToString("VM range: start=0x%0lx end=0x%0lx length=0x%lx flags=0x%lx", 0, range->base, range->base + range->length, range->length, (size_t)range->flags);
+            if (highlightRangeOf.ptr != nullptr 
+                && highlightRangeOf.raw >= range->base 
+                && highlightRangeOf.raw < range->base + range->length)
+                Log(logStr.C_Str(), LogSeverity::Warning);
+            else
+                Log(logStr.C_Str(), LogSeverity::Info);
         }
     }
 }

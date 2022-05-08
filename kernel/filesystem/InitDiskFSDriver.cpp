@@ -126,7 +126,7 @@ namespace Kernel::Filesystem
     {
         ramdiskBegin = ramdiskEnd = ramdiskSize = 0;
         
-        stivale2_struct_tag_modules* modulesTag = reinterpret_cast<stivale2_struct_tag_modules*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_MODULES_ID));
+        const stivale2_struct_tag_modules* modulesTag = reinterpret_cast<stivale2_struct_tag_modules*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_MODULES_ID));
         if (modulesTag == nullptr || modulesTag->module_count == 0)
             goto no_initdisk_found;
 

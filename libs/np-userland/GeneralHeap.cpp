@@ -161,7 +161,7 @@ namespace np::Userland
 
         sl::NativePtr where(ptr);
         where.raw -= sizeof(GeneralHeapNode);
-        if (where.raw < (uintptr_t)head || where.raw >= (uintptr_t)tail)
+        if (where.raw < (uintptr_t)head || where.raw > (uintptr_t)tail)
             return;
         
         GeneralHeapNode* node = where.As<GeneralHeapNode>();

@@ -22,7 +22,7 @@ namespace Kernel::Devices
             return;
         }
 
-        stivale2_struct_tag_framebuffer* stivaleFb = reinterpret_cast<stivale2_struct_tag_framebuffer*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID));
+        const stivale2_struct_tag_framebuffer* stivaleFb = reinterpret_cast<stivale2_struct_tag_framebuffer*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID));
         linearFramebufferBase = stivaleFb->framebuffer_addr;
         width = stivaleFb->framebuffer_width;
         height = stivaleFb->framebuffer_height;

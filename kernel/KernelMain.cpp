@@ -67,18 +67,19 @@ namespace Kernel
         PageTableManager::Current()->MakeActive();
 
         //assign heap to start immediately after last mapped kernel page
-        stivale2_struct_tag_pmrs* pmrs = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
+        const stivale2_struct_tag_pmrs* pmrs = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
         size_t tentativeHeapStart = 0;
         for (size_t i = 0; i < pmrs->entries; i++)
         {
-            stivale2_pmr* pmr = &pmrs->pmrs[i];
+            const stivale2_pmr* pmr = &pmrs->pmrs[i];
             const size_t pmrTop = pmr->base + pmr->length;
 
             if (pmrTop > tentativeHeapStart)
                 tentativeHeapStart = pmrTop;
         }
 
-        KernelHeap::Global()->Init(tentativeHeapStart);
+        const sl::BufferView hhdm = PageTableManager::Current()->GetHhdm();
+        KernelHeap::Global()->Init(hhdm.base.raw + hhdm.length + 2 * GB);
         Log("Memory init complete.", LogSeverity::Info);
     }
 
@@ -89,7 +90,7 @@ namespace Kernel
 
         Logf("Bootloader used: %s, %s", LogSeverity::Verbose, stivale2Struct->bootloader_brand, stivale2Struct->bootloader_version);
 
-        stivale2_struct_tag_memmap* mmap = FindStivaleTag<stivale2_struct_tag_memmap*>(STIVALE2_STRUCT_TAG_MEMMAP_ID);
+        const stivale2_struct_tag_memmap* mmap = FindStivaleTag<stivale2_struct_tag_memmap*>(STIVALE2_STRUCT_TAG_MEMMAP_ID);
         Logf("Memory regions: %lu", LogSeverity::Verbose, mmap->entries);
         for (size_t i = 0; i < mmap->entries; i++)
         {
@@ -119,7 +120,7 @@ namespace Kernel
             Logf("region %u: base=0x%0lx, length=0x%0lx, type=%s", LogSeverity::Verbose, i, entry->base, entry->length, typeString);
         }
 
-        stivale2_struct_tag_framebuffer* stivaleFb = reinterpret_cast<stivale2_struct_tag_framebuffer*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID));
+        const stivale2_struct_tag_framebuffer* stivaleFb = reinterpret_cast<stivale2_struct_tag_framebuffer*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_FRAMEBUFFER_ID));
         if (stivaleFb != nullptr)
         {
             Logf("Bootloader framebuffer: w=%u, h=%u, stride=0x%x, bpp=%u", LogSeverity::Verbose, 
@@ -132,23 +133,30 @@ namespace Kernel
         else
             Log("No bootloader framebuffer detected.", LogSeverity::Verbose);
 
-        stivale2_struct_tag_edid* edid = reinterpret_cast<stivale2_struct_tag_edid*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_EDID_ID));
+        const stivale2_struct_tag_edid* edid = reinterpret_cast<stivale2_struct_tag_edid*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_EDID_ID));
         if (edid != nullptr)
             Log("EDID available.", LogSeverity::Verbose);
 
-        stivale2_struct_tag_epoch* epoch = reinterpret_cast<stivale2_struct_tag_epoch*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_EPOCH_ID));
+        const stivale2_struct_tag_epoch* epoch = reinterpret_cast<stivale2_struct_tag_epoch*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_EPOCH_ID));
         if (epoch != nullptr)
             Logf("Epoch at boot: %lu", LogSeverity::Verbose, epoch->epoch);
 
-        stivale2_struct_tag_firmware* firmware = reinterpret_cast<stivale2_struct_tag_firmware*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_FIRMWARE_ID));
+        const stivale2_struct_tag_firmware* firmware = reinterpret_cast<stivale2_struct_tag_firmware*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_FIRMWARE_ID));
         if (firmware != nullptr)
             Logf("Booted by BIOS (false means UEFI): %b", LogSeverity::Verbose, firmware->flags);
         
-        stivale2_struct_tag_smbios* smbios = reinterpret_cast<stivale2_struct_tag_smbios*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_SMBIOS_ID));
+        const stivale2_struct_tag_smbios* smbios = reinterpret_cast<stivale2_struct_tag_smbios*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_SMBIOS_ID));
         if (smbios != nullptr)
             Logf("SM BIOS entry points: 32bit=0x%x, 64bit=0x%lx", LogSeverity::Verbose, smbios->smbios_entry_32, smbios->smbios_entry_64);
 
         Log("End of bootloader info.", LogSeverity::Verbose);
+
+        auto pmmStats = Memory::PMM::Global()->GetMemoryStats();
+        Logf("Physical memory detected: %U (%u bytes)", LogSeverity::Info, pmmStats.totalPages * pmmStats.pageSizeInBytes);
+        Logf("Currently in use: %U/%U", LogSeverity::Verbose, pmmStats.usedPages * pmmStats.pageSizeInBytes, pmmStats.totalPages * pmmStats.pageSizeInBytes);
+        Logf("Kernel heap base: 0x%lx", LogSeverity::Verbose, Memory::KernelHeap::Global()->GetBaseAddress());
+
+        Log("End of memory info.", LogSeverity::Verbose);
     }
 
     void InitPlatform()
@@ -156,7 +164,7 @@ namespace Kernel
         using namespace Devices;
         Log("Initializing platform ...", LogSeverity::Info);
 
-        stivale2_struct_tag_kernel_file_v2* kernelFile = FindStivaleTag<stivale2_struct_tag_kernel_file_v2*>(STIVALE2_STRUCT_TAG_KERNEL_FILE_V2_ID);
+        const stivale2_struct_tag_kernel_file_v2* kernelFile = FindStivaleTag<stivale2_struct_tag_kernel_file_v2*>(STIVALE2_STRUCT_TAG_KERNEL_FILE_V2_ID);
         if (kernelFile == nullptr)
         {
             currentProgramElf.ptr = nullptr;
@@ -177,7 +185,7 @@ namespace Kernel
         //idt is shared across all cores, so we can set that up here
         SetupIDT();
         
-        stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
+        const stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
         ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);
 
         InitPanic();
@@ -293,7 +301,7 @@ extern "C"
 
         //setup static data: phys mem mirror addr, stivale struct
         stivale2Struct = stivaleStruct;
-        stivale2_struct_tag_hhdm* hhdm = FindStivaleTag<stivale2_struct_tag_hhdm*>(STIVALE2_STRUCT_TAG_HHDM_ID);
+        const stivale2_struct_tag_hhdm* hhdm = FindStivaleTag<stivale2_struct_tag_hhdm*>(STIVALE2_STRUCT_TAG_HHDM_ID);
         vmaHighAddr = hhdm->addr;
 
         CPU::ClearInterruptsFlag();

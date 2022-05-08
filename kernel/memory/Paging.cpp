@@ -132,6 +132,9 @@ namespace Kernel::Memory
         indices[1] = (virtAddr.raw >> 12) & 0x1FF;
     }
 
+    size_t PageTableManager::hhdmLowerBound;
+    size_t PageTableManager::hhdmUpperBound;
+
     FORCE_INLINE
     void PageTableManager::InvalidatePage(sl::NativePtr virtualAddress) const
     {
@@ -191,10 +194,12 @@ namespace Kernel::Memory
             topLevelAddress = PMM::Global()->AllocPage();
             sl::memset(topLevelAddress.ptr, 0, sizeof(PageTable));
 
-            stivale2_struct_tag_hhdm* hhdmTag = FindStivaleTag<stivale2_struct_tag_hhdm*>(STIVALE2_STRUCT_TAG_HHDM_ID);
-            stivale2_struct_tag_pmrs* pmrsTag = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
-            stivale2_struct_tag_kernel_base_address* baseAddrTag = FindStivaleTag<stivale2_struct_tag_kernel_base_address*>(STIVALE2_STRUCT_TAG_KERNEL_BASE_ADDRESS_ID);
-            stivale2_struct_tag_memmap* mmapTag = FindStivaleTag<stivale2_struct_tag_memmap*>(STIVALE2_STRUCT_TAG_MEMMAP_ID);
+            const stivale2_struct_tag_hhdm* hhdmTag = FindStivaleTag<stivale2_struct_tag_hhdm*>(STIVALE2_STRUCT_TAG_HHDM_ID);
+            const stivale2_struct_tag_pmrs* pmrsTag = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
+            const stivale2_struct_tag_kernel_base_address* baseAddrTag = FindStivaleTag<stivale2_struct_tag_kernel_base_address*>(STIVALE2_STRUCT_TAG_KERNEL_BASE_ADDRESS_ID);
+            const stivale2_struct_tag_memmap* mmapTag = FindStivaleTag<stivale2_struct_tag_memmap*>(STIVALE2_STRUCT_TAG_MEMMAP_ID);
+
+            hhdmLowerBound = hhdmTag->addr;
 
             //map kernel binary using pmrs + kernel base
             for (size_t i = 0; i < pmrsTag->entries; i++)
@@ -218,6 +223,7 @@ namespace Kernel::Memory
             constexpr size_t memUpper = 4 * GB; 
             for (size_t i = 0; i < memUpper; i += (size_t)PagingSize::_2MB)
                 MapMemory(hhdmTag->addr + i, i, PagingSize::_2MB, MemoryMapFlags::AllowWrites);
+            hhdmUpperBound += 4 * GB;
             
             //map any regions of memory that are above the 4gb mark
             for (size_t i = 0; i < mmapTag->entries; i++)
@@ -235,6 +241,8 @@ namespace Kernel::Memory
 
                 for (size_t j = 0; j < region->length; j += PAGE_FRAME_SIZE)
                     MapMemory(hhdmTag->addr + base + j, base + j, MemoryMapFlags::AllowWrites);
+                
+                hhdmUpperBound = hhdmLowerBound + region->base + region->length;
             }
 
             MakeActive();
@@ -396,6 +404,11 @@ namespace Kernel::Memory
         default:
             return false;
         }
+    }
+
+    sl::BufferView PageTableManager::GetHhdm() const
+    {
+        return { hhdmLowerBound, hhdmUpperBound - hhdmLowerBound };
     }
 
     void PageTableManager::MapMemory(sl::NativePtr virtAddr, MemoryMapFlags flags)

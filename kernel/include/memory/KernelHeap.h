@@ -46,6 +46,10 @@ namespace Kernel::Memory
         [[gnu::always_inline]] inline
         size_t GetBytesUsed() const
         { return bytesUsed; }
+
+        [[gnu::always_inline]] inline
+        size_t GetBaseAddress() const
+        { return (size_t)head; }
     };
 }
 

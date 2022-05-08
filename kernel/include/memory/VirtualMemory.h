@@ -48,7 +48,8 @@ namespace Kernel::Memory
         bool RangeExists(NativeUInt base, size_t length);
         bool RangeExists(NativeUInt base, size_t length, MemoryMapFlags minimumFlags);
 
-        void PrintLog();
+        //print the current ranges to the log, highlighting a range that contains a target address is one existss.
+        void PrintLog(sl::NativePtr highlightRangeOf = nullptr);
     };
 
     using VMM = VirtualMemoryManager;

@@ -3,6 +3,7 @@
 #include <NativePtr.h>
 #include <Platform.h>
 #include <Optional.h>
+#include <BufferView.h>
 
 namespace Kernel::Memory
 {   
@@ -38,6 +39,8 @@ namespace Kernel::Memory
     {
     private:
         static bool usingExtendedPaging;
+        static size_t hhdmLowerBound;
+        static size_t hhdmUpperBound;
 
         sl::NativePtr topLevelAddress;
         char lock;
@@ -56,6 +59,7 @@ namespace Kernel::Memory
         void MakeActive() const;
         bool IsActive() const;
         bool PageSizeAvailable(PagingSize size) const;
+        sl::BufferView GetHhdm() const;
 
         bool ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlags flags, size_t appliedLevelsBitmap);
         sl::Opt<sl::NativePtr> GetPhysicalAddress(sl::NativePtr virtAddr);

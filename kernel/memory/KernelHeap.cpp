@@ -194,7 +194,7 @@ namespace Kernel::Memory
 
         sl::NativePtr where(ptr);
         where.raw -= sizeof(HeapNode);
-        if (where.raw < (uint64_t)head || where.raw >= (uint64_t)tail)
+        if (where.raw < (uint64_t)head || where.raw > (uint64_t)tail)
         {
             Log("Attempted to free memory not in kernel heap.", LogSeverity::Error);
             return;

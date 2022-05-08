@@ -53,6 +53,10 @@ namespace Kernel
         if (details.responseCore != GetCoreLocal()->apicId)
             goto final_loop_no_log;
         
+        //if we can, ensure we have the processes's page tables loaded here
+        if (currentThread != nullptr)
+            currentThread->Parent()->VMM()->PageTables().MakeActive();
+
         //this core has already claimed the panic response, all other cores will jump straight to halt
         Devices::LApic::Local()->BroadcastIpi(INT_VECTOR_PANIC, false);
         EnableLogDestinaton(LogDestination::FramebufferOverwrite, true);
@@ -74,13 +78,13 @@ namespace Kernel
         Log("---- Return Frame: ----", LogSeverity::Info);
         Logf("stack: 0x%x:0x%lx", LogSeverity::Info, regs->iret_ss, regs->iret_rsp);
         Logf("code:  0x%x:0x%lx", LogSeverity::Info, regs->iret_cs, regs->iret_rip);
-        Logf("flags: 0x%lx", LogSeverity::Info, regs->iret_flags);
+        Logf("flags: 0x%lx, ec: 0x%lx", LogSeverity::Info, regs->iret_flags, regs->errorCode);
 
         if (currentThread == nullptr)
             goto final_loop;
 
         Log("---- Virtual Memory Ranges: ----", LogSeverity::Info);
-        currentThread->Parent()->VMM()->PrintLog();
+        currentThread->Parent()->VMM()->PrintLog(ReadCR2());
 
         Log("---- Process & Thread ----", LogSeverity::Info);
         Logf("threadId: %u, threadName: %s", LogSeverity::Info, currentThread->Id(), currentThread->Name().C_Str());
