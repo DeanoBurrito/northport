@@ -64,7 +64,6 @@ There are a number of flags that can be defined at compile time to enable/disabl
 
 <details>
     <summary>Debugging Helpers</summary>
-    
-- `NORTHPORT_DEBUG_USE_HEAP_CANARY`: kernel heap is compiled with a 'canary' value and associated functions. Uses an extra uint64_t per allocation, and extra time during allocations and frees (its some simple bitwise logic, it's still non-zero processing time). It cant repair the linked list, but can be helpful for tracking down buffer overruns and issues in the heap itself.
+
 - `NORTHPORT_DEBUG_DISABLE_SMP_BOOT`: disables starting up all cores except the bsp at boot-time. They're currently completely unused if this is enabled. Useful for diagnosing multi-core issues.
 </details>

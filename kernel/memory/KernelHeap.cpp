@@ -1,222 +1,104 @@
-#include <memory/PhysicalMemory.h>
-#include <memory/Paging.h>
 #include <memory/KernelHeap.h>
 #include <Log.h>
-#include <Locks.h>
 
-#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
-    #pragma message "Kernel heap is compiling with canary built in. Useful for debugging, but can cause slowdowns."
-#endif
+/*
+    If you've come looking for how the kernel heap works, here's the explanation:
+    When an alloc request is made a series of slab allocators is checked. The first slab
+    that can contained the request is used to allocate the memory. If the reuqest is too
+    large, a pool allocator (linked list of memory regions) is used.
+    To free, similar logic is employed. Each slab is asked to free the pointer, with the
+    free request cascading to the larger slabs if the smaller ones don't own the memory.
+    Again, if the slabs can complete the request, it's assumed to be the pool's job.
+*/
 
 namespace Kernel::Memory
 {
-#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
-    bool CheckCanary(HeapNode* node)
-    { 
-        // return node->canary == (uint64_t)node;
-        return node->canary == ((uint64_t)node->prev << 32 | ((uint64_t)node->next & 0xFFFF'FFFF));
-    }
-
-    void SetCanary(HeapNode* node)
-    {
-        // node->canary = (uint64_t)node;
-        node->canary = ((uint64_t)node->prev << 32 | ((uint64_t)node->next & 0xFFFF'FFFF));
-    }
-#endif
-    
-    bool HeapNode::CombineWithNext(KernelHeap& heap)
-    {
-        if (!free)
-            return false;
-        if (next == nullptr)
-            return false;
-        if (!next->free)
-            return false;
-
-        if (heap.tail == next)
-            heap.tail = this;
-
-        length += next->length + sizeof(HeapNode);
-        next = next->next;
-        if (next)
-            next->prev = this;
-
-#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
-        SetCanary(this);
-        if (next)
-            SetCanary(next);
-#endif
-        return true;
-    }
-
-    void HeapNode::CarveOut(size_t allocSize, KernelHeap& heap)
-    {
-        const size_t actualSize = sizeof(HeapNode) + allocSize;
-        if (length - actualSize > length)
-            return;
-
-        HeapNode* nextNode = reinterpret_cast<HeapNode*>((uint64_t)this + actualSize);
-        nextNode->free = this->free;
-        nextNode->next = this->next;
-        nextNode->prev = this;
-        if (next)
-            next->prev = nextNode;
-        next = nextNode;
-        nextNode->length = length - actualSize;
-        length = allocSize;
-
-        if (heap.tail == this)
-            heap.tail = nextNode;
-
-#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
-        SetCanary(nextNode);
-        SetCanary(this);
-        if (nextNode->next)
-            SetCanary(nextNode->next);
-#endif
-    }
-
-    void KernelHeap::ExpandHeap(size_t nextAllocSize)
-    {
-        //reached end of heap, seems there's not enough space. Lets allocate what we need and return from that.
-        const size_t requiredPages = (sizeof(HeapNode) + nextAllocSize) / PAGE_FRAME_SIZE + 1;
-        uint64_t endOfHeapAddr = (uint64_t)tail + tail->length + sizeof(HeapNode);
-
-        if (requiredPages > 1)
-            Log("Kernel heap is expanding by more than 1 page.", LogSeverity::Warning);
-        PageTableManager::Current()->MapRange(endOfHeapAddr, requiredPages, MemoryMapFlags::AllowWrites);
-        tail->next = reinterpret_cast<HeapNode*>(endOfHeapAddr);
-
-        tail->next->next = nullptr;
-        tail->next->prev = tail;
-        tail->next->free = true;
-        tail->next->length = requiredPages * PAGE_FRAME_SIZE - sizeof(HeapNode);
-
-        tail = tail->next;
-
-#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
-        SetCanary(tail->prev);
-        SetCanary(tail);
-#endif
-    }
-
     KernelHeap globalKernelHeap;
     KernelHeap* KernelHeap::Global()
     { return &globalKernelHeap; }
 
-    void KernelHeap::Init(sl::NativePtr base)
+    void KernelHeap::Init(sl::NativePtr base, bool enableDebuggingFeatures)
     {
-        sl::ScopedSpinlock scopeLock(&lock);
+        const sl::NativePtr poolBase = base.raw + KernelHeapPoolOffset;
+        size_t nextBlockSize = KernelSlabBaseSize;
+        size_t nextBlockCount = 2048;
+        
+        for (size_t i = 0; i < KernelSlabCount; i++)
+        {
+            //blocks for per slab: 32 bytes = 2048, 64/128 bytes = 1024, 256 bytes = 512, 512 bytes = 256.
+            switch (i)
+            {
+            case 1: nextBlockCount = 1024; break;
+            case 3: nextBlockCount = 512; break;
+            case 4: nextBlockCount = 256; break;
+            }
 
-        head = base.As<HeapNode>();
-        PageTableManager::Current()->MapMemory(head, MemoryMapFlags::AllowWrites);
+            //one of the following init methods should be used. Leaving the last argument blank means regular mode,
+            //setting it a virtual address means the page-heap allocator will start at that address. Leave last arg null by default.
+            if (enableDebuggingFeatures)
+                slabs[i].Init(base, nextBlockSize, nextBlockCount, (base.raw + 8 * GB) + i * GB);
+            else
+                slabs[i].Init(base, nextBlockSize, nextBlockCount);
 
-        tail = head;
-        head->next = head->prev = nullptr;
-        head->length = (size_t)PagingSize::Physical - sizeof(HeapNode);
-        head->free = true;
+            base.raw += slabs[i].Region().length;
+            nextBlockSize *= 2;
+        }
 
-#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
-        SetCanary(head);
-        Log("Kernel heap is using debug canary.", LogSeverity::Verbose);
-#endif
+        pool.Init(poolBase);
+        if (enableDebuggingFeatures)
+            Log("Kernel heap running with debug helpers.", LogSeverity::Warning);
+        Log("Kernel heap initialized.", LogSeverity::Info);
     }
 
     void* KernelHeap::Alloc(size_t size)
     {
+        //NOTE: we lock per-allocator, rather than at a global scale
         if (size == 0)
             return nullptr;
-        
-        InterruptLock intLock; //TODO: a better solution than disabling interrupts every alloc()
-        sl::ScopedSpinlock scopeLock(&lock);
 
-        //align alloc size
-        size = (size / HEAP_ALLOC_ALIGN + 1) * HEAP_ALLOC_ALIGN;
-        
-        HeapNode* scan = head;
-        while (scan != nullptr)
+        for (size_t i = 0; i < KernelSlabCount; i++)
         {
-#ifdef NORTHPORT_DEBUG_USE_HEAP_CANARY
-            if (!CheckCanary(scan))
-                Log("Kernel heap canary value is corrupted. Oh no.", LogSeverity::Error);
-#endif
-            
-            if (!scan->free)
-            {
-                scan = scan->next;
-                continue;
-            }
-
-            if (scan->length == size)
-            {
-                scan->free = false;
-                bytesUsed += size;
-                
-                sl::NativePtr addr((uint64_t)scan + sizeof(HeapNode));
-                sl::memset(addr.As<void>(), 0, size);
-                return addr.As<void>();
-            }
-
-            if (scan->length > size)
-            {
-                if (scan->length - (size + sizeof(HeapNode)) > HEAP_ALLOC_ALIGN)
-                    scan->CarveOut(size, *this); //carve out space for the next node, ONLY if subdividing would be useful
-                
-                scan->free = false;
-                bytesUsed += size + sizeof(HeapNode);
-                
-                sl::NativePtr addr((uint64_t)scan + sizeof(HeapNode));
-                sl::memset(addr.As<void>(), 0, size);
-                return addr.As<void>();
-            }
-
-            scan = scan->next;
+            if (size <= slabs[i].SlabSize())
+                return slabs[i].Alloc();
         }
-
-        ExpandHeap(size);
-        scan = tail;
-        if (scan->length - (size + sizeof(HeapNode)) > HEAP_ALLOC_ALIGN)
-            scan->CarveOut(size, *this);
-        scan->free = false;
-        bytesUsed += size + sizeof(HeapNode);
-        sl::NativePtr addr((uint64_t)scan + sizeof(HeapNode));
-        sl::memset(addr.As<void>(), 0, size);
-        return addr.As<void>(); //TODO: sometimes we're returning a bogus address here, definitely worth investigating.
+        
+        void* poolAddr = pool.Alloc(size);
+        if (poolAddr == nullptr)
+            Log("Kernel heap failed to allocate memory.", LogSeverity::Error);
+        
+        return poolAddr;
     }
 
     void KernelHeap::Free(void* ptr)
     {
         if (ptr == nullptr)
             return;
-        
-        InterruptLock intLock;
-        sl::ScopedSpinlock scopeLock(&lock);
 
-        sl::NativePtr where(ptr);
-        where.raw -= sizeof(HeapNode);
-        if (where.raw < (uint64_t)head || where.raw > (uint64_t)tail)
+        for (size_t i = 0; i < KernelSlabCount; i++)
         {
-            Log("Attempted to free memory not in kernel heap.", LogSeverity::Error);
-            return;
+            if (slabs[i].Free(ptr))
+                return;
         }
+        
+        if (pool.Free(ptr))
+            return;
+        
+        Log("Unable to free kernel heap memory, address outside of all allocators.", LogSeverity::Error);
+    }
 
-        HeapNode* heapNode = where.As<HeapNode>();
-        heapNode->free = true;
-        bytesUsed -= heapNode->length;
-
-        if (heapNode->CombineWithNext(*this))
-            bytesUsed -= sizeof(HeapNode);
-        if (heapNode->prev)
-            heapNode->prev->CombineWithNext(*this);
+    void KernelHeap::GetStats(HeapMemoryStats& stats) const
+    {
+        for (size_t i = 0; i < KernelSlabCount; i++)
+            slabs[i].GetStats(stats.slabStats[i]);
+        pool.GetStats(stats.poolStats);
+        
+        stats.slabsGlobalBase = slabs[0].Region().base;
+        stats.slabCount = KernelSlabCount;
     }
 }
 
 void* malloc(size_t size)
-{
-    return Kernel::Memory::KernelHeap::Global()->Alloc(size);
-}
+{ return Kernel::Memory::KernelHeap::Global()->Alloc(size); }
 
 void free(void* ptr)
-{
-    Kernel::Memory::KernelHeap::Global()->Free(ptr);
-}
+{ Kernel::Memory::KernelHeap::Global()->Free(ptr); }

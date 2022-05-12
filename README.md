@@ -28,7 +28,7 @@ Kernel:
 - Physical memory manager (does page frame allocation, in single or multiple pages).
 - Per-process virtual memory manager, with paging support for x86 (4 or 5 levels).
 - GDT and IDT implementations. IDT implementation is nothing unique, but something I think is quite cool.
-- Simple heap for the kernel. It's a linked list style (for now).
+- Kernel heap: combination of slab and pool allocators, with some handy debug features.
 - Support for simple devices: IO/APIC, Local APIC, PS2 controller/keyboard/mouse, 8254 PIT.
 - Scheduler, with support for multiple cores. 
 - PCI support, both legacy and ECAM.
@@ -44,6 +44,8 @@ Support libraries:
     - A basic linear framebuffer, and terminal (characters-based) renderer implementation. With simple drawing functions.
     - A baked in psf1 & psf2 font, both supported by the terminal renderer.
     - QOI format decoder.
+- np-gui: framework for building user interfaces.
+    - Provides a wrapper around communication with the window server (also the reference implementation).
 - np-syscall: friendly c++ wrapper around kernel system calls.
     - There is also the abi [description](docs/kernel/SystemCalls.md) and [spec](docs/kernel/SystemCallList.md) itself you want to go that route.
 - np-syslib: utility library. It provides parts of the STL and std library I miss in a freestanding environment.

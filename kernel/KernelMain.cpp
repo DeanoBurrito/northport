@@ -79,7 +79,7 @@ namespace Kernel
         }
 
         const sl::BufferView hhdm = PageTableManager::Current()->GetHhdm();
-        KernelHeap::Global()->Init(hhdm.base.raw + hhdm.length + 2 * GB);
+        KernelHeap::Global()->Init(hhdm.base.raw + hhdm.length + 2 * GB, true);
         Log("Memory init complete.", LogSeverity::Info);
     }
 
@@ -157,6 +157,18 @@ namespace Kernel
             pmmStats.usedPages * pmmStats.pageSizeInBytes, pmmStats.totalPages * pmmStats.pageSizeInBytes,
             pmmStats.reservedBytes, pmmStats.reclaimablePages * pmmStats.pageSizeInBytes, pmmStats.kernelPages * pmmStats.pageSizeInBytes);
 
+        Memory::HeapMemoryStats heapStats;
+        Memory::KernelHeap::Global()->GetStats(heapStats);
+        Logf("KHeap init stats: slabsBase=0x%lx, poolBase=0x%lx", LogSeverity::Verbose, heapStats.slabsGlobalBase.raw, heapStats.slabsGlobalBase.raw + Memory::KernelHeapPoolOffset);
+        Logf("Pool stats: %U/%U used, nodeCount=%u", LogSeverity::Verbose, heapStats.poolStats.usedBytes, heapStats.poolStats.totalSizeBytes, heapStats.poolStats.nodes);
+        for (size_t i = 0; i < heapStats.slabCount; i++)
+        {
+            Logf("Slab %u stats: size=%u bytes, base=0x%lx, usage %u/%u slabs, segments=%u", LogSeverity::Verbose,
+                i, heapStats.slabStats[i].slabSize, heapStats.slabStats[i].base.raw, 
+                heapStats.slabStats[i].usedSlabs, heapStats.slabStats[i].totalSlabs,
+                heapStats.slabStats[i].segments);
+        }
+
         Log("End of memory info.", LogSeverity::Verbose);
     }
 
@@ -181,7 +193,8 @@ namespace Kernel
         if (cpuFreqs.coreTimerHertz == (uint32_t)-1)
             Log("Cpu freqs: unavilable, cpuid did not allow discovery.", LogSeverity::Verbose);
         else
-            Logf("Cpu freqs: coreBase=%uhz, coreMax=%uhz, bus=%uhz, tscTick=%uhz", LogSeverity::Verbose, cpuFreqs.coreClockBaseHertz, cpuFreqs.coreMaxBaseHertz, cpuFreqs.busClockHertz, cpuFreqs.coreTimerHertz);
+            Logf("Cpu freqs: coreBase=%uhz, coreMax=%uhz, bus=%uhz, tscTick=%uhz", LogSeverity::Verbose, 
+                cpuFreqs.coreClockBaseHertz, cpuFreqs.coreMaxBaseHertz, cpuFreqs.busClockHertz, cpuFreqs.coreTimerHertz);
 
         //idt is shared across all cores, so we can set that up here
         SetupIDT();

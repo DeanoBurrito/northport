@@ -3,6 +3,8 @@ Listed below is the tentative list of supported platforms and devices, as well a
 
 - [x] Core infrastructure
     - [x] Kernel memory management: PMM and heap.
+        - [x] Multi-tiered allocator: slabs over linked list.
+        - [x] Improved debugging.
     - [x] Centralized logging.
     - [x] ACPI tables.
         - [ ] ACPI runtime.
@@ -55,8 +57,8 @@ Listed below is the tentative list of supported platforms and devices, as well a
 - [ ] rv64
     - [ ] SBI stivale2 boot shim.
     - [ ] Paging: 3 and 4 levels.
-    - [ ] PLIC.
-    - [ ] CLINT.
+    - [ ] (A)PLIC.
+    - [ ] (A)CLINT.
     - [ ] Vector extension support.
 
 - [ ] Devices
@@ -77,7 +79,11 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] Window server.
         - [x] Damage-region based rendering.
         - [ ] Multi-monitor support.
+    - [ ] np-gui.
+        - [ ] Tree/Node based ui scheme.
+        - [ ] Event forwading from server -> user app.
     - [ ] Shell.
+        - [ ] Command palette.
     - [ ] Terminal emulator.
     - [ ] ELF library (move existing stuff from syslib).
     - [ ] Dynamic linker.
