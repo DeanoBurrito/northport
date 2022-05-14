@@ -10,6 +10,9 @@ namespace Kernel
     uint32_t leaf1Edx;
     uint32_t leaf1Ecx;
 
+    uint32_t leaf7_0Ebx;
+    uint32_t leaf7_0Ecx;
+
     //tsc, core crystal in Hz. Bus, core max, core base in MHz
     uint32_t leaf15Eax;
     uint32_t leaf15Ebx;
@@ -40,14 +43,14 @@ namespace Kernel
     void CPU::SetInterruptsFlag(bool state)
     {
         if (state)
-            asm volatile("sti");
+            asm volatile("sti" ::: "cc");
         else
-            asm volatile("cli");
+            asm volatile("cli" ::: "cc");
     }
 
     void CPU::ClearInterruptsFlag()
     {
-        asm volatile("cli");
+        asm volatile("cli" ::: "cc");
     }
 
     void CPU::DoCpuId()
@@ -85,6 +88,11 @@ namespace Kernel
         //general purpose leaves
         __get_cpuid(0x8000'0001, &eax, &ebx, &extLeaf1Ecx, &extLeaf1Edx);
         __get_cpuid(1, &eax, &ebx, &leaf1Ecx, &leaf1Edx);
+
+        if (highestBaseLeafAvailable >= 7)
+            __get_cpuid_count(7, 0, &eax, &leaf7_0Ebx, &leaf7_0Ecx, &edx);
+        else
+            leaf7_0Ebx = 0;
 
         //tsc frequency (= ecx * ebx/eax) and core crystal clock frequency in hertz (ecx)
         if (highestBaseLeafAvailable >= 0x15)
@@ -226,6 +234,14 @@ namespace Kernel
             return (extLeaf1Edx & (1 << 20)) != 0;
         case CpuFeature::GigabytePages:
             return (extLeaf1Edx & (1 << 26)) != 0;
+        case CpuFeature::GlobalPages:
+            return (extLeaf1Edx & (1 << 13)) != 0;
+        case CpuFeature::SMAP:
+            return (leaf7_0Ebx & (1 << 20)) != 0;
+        case CpuFeature::SMEP:
+            return (leaf7_0Ebx & (1 << 7)) != 0;
+        case CpuFeature::UMIP:
+            return (leaf7_0Ecx & (1 << 2)) != 0;
         case CpuFeature::APIC:
             return (leaf1Edx & (1 << 9)) != 0;
         case CpuFeature::X2APIC:
@@ -276,6 +292,10 @@ namespace Kernel
     {
         "NX",
         "GigPages",
+        "PGE",
+        "SMAP",
+        "SMEP",
+        "UMIP",
         "APIC",
         "X2APIC",
 
@@ -299,6 +319,10 @@ namespace Kernel
     {
         "No Execute/Execute Disable",
         "1 Gigabyte Pages",
+        "Global Pages",
+        "Supervisor Access Prevention",
+        "Supervisor Execution Prevention",
+        "User Mode Instruction Prevention",
         "Advanced PIC",
         "Extended v2 APIC",
 
@@ -345,5 +369,20 @@ namespace Kernel
 
         //RVO should make this fine
         return freqs;
+    }
+
+    void CPU::AllowSma(bool allowed)
+    {
+        if (allowed)
+            asm volatile("stac" ::: "cc");
+        else
+            asm volatile("clac" ::: "cc");
+    }
+
+    bool CPU::SmaAllowed()
+    {
+        uint64_t rflags;
+        asm volatile("pushf; pop %0" : "=r"(rflags));
+        return (rflags & (1 << 18)) != 0;
     }
 }

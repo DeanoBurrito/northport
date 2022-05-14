@@ -79,7 +79,7 @@ namespace Kernel
         }
 
         const sl::BufferView hhdm = PageTableManager::Current()->GetHhdm();
-        KernelHeap::Global()->Init(hhdm.base.raw + hhdm.length + 2 * GB, true);
+        KernelHeap::Global()->Init(hhdm.base.raw + hhdm.length + 2 * GB, false);
         Log("Memory init complete.", LogSeverity::Info);
     }
 
@@ -225,6 +225,22 @@ namespace Kernel
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
         coreStore->ptrs[CoreLocalIndices::TSS] = new TaskStateSegment();
         coreStore->ptrs[CoreLocalIndices::CurrentThread] = nullptr;
+
+        //we'll want to enable wp/umip/global pages, and smep/smap if available
+        uint64_t cr0 = ReadCR0();
+        cr0 |= (1 << 16); //enable write-protect for supervisor mode accessess
+        WriteCR0(cr0);
+
+        uint64_t cr4 = ReadCR4();
+        // if (CPU::FeatureSupported(CpuFeature::SMAP))
+        //     cr4 |= (1 << 21); //Disabled for now, currently causes crashes - will enable in a future commit TODO:
+        if (CPU::FeatureSupported(CpuFeature::SMEP))
+            cr4 |= (1 << 20);
+        if (CPU::FeatureSupported(CpuFeature::UMIP))
+            cr4 |= (1 << 11);
+        if (CPU::FeatureSupported(CpuFeature::GlobalPages))
+            cr4 |= (1 << 7); 
+        WriteCR4(cr4);
 
         FlushGDT();
         CPU::WriteMsr(MSR_GS_BASE, (size_t)coreStore);
