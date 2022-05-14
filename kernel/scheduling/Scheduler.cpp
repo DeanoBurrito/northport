@@ -9,7 +9,6 @@
 #include <Locks.h>
 
 #define THREAD_ALL_STARTING_CAPACITY 128
-#define THREAD_STACK_PAGES 2
 
 namespace Kernel::Scheduling
 {
@@ -212,6 +211,8 @@ namespace Kernel::Scheduling
 
     Thread* Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
     {
+        constexpr size_t stackPages = 4;
+        
         sl::ScopedSpinlock scopeLock(&lock);
         
         if (parent == nullptr)
@@ -227,13 +228,13 @@ namespace Kernel::Scheduling
         allThreads[thread->id] = thread;
 
         //TODO: implement PMM::AllocPages, and alloc multiple here
-        NativeUInt threadStackPhysBase = (NativeUInt)Memory::PMM::Global()->AllocPage();
+        NativeUInt threadStackPhysBase = (NativeUInt)Memory::PMM::Global()->AllocPages(stackPages);
         sl::NativePtr threadStack = EnsureHigherHalfAddr(threadStackPhysBase);
         if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
-            thread->programStackRange = { Memory::MemoryMapFlags::None, threadStack.raw, PAGE_FRAME_SIZE };
+            thread->programStackRange = { Memory::MemoryMapFlags::None, threadStack.raw, stackPages * PAGE_FRAME_SIZE };
         else
-            thread->programStackRange = { Memory::MemoryMapFlags::None, EnsureLowerHalfAddr(threadStack.raw), PAGE_FRAME_SIZE };
-        threadStack.raw += PAGE_FRAME_SIZE;
+            thread->programStackRange = { Memory::MemoryMapFlags::None, EnsureLowerHalfAddr(threadStack.raw), stackPages * PAGE_FRAME_SIZE };
+        threadStack.raw += stackPages * PAGE_FRAME_SIZE;
 
         //setup dummy frame base and return address
         sl::StackPush<NativeUInt>(threadStack, 0);
@@ -269,13 +270,13 @@ namespace Kernel::Scheduling
         if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
         {
             threadStack.raw -= vmaHighAddr; //user mode thread, use lower half address
-            parent->VMM()->PageTables().MapMemory(threadStackPhysBase, threadStackPhysBase, Memory::MemoryMapFlags::AllowWrites | Memory::MemoryMapFlags::UserAccessible);
+            parent->VMM()->PageTables().MapRange(threadStackPhysBase, threadStackPhysBase, stackPages, Memory::MemoryMapFlags::AllowWrites | Memory::MemoryMapFlags::UserAccessible);
         }
         thread->programStack = threadStack;
 
-        sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPage());
-        thread->kernelStackRange = { Memory::MemoryMapFlags::None, kernelStack.raw, PAGE_FRAME_SIZE };
-        thread->kernelStack = kernelStack.raw + PAGE_FRAME_SIZE;
+        sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPages(stackPages));
+        thread->kernelStackRange = { Memory::MemoryMapFlags::None, kernelStack.raw, stackPages * PAGE_FRAME_SIZE };
+        thread->kernelStack = kernelStack.raw + stackPages * PAGE_FRAME_SIZE;
 
         return thread;
     }
