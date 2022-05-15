@@ -3,6 +3,7 @@
 #include <IdAllocator.h>
 #include <memory/VirtualMemory.h>
 #include <scheduling/ThreadGroupEvent.h>
+#include <Bitmap.h>
 #include <String.h>
 
 namespace Kernel::Scheduling
@@ -37,6 +38,7 @@ namespace Kernel::Scheduling
         sl::String name;
         sl::Vector<Thread*> threads;
         Memory::VirtualMemoryManager vmm;
+        sl::Bitmap stackAllocBitmap;
         
         sl::UIdAllocator resourceIdAlloc;
         sl::Vector<ThreadResource> resources;
@@ -61,6 +63,7 @@ namespace Kernel::Scheduling
         sl::Opt<size_t> AttachResource(ThreadResourceType type, sl::NativePtr resource);
         bool DetachResource(size_t rid, bool force = false);
         sl::Opt<ThreadResource*> GetResource(size_t rid);
+        sl::Opt<size_t> FindResource(sl::NativePtr data);
         
         size_t PendingEventCount() const;
         void PushEvent(const ThreadGroupEvent& event);

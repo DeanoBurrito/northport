@@ -189,8 +189,9 @@ namespace Kernel::Scheduling
         
         group->id = idAllocator.Alloc();
         group->vmm.Init();
-        threadGroups.Append(group);
+        group->stackAllocBitmap.Resize(12);
 
+        threadGroups.Append(group);
         return group;
     }
 
@@ -212,6 +213,8 @@ namespace Kernel::Scheduling
     Thread* Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
     {
         constexpr size_t stackPages = 4;
+        constexpr size_t userStackBase = 100 * MB; //TODO: magic number, we should do this algorithmically. Maybe AllocateStackRange() in the VMM?
+        const size_t kernelStackBase = 20 * GB + vmaHighAddr;
         
         sl::ScopedSpinlock scopeLock(&lock);
         
@@ -227,52 +230,57 @@ namespace Kernel::Scheduling
         parent->threads.PushBack(thread);
         allThreads[thread->id] = thread;
 
-        //TODO: implement PMM::AllocPages, and alloc multiple here
-        NativeUInt threadStackPhysBase = (NativeUInt)Memory::PMM::Global()->AllocPages(stackPages);
-        sl::NativePtr threadStack = EnsureHigherHalfAddr(threadStackPhysBase);
+        NativeUInt stackPhysBase = (NativeUInt)Memory::PMM::Global()->AllocPages(stackPages);
+        NativeUInt stackVirtBase = 0;
+        Memory::MemoryMapFlags stackMappedFlags = Memory::MemoryMapFlags::AllowWrites;
         if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
-            thread->programStackRange = { Memory::MemoryMapFlags::None, threadStack.raw, stackPages * PAGE_FRAME_SIZE };
+        {
+            stackVirtBase = kernelStackBase;
+            stackVirtBase += thread->parent->id * GB;
+        }
         else
-            thread->programStackRange = { Memory::MemoryMapFlags::None, EnsureLowerHalfAddr(threadStack.raw), stackPages * PAGE_FRAME_SIZE };
-        threadStack.raw += stackPages * PAGE_FRAME_SIZE;
+        {
+            stackMappedFlags = sl::EnumSetFlag(stackMappedFlags, Memory::MemoryMapFlags::UserAccessible);
+            stackVirtBase = userStackBase;
+        }
+        stackVirtBase += thread->parent->stackAllocBitmap.FindAndClaimFirst() * (stackPages + 1) * PAGE_FRAME_SIZE;
+        thread->programStackRange = { Memory::MemoryMapFlags::None, stackVirtBase, stackPages * PAGE_FRAME_SIZE };
+        thread->parent->vmm.PageTables().MapRange(stackVirtBase, stackPhysBase, stackPages, stackMappedFlags);
+
+        sl::NativePtr stackAccess = EnsureHigherHalfAddr(thread->parent->vmm.PageTables().GetPhysicalAddress(stackVirtBase)->raw);
+        stackAccess.raw += thread->programStackRange.length;
 
         //setup dummy frame base and return address
-        sl::StackPush<NativeUInt>(threadStack, 0);
-        sl::StackPush<NativeUInt>(threadStack, 0);
-        NativeUInt realStackStart = threadStack.raw;
+        sl::StackPush<NativeUInt>(stackAccess, 0);
+        sl::StackPush<NativeUInt>(stackAccess, 0);
 
         //setup iret frame
         if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
         {
-            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_0_DATA);
-            sl::StackPush<NativeUInt>(threadStack, realStackStart);
-            sl::StackPush<NativeUInt>(threadStack, 0x202); //interrupts set, everything else cleared
-            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_0_CODE);
-            sl::StackPush<NativeUInt>(threadStack, (NativeUInt)KernelThreadStartWrapper);
+            sl::StackPush<NativeUInt>(stackAccess, GDT_ENTRY_RING_0_DATA);
+            sl::StackPush<NativeUInt>(stackAccess, stackVirtBase + thread->programStackRange.length - 0x10);
+            sl::StackPush<NativeUInt>(stackAccess, 0x202); //interrupts set, everything else cleared
+            sl::StackPush<NativeUInt>(stackAccess, GDT_ENTRY_RING_0_CODE);
+            sl::StackPush<NativeUInt>(stackAccess, (NativeUInt)KernelThreadStartWrapper);
         }
         else
         {
             //NOTE: we are setting RPL (lowest 2 bits) of the selectors to 3.
-            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_3_DATA | 3);
-            sl::StackPush<NativeUInt>(threadStack, EnsureLowerHalfAddr(realStackStart));
-            sl::StackPush<NativeUInt>(threadStack, 0x202);
-            sl::StackPush<NativeUInt>(threadStack, GDT_ENTRY_RING_3_CODE | 3);
-            sl::StackPush<NativeUInt>(threadStack, entryAddress.raw); //TODO: copy start program stub to userspace memory: UserThreadStartWrapper
+            sl::StackPush<NativeUInt>(stackAccess, GDT_ENTRY_RING_3_DATA | 3);
+            sl::StackPush<NativeUInt>(stackAccess, stackVirtBase + thread->programStackRange.length - 0x10);
+            sl::StackPush<NativeUInt>(stackAccess, 0x202);
+            sl::StackPush<NativeUInt>(stackAccess, GDT_ENTRY_RING_3_CODE | 3);
+            sl::StackPush<NativeUInt>(stackAccess, entryAddress.raw);
         }
 
         //push the rest of a stored registers frame (EC, vector, then 16 registers)
         for (size_t i = 0; i < 18; i++)
-            sl::StackPush<NativeUInt>(threadStack, 0);
+            sl::StackPush<NativeUInt>(stackAccess, 0);
 
-        StoredRegisters* regs = threadStack.As<StoredRegisters>();
+        StoredRegisters* regs = stackAccess.As<StoredRegisters>();
         regs->rdi = entryAddress.raw;
 
-        if (!sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
-        {
-            threadStack.raw -= vmaHighAddr; //user mode thread, use lower half address
-            parent->VMM()->PageTables().MapRange(threadStackPhysBase, threadStackPhysBase, stackPages, Memory::MemoryMapFlags::AllowWrites | Memory::MemoryMapFlags::UserAccessible);
-        }
-        thread->programStack = threadStack;
+        thread->programStack = stackVirtBase + thread->programStackRange.length - sizeof(StoredRegisters) - 2 * sizeof(NativeUInt);
 
         sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPages(stackPages));
         thread->kernelStackRange = { Memory::MemoryMapFlags::None, kernelStack.raw, stackPages * PAGE_FRAME_SIZE };
@@ -306,8 +314,10 @@ namespace Kernel::Scheduling
         sl::SpinlockRelease(&lock);
 
         //free the program and kernel stacks for this thread
-        Memory::PMM::Global()->FreePages(EnsureLowerHalfAddr(thread->kernelStackRange.base), thread->kernelStackRange.length / PAGE_FRAME_SIZE);
-        Memory::PMM::Global()->FreePages(EnsureLowerHalfAddr(thread->programStackRange.base), thread->programStackRange.length / PAGE_FRAME_SIZE);
+        const size_t programStackPhys = thread->parent->vmm.PageTables().GetPhysicalAddress(thread->programStackRange.base)->raw;
+        const size_t kernelStackPhys = thread->parent->vmm.PageTables().GetPhysicalAddress(thread->kernelStackRange.base)->raw;
+        Memory::PMM::Global()->FreePages(programStackPhys, thread->kernelStackRange.length / PAGE_FRAME_SIZE);
+        Memory::PMM::Global()->FreePages(kernelStackPhys, thread->programStackRange.length / PAGE_FRAME_SIZE);
 
         ThreadGroup* parent = thread->parent;
         sl::SpinlockAcquire(&parent->lock);

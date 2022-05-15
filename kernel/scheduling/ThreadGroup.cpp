@@ -56,6 +56,20 @@ namespace Kernel::Scheduling
         return &resources[rid];
     }
 
+    sl::Opt<size_t> ThreadGroup::FindResource(sl::NativePtr data)
+    {
+        for (size_t i = 0; i < resources.Size(); i++)
+        {
+            if (resources[i].type == ThreadResourceType::Empty)
+                continue;
+
+            if (resources[i].res.raw == data.raw)
+                return i;
+        }
+
+        return {};
+    }
+
     size_t ThreadGroup::PendingEventCount() const
     { return events.Size(); }
 
