@@ -15,6 +15,7 @@
 # NOTE: this does not push a dummy error code, or the vector number, we'll need to inject that ourselves
 
 InterruptStub_Begin:
+clac
 push %rax
 push %rbx
 push %rcx

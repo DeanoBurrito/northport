@@ -276,12 +276,22 @@ access_allowed:
 
     void IpcManager::ReceiveMail(IpcStream* hostStream, sl::BufferView receiveInto)
     {
+        if (hostStream == nullptr)
+            return;
         if (hostStream->ownerId != Scheduling::ThreadGroup::Current()->Id())
             return;
-
+        
         IpcMailboxControl* mailControl = hostStream->bufferAddr.As<IpcMailboxControl>();
         sl::ScopedSpinlock mailLock(&mailControl->lock);
         IpcMailHeader* latestMail = mailControl->First();
+
+        if (latestMail->length > receiveInto.length)
+        {
+            Log("Attempted to receive IPC mail into undersized buffer.", LogSeverity::Warning);
+            return;
+        }
+        if (receiveInto.base.ptr == nullptr)
+            return;
         
         //copy mail data if we have somewhere to put it
         if (receiveInto.base.ptr != nullptr && latestMail->length > 0)

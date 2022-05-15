@@ -216,6 +216,8 @@ namespace Kernel::Scheduling
         constexpr size_t userStackBase = 100 * MB; //TODO: magic number, we should do this algorithmically. Maybe AllocateStackRange() in the VMM?
         const size_t kernelStackBase = 20 * GB + vmaHighAddr;
         
+        const bool isKernelThread = sl::EnumHasFlag(flags, ThreadFlags::KernelMode);
+        
         sl::ScopedSpinlock scopeLock(&lock);
         
         if (parent == nullptr)
@@ -233,7 +235,7 @@ namespace Kernel::Scheduling
         NativeUInt stackPhysBase = (NativeUInt)Memory::PMM::Global()->AllocPages(stackPages);
         NativeUInt stackVirtBase = 0;
         Memory::MemoryMapFlags stackMappedFlags = Memory::MemoryMapFlags::AllowWrites;
-        if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
+        if (isKernelThread)
         {
             stackVirtBase = kernelStackBase;
             stackVirtBase += thread->parent->id * GB;
@@ -243,35 +245,30 @@ namespace Kernel::Scheduling
             stackMappedFlags = sl::EnumSetFlag(stackMappedFlags, Memory::MemoryMapFlags::UserAccessible);
             stackVirtBase = userStackBase;
         }
+
+        //determine where to put the progam stack, map it and store the data with the thread
         stackVirtBase += thread->parent->stackAllocBitmap.FindAndClaimFirst() * (stackPages + 1) * PAGE_FRAME_SIZE;
         thread->programStackRange = { Memory::MemoryMapFlags::None, stackVirtBase, stackPages * PAGE_FRAME_SIZE };
+        thread->programStack = stackVirtBase + stackPages * PAGE_FRAME_SIZE;
         thread->parent->vmm.PageTables().MapRange(stackVirtBase, stackPhysBase, stackPages, stackMappedFlags);
 
-        sl::NativePtr stackAccess = EnsureHigherHalfAddr(thread->parent->vmm.PageTables().GetPhysicalAddress(stackVirtBase)->raw);
-        stackAccess.raw += thread->programStackRange.length;
+        //allocate the kernel stack, and store that data too
+        const sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPages(stackPages));
+        thread->kernelStackRange = { Memory::MemoryMapFlags::None, kernelStack.raw, stackPages * PAGE_FRAME_SIZE };
+        thread->kernelStack = kernelStack.raw + stackPages * PAGE_FRAME_SIZE;
+
+        sl::NativePtr stackAccess = kernelStack;
 
         //setup dummy frame base and return address
         sl::StackPush<NativeUInt>(stackAccess, 0);
         sl::StackPush<NativeUInt>(stackAccess, 0);
 
         //setup iret frame
-        if (sl::EnumHasFlag(flags, ThreadFlags::KernelMode))
-        {
-            sl::StackPush<NativeUInt>(stackAccess, GDT_ENTRY_RING_0_DATA);
-            sl::StackPush<NativeUInt>(stackAccess, stackVirtBase + thread->programStackRange.length - 0x10);
-            sl::StackPush<NativeUInt>(stackAccess, 0x202); //interrupts set, everything else cleared
-            sl::StackPush<NativeUInt>(stackAccess, GDT_ENTRY_RING_0_CODE);
-            sl::StackPush<NativeUInt>(stackAccess, (NativeUInt)KernelThreadStartWrapper);
-        }
-        else
-        {
-            //NOTE: we are setting RPL (lowest 2 bits) of the selectors to 3.
-            sl::StackPush<NativeUInt>(stackAccess, GDT_ENTRY_RING_3_DATA | 3);
-            sl::StackPush<NativeUInt>(stackAccess, stackVirtBase + thread->programStackRange.length - 0x10);
-            sl::StackPush<NativeUInt>(stackAccess, 0x202);
-            sl::StackPush<NativeUInt>(stackAccess, GDT_ENTRY_RING_3_CODE | 3);
-            sl::StackPush<NativeUInt>(stackAccess, entryAddress.raw);
-        }
+        sl::StackPush<NativeUInt>(stackAccess, isKernelThread ? GDT_ENTRY_RING_0_DATA : (GDT_ENTRY_RING_3_DATA | 3));
+        sl::StackPush<NativeUInt>(stackAccess, stackVirtBase + thread->programStackRange.length - 0x10);
+        sl::StackPush<NativeUInt>(stackAccess, 0x202); //interrupts set, everything else cleared
+        sl::StackPush<NativeUInt>(stackAccess, isKernelThread ? GDT_ENTRY_RING_0_CODE  : (GDT_ENTRY_RING_3_CODE | 3));
+        sl::StackPush<NativeUInt>(stackAccess, isKernelThread ? (NativeUInt)KernelThreadStartWrapper : entryAddress.raw);
 
         //push the rest of a stored registers frame (EC, vector, then 16 registers)
         for (size_t i = 0; i < 18; i++)
@@ -280,11 +277,7 @@ namespace Kernel::Scheduling
         StoredRegisters* regs = stackAccess.As<StoredRegisters>();
         regs->rdi = entryAddress.raw;
 
-        thread->programStack = stackVirtBase + thread->programStackRange.length - sizeof(StoredRegisters) - 2 * sizeof(NativeUInt);
-
-        sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPages(stackPages));
-        thread->kernelStackRange = { Memory::MemoryMapFlags::None, kernelStack.raw, stackPages * PAGE_FRAME_SIZE };
-        thread->kernelStack = kernelStack.raw + stackPages * PAGE_FRAME_SIZE;
+        thread->programStack = stackAccess; //we'll stack with the kernel stack
 
         return thread;
     }

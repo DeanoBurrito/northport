@@ -24,7 +24,9 @@ namespace Kernel::Syscalls
             regs.arg1 = (uint64_t)LogSeverity::Error;
         
         const Scheduling::Thread* currentThread = Scheduling::Thread::Current();
+        CPU::AllowSma(true);
         //passing a user-controlled pointer might look dangerous, but its not processed as part of the formatting, its only copied to the output.
         Kernel::Logf("[p:%u, t:%u] %s", (LogSeverity)regs.arg1, currentThread->Parent()->Id(), currentThread->Id(), reinterpret_cast<const char*>(regs.arg0));
+        CPU::AllowSma(false);
     }
 }

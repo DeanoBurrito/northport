@@ -18,6 +18,21 @@ namespace Kernel::Syscalls
             return;
         }
 
+        regs.arg1 = 0;
+        using Kernel::Scheduling::ThreadGroupEventType;
+        switch (maybeEvent->type)
+        {
+        case ThreadGroupEventType::IncomingMail:
+        {
+            auto maybeRid = Scheduling::ThreadGroup::Current()->FindResource(maybeEvent->address);
+            if (maybeRid)
+                regs.arg1 = *maybeRid;
+            break;
+        }
+        default:
+            break;
+        }
+
         regs.arg0 = (uint32_t)maybeEvent->type | ((uint64_t)maybeEvent->length << 32);
     }
 
@@ -43,13 +58,21 @@ namespace Kernel::Syscalls
             Meaning the length is still how much data there is, but the address field *is* the data. Means no need to worry about managing
             a buffer elsewhere. This works great for key and mouse inputs.
         */
+        CPU::AllowSma(true);
         using Kernel::Scheduling::ThreadGroupEventType;
         switch (maybeEvent->type) 
         {
         case ThreadGroupEventType::IncomingMail:
+        {
             //the event data is the address of the mailbox control/ipc stream
-            Memory::IpcManager::Global()->ReceiveMail(maybeEvent->address.As<Memory::IpcStream>(), { regs.arg0, maybeEvent->length});
+            Memory::IpcManager::Global()->ReceiveMail(maybeEvent->address.As<Memory::IpcStream>(), { regs.arg0, maybeEvent->length });
+            auto maybeRid = Scheduling::ThreadGroup::Current()->FindResource(maybeEvent->address);
+            if (maybeRid)
+                regs.arg1 = *maybeRid;
+            else
+                regs.arg1 = 0;
             break;
+        }
 
         case ThreadGroupEventType::KeyEvent:
             if (regs.arg0 > 0)
@@ -66,6 +89,7 @@ namespace Kernel::Syscalls
                 sl::memcopy(maybeEvent->address.ptr, (void*)regs.arg0, maybeEvent->length);
             break;
         }
+        CPU::AllowSma(false);
 
         regs.arg0 = (uint32_t)maybeEvent->type | ((uint64_t)maybeEvent->length << 32);
     }

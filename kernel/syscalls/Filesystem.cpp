@@ -18,7 +18,9 @@ namespace Kernel::Syscalls
             return;
         }
 
+        CPU::AllowSma(true);
         sl::String filename(sl::NativePtr(regs.arg0).As<const char>());
+        CPU::AllowSma(false);
         auto maybeFile =  VFS::Global()->FindNode(filename);
         if (!maybeFile)
         {
@@ -28,11 +30,13 @@ namespace Kernel::Syscalls
 
         VfsNode* file = *maybeFile;
         using np::Syscall::FileInfo;
-        FileInfo* userCopy = Memory::VMM::Current()->AllocateRange(sizeof(FileInfo), Memory::MemoryMapFlags::UserAccessible).As<FileInfo>();
+        FileInfo* userCopy = Memory::VMM::Current()->AllocateRange(sizeof(FileInfo), Memory::MemoryMapFlags::UserAccessible | Memory::MemoryMapFlags::AllowWrites).As<FileInfo>();
         regs.arg3 = (uint64_t)userCopy;
 
         //populate user's copy of the file details
+        CPU::AllowSma(true);
         userCopy->fileSize = file->Details().filesize;
+        CPU::AllowSma(false);
         
         //return success code
         regs.id = np::Syscall::SyscallSuccess;
@@ -47,8 +51,10 @@ namespace Kernel::Syscalls
             return;
         }
         
+        CPU::AllowSma(true);
         sl::String filename(sl::NativePtr(regs.arg0).As<const char>());
         auto maybeFile =  VFS::Global()->FindNode(filename);
+        CPU::AllowSma(false);
         if (!maybeFile)
         {
             regs.id = (uint64_t)np::Syscall::FileError::FileNotFound;
@@ -105,7 +111,9 @@ namespace Kernel::Syscalls
         const size_t readLength = readEnd - (uint32_t)regs.arg1;
 
         //read from the file into the buffer, and return it
+        CPU::AllowSma(true);
         regs.arg0 = file->Read((uint32_t)regs.arg1, sl::NativePtr(regs.arg2).As<uint8_t>(), regs.arg1 >> 32, readLength);
+        CPU::AllowSma(false);
     }
 
     void WriteToFile(SyscallRegisters& regs)

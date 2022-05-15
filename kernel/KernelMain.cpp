@@ -232,8 +232,8 @@ namespace Kernel
         WriteCR0(cr0);
 
         uint64_t cr4 = ReadCR4();
-        // if (CPU::FeatureSupported(CpuFeature::SMAP))
-        //     cr4 |= (1 << 21); //Disabled for now, currently causes crashes - will enable in a future commit TODO:
+        if (CPU::FeatureSupported(CpuFeature::SMAP))
+            cr4 |= (1 << 21);
         if (CPU::FeatureSupported(CpuFeature::SMEP))
             cr4 |= (1 << 20);
         if (CPU::FeatureSupported(CpuFeature::UMIP))
@@ -241,6 +241,7 @@ namespace Kernel
         if (CPU::FeatureSupported(CpuFeature::GlobalPages))
             cr4 |= (1 << 7); 
         WriteCR4(cr4);
+        CPU::AllowSma(false);
 
         FlushGDT();
         CPU::WriteMsr(MSR_GS_BASE, (size_t)coreStore);
