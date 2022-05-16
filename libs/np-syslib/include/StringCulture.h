@@ -43,14 +43,14 @@ namespace sl
         virtual int ToUpper(int character) = 0;
         virtual int ToLower(int character) = 0;
 
-        virtual bool TryGetUInt8(uint8_t* out, const string& str, size_t start, bool isHex = false) = 0;
-        virtual bool TryGetUInt16(uint16_t* out, const string& str, size_t start, bool isHex = false) = 0;
-        virtual bool TryGetUInt32(uint32_t* out, const string& str, size_t start, bool isHex = false) = 0;
-        virtual bool TryGetUInt64(uint64_t* out, const string& str, size_t start, bool isHex = false) = 0;
-        virtual bool TryGetInt8(int8_t* out, const string& str, size_t start, bool isHex = false) = 0;
-        virtual bool TryGetInt16(int16_t* out, const string& str, size_t start, bool isHex = false) = 0;
-        virtual bool TryGetInt32(int32_t* out, const string& str, size_t start, bool isHex = false) = 0;
-        virtual bool TryGetInt64(int64_t* out, const string& str, size_t start, bool isHex = false) = 0;
+        virtual bool TryGetUInt8(uint8_t* out, const string& str, size_t start, size_t base = Base::DECIMAL) = 0;
+        virtual bool TryGetUInt16(uint16_t* out, const string& str, size_t start, size_t base = Base::DECIMAL) = 0;
+        virtual bool TryGetUInt32(uint32_t* out, const string& str, size_t start, size_t base = Base::DECIMAL) = 0;
+        virtual bool TryGetUInt64(uint64_t* out, const string& str, size_t start, size_t base = Base::DECIMAL) = 0;
+        virtual bool TryGetInt8(int8_t* out, const string& str, size_t start, size_t base = Base::DECIMAL) = 0;
+        virtual bool TryGetInt16(int16_t* out, const string& str, size_t start, size_t base = Base::DECIMAL) = 0;
+        virtual bool TryGetInt32(int32_t* out, const string& str, size_t start, size_t base = Base::DECIMAL) = 0;
+        virtual bool TryGetInt64(int64_t* out, const string& str, size_t start, size_t base = Base::DECIMAL) = 0;
 
         virtual string ToString(uint8_t num, size_t base = Base::DECIMAL) = 0;
         virtual string ToString(uint16_t num, size_t base = Base::DECIMAL) = 0;
@@ -67,42 +67,30 @@ namespace sl
     namespace Helpers
     {
         template<typename IntType> [[gnu::always_inline]]
-        inline bool TryGetInt(IntType* out, const string& str, size_t start, bool hex)
+        inline bool TryGetInt(IntType* out, const string& str, size_t start, size_t base)
         {
             *out = 0;
+
+            if (base < 2 || base > 32)
+                return false;
 
             bool negative = false;
             if (str[start] == '-')
                 negative = true;
 
-            if (hex)
+            for (size_t i = start + (negative ? 1 : 0); i < str.Size(); i++)
             {
-                for (size_t i = start + (negative ? 1 : 0); i < str.Size(); i++)
-                {
-                    if (!StringCulture::current->IsHexDigit(str[i]))
-                        break;
-                    
-                    *out *= 0x10;
-                    
-                    char c = str[i];
-                    if (c > '9')
-                        *out += c - 'A' + 10;
-                    else
-                        *out += c - '0';
-                }
-            }
-            else
-            {
-                for (size_t i = start + (negative ? 1 : 0); i < str.Size(); i++)
-                {
-                    if (!StringCulture::current->IsDigit(str[i]))
-                        break;
-                    
-                    *out *= 10;
-                    
-                    char c = str[i];
+                *out *= base;
+                
+                char c = str[i];
+                if (c >= 'a' && c <= 'z')
+                    c -= 0x20; //bring lowercase letters into uppercase range
+                
+                if (c >= 'A' && c <= 'Z')
+                    *out += c - 'A' + 10;
+                else if (c >= '0' && c <= '9')
                     *out += c - '0';
-                }
+                //if we dont know what the character was, drop it.
             }
 
             if (negative)
@@ -112,38 +100,25 @@ namespace sl
         }
 
         template<typename UIntType> [[gnu::always_inline]]
-        inline bool TryGetUInt(UIntType* out, const string& str, size_t start, bool hex)
+        inline bool TryGetUInt(UIntType* out, const string& str, size_t start, size_t base)
         {
             *out = 0;
 
-            if (hex)
+            if (base < 2 || base > 32)
+                return false;
+
+            for (size_t i = start; i < str.Size(); i++)
             {
-                for (size_t i = start; i < str.Size(); i++)
-                {
-                    if (!StringCulture::current->IsHexDigit(str[i]))
-                        break;
-                    
-                    *out *= 0x10;
-                    
-                    char c = str[i];
-                    if (c > '9')
-                        *out += c - 'A' + 10;
-                    else
-                        *out += c - '0';
-                }
-            }
-            else
-            {
-                for (size_t i = start; i < str.Size(); i++)
-                {
-                    if (!StringCulture::current->IsDigit(str[i]))
-                        break;
-                    
-                    *out *= 10;
-                    
-                    char c = str[i];
+                *out *= base;
+                
+                char c = str[i];
+                if (c >= 'a' && c <= 'z')
+                    c -= 0x20;
+                
+                if (c >= 'A' && c <= 'Z')
+                    *out += c - 'A' + 10;
+                else if (c >= '0' && c <= '9')
                     *out += c - '0';
-                }
             }
 
             return true;
@@ -255,14 +230,14 @@ namespace sl
         int ToUpper(int character);
         int ToLower(int character);
 
-        bool TryGetUInt8(uint8_t* out, const string& str, size_t start, bool isHex = false);
-        bool TryGetUInt16(uint16_t* out, const string& str, size_t start, bool isHex = false);
-        bool TryGetUInt32(uint32_t* out, const string& str, size_t start, bool isHex = false);
-        bool TryGetUInt64(uint64_t* out, const string& str, size_t start, bool isHex = false);
-        bool TryGetInt8(int8_t* out, const string& str, size_t start, bool isHex = false);
-        bool TryGetInt16(int16_t* out, const string& str, size_t start, bool isHex = false);
-        bool TryGetInt32(int32_t* out, const string& str, size_t start, bool isHex = false);
-        bool TryGetInt64(int64_t* out, const string& str, size_t start, bool isHex = false);
+        bool TryGetUInt8(uint8_t* out, const string& str, size_t start, size_t base = Base::DECIMAL);
+        bool TryGetUInt16(uint16_t* out, const string& str, size_t start, size_t base = Base::DECIMAL);
+        bool TryGetUInt32(uint32_t* out, const string& str, size_t start, size_t base = Base::DECIMAL);
+        bool TryGetUInt64(uint64_t* out, const string& str, size_t start, size_t base = Base::DECIMAL);
+        bool TryGetInt8(int8_t* out, const string& str, size_t start, size_t base = Base::DECIMAL);
+        bool TryGetInt16(int16_t* out, const string& str, size_t start, size_t base = Base::DECIMAL);
+        bool TryGetInt32(int32_t* out, const string& str, size_t start, size_t base = Base::DECIMAL);
+        bool TryGetInt64(int64_t* out, const string& str, size_t start, size_t base = Base::DECIMAL);
 
         string ToString(uint8_t num, size_t base = Base::DECIMAL);
         string ToString(uint16_t num, size_t base = Base::DECIMAL);
