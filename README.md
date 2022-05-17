@@ -31,12 +31,12 @@ Kernel:
 - Kernel heap: combination of slab and pool allocators, with some handy debug features.
 - Support for simple devices: IO/APIC, Local APIC, PS2 controller/keyboard/mouse, 8254 PIT.
 - Scheduler, with support for multiple cores. 
-- PCI support, both legacy and ECAM.
+- PCI support, both legacy x86 and ECAM MMIO.
 - Loadable drivers. Currently only 2 implemented, for the bochs video adaptor and ram initdisk fs (ustar based).
 - Single-root style VFS, full support for mounting/unmount and file lookup. Currently only has the init ramdisk driver implemented.
 - IPC, both stream and packet based. 
 - System calls. Nothing too technically interesting, but an implementation I'm quite proud of.
-- Optional UBsan. Disabled by default as it has a lot of output, and shows the limitation of my heap (string formatting) quite quickly.
+- Optional UBsan. Disabled by default as it has a lot of output.
 - Logging layer. Can enable/disable the various backends at runtime. Support for debugcon currently, framebuffer and serial planned.
 
 Support libraries:
@@ -86,7 +86,7 @@ Most sub-projects share a common internal layout:
 
 # Related Projects
 - [DreamOS64](https://github.com/dreamos82/Dreamos64): a 64-bit OS by one of the northport contributors, [Ivan G](https://github.com/dreamos82). 
-- [OSdev notes](https://github.com/dreamos82/Osdev-Notes): a repository of notes about various osdev topics. 
+- [OSdev notes](https://github.com/dreamos82/Osdev-Notes): a repository of notes about various osdev topics. Feel free to contribute!
 
 # Screenshots
 Currently not much to see, as there's no gui. Have a boot log for now.

@@ -65,7 +65,7 @@ namespace Kernel::Devices
 
         device->Init();
         const bool initError = device->state != DeviceState::Ready;
-        Logf("New device registered: id=%u, initError=%b", LogSeverity::Verbose, device->deviceId, initError);
+        Logf("New device registered: id=%u, initError=%b, type=%u", LogSeverity::Verbose, device->deviceId, initError, device->type);
 
         return device->deviceId;
     }

@@ -6,6 +6,8 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [x] Multi-tiered allocator: slabs over linked list.
         - [x] Improved debugging.
     - [x] Centralized logging.
+        - [ ] Framebuffer backend.
+        - [ ] File backend.
     - [x] ACPI tables.
         - [ ] ACPI runtime.
         - [ ] AML intepreter.
@@ -78,6 +80,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
 - [ ] Userspace
     - [ ] Window server.
         - [x] Damage-region based rendering.
+        - [ ] Quadtree based window/control mouse picking.
         - [ ] Multi-monitor support.
     - [ ] np-gui.
         - [ ] Tree/Node based ui scheme.

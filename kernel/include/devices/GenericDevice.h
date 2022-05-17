@@ -39,7 +39,7 @@ namespace Kernel::Devices
     protected:
         DeviceState state = DeviceState::Unknown;
         DeviceType type;
-        char lock;
+        char lock = 0;
         //nullptr if device does not public events
         sl::Vector<size_t>* eventSubscribers = nullptr;
 

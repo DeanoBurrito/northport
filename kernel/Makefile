@@ -18,11 +18,11 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp
 	memory/PhysicalMemory.cpp memory/VirtualMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp \
 	memory/New.cpp memory/IpcManager.cpp memory/KernelPool.cpp memory/KernelSlab.cpp \
 	acpi/AcpiTables.cpp \
-	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp \
-	devices/LApic.cpp devices/IoApic.cpp devices/ps2/Ps2Driver.cpp devices/ps2/Ps2Keyboard.cpp \
+	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp drivers/DriverInitTags.cpp \
+	devices/LApic.cpp devices/IoApic.cpp devices/ps2/Ps2Driver.cpp devices/ps2/Ps2Keyboard.cpp devices/pci/PciAddress.cpp \
 	devices/ps2/Ps2Mouse.cpp devices/DeviceManager.cpp devices/Keyboard.cpp devices/8254Pit.cpp \
 	devices/SystemClock.cpp devices/PciBridge.cpp devices/pci/BochsGraphicsAdaptor.cpp devices/Mouse.cpp \
-	devices/StivaleFramebuffer.cpp devices/GenericDevice.cpp \
+	devices/StivaleFramebuffer.cpp devices/GenericDevice.cpp devices/pci/PciEndpoints.cpp \
 	scheduling/Thread.cpp scheduling/ThreadGroup.cpp scheduling/Scheduler.cpp scheduling/BuiltinThreads.cpp \
 	sanitizers/UBSanitizer.cpp \
 	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp syscalls/Filesystem.cpp syscalls/Ipc.cpp \

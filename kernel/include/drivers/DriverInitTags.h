@@ -2,12 +2,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
-
-namespace Kernel::Devices
-{
-    struct PciDevice;
-    struct PciFunction;
-}
+#include <devices/pci/PciAddress.h>
+#include <Optional.h>
 
 namespace Kernel::Drivers
 {
@@ -23,7 +19,7 @@ namespace Kernel::Drivers
         DriverInitTag* next;
 
         DriverInitTag() = delete;
-        DriverInitTag(DriverInitTagType type) : type(type)
+        DriverInitTag(DriverInitTagType type) : type(type), next(nullptr)
         {}
     };
 
@@ -35,13 +31,13 @@ namespace Kernel::Drivers
         {}
     };
 
-    struct DriverInitTagPciFunction : public DriverInitTag
+    struct DriverInitTagPci : public DriverInitTag
     {
-        Devices::PciFunction* function;
+        Devices::Pci::PciAddress address;
 
-        DriverInitTagPciFunction() = delete;
-        DriverInitTagPciFunction(Devices::PciFunction* func)
-        : DriverInitTag(DriverInitTagType::PciFunction), function(func)
+        DriverInitTagPci() = delete;
+        DriverInitTagPci(Devices::Pci::PciAddress addr)
+        : DriverInitTag(DriverInitTagType::PciFunction), address(addr)
         {}
     };
 
@@ -49,5 +45,7 @@ namespace Kernel::Drivers
     {
         size_t id;
         DriverInitTag* next;
+
+        sl::Opt<DriverInitTag*> FindTag(DriverInitTagType type, DriverInitTag* start = nullptr);
     };
 }
