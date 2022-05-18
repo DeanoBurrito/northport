@@ -38,13 +38,18 @@ namespace Kernel::Scheduling
         sl::String name;
         sl::Vector<Thread*> threads;
         Memory::VirtualMemoryManager vmm;
-        sl::Bitmap stackAllocBitmap;
+        sl::Bitmap userStackBitmap;
         
         sl::UIdAllocator resourceIdAlloc;
         sl::Vector<ThreadResource> resources;
         sl::Vector<ThreadGroupEvent> events;
 
         ThreadGroup() = default;
+
+        sl::NativePtr AllocUserStack();
+        void FreeUserStack(sl::NativePtr base);
+        sl::NativePtr AllocKernelStack();
+        void FreeKernelStack(sl::NativePtr base);
 
     public:
         static ThreadGroup* Current();

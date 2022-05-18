@@ -46,9 +46,6 @@ namespace Kernel::Scheduling
         //there are actually where the stacks are
         sl::NativePtr programStack;
         sl::NativePtr kernelStack;
-        //these are used for when we free this thread's stacks
-        Memory::VMRange programStackRange;
-        Memory::VMRange kernelStackRange;
 
         sl::String name;
         size_t wakeTime;

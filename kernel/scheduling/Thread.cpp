@@ -13,11 +13,9 @@ namespace Kernel::Scheduling
         InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
 
-        //we'll need the physical address of the program's stack, and then access it through the hhdm to avoid swapping CR3.
-        auto maybeStack = parent->VMM()->PageTables().GetPhysicalAddress(programStack);
-        sl::NativePtr stackPhys = *maybeStack;
-        stackPhys = EnsureHigherHalfAddr(maybeStack->ptr);
-        stackPhys.As<StoredRegisters>()->rsi = arg.raw;
+        sl::NativePtr stackAccess = parent->VMM()->PageTables().GetPhysicalAddress(programStack.raw - PAGE_FRAME_SIZE)->raw + PAGE_FRAME_SIZE;
+        stackAccess = EnsureHigherHalfAddr(stackAccess.raw);
+        stackAccess.As<StoredRegisters>()->rsi = arg.raw;
         runState = ThreadState::Running;
     }
 

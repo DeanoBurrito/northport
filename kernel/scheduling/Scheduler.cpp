@@ -1,10 +1,7 @@
 #include <scheduling/Scheduler.h>
-#include <memory/PhysicalMemory.h>
 #include <devices/SystemClock.h>
 #include <arch/x86_64/Tss.h>
-#include <Platform.h>
 #include <Algorithms.h>
-#include <Memory.h>
 #include <Log.h>
 #include <Locks.h>
 
@@ -12,9 +9,8 @@
 
 namespace Kernel::Scheduling
 {
-    void IdleMain(void* arg)
+    void IdleMain(void*)
     {
-        (void)arg;
         while (1)
             CPU::Halt();
     }
@@ -54,13 +50,13 @@ namespace Kernel::Scheduling
         sl::SpinlockRelease(&lock);
 
         suspended = false;
-        realPressure = 0;
         allThreads.EnsureCapacity(THREAD_ALL_STARTING_CAPACITY);
         for (size_t i = 0; i < allThreads.Capacity(); i++)
             allThreads.EmplaceBack(); //default fill = nullptrs
         
-        //create processor-specific structs
+        //create idle thread, processor status for the bsp
         ThreadGroup* idleGroup = CreateThreadGroup();
+        idleGroup->Name() = "Idle Group";
         while (processorStatus.Size() <= baseProcessorId)
             processorStatus.EmplaceBack();
 
@@ -69,9 +65,10 @@ namespace Kernel::Scheduling
         processorStatus[baseProcessorId].isIdling = true;
         processorStatus[baseProcessorId].idleThread->Start(nullptr);
 
-        lastSelectedThread = *allThreads.Begin();
+        //create some utility threads we need
         CreateThread((size_t)CleanupThreadMain, ThreadFlags::KernelMode, idleGroup)->Start(&cleanupData);
         CreateThread((size_t)DeviceEventPump, ThreadFlags::KernelMode, idleGroup)->Start(nullptr);
+        lastSelectedThread = *allThreads.Begin();
         
         Log("Scheduler initialized, waiting for next tick.", LogSeverity::Info);
     }
@@ -178,18 +175,13 @@ namespace Kernel::Scheduling
     void Scheduler::Suspend(bool suspendScheduling)
     { suspended = suspendScheduling; }
 
-    size_t Scheduler::GetPressure() const
-    {
-        return realPressure;
-    }
-
     ThreadGroup* Scheduler::CreateThreadGroup()
     {
         ThreadGroup* group = new ThreadGroup();
         
         group->id = idAllocator.Alloc();
         group->vmm.Init();
-        group->stackAllocBitmap.Resize(12);
+        group->userStackBitmap.Resize(16);
 
         threadGroups.Append(group);
         return group;
@@ -212,12 +204,9 @@ namespace Kernel::Scheduling
 
     Thread* Scheduler::CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent)
     {
-        constexpr size_t stackPages = 4;
-        constexpr size_t userStackBase = 100 * MB; //TODO: magic number, we should do this algorithmically. Maybe AllocateStackRange() in the VMM?
-        const size_t kernelStackBase = 20 * GB + vmaHighAddr;
-        
         const bool isKernelThread = sl::EnumHasFlag(flags, ThreadFlags::KernelMode);
         
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
         
         if (parent == nullptr)
@@ -232,32 +221,14 @@ namespace Kernel::Scheduling
         parent->threads.PushBack(thread);
         allThreads[thread->id] = thread;
 
-        NativeUInt stackPhysBase = (NativeUInt)Memory::PMM::Global()->AllocPages(stackPages);
-        NativeUInt stackVirtBase = 0;
-        Memory::MemoryMapFlags stackMappedFlags = Memory::MemoryMapFlags::AllowWrites;
+        thread->programStack = isKernelThread ? parent->AllocKernelStack() : parent->AllocUserStack();
         if (isKernelThread)
-        {
-            stackVirtBase = kernelStackBase;
-            stackVirtBase += thread->parent->id * GB;
-        }
+            thread->kernelStack = thread->programStack;
         else
-        {
-            stackMappedFlags = sl::EnumSetFlag(stackMappedFlags, Memory::MemoryMapFlags::UserAccessible);
-            stackVirtBase = userStackBase;
-        }
+            thread->kernelStack = parent->AllocKernelStack();
 
-        //determine where to put the progam stack, map it and store the data with the thread
-        stackVirtBase += thread->parent->stackAllocBitmap.FindAndClaimFirst() * (stackPages + 1) * PAGE_FRAME_SIZE;
-        thread->programStackRange = { Memory::MemoryMapFlags::None, stackVirtBase, stackPages * PAGE_FRAME_SIZE };
-        thread->programStack = stackVirtBase + stackPages * PAGE_FRAME_SIZE;
-        thread->parent->vmm.PageTables().MapRange(stackVirtBase, stackPhysBase, stackPages, stackMappedFlags);
-
-        //allocate the kernel stack, and store that data too
-        const sl::NativePtr kernelStack = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPages(stackPages));
-        thread->kernelStackRange = { Memory::MemoryMapFlags::None, kernelStack.raw, stackPages * PAGE_FRAME_SIZE };
-        thread->kernelStack = kernelStack.raw + stackPages * PAGE_FRAME_SIZE;
-
-        sl::NativePtr stackAccess = kernelStack;
+        sl::NativePtr stackAccess = parent->vmm.PageTables().GetPhysicalAddress(thread->kernelStack.raw - PAGE_FRAME_SIZE)->raw + PAGE_FRAME_SIZE;
+        stackAccess = EnsureHigherHalfAddr(stackAccess.raw);
 
         //setup dummy frame base and return address
         sl::StackPush<NativeUInt>(stackAccess, 0);
@@ -265,7 +236,7 @@ namespace Kernel::Scheduling
 
         //setup iret frame
         sl::StackPush<NativeUInt>(stackAccess, isKernelThread ? GDT_ENTRY_RING_0_DATA : (GDT_ENTRY_RING_3_DATA | 3));
-        sl::StackPush<NativeUInt>(stackAccess, stackVirtBase + thread->programStackRange.length - 0x10);
+        sl::StackPush<NativeUInt>(stackAccess, thread->programStack.raw);
         sl::StackPush<NativeUInt>(stackAccess, 0x202); //interrupts set, everything else cleared
         sl::StackPush<NativeUInt>(stackAccess, isKernelThread ? GDT_ENTRY_RING_0_CODE  : (GDT_ENTRY_RING_3_CODE | 3));
         sl::StackPush<NativeUInt>(stackAccess, isKernelThread ? (NativeUInt)KernelThreadStartWrapper : entryAddress.raw);
@@ -306,14 +277,17 @@ namespace Kernel::Scheduling
         idAllocator.Free(id);
         sl::SpinlockRelease(&lock);
 
-        //free the program and kernel stacks for this thread
-        const size_t programStackPhys = thread->parent->vmm.PageTables().GetPhysicalAddress(thread->programStackRange.base)->raw;
-        const size_t kernelStackPhys = thread->parent->vmm.PageTables().GetPhysicalAddress(thread->kernelStackRange.base)->raw;
-        Memory::PMM::Global()->FreePages(programStackPhys, thread->kernelStackRange.length / PAGE_FRAME_SIZE);
-        Memory::PMM::Global()->FreePages(kernelStackPhys, thread->programStackRange.length / PAGE_FRAME_SIZE);
-
         ThreadGroup* parent = thread->parent;
         sl::SpinlockAcquire(&parent->lock);
+
+        //free the program and kernel stacks
+        // if (!sl::EnumHasFlag(thread->flags, ThreadFlags::KernelMode))
+        //     parent->FreeKernelStack(thread->programStack);
+        // else
+        // {
+        //     parent->FreeUserStack(thread->programStack);
+        //     parent->FreeKernelStack(thread->kernelStack);
+        // }
 
         //if this is the last thread in the process, we'll want to free the process too.
         if (parent->threads.Size() == 1 && parent->threads[0]->id == id)

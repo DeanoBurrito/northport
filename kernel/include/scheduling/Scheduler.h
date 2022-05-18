@@ -1,10 +1,7 @@
 #pragma once
 
 #include <IdAllocator.h>
-#include <scheduling/Thread.h>
-#include <scheduling/ThreadGroup.h>
 #include <scheduling/BuiltinThreads.h>
-#include <scheduling/WaitReason.h>
 #include <containers/Vector.h>
 #include <containers/LinkedList.h>
 
@@ -31,17 +28,11 @@ namespace Kernel::Scheduling
     private:
         char lock;
         bool suspended;
-        char waitReasonsLock;
-        size_t realPressure;
         sl::UIdAllocator idAllocator;
         sl::Vector<Thread*> allThreads;
         sl::LinkedList<ThreadGroup*> threadGroups;
         sl::Vector<SchedulerProcessorStatus> processorStatus;
         Thread* lastSelectedThread;
-
-        //wait jobs
-        sl::UIdAllocator waitIdAllocator;
-        sl::Vector<WaitReason*> waitReasons;
 
         //anything contained here is available to the cleanup thread
         CleanupData cleanupData;
@@ -57,8 +48,6 @@ namespace Kernel::Scheduling
         StoredRegisters* Tick(StoredRegisters* current);
         void Yield();
         void Suspend(bool suspendScheduling = true);
-
-        size_t GetPressure() const;
 
         ThreadGroup* CreateThreadGroup();
         //TODO: void RemoveThreadGroup(size_t id); //see down below, mirror function to RemoveThread()
