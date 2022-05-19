@@ -16,6 +16,14 @@ namespace Kernel::Devices::Pci
     struct PciBus;
     struct PciSegmentGroup;
 
+    struct [[gnu::packed]] PciCap
+    {
+        //identifies how to process the rest of this structure
+        uint8_t capabilityId;
+        //offset in bytes from the base of the pci descriptor, NOT from this struct.
+        uint8_t nextOffset; 
+    };
+
     struct PciBar
     {
         uint64_t address;
@@ -45,6 +53,8 @@ namespace Kernel::Devices::Pci
         PciBar bars[6];
     };
 
+    sl::Opt<PciCap*> FindPciCap(PciAddress addr, uint8_t withId, PciCap* start = nullptr);
+
     struct PciFunction
     {
     friend PciDevice;
@@ -66,11 +76,11 @@ namespace Kernel::Devices::Pci
         PciFunction(uint8_t id, PciDevice* parent) : addr(0), parent(parent), id(id)
         {}
 
-        FORCE_INLINE size_t GetId() const
+        FORCE_INLINE size_t Id() const
         { return id; }
-        FORCE_INLINE const PciConfigHeader* GetHeader() const
+        FORCE_INLINE const PciConfigHeader* Header() const
         { return &header; }
-        FORCE_INLINE PciAddress GetAddress() const
+        FORCE_INLINE PciAddress Address() const
         { return addr; }
     };
 
@@ -94,13 +104,13 @@ namespace Kernel::Devices::Pci
         PciDevice(uint8_t id, PciBus* parent) : parent(parent), addr(0), id(id)
         {}
 
-        FORCE_INLINE size_t GetId() const
+        FORCE_INLINE size_t Id() const
         { return id; }
-        FORCE_INLINE const PciBus* GetParent() const
+        FORCE_INLINE const PciBus* Parent() const
         { return parent; }
-        FORCE_INLINE uint8_t GetFunctionsBitmap() const
+        FORCE_INLINE uint8_t FunctionsBitmap() const
         { return functionBitmap; }
-        FORCE_INLINE PciAddress GetAddress() const
+        FORCE_INLINE PciAddress Address() const
         { return addr; }
         sl::Opt<const PciFunction*> GetFunction(size_t index) const;
     };
@@ -123,9 +133,9 @@ namespace Kernel::Devices::Pci
         PciBus(size_t id, PciSegmentGroup* parent) : id(id), parent(parent)
         {}
 
-        FORCE_INLINE size_t GetId() const
+        FORCE_INLINE size_t Id() const
         { return id; }
-        FORCE_INLINE const PciSegmentGroup* GetParent() const
+        FORCE_INLINE const PciSegmentGroup* Parent() const
         { return parent; }
     };
 

@@ -49,6 +49,7 @@ namespace Kernel::Devices
         sl::Opt<const PciBus*> GetBus(size_t segment, size_t bus) const;
         sl::Opt<const PciDevice*> GetDevice(size_t segment, size_t bus, size_t device) const;
         sl::Opt<const PciFunction*> GetFunction(size_t segment, size_t bus, size_t device, size_t function) const;
+        sl::Opt<const PciFunction*> GetFunction(Pci::PciAddress addr);
 
         sl::Opt<const PciDevice*> FindDevice(uint16_t vendorId, uint16_t deviceId) const;
     };

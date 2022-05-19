@@ -119,20 +119,20 @@ namespace Kernel::Devices::Pci
 
         const PciFunction* pciFunc = *maybePciFunction;
         bool mmioRegsAvailable = false;
-        if (pciFunc->GetHeader()->ids.deviceSubclass == 0x80)
+        if (pciFunc->Header()->ids.deviceSubclass == 0x80)
             mmioRegsAvailable = true; //qemu legacy free variant
-        else if (pciFunc->GetHeader()->bars[2].size > 0)
+        else if (pciFunc->Header()->bars[2].size > 0)
             mmioRegsAvailable = true; //bochs standard variant, but BAR2 is populated so mmio regs are available
 
-        linearFramebufferBase.raw = pciFunc->GetHeader()->bars[0].address;
-        const size_t fbPageCount = pciFunc->GetHeader()->bars[0].size / PAGE_FRAME_SIZE; //TODO: investigate map issues here, puts framebuffer in a weird state
+        linearFramebufferBase.raw = pciFunc->Header()->bars[0].address;
+        const size_t fbPageCount = pciFunc->Header()->bars[0].size / PAGE_FRAME_SIZE; //TODO: investigate map issues here, puts framebuffer in a weird state
         // VMM::Local()->MapRange(EnsureHigherHalfAddr(linearFramebufferBase.raw), linearFramebufferBase, fbPageCount, Memory::MemoryMapFlags::AllowWrites);
         linearFramebufferBase.raw = EnsureHigherHalfAddr(linearFramebufferBase.raw);
 
         if (mmioRegsAvailable)
         {
-            mmioBase.raw = pciFunc->GetHeader()->bars[2].address;
-            const size_t mmioPageCount = pciFunc->GetHeader()->bars[2].size / PAGE_FRAME_SIZE;
+            mmioBase.raw = pciFunc->Header()->bars[2].address;
+            const size_t mmioPageCount = pciFunc->Header()->bars[2].size / PAGE_FRAME_SIZE;
             Memory::PageTableManager::Current()->MapRange(EnsureHigherHalfAddr(mmioBase.raw), mmioBase, mmioPageCount, Memory::MemoryMapFlags::AllowWrites);
             mmioBase.raw = EnsureHigherHalfAddr(mmioBase.raw);
 

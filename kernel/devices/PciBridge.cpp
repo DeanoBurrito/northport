@@ -126,6 +126,14 @@ namespace Kernel::Devices
         return {};
     }
 
+    sl::Opt<const PciFunction*> PciBridge::GetFunction(Pci::PciAddress addr)
+    {
+        if ((addr.addr >> 32) == 0xFFFF'FFFF)
+            return GetFunction(0, (addr.addr >> 16) & 0xFF, (addr.addr >> 11) & 0b11111, (addr.addr >> 8) & 0b111);
+        else
+            return GetFunction(0, (addr.addr >> 20) & 0xFF, (addr.addr >> 15) & 0b11111, (addr.addr >> 12) & 0b111);
+    }
+
     sl::Opt<const PciDevice*> PciBridge::FindDevice(uint16_t vendorId, uint16_t deviceId) const
     {
         for (auto segmentIt = segments->Begin(); segmentIt != segments->End(); ++segmentIt)

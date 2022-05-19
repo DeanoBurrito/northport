@@ -1,6 +1,7 @@
 #include <drivers/DriverManager.h>
 #include <devices/pci/BochsGraphicsAdaptor.h>
 #include <devices/ps2/Ps2Driver.h>
+#include <devices/pci/VirtioGraphics.h>
 #include <filesystem/InitDiskFSDriver.h>
 
 /*
@@ -11,7 +12,8 @@ namespace Kernel::Drivers
 {
     constexpr const uint8_t machineName_bochsVideoAdaptor[] = { 0x11, 0x11, 0x34, 0x12 };
     constexpr const uint8_t machineName_initDiskFs[] = { "initdisk" };
-    constexpr const uint8_t machineName_ps2[] = { "x86ps2"};
+    constexpr const uint8_t machineName_ps2[] = { "x86ps2" };
+    constexpr const uint8_t machineName_virtioGpu[] = { 0x50, 0x10, 0xF4, 0x1A };
     
     void DriverManager::RegisterBuiltIns()
     {
@@ -50,6 +52,19 @@ namespace Kernel::Drivers
             manifest.loadFrom = nullptr;
             manifest.status = sl::EnumSetFlag(DriverStatusFlags::Loaded, DriverStatusFlags::BuiltIn);
             manifest.CreateNew = Devices::Ps2::CreateNewPs2Driver;
+
+            RegisterDriver(manifest);
+        }
+
+        { //virtio gpu driver
+            DriverManifest manifest;
+            manifest.name = "VirtIO GPU";
+            manifest.machineName.length = 4;
+            manifest.machineName.name = machineName_virtioGpu;
+            manifest.subsystem = DriverSubsystem::PCI;
+            manifest.loadFrom = nullptr;
+            manifest.status = sl::EnumSetFlag(DriverStatusFlags::Loaded, DriverStatusFlags::BuiltIn);
+            manifest.CreateNew = Devices::Pci::CreateNewVirtioGpuDriver;
 
             RegisterDriver(manifest);
         }
