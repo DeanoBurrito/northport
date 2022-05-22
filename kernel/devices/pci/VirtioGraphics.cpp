@@ -72,9 +72,11 @@ namespace Kernel::Devices::Pci
         commonConfig->deviceStatus = 0;
         commonConfig->deviceStatus = (uint8_t)DeviceStatus::Acknowledge | (uint8_t)DeviceStatus::Driver;
 
-        //TODO: actually enumerate gpu features, and select what we need instead of 'accept all'.
+        //now we enumerate the available features, enable any we want.
         commonConfig->driverFeature = commonConfig->deviceFeature;
-        commonConfig->deviceStatus = 0b1011;
+
+        //set FEATURES_OK flag to tell device we're done selecting features
+        commonConfig->deviceStatus = commonConfig->deviceStatus | (uint8_t)DeviceStatus::FeaturesOk;
 
         queues = VirtioQueue::FindQueues(*maybeCfg);
         if (queues.Size() != 2)
@@ -84,7 +86,12 @@ namespace Kernel::Devices::Pci
             return;
         }
 
-        //TODO: allocate buffers for virtqueues, communicate with gpu
+        constexpr size_t overrideQueueSize = 32; //reduce the memory footprint a little. (default queue size is usally 64).
+        queues[0].AllocBuffer(overrideQueueSize);
+        queues[1].AllocBuffer(overrideQueueSize);
+
+        //allocate interrupt vector and setup msix
+        
         
         state = DeviceState::Ready;
     }

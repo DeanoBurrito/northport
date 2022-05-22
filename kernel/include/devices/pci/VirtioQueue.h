@@ -26,7 +26,10 @@ namespace Kernel::Devices::Pci
 
         ~VirtioQueue();
 
-        void AllocBuffer(size_t minQueueSize, size_t maxQueueSize);
+        void AllocBuffer(size_t queueSizeHint);
         void FreeBuffer();
+
+        bool IsEnabled();
+        void SetEnabled(bool yes);
     };
 }

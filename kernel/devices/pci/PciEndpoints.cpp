@@ -1,4 +1,5 @@
 #include <devices/pci/PciEndpoints.h>
+#include <devices/pci/PciCapabilities.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
 #include <Log.h>
@@ -7,28 +8,6 @@ namespace Kernel::Devices::Pci
 {
     constexpr uint16_t VendorIdNonexistent = 0xffff;
 
-    sl::Opt<PciCap*> FindPciCap(PciAddress addr, uint8_t withId, PciCap* start)
-    {
-        uint16_t statusReg = addr.ReadReg(1) >> 16;
-        if ((statusReg & (1 << 4)) == 0)
-            return {}; //capabilities list not available
-
-        PciCap* cap = EnsureHigherHalfAddr(sl::NativePtr(addr.addr).As<PciCap>(addr.ReadReg(0xD) & 0xFF));
-        bool returnNextMatch = (start == nullptr);
-        while ((uint64_t)cap != EnsureHigherHalfAddr(addr.addr))
-        {
-            if (cap->capabilityId == withId && returnNextMatch)
-                return cap;
-            
-            if (cap == start)
-                returnNextMatch = true;
-
-            cap = EnsureHigherHalfAddr(sl::NativePtr(addr.addr).As<PciCap>(cap->nextOffset));
-        }
-
-        return {};
-    }
-    
     void PciFunction::Init()
     {
         uint32_t regs[16];

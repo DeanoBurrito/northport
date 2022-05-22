@@ -23,7 +23,7 @@ CXX_SRCS = BootStuff.cpp KernelMain.cpp InitTasks.cpp Log.cpp Logf.cpp Panic.cpp
 	devices/ps2/Ps2Mouse.cpp devices/DeviceManager.cpp devices/Keyboard.cpp devices/8254Pit.cpp \
 	devices/SystemClock.cpp devices/PciBridge.cpp devices/pci/BochsGraphicsAdaptor.cpp devices/Mouse.cpp \
 	devices/StivaleFramebuffer.cpp devices/GenericDevice.cpp devices/pci/PciEndpoints.cpp devices/pci/VirtioGraphics.cpp \
-	devices/pci/VirtioQueue.cpp devices/pci/VirtioCommon.cpp \
+	devices/pci/VirtioQueue.cpp devices/pci/VirtioCommon.cpp devices/pci/PciCapabilities.cpp \
 	scheduling/Thread.cpp scheduling/ThreadGroup.cpp scheduling/Scheduler.cpp scheduling/BuiltinThreads.cpp \
 	sanitizers/UBSanitizer.cpp \
 	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp syscalls/Filesystem.cpp syscalls/Ipc.cpp \

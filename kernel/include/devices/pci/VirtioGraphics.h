@@ -45,6 +45,7 @@ namespace Kernel::Devices::Pci
         VirtioGraphicsDriver* owner;
         PciAddress pciDevice;
         sl::Vector<VirtioQueue> queues;
+        sl::Vector<VirtioFramebuffer*> scanouts;
 
     protected:
         void Init() override;

@@ -1,5 +1,5 @@
 #include <devices/pci/VirtioCommon.h>
-#include <devices/pci/PciCommon.h>
+#include <devices/pci/PciCapabilities.h>
 #include <devices/PciBridge.h>
 
 namespace Kernel::Devices::Pci
