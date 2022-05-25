@@ -9,6 +9,7 @@
 #include <devices/IoApic.h>
 #include <devices/8254Pit.h>
 #include <devices/SystemClock.h>
+#include <devices/Rtc.h>
 #include <scheduling/Scheduler.h>
 #include <filesystem/Vfs.h>
 #include <arch/x86_64/Gdt.h>
@@ -204,10 +205,10 @@ namespace Kernel
 
         InitPanic();
         IoApic::InitAll();
+        Devices::readRtcTime();
         InitPit(0, INT_VECTOR_PIT_TICK);
         SetApicForUptime(false); //use PIT for uptime until first apic is initialized
         SetPitMasked(false);
-
         Filesystem::VFS::Global()->Init();
         Memory::IpcManager::Global()->Init();
 

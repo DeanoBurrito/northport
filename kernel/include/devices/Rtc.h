@@ -20,6 +20,7 @@ namespace Kernel::Devices
 
     };
 
+    uint8_t readRtcRegister(uint8_t rtcRegister);
     uint64_t readRtcTime();
     bool isRtcUpdating();
 }
