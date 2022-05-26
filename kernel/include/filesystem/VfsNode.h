@@ -36,9 +36,10 @@ namespace Kernel::Filesystem
         : parent(parent), name(name), driver(driver), type(type), customData(nullptr)
         {}
 
-        ~VfsNode();
 
     public:
+        ~VfsNode();
+        
         [[gnu::always_inline]] inline
         VfsNodeType GetType() const
         { return type; }

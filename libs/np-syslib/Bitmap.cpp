@@ -17,7 +17,10 @@ namespace sl
     void Bitmap::Resize(size_t count)
     {
         if (count <= entryCount)
+        {
+            entryCount = count;
             return;
+        }
         
         uint8_t* newBuffer = new uint8_t[count / 8 + 1];
         if (buffer)

@@ -33,8 +33,11 @@ namespace Kernel::Devices::Pci
 
     void PciCapMsi::Enable(bool yes)
     {
-        const uint16_t control = sl::MemRead<uint16_t>((uintptr_t)this + 2);
-        sl::MemWrite<uint16_t>((uintptr_t)this + 2, control | 0b1);
+        uint16_t control = sl::MemRead<uint16_t>((uintptr_t)this + 2);
+        control &= ~0b1;
+        if (yes)
+            control |= 0b1;
+        sl::MemWrite<uint16_t>((uintptr_t)this + 2, control);
     }
 
     size_t PciCapMsi::VectorsRequested() const
@@ -185,8 +188,11 @@ namespace Kernel::Devices::Pci
         if (entryAddr.ptr == nullptr)
             return;
         
-        const uint16_t value = sl::MemRead<uint16_t>(entryAddr.raw + 12);
-        sl::MemWrite(entryAddr.raw + 12, value | 0b1);
+        uint16_t value = sl::MemRead<uint16_t>(entryAddr.raw + 12);
+        value &= 0b1;
+        if (masked)
+            value |= 0b1;
+        sl::MemWrite(entryAddr.raw + 12, value);
     }
 
     bool PciCapMsiX::Pending(size_t index, PciBar* bars) const

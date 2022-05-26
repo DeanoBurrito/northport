@@ -16,7 +16,7 @@ namespace Kernel
 {
     bool TryHandleNativeException(StoredRegisters* regs)
     {
-        switch (regs->vectorNumber)
+        switch ((uint8_t)regs->vectorNumber)
         {
         case NativeExceptions::GeneralProtectionFault:
             SetPanicOverrideRegs(regs);
