@@ -5,6 +5,8 @@
 
 #define CMOS_ADDRESS_REGISTER   0x70
 #define CMOS_DATA_REGISTER  0x71
+#define BASE_CENTURY 2000
+#define SECONDS_IN_A_DAY 86400
 namespace Kernel::Devices
 {
 
@@ -21,6 +23,7 @@ namespace Kernel::Devices
     };
 
     uint8_t readRtcRegister(uint8_t rtcRegister);
+    uint64_t convertBCDToBinary(uint64_t value);
     uint64_t readRtcTime();
     bool isRtcUpdating();
 }
