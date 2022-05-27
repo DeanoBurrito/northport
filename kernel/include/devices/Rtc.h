@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <stdbool.h>
 
 #define CMOS_ADDRESS_REGISTER   0x70
 #define CMOS_DATA_REGISTER  0x71
@@ -22,8 +21,9 @@ namespace Kernel::Devices
 
     };
 
-    uint8_t readRtcRegister(uint8_t rtcRegister);
-    uint64_t convertBCDToBinary(uint64_t value);
-    uint64_t readRtcTime();
-    bool isRtcUpdating();
+
+    uint8_t ReadRtcRegister(uint8_t rtcRegister);
+    uint64_t ConvertBCDToBinary(uint64_t value);
+    uint64_t ReadRtcTime();
+    bool IsRtcUpdating();
 }

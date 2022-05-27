@@ -205,7 +205,8 @@ namespace Kernel
 
         InitPanic();
         IoApic::InitAll();
-        Devices::readRtcTime();
+        uint64_t unixTime = Devices::ReadRtcTime();
+        Logf("Current unix time read from RTC is: %lu", LogSeverity::Verbose, unixTime);
         InitPit(0, INT_VECTOR_PIT_TICK);
         SetApicForUptime(false); //use PIT for uptime until first apic is initialized
         SetPitMasked(false);
