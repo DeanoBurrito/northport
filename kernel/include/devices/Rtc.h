@@ -17,8 +17,10 @@ namespace Kernel::Devices
         WeekDay = 0x06,
         DayOfMonth = 0x07,
         Month = 0x08,
-        Year = 0x09
+        Year = 0x09,
 
+        StatusPortA = 0x0A,
+        StatusPortB = 0x0B
     };
 
 

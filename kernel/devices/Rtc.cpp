@@ -16,7 +16,7 @@ namespace Kernel::Devices
     {
         while ( IsRtcUpdating() );
 
-        uint8_t rtcRegisterStatusB = ReadRtcRegister(0x0B);
+        uint8_t rtcRegisterStatusB = ReadRtcRegister(StatusPortB);
         bool is24Hours = rtcRegisterStatusB & 0x02;
         bool isBinary = rtcRegisterStatusB & 0x04;
 
@@ -96,7 +96,7 @@ namespace Kernel::Devices
 
     bool IsRtcUpdating()
     {
-        CPU::PortWrite8(CMOS_ADDRESS_REGISTER, 0x0A);
+        CPU::PortWrite8(CMOS_ADDRESS_REGISTER, StatusPortA);
         return CPU::PortRead8(CMOS_DATA_REGISTER) & 0x80;
     }
 }
