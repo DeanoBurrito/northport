@@ -9,7 +9,7 @@
 namespace Kernel::Devices
 {
 
-    enum Rtc_Registers : uint8_t 
+    enum RtcRegisters : uint8_t 
     {
         Seconds = 0x00,
         Minutes = 0x02,
@@ -24,7 +24,7 @@ namespace Kernel::Devices
     };
 
 
-    uint8_t ReadRtcRegister(uint8_t rtcRegister);
+    uint8_t ReadRtcRegister(RtcRegisters rtcRegister);
     uint64_t ConvertBCDToBinary(uint64_t value);
     uint64_t ReadRtcTime();
     bool IsRtcUpdating();

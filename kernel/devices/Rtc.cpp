@@ -1,15 +1,16 @@
 #include <devices/Rtc.h>
 #include <Cpu.h>
 #include <Log.h>
+#include <Platform.h>
 
 namespace Kernel::Devices 
 {
-    uint64_t daysPerMonth[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    constexpr uint64_t daysPerMonth[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 
-    uint8_t ReadRtcRegister(uint8_t rtcRegister)
+    uint8_t ReadRtcRegister(RtcRegisters rtcRegister)
     {
-        CPU::PortWrite8(CMOS_ADDRESS_REGISTER, rtcRegister);
-        return CPU::PortRead8(CMOS_DATA_REGISTER);
+        CPU::PortWrite8(PORT_CMOS_ADDRESS, rtcRegister);
+        return CPU::PortRead8(PORT_CMOS_DATA);
     }
     
     uint64_t ReadRtcTime() 
@@ -50,7 +51,8 @@ namespace Kernel::Devices
             dayofmonth = ReadRtcRegister(DayOfMonth);
             month = ReadRtcRegister(Month);
         }
-        while ( last_seconds == seconds && last_minutes == minutes && last_hours == hours && last_year == year &&  last_dayofmonth == dayofmonth && last_month == month);
+        while ( last_seconds == seconds && last_minutes == minutes && last_hours == hours &&
+                last_year == year &&  last_dayofmonth == dayofmonth && last_month == month);
 
         if ( !isBinary) 
         {
@@ -62,11 +64,10 @@ namespace Kernel::Devices
             dayofmonth = ConvertBCDToBinary(dayofmonth);
         }
 
-        uint64_t yearsSinceEpoch = (BASE_CENTURY + year) - 1970; // Let's count the number of years passed since the Epoch Year: (1970)
+        const uint64_t yearsSinceEpoch = (BASE_CENTURY + year) - 1970; // Let's count the number of years passed since the Epoch Year: (1970)
         uint64_t leapYears = yearsSinceEpoch / 4; // We need to know how many leap years too...
-        bool addAnotherLeapYear = (yearsSinceEpoch % 4) > 1; // if yearsSinceEpoch % 4 is greater/equal than 2 we have to add another leap year
-        
-        if (addAnotherLeapYear)
+        if ((yearsSinceEpoch % 4) > 1) // if yearsSinceEpoch % 4 is greater/equal than 2 we have to add another leap year
+
         {
             leapYears++;
         }
@@ -82,10 +83,9 @@ namespace Kernel::Devices
             hours = ((hours & 0x7F) + 12) % 24;
         }
 
-        uint64_t daysSinceEpoch = (yearsSinceEpoch * 365) - 1; 
-        uint64_t unixTimeOfDay = (hours * 3600) + (minutes * 60) + seconds;
-        uint64_t secondsSinceEpoch = (daysSinceEpoch * 86400) + (leapYears * 86400) + (daysCurrentYear * 86400) + unixTimeOfDay;
-        return secondsSinceEpoch;
+        const uint64_t daysSinceEpoch = (yearsSinceEpoch * 365) - 1; 
+        const uint64_t unixTimeOfDay = (hours * 3600) + (minutes * 60) + seconds;
+        return ((daysSinceEpoch * 86400) + (leapYears * 86400) + (daysCurrentYear * 86400) + unixTimeOfDay);
     }
 
 
@@ -96,7 +96,7 @@ namespace Kernel::Devices
 
     bool IsRtcUpdating()
     {
-        CPU::PortWrite8(CMOS_ADDRESS_REGISTER, StatusPortA);
-        return CPU::PortRead8(CMOS_DATA_REGISTER) & 0x80;
+        CPU::PortWrite8(PORT_CMOS_ADDRESS, StatusPortA);
+        return CPU::PortRead8(PORT_CMOS_DATA) & 0x80;
     }
 }
