@@ -17,9 +17,9 @@ namespace Kernel::Devices
     {
         while ( IsRtcUpdating() );
 
-        uint8_t rtcRegisterStatusB = ReadRtcRegister(StatusPortB);
-        bool is24Hours = rtcRegisterStatusB & 0x02;
-        bool isBinary = rtcRegisterStatusB & 0x04;
+        const uint8_t rtcRegisterStatusB = ReadRtcRegister(StatusPortB);
+        const bool is24Hours = rtcRegisterStatusB & 0x02;
+        const bool isBinary = rtcRegisterStatusB & 0x04;
 
         uint8_t seconds = ReadRtcRegister(Seconds);
         uint8_t minutes = ReadRtcRegister(Minutes);
