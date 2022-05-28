@@ -43,6 +43,9 @@
 #define GDT_ENTRY_RING_3_DATA 0x20
 #define GDT_ENTRY_TSS 0x28
 
+#define PORT_CMOS_ADDRESS   0x70
+#define PORT_CMOS_DATA  0x71
+
 #define FORCE_INLINE [[gnu::always_inline]] inline
 
 namespace Kernel
