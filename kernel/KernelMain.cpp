@@ -17,6 +17,7 @@
 #include <arch/x86_64/Tss.h>
 #include <arch/x86_64/ApBoot.h>
 #include <boot/Stivale2.h>
+#include <InterruptManager.h>
 #include <Panic.h>
 
 //needs to be implemented once per linked program. This is for the kernel.
@@ -199,6 +200,7 @@ namespace Kernel
 
         //idt is shared across all cores, so we can set that up here
         SetupIDT();
+        InterruptManager::Global()->Init();
         
         const stivale2_struct_tag_rsdp* stivaleRsdpTag = FindStivaleTag<stivale2_struct_tag_rsdp*>(STIVALE2_STRUCT_TAG_RSDP_ID);
         ACPI::AcpiTables::Global()->Init(stivaleRsdpTag->rsdp);

@@ -15,8 +15,8 @@ namespace sl
     class Optional
     {
     private:
+        alignas(T) uint8_t store[sizeof(T)];
         bool isValid;
-        char store[sizeof(T)];
 
         const T* Get() const
         {

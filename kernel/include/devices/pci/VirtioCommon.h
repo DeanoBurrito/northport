@@ -3,7 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <BufferView.h>
-#include <devices/pci/PciEndpoints.h>
+#include <devices/pci/PciAddress.h>
+#include <devices/pci/PciCapabilities.h>
 #include <Optional.h>
 
 namespace Kernel::Devices::Pci
@@ -131,7 +132,7 @@ namespace Kernel::Devices::Pci
         uint16_t queueSelect; //queue index to change meaning of following fields
         uint16_t queueSize; //on reset, maximium queue size this device supports, zero means unavailable. Can be reduced by software.
         uint16_t queueMsixVector;
-        uint16_t queueEnable; //non-zero means device will execute requets from this queue.
+        uint16_t queueEnable; //non-zero means device will execute requests from this queue.
         uint16_t queueNotifyOff; //index of this queue into the notification structure.
         uint64_t queueDesc; //physical address of descriptor/table area here
         uint64_t queueDriver; //physical address of driver/available area here

@@ -17,7 +17,7 @@ namespace Kernel::Scheduling
         sl::ScopedSpinlock scopeLock(&lock);
 
         size_t index = userStackBitmap.FindAndClaimFirst();
-        while (index == -1)
+        while (index == (size_t)-1)
         {
             userStackBitmap.Resize(userStackBitmap.Size() + userStackBitmap.Size() * 2);
             index = userStackBitmap.FindAndClaimFirst();

@@ -1,5 +1,6 @@
 #include <syscalls/Dispatch.h>
 #include <scheduling/Thread.h>
+#include <Log.h>
 
 namespace Kernel::Syscalls
 {
@@ -15,7 +16,9 @@ namespace Kernel::Syscalls
     [[noreturn]]
     void Exit(SyscallRegisters& regs)
     {
-        //TODO: we should do something with the exit code - maybe later?
+        const Scheduling::Thread* currentThread = Scheduling::Thread::Current();
+        Logf("Thread %u exited with code 0x%lx", LogSeverity::Info, currentThread->Id(), regs.arg0);
+
         Scheduling::Thread::Current()->Exit();
         __builtin_unreachable();
     }

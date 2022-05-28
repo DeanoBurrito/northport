@@ -16,14 +16,6 @@ namespace Kernel::Devices::Pci
     struct PciBus;
     struct PciSegmentGroup;
 
-    struct [[gnu::packed]] PciCap
-    {
-        //identifies how to process the rest of this structure
-        uint8_t capabilityId;
-        //offset in bytes from the base of the pci descriptor, NOT from this struct.
-        uint8_t nextOffset; 
-    };
-
     struct PciBar
     {
         uint64_t address;
@@ -52,8 +44,6 @@ namespace Kernel::Devices::Pci
 
         PciBar bars[6];
     };
-
-    sl::Opt<PciCap*> FindPciCap(PciAddress addr, uint8_t withId, PciCap* start = nullptr);
 
     struct PciFunction
     {
