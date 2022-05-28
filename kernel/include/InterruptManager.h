@@ -21,6 +21,7 @@ namespace Kernel
     public:
         static InterruptManager* Global();
         void Init();
+        void Dispatch(size_t vector);
 
         [[nodiscard]]
         sl::Opt<size_t> AllocVectors(size_t count);

@@ -1,6 +1,7 @@
 #include <arch/x86_64/Idt.h>
 #include <Log.h>
 #include <Panic.h>
+#include <InterruptManager.h>
 #include <syscalls/Dispatch.h>
 #include <devices/LApic.h>
 #include <devices/ps2/Ps2Driver.h>
@@ -49,6 +50,13 @@ namespace Kernel
     {
         StoredRegisters* returnRegs = regs;
 
+        if ((uint8_t)regs->vectorNumber > ALLOC_INT_VECTOR_BASE && 
+            (uint8_t)regs->vectorNumber - ALLOC_INT_VECTOR_BASE <= ALLOC_INT_VECTOR_COUNT)
+        {
+            InterruptManager::Global()->Dispatch((uint8_t)regs->vectorNumber);
+            goto eoi_and_return;
+        }
+        
         switch ((uint8_t)regs->vectorNumber)
         {
             case INT_VECTOR_SPURIOUS:
@@ -88,8 +96,9 @@ namespace Kernel
             if (!TryHandleNativeException(regs))
                 Log("Received interrupt for unexpected vector, ignoring.", LogSeverity::Error);
             break;
-        }    
+        }
 
+eoi_and_return:
         Devices::LApic::Local()->SendEOI();
         return returnRegs;
     }

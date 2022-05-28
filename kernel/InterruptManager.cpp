@@ -24,6 +24,21 @@ namespace Kernel
         sl::SpinlockRelease(&lock);
     }
 
+    void InterruptManager::Dispatch(size_t vector)
+    {
+        if (vector < ALLOC_INT_VECTOR_BASE || vector - ALLOC_INT_VECTOR_BASE >= ALLOC_INT_VECTOR_COUNT)
+            return;
+        
+        const size_t offset = vector - ALLOC_INT_VECTOR_BASE;
+        if (callbacks.Size() < offset)
+            return;
+
+        if (callbacks[offset] != nullptr)
+            callbacks[offset](vector);
+        else
+            Logf("No callback for allocated interrupt: vector=0x%x", LogSeverity::Error, vector);
+    }
+
     sl::Opt<size_t> InterruptManager::AllocVectors(size_t count)
     {
         sl::ScopedSpinlock scopeLock(&lock);
