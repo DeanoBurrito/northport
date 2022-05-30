@@ -54,6 +54,14 @@ Namespaces should be kept short and meaningful, and follow the directory structu
 Integer types (int vs int32_t) should be selected depending on purpose. Using a fixed width type should be done with intent, and to communicate the size of the integer is important. Any integer data that crosses the borders of the traditional program should be done using fixed sized integers. This includes MMIO, system calls, driver calls, networking and so on.
 
 ----
-## Spacing
+## Miscellanious
 
+### Spacing
 Code inside of functions should be grouped into blocks that perform single steps of the task to be performed. If a step is achieved in a single line, it may be grouped together with other steps that occur in a single line.
+
+This also goes for declarations within classes or structs. Function definitions within source files should have a blank line before the prototype and after the body. One blank line between functions is enough to satisfy both these conditions.
+
+All files should end with a blank line.
+
+### Line Length
+With modern displays having plenty of screen real-estate, line lengths can be flexible, but for this project best practice is to keep them below approximately 80 characters per line.

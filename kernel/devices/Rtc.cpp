@@ -67,10 +67,8 @@ namespace Kernel::Devices
         const uint64_t yearsSinceEpoch = (BASE_CENTURY + year) - 1970; // Let's count the number of years passed since the Epoch Year: (1970)
         uint64_t leapYears = yearsSinceEpoch / 4; // We need to know how many leap years too...
         if ((yearsSinceEpoch % 4) > 1) // if yearsSinceEpoch % 4 is greater/equal than 2 we have to add another leap year
-
-        {
             leapYears++;
-        }
+        
         uint64_t daysCurrentYear = 0;
         for (int i = 0; i < month-1; i++) 
         {

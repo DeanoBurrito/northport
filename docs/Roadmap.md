@@ -28,7 +28,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [x] Message-based.
     - [x] System call spec.
     - [x] Timekeeping: uptime and wall clock time.
-        - [ ] RTC real-time read.
+        - [x] RTC real-time read.
     - [x] Undefined behaviour sanitizer.
     - [x] Panic().
         - [ ] Graphical output.

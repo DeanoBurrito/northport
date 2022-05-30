@@ -207,12 +207,12 @@ namespace Kernel
 
         InitPanic();
         IoApic::InitAll();
-        uint64_t unixTime = Devices::ReadRtcTime();
-        SetBootEpoch(unixTime);
-        Logf("Current unix time read from RTC is: %lu", LogSeverity::Verbose, unixTime);
+
+        SetBootEpoch(Devices::ReadRtcTime());
         InitPit(0, INT_VECTOR_PIT_TICK);
         SetApicForUptime(false); //use PIT for uptime until first apic is initialized
         SetPitMasked(false);
+
         Filesystem::VFS::Global()->Init();
         Memory::IpcManager::Global()->Init();
 

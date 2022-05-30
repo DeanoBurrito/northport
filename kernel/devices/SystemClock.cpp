@@ -1,6 +1,7 @@
 #include <devices/SystemClock.h>
 #include <Platform.h>
 #include <Locks.h>
+#include <Log.h>
 
 namespace Kernel::Devices
 {
@@ -10,6 +11,8 @@ namespace Kernel::Devices
 
     void SetBootEpoch(uint64_t epoch)
     { 
+        Logf("System clock epoch set to %lu", LogSeverity::Info, epoch);
+
         sl::ScopedSpinlock scopeLock(&timeLock); //probably unnecessary
         bootEpoch = epoch; 
     }
