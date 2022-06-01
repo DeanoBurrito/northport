@@ -12,7 +12,7 @@ namespace Kernel::Syscalls
     {
         using namespace Filesystem;
 
-        if (!Memory::VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        if (!Memory::VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
             regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
             return;
@@ -30,7 +30,14 @@ namespace Kernel::Syscalls
 
         VfsNode* file = *maybeFile;
         using np::Syscall::FileInfo;
-        FileInfo* userCopy = Memory::VMM::Current()->AllocateRange(sizeof(FileInfo), Memory::MemoryMapFlags::UserAccessible | Memory::MemoryMapFlags::AllowWrites).As<FileInfo>();
+        auto maybeRange = Memory::VMM::Current()->AllocRange(sizeof(FileInfo), true, Memory::MemoryMapFlags::UserAccessible | Memory::MemoryMapFlags::AllowWrites);
+        if (maybeRange.base == 0)
+        {
+            regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
+            return;
+        }
+
+        FileInfo* userCopy = sl::NativePtr(maybeRange.base).As<FileInfo>();
         regs.arg3 = (uint64_t)userCopy;
 
         //populate user's copy of the file details
@@ -45,7 +52,7 @@ namespace Kernel::Syscalls
     void OpenFile(SyscallRegisters& regs)
     {
         using namespace Filesystem;
-        if (!Memory::VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        if (!Memory::VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
             regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
             return;
@@ -100,7 +107,7 @@ namespace Kernel::Syscalls
         VfsNode* file = maybeResource.Value()->res.As<VfsNode>();
 
         //check with the vmm that the buffer region we're reading from is actually mapped.
-        if (!threadGroup->VMM()->RangeExists(regs.arg2 + (regs.arg1 >> 32), regs.arg3))
+        if (!threadGroup->VMM()->RangeExists({ regs.arg2 + (regs.arg1 >> 32), regs.arg3 }))
         {
             regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
             return;

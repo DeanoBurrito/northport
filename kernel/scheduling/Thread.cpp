@@ -13,8 +13,8 @@ namespace Kernel::Scheduling
         InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
 
-        sl::NativePtr stackAccess = parent->VMM()->PageTables().GetPhysicalAddress(programStack.raw - PAGE_FRAME_SIZE)->raw + PAGE_FRAME_SIZE;
-        stackAccess = EnsureHigherHalfAddr(stackAccess.raw);
+        auto maybeStack = parent->VMM()->GetPhysAddr(programStack.raw - 8);
+        sl::NativePtr stackAccess = EnsureHigherHalfAddr(maybeStack->raw + 8);
         stackAccess.As<StoredRegisters>()->rsi = arg.raw;
         runState = ThreadState::Running;
     }

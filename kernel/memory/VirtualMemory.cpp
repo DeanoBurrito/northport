@@ -1,12 +1,58 @@
 #include <memory/VirtualMemory.h>
-#include <memory/PhysicalMemory.h>
 #include <scheduling/Thread.h>
 #include <Format.h>
+#include <String.h>
+#include <Locks.h>
 #include <Log.h>
-#include <Maths.h>
 
 namespace Kernel::Memory
 {
+    /*
+        The current implementation of our VMM makes a few assumptions:
+        - VM ranges cannot overlap.
+        - Ranges are stored in order of their base address.
+        - It requires the HHDM for certain functions.
+    */
+
+    VMRange VirtualMemoryManager::InsertRange(VMRange range, bool backImmediately)
+    {
+        auto appendAfter = ranges.Begin();
+        while (appendAfter->base < range.base && appendAfter != ranges.End())
+            ++appendAfter;
+
+        if (appendAfter == ranges.End())
+            ranges.Append(range);
+        else
+            ranges.InsertAfter(appendAfter, range);
+
+        if (!sl::EnumHasFlag(range.flags, MemoryMapFlags::ForceUnmapped) && backImmediately)
+            pageTables.MapRange(range.base, range.length / PAGE_FRAME_SIZE, range.flags);
+        
+        return range;
+    }
+
+    VMRange VirtualMemoryManager::FindRange(size_t length, NativeUInt lowerBound, NativeUInt upperBound)
+    {
+        NativeUInt base = 0;
+        
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
+        {
+            base = it->base + it->length;
+            if (base < lowerBound)
+                continue;
+            if (base + length >= upperBound)
+                return {}; //no valid space before we hit the upper bound
+            
+            auto next = it;
+            ++next;
+
+            if (next->base - it->base >= length)
+                return { base, length };
+        }
+
+        return {};
+    }
+
     VirtualMemoryManager* VirtualMemoryManager::Current()
     {
         if (CPU::ReadMsr(MSR_GS_BASE) == 0 || GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
@@ -15,193 +61,222 @@ namespace Kernel::Memory
             return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Scheduling::Thread>()->Parent()->VMM();
     }
 
-    sl::Vector<VMRange> VirtualMemoryManager::InsertRange(NativeUInt base, size_t length, MemoryMapFlags flags)
-    { 
-        sl::Vector<VMRange> damageRanges;
-        auto insertAfter = ranges.Begin();
-        
-        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
-        {
-            //check if we've found a better insert point
-            if (it->base < base && it->base > insertAfter->base)
-                insertAfter = it;
-            
-            if (it->base > base + length) //range is above affected area
-                continue;
-            if (it->base + it->length < base) //range is below affected area
-                continue;
-
-            //we're got an intersection, calculate the overlap and store it
-            const NativeUInt intersectBase = sl::max<NativeUInt>(it->base, base);
-            const NativeUInt intersectTop = sl::min<NativeUInt>(it->base + it->length, base + length);
-
-            if (intersectTop - intersectBase > 0)
-                damageRanges.PushBack(VMRange(it->flags, intersectBase, intersectTop - intersectBase));
-        }
-
-        //finally, insert our new range into the list
-        if (insertAfter == ranges.End())
-            ranges.Append(VMRange(flags, base, length));
-        else
-            ranges.InsertAfter(insertAfter, VMRange(flags, base, length));
-
-        return damageRanges;
-    }
-
-    sl::Vector<VMRange> VirtualMemoryManager::DestroyRange(NativeUInt base, size_t length)
-    { 
-        sl::Vector<VMRange> damageRanges;
-        
-        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
-        {
-            if (it->base > base + length) //range is above affected area
-                continue;
-            if (it->base + it->length < base) //range is below affected area
-                continue;
-
-            //we're got an intersection, calculate the overlap and store it
-            const NativeUInt intersectBase = sl::max<NativeUInt>(it->base, base);
-            const NativeUInt intersectTop = sl::min<NativeUInt>(it->base + it->length, base + length);
-
-            damageRanges.PushBack(VMRange(it->flags, intersectBase, intersectTop - intersectBase));
-        }
-
-        //TODO: actually remove the range
-
-        return damageRanges;
-    }
-
     void VirtualMemoryManager::Init()
     {
+        sl::SpinlockRelease(&rangesLock);
         pageTables.InitClone();
     }
 
     void VirtualMemoryManager::Deinit()
     {
+        ranges.Clear();
         pageTables.Teardown();
     }
-
-    PageTableManager& VirtualMemoryManager::PageTables()
-    { return pageTables; }
-
-    void VirtualMemoryManager::AddRange(NativeUInt base, size_t length, MemoryMapFlags flags)
+    
+    void VirtualMemoryManager::MakeActive()
     {
-        if (length % PAGE_FRAME_SIZE != 0)
-            length = (length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
-        if (base % PAGE_FRAME_SIZE != 0)
-            base = (base / PAGE_FRAME_SIZE) * PAGE_FRAME_SIZE;
-        
-        sl::Vector<VMRange> damagedRanges = InsertRange(base, length, flags);
-        const size_t bitmapLenBytes = (length / PAGE_FRAME_SIZE + 1) / 8 + 1;
-        uint8_t appliedBitmap[bitmapLenBytes];
-        sl::memset(appliedBitmap, 0, bitmapLenBytes);
+        pageTables.MakeActive();
+    }
 
-        //now adjust any memory mappings accordingly
-        for (auto it = damagedRanges.Begin(); it != damagedRanges.End(); ++it)
+    bool VirtualMemoryManager::IsActive() const
+    {
+        return pageTables.IsActive();
+    }
+
+    bool VirtualMemoryManager::AddRange(VMRange range, bool backNow)
+    {
+        if (!backNow)
         {
-            MemoryMapFlags mergedFlags = it->flags | flags;
-
-            //mark the areas we'll take care off in the bitmap, and apply flags
-            for (size_t i = 0; i < it->length / PAGE_FRAME_SIZE + 1; i++)
-            {
-                if (it->base + i * PAGE_FRAME_SIZE < base)
-                    continue; //we're too low
-                if (it->base + it->length > base + length)
-                    break; //we're too high
-                
-                //set the bit as processed, and then apply the flags only if they're different.
-                sl::BitmapSet(appliedBitmap, (it->base - base) / PAGE_FRAME_SIZE + i);
-                if (mergedFlags != it->flags)
-                    pageTables.ModifyPageFlags(it->base + i * PAGE_FRAME_SIZE, mergedFlags, (size_t)-1);
-            }
+            //TODO: implement demand-paging
+            Log("Demand paging not implemented, VM ranges must be alloc-now.", LogSeverity::Error); 
+            return false;
         }
 
-        //check the bitmap for any clear bits, apply the flags to those pages
-        for (NativeUInt i = base; i < base + length; i += PAGE_FRAME_SIZE)
+        //align the base down, and the length up to the nearest pages
+        if (range.base % PAGE_FRAME_SIZE != 0)
+            range.base = (range.base / PAGE_FRAME_SIZE) * PAGE_FRAME_SIZE;
+        if (range.length % PAGE_FRAME_SIZE != 0)
+            range.length = (range.length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
+
+        sl::ScopedSpinlock scopeLock(&rangesLock);
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
         {
-            const size_t index = (i - base) / PAGE_FRAME_SIZE;
-            
-            if (sl::BitmapGet(appliedBitmap, index))
+            if (it->base > range.base + range.length)
+                continue;
+            if (it->base + it->length < range.base)
                 continue;
 
-            //apply the flags directly, and since its not a part of any other range we dont need to modify existing data
-            pageTables.MapMemory(i, flags);
+            Logf("Cannot add VM range (base=0x%lx, len=0x%lx), collisions occured with base=0x%lx, len=0x%lx", LogSeverity::Error, range.base, range.length, it->base, it->length);
+            return false;
         }
+
+        //everything is okay, lets add the range and back it with some entries in the page tables.
+        InsertRange(range, true);
+        return true;
     }
 
-    bool VirtualMemoryManager::RemoveRange(NativeUInt base)
-    { return false; }
-
-    bool VirtualMemoryManager::RemoveRange(NativeUInt base, size_t length)
-    { return false; }
-
-    sl::NativePtr VirtualMemoryManager::AllocateRange(size_t length, MemoryMapFlags flags)
+    bool VirtualMemoryManager::RemoveRange(VMRange range)
     {
-        const size_t pagesNeeded = (length / PAGE_FRAME_SIZE + 1);
-        sl::NativePtr physBase = Memory::PMM::Global()->AllocPages(pagesNeeded);
+        sl::ScopedSpinlock scopeLock(&rangesLock);
+        auto foundRange = ranges.End();
+        
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
+        {
+            if (it->base != range.base || it->length != range.length)
+                continue;
+        }
 
-        return AllocateRange(physBase, length, flags);
+        if (foundRange == ranges.End())
+            return false;
+
+        if (!sl::EnumHasFlag(foundRange->flags, MemoryMapFlags::ForceUnmapped)
+            && !sl::EnumHasFlag(foundRange->flags, MemoryMapFlags::ForeignMemory))
+            pageTables.UnmapRange(foundRange->base, foundRange->length / PAGE_FRAME_SIZE);
+        ranges.Remove(foundRange);
+        return true;
     }
 
-    sl::NativePtr VirtualMemoryManager::AllocateRange(sl::NativePtr physicalBase, size_t length, MemoryMapFlags flags)
+    void VirtualMemoryManager::ModifyRange(VMRange range, MemoryMapFlags flags)
+    {
+        Log("Not implemented: ModifyRange", LogSeverity::Fatal);
+    }
+
+    void VirtualMemoryManager::ModifyRange(VMRange range, int adjustLength, bool fromEnd)
+    {
+        Log("Not implemented: ModifyRange", LogSeverity::Fatal);
+    }
+
+    VMRange VirtualMemoryManager::AllocRange(size_t length, bool backNow, MemoryMapFlags flags, NativeUInt lowerBound, NativeUInt upperBound)
     {
         if (length % PAGE_FRAME_SIZE != 0)
             length = (length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
         
-        //TODO: this is pretty wasteful, it would be nice to implement a proper search.
-        const size_t base = ranges.Last().base + ranges.Last().length;
-        auto damageRanges = InsertRange(base, length, flags);
-        if (!damageRanges.Empty())
-        {
-            Logf("Could not allocate range (base=0x%lx, length=0x%lx) as collisions occured.", LogSeverity::Error, base, length);
-            return nullptr;
-        }
-
-        pageTables.MapRange(base, physicalBase, length / PAGE_FRAME_SIZE, flags);
-        return base;
+        sl::ScopedSpinlock scopeLock(&rangesLock);
+        VMRange range = FindRange(length, lowerBound, upperBound);
+        if (range.base == 0)
+            return {};
+        
+        range.flags = flags;
+        return InsertRange(range, backNow);
     }
 
-    sl::NativePtr VirtualMemoryManager::AddSharedPhysicalRange(VirtualMemoryManager* foreignVmm, sl::NativePtr foreignAddr, size_t length, MemoryMapFlags localFlags)
+    VMRange VirtualMemoryManager::AllocMmioRange(sl::NativePtr physBase, size_t length, MemoryMapFlags flags)
     {
-        //the other vmm is responsible for the physical memory, we're just creating a window to access it from here.
-        localFlags = localFlags | MemoryMapFlags::NonOwning;
+        if (length % PAGE_FRAME_SIZE != 0)
+            length = (length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
+        
+        sl::ScopedSpinlock scopeLock(&rangesLock);
+        VMRange range = FindRange(length, 0, (uint64_t)-1);
+        if (range.base == 0)
+            return {};
+        
+        range.flags = flags;
+        InsertRange(range, false); //dont allocate physical memory for this
+        pageTables.MapRange(range.base, physBase, length / PAGE_FRAME_SIZE, flags);
+        
+        return range;
+    }
 
-        //TODO: we use this in AllocateRange(), we should probably extract this into a separate function that just does that.
-        const size_t base = ranges.Last().base + ranges.Last().length;
-
-        size_t mappedLength = 0;
-        while (mappedLength < length)
+    VMRange VirtualMemoryManager::AddSharedRange(VirtualMemoryManager& foreignVmm, VMRange foreignRange)
+    {
+        sl::ScopedSpinlock scopeLock(&rangesLock);
+        VMRange range = FindRange(foreignRange.length, 0, (NativeUInt)-1);
+        range.flags = foreignRange.flags | MemoryMapFlags::ForeignMemory;
+        InsertRange(range, false);
+        
+        for (size_t offset = 0; offset < range.length; offset += PAGE_FRAME_SIZE)
         {
-            auto maybePhysAddr = foreignVmm->pageTables.GetPhysicalAddress(foreignAddr.raw + mappedLength);
-            if (!maybePhysAddr)
+            auto maybeForeignPhys = foreignVmm.pageTables.GetPhysicalAddress(foreignRange.base + offset);
+            if (!maybeForeignPhys)
             {
-                Logf("Could not map physical range from foreign VMM, no physical memory @ 0x%lx", LogSeverity::Error, foreignAddr.raw);
-                return nullptr; //TODO: add a range in the foreign vmm that encompasses this range, and then try again locally.
+                Log("Could not mapped shared physical VM range, missing physical page in remote vmm.", LogSeverity::Error);
+                return {};
             }
 
-            pageTables.MapMemory(base + mappedLength, maybePhysAddr->raw, localFlags);
-            mappedLength += PAGE_FRAME_SIZE;
+            pageTables.MapMemory(range.base + offset, maybeForeignPhys->raw + offset, foreignRange.flags | MemoryMapFlags::ForeignMemory);
         }
 
-        return base;
+        return range;
     }
 
-    bool VirtualMemoryManager::RangeExists(NativeUInt base, size_t length)
-    { return RangeExists(base, length, MemoryMapFlags::None); }
-
-    bool VirtualMemoryManager::RangeExists(NativeUInt base, size_t length, MemoryMapFlags minFlags)
+    sl::Opt<sl::NativePtr> VirtualMemoryManager::GetPhysAddr(sl::NativePtr ptr)
     {
-        return true; //TODO: implement
+        if (ptr.ptr == nullptr)
+            return {};
+
+        return pageTables.GetPhysicalAddress(ptr);
     }
 
-    void VirtualMemoryManager::PrintLog(sl::NativePtr highlightRangeOf)
+    size_t VirtualMemoryManager::CopyInto(sl::BufferView sourceBuffer, sl::NativePtr destBase)
+    {
+        if (!RangeExists({destBase.raw, sourceBuffer.length}))
+            return 0;
+        
+        size_t lengthCopied = 0;
+        while (lengthCopied < sourceBuffer.length)
+        {
+            auto maybePhys = pageTables.GetPhysicalAddress(destBase.raw + lengthCopied);
+            if (!maybePhys)
+                return lengthCopied;
+            
+            if (lengthCopied == 0)
+            {
+                //first copy will likely not be page-aligned at the destination
+                const size_t lengthToCopy = PAGE_FRAME_SIZE - (destBase.raw % PAGE_FRAME_SIZE);
+                sl::memcopy(sourceBuffer.base.As<void>(lengthCopied), EnsureHigherHalfAddr(maybePhys->As<void>(PAGE_FRAME_SIZE - lengthToCopy)), lengthToCopy);
+                lengthCopied += lengthToCopy;
+            }
+            else if (lengthCopied + PAGE_FRAME_SIZE > sourceBuffer.length)
+            {
+                const size_t lengthToCopy = sourceBuffer.length - lengthCopied;
+                sl::memcopy(sourceBuffer.base.As<void>(lengthCopied), EnsureHigherHalfAddr(maybePhys->ptr), lengthToCopy);
+                lengthCopied += lengthToCopy;
+                return lengthCopied;
+            }
+            else
+            {
+                sl::memcopy(sourceBuffer.base.As<void>(lengthCopied), EnsureHigherHalfAddr(maybePhys->ptr), PAGE_FRAME_SIZE);
+                lengthCopied += PAGE_FRAME_SIZE;
+            }
+        }
+
+        return sourceBuffer.length;
+    }
+
+    bool VirtualMemoryManager::RangeExists(VMRange range)
+    { 
+        return RangeExists(range, MemoryMapFlags::None);
+    }
+
+    bool VirtualMemoryManager::RangeExists(VMRange range, MemoryMapFlags minFlags)
+    { 
+        constexpr size_t flagsMask = 0b001111; //only check for flags we care about
+        const size_t maskedFlags = (size_t)minFlags & flagsMask;
+        
+        sl::ScopedSpinlock scopeLock(&rangesLock);
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
+        {
+            if (range.base >= it->base && range.base + range.length <= it->base + it->length)
+            {
+                if (minFlags == MemoryMapFlags::None)
+                    return true;
+                
+                return (maskedFlags & (size_t)it->flags) == maskedFlags;
+            }
+        }
+
+        return false;
+    }
+
+    void VirtualMemoryManager::PrintRanges(sl::NativePtr highlightRangeOf)
     {
         for (auto range = ranges.Begin(); range != ranges.End(); ++range)
         {
-            const string logStr = sl::FormatToString("VM range: start=0x%0lx end=0x%0lx length=0x%lx flags=0x%lx", 0, range->base, range->base + range->length, range->length, (size_t)range->flags);
-            if (highlightRangeOf.ptr != nullptr 
-                && highlightRangeOf.raw >= range->base 
-                && highlightRangeOf.raw < range->base + range->length)
+            const sl::String logStr = sl::FormatToString("VM Range: start=0x%lx, end=0x%lx, length=0x%lx, flags=0x%lx", 0, 
+                range->base, range->base + range->length, range->length, (uint64_t)range->flags);
+            
+            if (highlightRangeOf.ptr != nullptr && 
+                highlightRangeOf.raw >= range->base && highlightRangeOf.raw < range->base + range->length)
                 Log(logStr.C_Str(), LogSeverity::Warning);
             else
                 Log(logStr.C_Str(), LogSeverity::Info);

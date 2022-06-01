@@ -55,7 +55,7 @@ namespace Kernel
         
         //if we can, ensure we have the processes's page tables loaded here
         if (currentThread != nullptr)
-            currentThread->Parent()->VMM()->PageTables().MakeActive();
+            currentThread->Parent()->VMM()->MakeActive();
 
         //this core has already claimed the panic response, all other cores will jump straight to halt
         Devices::LApic::Local()->BroadcastIpi(INT_VECTOR_PANIC, false);
@@ -84,7 +84,7 @@ namespace Kernel
             goto final_loop;
 
         Log("---- Virtual Memory Ranges: ----", LogSeverity::Info);
-        currentThread->Parent()->VMM()->PrintLog(ReadCR2());
+        currentThread->Parent()->VMM()->PrintRanges(ReadCR2());
 
         Log("---- Process & Thread ----", LogSeverity::Info);
         Logf("threadId: %u, threadName: %s", LogSeverity::Info, currentThread->Id(), currentThread->Name().C_Str());

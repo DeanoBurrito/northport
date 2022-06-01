@@ -4,6 +4,7 @@
 #include <Platform.h>
 #include <Optional.h>
 #include <BufferView.h>
+#include <memory/MemoryFlags.h>
 
 namespace Kernel::Memory
 {   
@@ -17,16 +18,6 @@ namespace Kernel::Memory
         _4KB = 0x1000,
         _2MB = 0x200000,
         _1GB = 0x40000000,
-    };
-
-    enum class MemoryMapFlags : size_t
-    {
-        None = 0,
-        AllowWrites = 1 << 0,
-        AllowExecute = 1 << 1,
-        UserAccessible = 1 << 2,
-        SystemRegion = 1 << 3,
-        NonOwning = 1 << 4,
     };
 
     FORCE_INLINE MemoryMapFlags operator&(const MemoryMapFlags& a, const MemoryMapFlags& b)
@@ -61,7 +52,6 @@ namespace Kernel::Memory
         bool PageSizeAvailable(PagingSize size) const;
         sl::BufferView GetHhdm() const;
 
-        bool ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlags flags, size_t appliedLevelsBitmap);
         sl::Opt<sl::NativePtr> GetPhysicalAddress(sl::NativePtr virtAddr);
 
         //allocates a physical page and maps it at the specified address.
@@ -77,7 +67,7 @@ namespace Kernel::Memory
         void MapRange(sl::NativePtr virtAddrBase, size_t count, PagingSize pageSize, MemoryMapFlags flags);
         void MapRange(sl::NativePtr virtAddrBase, sl::NativePtr physAddrBase, size_t count, PagingSize pageSize, MemoryMapFlags flags);
 
-        //removes a mapping froma virtual region, returns the size of attached page.
+        //removes a mapping from a virtual region, returns the size of attached page.
         PagingSize UnmapMemory(sl::NativePtr virtAddr, bool freePhysicalPage = true);
         
         PagingSize UnmapRange(sl::NativePtr virtAddrBase, size_t count, bool freePhysicalPages = true);

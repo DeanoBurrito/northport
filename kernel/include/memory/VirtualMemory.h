@@ -1,55 +1,71 @@
 #pragma once
 
-#include <NativePtr.h>
+#include <BufferView.h>
 #include <memory/Paging.h>
 #include <containers/LinkedList.h>
-#include <containers/Vector.h>
 
 namespace Kernel::Memory
 {
     struct VMRange
     {
-    public:
-        MemoryMapFlags flags;
         NativeUInt base;
         size_t length;
+        MemoryMapFlags flags;
 
-        VMRange() : flags(MemoryMapFlags::None), base(0), length(0)
+        VMRange() : base(0), length(0), flags(MemoryMapFlags::None)
         {}
 
-        VMRange(MemoryMapFlags flags, NativeUInt base, size_t length) : flags(flags), base(base), length(length)
+        VMRange(NativeUInt base, size_t length) : base(base), length(length), flags(MemoryMapFlags::None)
         {}
+
+        VMRange(NativeUInt base, size_t length, MemoryMapFlags flags) 
+        : base(base), length(length), flags(flags)
+        {}
+
+        FORCE_INLINE sl::BufferView ToView()
+        { return { base, length }; }
     };
 
     class VirtualMemoryManager
     {
+    friend PageTableManager;
     private:
-        PageTableManager pageTables;
+        char rangesLock;
         sl::LinkedList<VMRange> ranges;
+        PageTableManager pageTables;
 
-        sl::Vector<VMRange> InsertRange(NativeUInt base, size_t length, MemoryMapFlags flags);
-        sl::Vector<VMRange> DestroyRange(NativeUInt base, size_t length);
+        VMRange InsertRange(VMRange range, bool backImmediately);
+        VMRange FindRange(size_t length, NativeUInt lowerBound, NativeUInt upperBound);
 
     public:
         static VirtualMemoryManager* Current();
         void Init();
         void Deinit();
-        PageTableManager& PageTables();
 
-        void AddRange(NativeUInt base, size_t length, MemoryMapFlags flags);
-        bool RemoveRange(NativeUInt base);
-        bool RemoveRange(NativeUInt base, size_t length);
+        void MakeActive();
+        bool IsActive() const;
 
-        sl::NativePtr AllocateRange(size_t length, MemoryMapFlags flags);
-        sl::NativePtr AllocateRange(sl::NativePtr physicalBase, size_t length, MemoryMapFlags flags);
+        bool AddRange(VMRange range, bool backImmediately);
+        bool RemoveRange(VMRange range);
+        void ModifyRange(VMRange range, MemoryMapFlags newFlags);
+        void ModifyRange(VMRange range, int adjustLength, bool fromEnd);
 
-        sl::NativePtr AddSharedPhysicalRange(VirtualMemoryManager* foreignVmm, sl::NativePtr foreignAddr, size_t length, MemoryMapFlags localFlags);
+        //allocates a range big enough, optionally within a selected range.
+        VMRange AllocRange(size_t length, bool backImmediately, MemoryMapFlags flags, NativeUInt lowerBound = 0, NativeUInt upperBound = (NativeUInt)-1);
+        //allocates a range, but backed with a specific range of physical memory.
+        VMRange AllocMmioRange(sl::NativePtr physBase, size_t length, MemoryMapFlags flags);
 
-        bool RangeExists(NativeUInt base, size_t length);
-        bool RangeExists(NativeUInt base, size_t length, MemoryMapFlags minimumFlags);
+        //copies a range from another vmm, maps to the same physical memory (i.e. it's shared).
+        VMRange AddSharedRange(VirtualMemoryManager& foreignVmm, VMRange foreignRange);
+        //tries to convert a virtual address to a physical one.
+        sl::Opt<sl::NativePtr> GetPhysAddr(sl::NativePtr ptr);
+        //copies data from the current address space into this vmm, at the specified virt addr.
+        size_t CopyInto(sl::BufferView sourceBuffer, sl::NativePtr destBase);
 
-        //print the current ranges to the log, highlighting a range that contains a target address is one existss.
-        void PrintLog(sl::NativePtr highlightRangeOf = nullptr);
+        bool RangeExists(VMRange range);
+        bool RangeExists(VMRange range, MemoryMapFlags minimumFlags);
+
+        void PrintRanges(sl::NativePtr highlightRangeOf = nullptr);
     };
 
     using VMM = VirtualMemoryManager;

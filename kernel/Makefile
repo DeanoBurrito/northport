@@ -5,7 +5,7 @@ CXX_INCLUDE_DIRS = -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-s
 CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
 	-Wall -Wextra  -fpie -fno-stack-protector -fno-omit-frame-pointer -ffreestanding \
 	-mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow \
-	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
+	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables -fsanitize=undefined
 
 LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-syslib
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds

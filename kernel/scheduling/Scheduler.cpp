@@ -32,7 +32,7 @@ namespace Kernel::Scheduling
     StoredRegisters* Scheduler::LoadContext(Thread* thread)
     {
         CurrentTss()->rsp0 = thread->kernelStack.raw;
-        thread->parent->vmm.PageTables().MakeActive();
+        thread->parent->vmm.MakeActive();
 
         return thread->programStack.As<StoredRegisters>();
     }
@@ -227,8 +227,7 @@ namespace Kernel::Scheduling
         else
             thread->kernelStack = parent->AllocKernelStack();
 
-        sl::NativePtr stackAccess = parent->vmm.PageTables().GetPhysicalAddress(thread->kernelStack.raw - PAGE_FRAME_SIZE)->raw + PAGE_FRAME_SIZE;
-        stackAccess = EnsureHigherHalfAddr(stackAccess.raw);
+        sl::NativePtr stackAccess = thread->kernelStack;
 
         //setup dummy frame base and return address
         sl::StackPush<NativeUInt>(stackAccess, 0);
@@ -282,7 +281,7 @@ namespace Kernel::Scheduling
 
         //free the program and kernel stacks
         // if (!sl::EnumHasFlag(thread->flags, ThreadFlags::KernelMode))
-        //     parent->FreeKernelStack(thread->programStack);
+        //     parent->FreeKernelStack(thread->programStack); //TODO: lets not clean up the resources immediately, and instead let the cleanup thread do that.
         // else
         // {
         //     parent->FreeUserStack(thread->programStack);

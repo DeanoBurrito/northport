@@ -30,7 +30,7 @@ namespace Kernel::Syscalls
         uint64_t mapLength = (regs.arg1 / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
         Memory::MemoryMapFlags flags = ParseFlags((np::Syscall::MemoryMapFlags)regs.arg2, isUserThread, true);
 
-        currentThread->Parent()->VMM()->AddRange(mapBase, mapLength, flags);
+        currentThread->Parent()->VMM()->AddRange({ regs.arg0, regs.arg1, flags }, true);
 
         regs.arg0 = mapBase;
         regs.arg1 = mapLength;

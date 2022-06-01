@@ -13,7 +13,7 @@ namespace Kernel::Syscalls
     {
         using namespace Memory;
 
-        if (!VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        if (!VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
             //this can fail either because the memory isnt mapped, or because the string is greater than 1 page long (if so, probably not a valid request anyway).
             regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
@@ -46,10 +46,10 @@ namespace Kernel::Syscalls
 
         regs.arg0 = *maybeResId;
         if (sl::EnumHasFlag(regs.arg1, IpcStreamFlags::UseSharedMemory))
-            regs.arg2 = maybeStream.Value()->bufferAddr.raw;
+            regs.arg2 = maybeStream.Value()->buffer.base.raw;
         else
             regs.arg2 = 0;
-        regs.arg1 = maybeStream.Value()->bufferLength;
+        regs.arg1 = maybeStream.Value()->buffer.length;
     }
 
     void StopIpcStream(SyscallRegisters& regs)
@@ -73,7 +73,7 @@ namespace Kernel::Syscalls
     {
         using namespace Memory;
 
-        if (!VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        if (!VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
             regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
             return;
@@ -125,7 +125,7 @@ namespace Kernel::Syscalls
     void CreateMailbox(SyscallRegisters& regs)
     {
         using namespace Memory;
-        if (!VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        if (!VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
             regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
             return;
@@ -165,12 +165,12 @@ namespace Kernel::Syscalls
     {
         using namespace Memory;
         //usual safety checks, ensure the string's buffer and incoming data buffers are valid memory regions
-        if (!VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        if (!VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
             regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
             return;
         }
-        if (regs.arg2 > 0 && !VMM::Current()->RangeExists(regs.arg1, regs.arg2))
+        if (regs.arg2 > 0 && !VMM::Current()->RangeExists({ regs.arg1, regs.arg2 }))
         {
             regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
             return;

@@ -8,7 +8,7 @@ namespace Kernel::Syscalls
 {
     void Log(SyscallRegisters& regs)
     {
-        if (!Memory::VMM::Current()->RangeExists(regs.arg0, PAGE_FRAME_SIZE))
+        if (!Memory::VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
             regs.id = (uint64_t)np::Syscall::LogError::InvalidBufferRange;
             return;

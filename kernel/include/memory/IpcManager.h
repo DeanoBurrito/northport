@@ -29,8 +29,7 @@ namespace Kernel::Memory
     struct IpcStream
     {
         IpcStreamFlags flags;
-        sl::NativePtr bufferAddr;
-        size_t bufferLength;
+        sl::BufferView buffer;
         size_t ownerId;
         const sl::String name;
 

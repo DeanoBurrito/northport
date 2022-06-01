@@ -147,7 +147,7 @@ namespace Kernel::Memory
         if (CPU::ReadMsr(MSR_GS_BASE) == 0 || GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
             return &defaultPageTableManager;
         else 
-            return &Scheduling::Thread::Current()->Parent()->VMM()->PageTables(); //ah oops... its starting to look like LINQ
+            return &Scheduling::Thread::Current()->Parent()->VMM()->pageTables; //ah oops... its starting to look like LINQ
     }
 
     bool PageTableManager::usingExtendedPaging;
@@ -293,48 +293,6 @@ namespace Kernel::Memory
     void PageTableManager::Teardown(bool includeHigherHalf)
     {
         FreePageTable(EnsureHigherHalfAddr(topLevelAddress.As<PageTable>()), usingExtendedPaging ? 5 : 4, includeHigherHalf);
-    }
-
-    bool PageTableManager::ModifyPageFlags(sl::NativePtr virtAddr, MemoryMapFlags flags, size_t appliedLevelsBitmap)
-    {
-        size_t tableIndices[6];
-        GetPageTableIndices(virtAddr, tableIndices);
-
-        sl::ScopedSpinlock scopeLock(&lock);
-
-        const PageEntryFlag entryFlags = GetPageEntryFlags(flags);
-        PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
-        PageTableEntry* entry;
-
-        for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
-        {
-            entry = &pageTable->entries[tableIndices[level]];
-            if (!entry->HasFlag(PageEntryFlag::Present))
-                return false;
-
-            if ((appliedLevelsBitmap & (1 << level)) != 0)
-            {
-                PageEntryFlag singleEntryFlags = sl::EnumSetFlag(entryFlags, PageEntryFlag::Present);
-                if (entry->HasFlag(PageEntryFlag::PageSize) && level < 1)
-                    singleEntryFlags = sl::EnumSetFlag(singleEntryFlags, PageEntryFlag::PageSize);
-                sl::NativePtr savedAddr = entry->GetAddr();
-                
-                //NOTE: yes we're re-creating the entry here, but since the whole entry needs to be invalidated there's not much of a performance loss.
-                entry->raw = 0ul;
-                entry->SetAddr(savedAddr);
-                entry->SetFlag(singleEntryFlags);
-            }
-
-            if (entry->HasFlag(PageEntryFlag::PageSize) && level > 1)
-            {
-                InvalidatePage(virtAddr);
-                return true; //its a 1gb or 2mb page
-            }
-            pageTable = EnsureHigherHalfAddr(entry->GetAddr().As<PageTable>());
-        }
-
-        InvalidatePage(virtAddr);
-        return true;
     }
 
     sl::Opt<sl::NativePtr> PageTableManager::GetPhysicalAddress(sl::NativePtr virtAddr)

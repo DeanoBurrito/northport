@@ -22,7 +22,7 @@ namespace Kernel
         //this is fine since all our buffers are in kernel space (loaded file has higher half addr)
         //TODO: would be nice to clone a section of this table into the current one temporarily so we dont have to have to trash the tlb twice.
         Memory::PageTableManager* prevPageTables = Memory::PageTableManager::Current();
-        tg->VMM()->PageTables().MakeActive();
+        tg->VMM()->MakeActive();
 
         for (size_t i = 0; i < phdrs.Size(); i++)
         {
@@ -30,7 +30,7 @@ namespace Kernel
             const size_t highestPage = (phdrs[i]->p_vaddr + phdrs[i]->p_memsz) / PAGE_FRAME_SIZE + 1;
             const size_t pagesNeeded = highestPage - lowestPage;
 
-            tg->VMM()->PageTables().MapRange(lowestPage * PAGE_FRAME_SIZE, pagesNeeded, Memory::MemoryMapFlags::AllowWrites);
+            tg->VMM()->AddRange({ lowestPage * PAGE_FRAME_SIZE, pagesNeeded * PAGE_FRAME_SIZE, Memory::MemoryMapFlags::AllowWrites }, true);
             sl::memcopy(loadedFile.As<void>(phdrs[i]->p_offset), (void*)phdrs[i]->p_vaddr, phdrs[i]->p_filesz);
             //optionally zero any memory that wasnt copied from the file, but requested in memsz.
             sl::memset(sl::NativePtr(phdrs[i]->p_vaddr).As<void>(phdrs[i]->p_filesz), 0, phdrs[i]->p_memsz - phdrs[i]->p_filesz);
@@ -55,7 +55,7 @@ namespace Kernel
                         allowNextExecutable = true;
                 }
 
-                tg->VMM()->PageTables().ModifyPageFlags(page * PAGE_FRAME_SIZE, requestedFlags, (size_t)-1);
+                // tg->VMM()->PageTables().ModifyPageFlags(page * PAGE_FRAME_SIZE, requestedFlags, (size_t)-1);
             }
         }
         

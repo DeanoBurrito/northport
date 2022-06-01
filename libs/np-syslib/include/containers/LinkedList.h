@@ -27,6 +27,12 @@ namespace sl
             return *this;
         }
 
+        LinkedListIterator& operator--()
+        {
+            elem = elem->prev;
+            return *this;
+        }
+
         ElemT& operator*()
         { return elem->value; }
 

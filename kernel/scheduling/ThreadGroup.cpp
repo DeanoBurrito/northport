@@ -25,21 +25,21 @@ namespace Kernel::Scheduling
         const sl::NativePtr base = userGlobalStackBase + index * (userStackPages + 1) * PAGE_FRAME_SIZE; //+1 because of the gaurd page we leave unmapped
         
         using MFlags = Memory::MemoryMapFlags;
-        vmm.AddRange(base.raw, userStackPages * PAGE_FRAME_SIZE, MFlags::UserAccessible | MFlags::AllowWrites | MFlags::SystemRegion);
+        vmm.AddRange({ base.raw, userStackPages * PAGE_FRAME_SIZE, MFlags::UserAccessible | MFlags::AllowWrites | MFlags::SystemRegion }, true);
         return base.raw + userStackPages * PAGE_FRAME_SIZE;
     }
 
     void ThreadGroup::FreeUserStack(sl::NativePtr base)
     {
         base.raw -= userStackPages * PAGE_FRAME_SIZE;
-        if (!vmm.RangeExists(base.raw, userStackPages * PAGE_FRAME_SIZE))
+        if (!vmm.RangeExists({ base.raw, userStackPages * PAGE_FRAME_SIZE }))
         {
             Log("Tried to free user stack: stack VM range not found.", LogSeverity::Warning);
             return;
         }
         
         sl::ScopedSpinlock scopeLock(&lock);
-        vmm.RemoveRange(base.raw, userStackPages * PAGE_FRAME_SIZE);
+        vmm.RemoveRange({ base.raw, userStackPages * PAGE_FRAME_SIZE });
         
         const size_t index = (base.raw - userGlobalStackBase) / (userStackPages + 1);
         userStackBitmap.Clear(index);

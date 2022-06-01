@@ -63,14 +63,13 @@ namespace Kernel::Memory
         if (!sl::EnumHasFlag(Scheduling::Thread::Current()->Flags(), Scheduling::ThreadFlags::KernelMode))
             mappingFlags = mappingFlags | MemoryMapFlags::UserAccessible;
 
-        stream->bufferLength = pageCount * PAGE_FRAME_SIZE;
         stream->flags = flags;
         stream->accessFlags = accessFlags;
         stream->ownerId = Scheduling::ThreadGroup::Current()->Id();
 
         //we allocate the buffer initially in the host's memory space, any clients will simply point to the physical memory allocated here.
-        stream->bufferAddr = VMM::Current()->AllocateRange(pageCount * PAGE_FRAME_SIZE, mappingFlags);
-        if (stream->bufferAddr.ptr == nullptr)
+        stream->buffer = VMM::Current()->AllocRange(pageCount * PAGE_FRAME_SIZE, true, mappingFlags).ToView();
+        if (stream->buffer.base.ptr == nullptr)
         {
             //we failed to allocate a VM region for whatever reason, undo anything we just updated.
             streams->At(streamId) = nullptr;
@@ -100,7 +99,7 @@ namespace Kernel::Memory
             idAlloc->Free(i);
 
             //TODO: we'll need to tell any other buffers that are connected to this one that the stream has been broken.
-            VMM::Current()->RemoveRange(stream->bufferAddr.raw, stream->bufferLength);
+            VMM::Current()->RemoveRange({ stream->buffer.base.raw, stream->buffer.length });
             delete stream;
             return;
         }
@@ -149,13 +148,13 @@ namespace Kernel::Memory
             }
 access_allowed:
 
-            const sl::NativePtr base = Scheduling::ThreadGroup::Current()->VMM()->AddSharedPhysicalRange(
-                Scheduling::Scheduler::Global()->GetThreadGroup(existingStream->ownerId)->VMM(), 
-                existingStream->bufferAddr, 
-                existingStream->bufferLength,
-                flags);
+            auto foreignVmm = Scheduling::Scheduler::Global()->GetThreadGroup(existingStream->ownerId)->VMM();
+            const sl::BufferView range = VMM::Current()->AddSharedRange(
+                    *foreignVmm, 
+                    { existingStream->buffer.base.raw, existingStream->buffer.length, flags }
+                ).ToView();
             
-            return base;
+            return range.base;
         }
 
         return {};
@@ -195,7 +194,7 @@ access_allowed:
         if (!maybeStream)
             return {};
 
-        IpcMailboxControl* mailControl = maybeStream.Value()->bufferAddr.As<IpcMailboxControl>();
+        IpcMailboxControl* mailControl = maybeStream.Value()->buffer.base.As<IpcMailboxControl>();
         mailControl->head = mailControl->tail = 0;
         sl::SpinlockRelease(&mailControl->lock);
 
@@ -231,7 +230,7 @@ access_allowed:
         {
             //there is data, jump to the end and check if there is enough space.
             sl::NativePtr scan = mailControl->Last()->Next();
-            if (scan.raw + sizeof(IpcMailHeader) + data.length > streamDetails->bufferLength)
+            if (scan.raw + sizeof(IpcMailHeader) + data.length > streamDetails->buffer.length)
             {
                 //TODO: we should implement this as a circular buffer
                 return false; //buffer is full, cannot receive mail
@@ -269,7 +268,7 @@ access_allowed:
         if (!maybeDetails)
             return false;
         
-        IpcMailboxControl* mailControl = maybeDetails.Value()->bufferAddr.As<IpcMailboxControl>();
+        IpcMailboxControl* mailControl = maybeDetails.Value()->buffer.base.As<IpcMailboxControl>();
         sl::ScopedSpinlock scopeLock(&mailControl->lock);
         return mailControl->head > 0;
     }
@@ -281,7 +280,7 @@ access_allowed:
         if (hostStream->ownerId != Scheduling::ThreadGroup::Current()->Id())
             return;
         
-        IpcMailboxControl* mailControl = hostStream->bufferAddr.As<IpcMailboxControl>();
+        IpcMailboxControl* mailControl = hostStream->buffer.base.As<IpcMailboxControl>();
         sl::ScopedSpinlock mailLock(&mailControl->lock);
         IpcMailHeader* latestMail = mailControl->First();
 

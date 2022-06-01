@@ -46,7 +46,7 @@ namespace Kernel::Syscalls
             return;
         }
 
-        if (!Memory::VMM::Current()->RangeExists(regs.arg0, maybeEvent->length, Memory::MemoryMapFlags::UserAccessible))
+        if (!Memory::VMM::Current()->RangeExists({ regs.arg0, maybeEvent->length, Memory::MemoryMapFlags::UserAccessible }))
         {
             regs.id = (uint64_t)np::Syscall::ProgramEventError::InvalidBufferRange;
             return;
