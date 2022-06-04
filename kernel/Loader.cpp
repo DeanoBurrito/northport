@@ -41,7 +41,9 @@ namespace Kernel
             }
 
             tg->VMM()->CopyInto({ file.base.raw + phdrs[i]->p_offset, phdrs[i]->p_filesz }, phdrs[i]->p_vaddr);
-            //TODO: zero memsz - filesz, to ensure bss works correctly
+            
+            if (phdrs[i]->p_memsz > phdrs[i]->p_filesz)
+                tg->VMM()->ZeroRange({ phdrs[i]->p_vaddr + phdrs[i]->p_filesz, phdrs[i]->p_memsz - phdrs[i]->p_filesz });
         }
 
         return Scheduling::Scheduler::Global()->CreateThread(ehdr->e_entry, threadFlags, tg)->Id();

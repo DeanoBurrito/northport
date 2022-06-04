@@ -26,11 +26,17 @@ namespace Kernel::Syscalls
     {
         Scheduling::Thread* currentThread = Scheduling::Thread::Current();
         bool isUserThread = !sl::EnumHasFlag(currentThread->Flags(), Scheduling::ThreadFlags::KernelMode);
-        uint64_t mapBase = regs.arg0;
-        uint64_t mapLength = (regs.arg1 / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
-        Memory::MemoryMapFlags flags = ParseFlags((np::Syscall::MemoryMapFlags)regs.arg2, isUserThread, true);
 
-        currentThread->Parent()->VMM()->AddRange({ regs.arg0, regs.arg1, flags }, true);
+        uint64_t mapBase = regs.arg0;
+        if (mapBase % PAGE_FRAME_SIZE != 0)
+            mapBase = (mapBase / PAGE_FRAME_SIZE) * PAGE_FRAME_SIZE;
+
+        uint64_t mapLength = regs.arg1;
+        if (mapLength % PAGE_FRAME_SIZE != 0)
+            mapLength = (mapLength / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
+
+        Memory::MemoryMapFlags flags = ParseFlags((np::Syscall::MemoryMapFlags)regs.arg2, isUserThread, true);
+        currentThread->Parent()->VMM()->AddRange({ mapBase, mapLength, flags }, true);
 
         regs.arg0 = mapBase;
         regs.arg1 = mapLength;

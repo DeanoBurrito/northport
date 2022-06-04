@@ -36,6 +36,8 @@ namespace Kernel::Memory
 
         VMRange InsertRange(VMRange range, bool backImmediately);
         VMRange FindRange(size_t length, NativeUInt lowerBound, NativeUInt upperBound);
+        
+        size_t DoMemoryOp(sl::BufferView sourceBuffer, sl::NativePtr destBase, bool isCopy);
 
     public:
         static VirtualMemoryManager* Current();
@@ -65,6 +67,8 @@ namespace Kernel::Memory
         size_t CopyInto(sl::BufferView sourceBuffer, sl::NativePtr destBase);
         //copies data from this vmm, to the current vmm. It uses hhdm to access pages directly, ignoring read-only + use flags
         size_t CopyFrom(sl::BufferView sourceBuffer, sl::NativePtr destBase);
+        //zeroes a range of memory in this vmm, returns number of bytes zeroed.
+        size_t ZeroRange(sl::BufferView where);
 
         bool RangeExists(VMRange range);
         bool RangeExists(VMRange range, MemoryMapFlags minimumFlags);

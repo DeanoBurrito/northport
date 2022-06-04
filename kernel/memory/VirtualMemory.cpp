@@ -16,14 +16,14 @@ namespace Kernel::Memory
 
     VMRange VirtualMemoryManager::InsertRange(VMRange range, bool backImmediately)
     {
-        auto appendAfter = ranges.Begin();
-        while (appendAfter != ranges.End() && appendAfter->base < range.base)
-            ++appendAfter;
+        auto insertBefore = ranges.Begin();
+        while (insertBefore != ranges.End() && insertBefore->base < range.base)
+            ++insertBefore;
 
-        if (appendAfter == ranges.End())
+        if (insertBefore == ranges.End())
             ranges.Append(range);
         else
-            ranges.InsertAfter(appendAfter, range);
+            ranges.InsertBefore(insertBefore, range);
 
         if (!sl::EnumHasFlag(range.flags, MemoryMapFlags::ForceUnmapped) && backImmediately)
             pageTables.MapRange(range.base, range.length / PAGE_FRAME_SIZE, range.flags);
@@ -33,24 +33,72 @@ namespace Kernel::Memory
 
     VMRange VirtualMemoryManager::FindRange(size_t length, NativeUInt lowerBound, NativeUInt upperBound)
     {
-        NativeUInt base = 0; //TODO: fix me, this should be using a while. It dosnt handle empty ranges, or when all ranges are below the target
+        if (lowerBound >= upperBound - length)
+            return {};
         
-        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
+        auto searchStart = ranges.Begin();
+        while (searchStart != ranges.End())
         {
-            base = it->base + it->length;
-            if (base < lowerBound)
-                continue;
-            if (base + length >= upperBound)
-                return {}; //no valid space before we hit the upper bound
-            
-            auto next = it;
-            ++next;
+            if (searchStart->base + searchStart->length >= lowerBound)
+                break;
+            ++searchStart;
+        }
 
-            if (next->base - it->base >= length)
-                return { base, length };
+        if (searchStart == ranges.End()) //this also handles an empty range set
+            return { lowerBound, length };
+        
+        auto test = searchStart;
+        ++test;
+        while (test != ranges.End())
+        {
+            const size_t testBot = searchStart->base + searchStart->length;
+            if (testBot + length > upperBound)
+                return {};
+            
+            if (testBot + length < test->base)
+                return { testBot, length };
+            
+            ++searchStart;
+            ++test;
         }
 
         return {};
+    }
+
+    size_t VirtualMemoryManager::DoMemoryOp(sl::BufferView sourceBuffer, sl::NativePtr destBase, bool isCopy)
+    {
+        size_t lengthProcessed = 0;
+        auto DoOp = [&](sl::NativePtr dest, sl::NativePtr src, size_t count)
+        {
+            if (isCopy)
+                sl::memcopy(src.As<void>(lengthProcessed), dest.ptr, count);
+            else
+                sl::memset(dest.ptr, (uint8_t)src.raw, count);
+        };
+        
+        if (!RangeExists({ destBase.raw, sourceBuffer.length }))
+            return 0;
+        
+        while (lengthProcessed < sourceBuffer.length)
+        {
+            auto maybePhys = pageTables.GetPhysicalAddress(destBase.raw + lengthProcessed);
+            if (!maybePhys)
+                return lengthProcessed;
+            
+            size_t opLength = PAGE_FRAME_SIZE;
+
+            if (lengthProcessed == 0 && destBase.raw % PAGE_FRAME_SIZE != 0)
+                opLength -= destBase.raw % PAGE_FRAME_SIZE; //align first operation
+            else if (lengthProcessed + PAGE_FRAME_SIZE > sourceBuffer.length)
+                opLength = sourceBuffer.length - lengthProcessed; //align last operation
+            //cap op length so we dont overrun
+            opLength = sl::min(opLength, sourceBuffer.length - lengthProcessed);
+            
+            DoOp(EnsureHigherHalfAddr(maybePhys->ptr), sourceBuffer.base, opLength);
+            lengthProcessed += opLength;
+        }
+
+        return lengthProcessed;
     }
 
     VirtualMemoryManager* VirtualMemoryManager::Current()
@@ -209,46 +257,17 @@ namespace Kernel::Memory
 
     size_t VirtualMemoryManager::CopyInto(sl::BufferView sourceBuffer, sl::NativePtr destBase)
     {
-        if (!RangeExists({destBase.raw, sourceBuffer.length}))
-            return 0;
-        
-        size_t lengthCopied = 0;
-        while (lengthCopied < sourceBuffer.length)
-        {
-            auto maybePhys = pageTables.GetPhysicalAddress(destBase.raw + lengthCopied);
-            if (!maybePhys)
-                return lengthCopied;
-            
-            if (lengthCopied == 0)
-            {
-                //first copy may not be page-aligned at the destination
-                size_t lengthToCopy = PAGE_FRAME_SIZE;
-                if (destBase.raw % PAGE_FRAME_SIZE != 0)
-                    lengthToCopy -= destBase.raw % PAGE_FRAME_SIZE;
-                
-                sl::memcopy(sourceBuffer.base.As<void>(), EnsureHigherHalfAddr(maybePhys->ptr), lengthToCopy);
-                lengthCopied += lengthToCopy;
-            }
-            else if (lengthCopied + PAGE_FRAME_SIZE > sourceBuffer.length)
-            {
-                const size_t lengthToCopy = sourceBuffer.length - lengthCopied;
-                sl::memcopy(sourceBuffer.base.As<void>(lengthCopied), EnsureHigherHalfAddr(maybePhys->ptr), lengthToCopy);
-                lengthCopied += lengthToCopy;
-                return lengthCopied;
-            }
-            else
-            {
-                sl::memcopy(sourceBuffer.base.As<void>(lengthCopied), EnsureHigherHalfAddr(maybePhys->ptr), PAGE_FRAME_SIZE);
-                lengthCopied += PAGE_FRAME_SIZE;
-            }
-        }
-
-        return sourceBuffer.length;
+        return DoMemoryOp(sourceBuffer, destBase, true);
     }
 
     size_t VirtualMemoryManager::CopyFrom(sl::BufferView sourceBuffer, sl::NativePtr destBase)
     {
         Log("CopyFrom() not implemented. TODO:", LogSeverity::Fatal);
+    }
+
+    size_t VirtualMemoryManager::ZeroRange(sl::BufferView where)
+    {
+        return DoMemoryOp({ 0ul, where.length }, where.base, false);
     }
 
     bool VirtualMemoryManager::RangeExists(VMRange range)
