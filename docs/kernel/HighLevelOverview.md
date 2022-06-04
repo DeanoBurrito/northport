@@ -58,4 +58,6 @@ There are also a number of generic (coalesced) devices:
 
 These dont interact directly with hardware, instead the hardware drivers forward their output here, so that it can be processed in a single place. It's just an abstraction layer to make getting input easier.
 
-These might be folded into the driver subsystem later on.
+## Northport Terminology
+A collection of non-standard terms used in the project, and their meanings:
+- `sumac`: Not the dried berry, but instead it's a platform agnostic term for SMAP (x86) and SUM (rv). Supervisor/User Memory Access Control causes a page fault if supervisor mode code tries to access user mode data. It can be temporarily suspended using the `CPU::AllowSumac()` function.

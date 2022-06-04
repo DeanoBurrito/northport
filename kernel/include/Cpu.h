@@ -69,7 +69,7 @@ namespace Kernel
         static const CpuFrequencies GetFrequencies();
 
         //SMA/Supervisor memory access (to user mapped pages) functions. Either SMAP (x86) or SUM (riscv).
-        static void AllowSma(bool allowed);
-        static bool SmaAllowed();
+        static void AllowSumac(bool allowed);
+        static bool SumacAllowed();
     };
 }

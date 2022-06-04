@@ -25,9 +25,9 @@ namespace Kernel::Syscalls
         regs.arg1 = regs.arg1 & ~((uint64_t)0xF << 60);
 
         //try to start an ipc stream
-        CPU::AllowSma(true);
+        CPU::AllowSumac(true);
         sl::String streamName(sl::NativePtr(regs.arg0).As<const char>());
-        CPU::AllowSma(false);
+        CPU::AllowSumac(false);
         auto maybeStream = IpcManager::Global()->StartStream(streamName, regs.arg2, (IpcStreamFlags)regs.arg1, accessFlags);
         if (!maybeStream)
         {
@@ -80,9 +80,9 @@ namespace Kernel::Syscalls
         }
 
         //try to connect to an existing stream
-        CPU::AllowSma(true);
+        CPU::AllowSumac(true);
         sl::String streamName(sl::NativePtr(regs.arg0).As<const char>());
-        CPU::AllowSma(false);
+        CPU::AllowSumac(false);
         auto maybeStream = IpcManager::Global()->OpenStream(streamName, (IpcStreamFlags)regs.arg1);
         if (!maybeStream)
         {
@@ -134,10 +134,10 @@ namespace Kernel::Syscalls
         IpcAccessFlags accessFlags = (IpcAccessFlags)(regs.arg1 >> 60);
         regs.arg1 = regs.arg1 & ~((uint64_t)0xF << 60);
 
-        CPU::AllowSma(true);
+        CPU::AllowSumac(true);
         sl::String mailboxName(sl::NativePtr(regs.arg0).As<const char>());
         auto maybeMailbox = IpcManager::Global()->CreateMailbox(mailboxName, (IpcStreamFlags)regs.arg1, accessFlags);
-        CPU::AllowSma(false);
+        CPU::AllowSumac(false);
         if (!maybeMailbox)
         {
             regs.id = (uint64_t)np::Syscall::IpcError::StreamStartFail;
@@ -177,14 +177,14 @@ namespace Kernel::Syscalls
         }
 
         const bool leaveOpenHint = (regs.arg3 != 0);
-        CPU::AllowSma(true);
+        CPU::AllowSumac(true);
         sl::String mailboxName(sl::NativePtr(regs.arg0).As<const char>());
         if (!IpcManager::Global()->PostMail(mailboxName, {regs.arg1, regs.arg2}, leaveOpenHint))
         {
             regs.id = (uint64_t)np::Syscall::IpcError::MailDeliveryFailed;
             return;
         }
-        CPU::AllowSma(false);
+        CPU::AllowSumac(false);
     }
 
     void ModifyIpcConfig(SyscallRegisters& regs)

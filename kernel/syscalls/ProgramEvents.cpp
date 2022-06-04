@@ -58,7 +58,7 @@ namespace Kernel::Syscalls
             Meaning the length is still how much data there is, but the address field *is* the data. Means no need to worry about managing
             a buffer elsewhere. This works great for key and mouse inputs.
         */
-        CPU::AllowSma(true);
+        CPU::AllowSumac(true);
         using Kernel::Scheduling::ThreadGroupEventType;
         switch (maybeEvent->type) 
         {
@@ -89,7 +89,7 @@ namespace Kernel::Syscalls
                 sl::memcopy(maybeEvent->address.ptr, (void*)regs.arg0, maybeEvent->length);
             break;
         }
-        CPU::AllowSma(false);
+        CPU::AllowSumac(false);
 
         regs.arg0 = (uint32_t)maybeEvent->type | ((uint64_t)maybeEvent->length << 32);
     }

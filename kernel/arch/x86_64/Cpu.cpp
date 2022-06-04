@@ -371,7 +371,7 @@ namespace Kernel
         return freqs;
     }
 
-    void CPU::AllowSma(bool allowed)
+    void CPU::AllowSumac(bool allowed)
     {
         if (allowed)
             asm volatile("stac" ::: "cc");
@@ -379,7 +379,7 @@ namespace Kernel
             asm volatile("clac" ::: "cc");
     }
 
-    bool CPU::SmaAllowed()
+    bool CPU::SumacAllowed()
     {
         uint64_t rflags;
         asm volatile("pushf; pop %0" : "=r"(rflags));

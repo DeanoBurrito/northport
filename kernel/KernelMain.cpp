@@ -246,7 +246,7 @@ namespace Kernel
         if (CPU::FeatureSupported(CpuFeature::GlobalPages))
             cr4 |= (1 << 7); 
         WriteCR4(cr4);
-        CPU::AllowSma(false);
+        CPU::AllowSumac(false);
 
         FlushGDT();
         CPU::WriteMsr(MSR_GS_BASE, (size_t)coreStore);

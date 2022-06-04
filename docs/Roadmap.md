@@ -13,6 +13,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] AML intepreter.
     - [x] Device manager.
         - [x] Input forwarding to userspace.
+        - [ ] Device streams/queues.
     - [x] Driver manager.
     - [x] Scheduler.
         - [ ] Rewrite: per-core thread queue to reduce use of the main lock.
@@ -58,7 +59,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
     
 - [ ] rv64
     - [ ] SBI stivale2 boot shim.
-    - [ ] Paging: 3 and 4 levels.
+    - [ ] Paging: Generic implementation supporting 3+ levels.
     - [ ] (A)PLIC.
     - [ ] (A)CLINT.
     - [ ] Vector extension support.
@@ -66,9 +67,10 @@ Listed below is the tentative list of supported platforms and devices, as well a
 - [ ] Devices
     - [x] Bochs Graphics.
     - [ ] E1000 network driver.
-    - [ ] VirtIO Block.
-    - [ ] VirtIO Network.
-    - [ ] VirtIO Graphics.
+    - [x] VirtIO pci and virtqueue helpers.
+        - [ ] VirtIO Block.
+        - [ ] VirtIO Network.
+        - [ ] VirtIO Graphics.
     - [ ] Intel AC97 audio.
     - [ ] Intel HD audio.
     - [ ] NVME controllers.
