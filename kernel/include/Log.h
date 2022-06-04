@@ -16,6 +16,8 @@ namespace Kernel
         Fatal = 3,
         //extra debug info, can be safely ignored.
         Verbose = 4,
+        //useful for debugging purposes, intended to be extra visible
+        Debug = 5,
 
         //dont use this to log, its just a count entry.
         EnumCount

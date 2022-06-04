@@ -62,6 +62,9 @@ namespace Kernel
             case LogSeverity::Verbose:
                 headerStr = "\033[90m[Verbose]\033[39m ";
                 break;
+            case LogSeverity::Debug:
+                headerStr = "\033[94m[Debug]\033[39m ";
+                break;
             default:
                 break;
             }
@@ -82,6 +85,9 @@ namespace Kernel
             break;
         case LogSeverity::Verbose:
             headerStr = "[Verbose] ";
+            break;
+        case LogSeverity::Debug:
+            headerStr = "[Debug] ";
             break;
         default:
             break;

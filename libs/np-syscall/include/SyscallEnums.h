@@ -122,6 +122,7 @@ namespace np::Syscall
         Error = 2,
         //Fatal is not available to userspace, hopefully for obvious reasons.
         Verbose = 4,
+        Debug = 5,
     };
 
     enum class LogError : NativeUInt
