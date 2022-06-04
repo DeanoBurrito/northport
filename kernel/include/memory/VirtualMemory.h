@@ -59,8 +59,12 @@ namespace Kernel::Memory
         VMRange AddSharedRange(VirtualMemoryManager& foreignVmm, VMRange foreignRange);
         //tries to convert a virtual address to a physical one.
         sl::Opt<sl::NativePtr> GetPhysAddr(sl::NativePtr ptr);
+        
         //copies data from the current address space into this vmm, at the specified virt addr.
+        //NOTE: This uses accesses physical memory directly, so it ignores read-only + user flags.
         size_t CopyInto(sl::BufferView sourceBuffer, sl::NativePtr destBase);
+        //copies data from this vmm, to the current vmm. It uses hhdm to access pages directly, ignoring read-only + use flags
+        size_t CopyFrom(sl::BufferView sourceBuffer, sl::NativePtr destBase);
 
         bool RangeExists(VMRange range);
         bool RangeExists(VMRange range, MemoryMapFlags minimumFlags);

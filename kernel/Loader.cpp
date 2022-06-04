@@ -8,58 +8,42 @@
 
 namespace Kernel
 {
-    sl::Opt<size_t> LoadElfFromMemory(sl::NativePtr loadedFile, Scheduling::ThreadFlags threadFlags)
+    sl::Opt<size_t> LoadElfFromMemory(sl::BufferView file, Scheduling::ThreadFlags threadFlags)
     {   
-        sl::Elf64_Ehdr* ehdr = loadedFile.As<sl::Elf64_Ehdr>();
-        sl::Elf64HeaderParser elfHeader(loadedFile);
-        Scheduling::ThreadGroup* tg = Scheduling::Scheduler::Global()->CreateThreadGroup();
+        sl::Elf64_Ehdr* ehdr = file.base.As<sl::Elf64_Ehdr>();
+        sl::Elf64HeaderParser elfHeader(file.base);
         const sl::Vector<sl::Elf64_Phdr*> phdrs = elfHeader.FindProgramHeaders(sl::PT_LOAD);
 
-        //since we're about to mess with CR3, the scheduler will mess with us if we get pre-empted.
-        InterruptLock intLock;
-
-        //since we're going to be accessing lower half addresses, swap to the new processes page map.
-        //this is fine since all our buffers are in kernel space (loaded file has higher half addr)
-        //TODO: would be nice to clone a section of this table into the current one temporarily so we dont have to have to trash the tlb twice.
-        Memory::PageTableManager* prevPageTables = Memory::PageTableManager::Current();
-        tg->VMM()->MakeActive();
-
-        for (size_t i = 0; i < phdrs.Size(); i++)
-        {
-            const size_t lowestPage = phdrs[i]->p_vaddr / PAGE_FRAME_SIZE;
-            const size_t highestPage = (phdrs[i]->p_vaddr + phdrs[i]->p_memsz) / PAGE_FRAME_SIZE + 1;
-            const size_t pagesNeeded = highestPage - lowestPage;
-
-            tg->VMM()->AddRange({ lowestPage * PAGE_FRAME_SIZE, pagesNeeded * PAGE_FRAME_SIZE, Memory::MemoryMapFlags::AllowWrites }, true);
-            sl::memcopy(loadedFile.As<void>(phdrs[i]->p_offset), (void*)phdrs[i]->p_vaddr, phdrs[i]->p_filesz);
-            //optionally zero any memory that wasnt copied from the file, but requested in memsz.
-            sl::memset(sl::NativePtr(phdrs[i]->p_vaddr).As<void>(phdrs[i]->p_filesz), 0, phdrs[i]->p_memsz - phdrs[i]->p_filesz);
-        }
-
-        //this is a hack until we properly implement the VMM to allow copying to foreign VM ranges. TODO:
-        bool allowNextExecutable = false;
-        for (size_t i = 0; i < phdrs.Size(); i++)
-        {
-            const size_t lowestPage = phdrs[i]->p_vaddr / PAGE_FRAME_SIZE;
-            const size_t highestPage = (phdrs[i]->p_vaddr + phdrs[i]->p_memsz) / PAGE_FRAME_SIZE + 1;
-
-            for (size_t page = lowestPage; page < highestPage; page++)
-            {
-                Memory::MemoryMapFlags requestedFlags = Memory::MemoryMapFlags::UserAccessible;
-                if (phdrs[i]->p_flags & sl::PF_W)
-                    requestedFlags = sl::EnumSetFlag(requestedFlags, Memory::MemoryMapFlags::AllowWrites);
-                if (phdrs[i]->p_flags & sl::PF_X || allowNextExecutable)
-                {
-                    requestedFlags = sl::EnumSetFlag(requestedFlags, Memory::MemoryMapFlags::AllowExecute);
-                    if (page + 1 == highestPage)
-                        allowNextExecutable = true;
-                }
-
-                // tg->VMM()->PageTables().ModifyPageFlags(page * PAGE_FRAME_SIZE, requestedFlags, (size_t)-1);
-            }
-        }
+        using MFlags = Memory::MemoryMapFlags;
+        Scheduling::ThreadGroup* tg = Scheduling::Scheduler::Global()->CreateThreadGroup();
         
-        prevPageTables->MakeActive(); //swap back to previous page tables
+        for (size_t i = 0; i < phdrs.Size(); i++)
+        {
+            if (phdrs[i]->p_align != 0x1000)
+            {
+                Log("Could not load elf file: program header not 4K aligned.", LogSeverity::Error);
+                return {};
+            }
+
+            //these are the user flags. We'll be writing to the memory via the hhdm (which is always writable)
+            MFlags flags = MFlags::None;
+            if (!sl::EnumHasFlag(threadFlags, Scheduling::ThreadFlags::KernelMode))
+                flags = flags | MFlags::UserAccessible;
+            if (phdrs[i]->p_flags & sl::PF_X)
+                flags = flags | MFlags::AllowExecute;
+            if (phdrs[i]->p_flags & sl::PF_W)
+                flags = flags | MFlags::AllowWrites;
+
+            if (!tg->VMM()->AddRange({ phdrs[i]->p_vaddr, phdrs[i]->p_memsz, flags }, true))
+            {
+                Logf("Could not load ELF, unable to alloc phdr range: base=0x%lx, len=0x%lx", LogSeverity::Error, phdrs[i]->p_vaddr, phdrs[i]->p_memsz);
+                return {};
+            }
+
+            tg->VMM()->CopyInto({ file.base.raw + phdrs[i]->p_offset, phdrs[i]->p_filesz }, phdrs[i]->p_vaddr);
+            //TODO: zero memsz - filesz, to ensure bss works correctly
+        }
+
         return Scheduling::Scheduler::Global()->CreateThread(ehdr->e_entry, threadFlags, tg)->Id();
     }
 
@@ -80,7 +64,7 @@ namespace Kernel
             return {};
         }
 
-        sl::Opt<size_t> maybeThread = LoadElfFromMemory(buffer, threadFlags);
+        sl::Opt<size_t> maybeThread = LoadElfFromMemory({ buffer, fileNode->Details().filesize }, threadFlags);
         if (maybeThread)
         {
             Scheduling::Thread* thread = Scheduling::Scheduler::Global()->GetThread(*maybeThread);

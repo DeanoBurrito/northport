@@ -17,7 +17,7 @@ namespace Kernel::Memory
     VMRange VirtualMemoryManager::InsertRange(VMRange range, bool backImmediately)
     {
         auto appendAfter = ranges.Begin();
-        while (appendAfter->base < range.base && appendAfter != ranges.End())
+        while (appendAfter != ranges.End() && appendAfter->base < range.base)
             ++appendAfter;
 
         if (appendAfter == ranges.End())
@@ -33,7 +33,7 @@ namespace Kernel::Memory
 
     VMRange VirtualMemoryManager::FindRange(size_t length, NativeUInt lowerBound, NativeUInt upperBound)
     {
-        NativeUInt base = 0;
+        NativeUInt base = 0; //TODO: fix me, this should be using a while. It dosnt handle empty ranges, or when all ranges are below the target
         
         for (auto it = ranges.Begin(); it != ranges.End(); ++it)
         {
@@ -101,9 +101,9 @@ namespace Kernel::Memory
         sl::ScopedSpinlock scopeLock(&rangesLock);
         for (auto it = ranges.Begin(); it != ranges.End(); ++it)
         {
-            if (it->base > range.base + range.length)
+            if (it->base >= range.base + range.length)
                 continue;
-            if (it->base + it->length < range.base)
+            if (it->base + it->length <= range.base)
                 continue;
 
             Logf("Cannot add VM range (base=0x%lx, len=0x%lx), collisions occured with base=0x%lx, len=0x%lx", LogSeverity::Error, range.base, range.length, it->base, it->length);
@@ -221,9 +221,12 @@ namespace Kernel::Memory
             
             if (lengthCopied == 0)
             {
-                //first copy will likely not be page-aligned at the destination
-                const size_t lengthToCopy = PAGE_FRAME_SIZE - (destBase.raw % PAGE_FRAME_SIZE);
-                sl::memcopy(sourceBuffer.base.As<void>(lengthCopied), EnsureHigherHalfAddr(maybePhys->As<void>(PAGE_FRAME_SIZE - lengthToCopy)), lengthToCopy);
+                //first copy may not be page-aligned at the destination
+                size_t lengthToCopy = PAGE_FRAME_SIZE;
+                if (destBase.raw % PAGE_FRAME_SIZE != 0)
+                    lengthToCopy -= destBase.raw % PAGE_FRAME_SIZE;
+                
+                sl::memcopy(sourceBuffer.base.As<void>(), EnsureHigherHalfAddr(maybePhys->ptr), lengthToCopy);
                 lengthCopied += lengthToCopy;
             }
             else if (lengthCopied + PAGE_FRAME_SIZE > sourceBuffer.length)
@@ -241,6 +244,11 @@ namespace Kernel::Memory
         }
 
         return sourceBuffer.length;
+    }
+
+    size_t VirtualMemoryManager::CopyFrom(sl::BufferView sourceBuffer, sl::NativePtr destBase)
+    {
+        Log("CopyFrom() not implemented. TODO:", LogSeverity::Fatal);
     }
 
     bool VirtualMemoryManager::RangeExists(VMRange range)
@@ -277,7 +285,7 @@ namespace Kernel::Memory
             
             if (highlightRangeOf.ptr != nullptr && 
                 highlightRangeOf.raw >= range->base && highlightRangeOf.raw < range->base + range->length)
-                Log(logStr.C_Str(), LogSeverity::Warning);
+                Log(logStr.C_Str(), LogSeverity::Debug);
             else
                 Log(logStr.C_Str(), LogSeverity::Info);
         }

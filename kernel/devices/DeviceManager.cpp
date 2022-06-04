@@ -236,6 +236,8 @@ namespace Kernel::Devices
         {
             if (allDevices->At(i) == nullptr)
                 continue;
+            if (allDevices->At(i)->eventSubscribers == nullptr)
+                continue;
 
             allDevices->At(i)->EventPump();
         }
