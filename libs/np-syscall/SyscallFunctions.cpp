@@ -210,6 +210,7 @@ namespace np::Syscall
         ProgramEvent event;
         event.type = static_cast<ProgramEventType>(data.arg0 & 0xFFFF'FFFF);
         event.dataLength = data.arg0 >> 32;
+        event.handle = data.arg1;
         return event;
     }
 
@@ -224,6 +225,7 @@ namespace np::Syscall
         ProgramEvent event;
         event.type = static_cast<ProgramEventType>(data.arg0 & 0xFFFF'FFFF);
         event.dataLength = data.arg0 >> 32;
+        event.handle = data.arg1;
         return event;
     }
 

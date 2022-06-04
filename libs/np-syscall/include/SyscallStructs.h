@@ -84,6 +84,7 @@ namespace np::Syscall
     {
         ProgramEventType type;
         uint32_t dataLength;
+        size_t handle;
     };
 
     using KeyboardEvent = KeyEvent;
