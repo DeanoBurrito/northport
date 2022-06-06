@@ -4,7 +4,7 @@
 - A c++17 or higher cross compiler. The build system is setup for clang (default), or GCC. It's easy to switch between.
 - GNU make.
 - Xorriso.
-- [Limine](https://github.com/limine-bootloader/limine). I build and test with the latest 2.x release personally, check their install instructions. 
+- [Limine](https://github.com/limine-bootloader/limine). I build and test with the latest 3.x release personally, check their install instructions. 
 
 ### Recommended Programs
 - Qemu is required for using `make run` and gdb is needed for `make attach`.

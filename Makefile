@@ -92,14 +92,14 @@ iso: build-all
 	@mkdir -p $(ISO_WORKING_DIR)
 	@cp $(LIMINE_CFG) $(ISO_WORKING_DIR)
 	@cp $(LIMINE_DIR)/limine-cd.bin $(ISO_WORKING_DIR)
+	@cp $(LIMINE_DIR)/limine-cd-efi.bin $(ISO_WORKING_DIR)
 	@cp $(LIMINE_DIR)/limine.sys $(ISO_WORKING_DIR)
-	@cp $(LIMINE_DIR)/limine-eltorito-efi.bin $(ISO_WORKING_DIR)
 	@cp $(KERNEL_FULL_FILEPATH) $(ISO_WORKING_DIR)
 	@cp $(INITDISK_FULL_FILEPATH) $(ISO_WORKING_DIR)
 	@xorriso -as mkisofs -b limine-cd.bin -no-emul-boot -boot-load-size 4 \
-		-boot-info-table --efi-boot limine-eltorito-efi.bin -efi-boot-part \
+		-boot-info-table --efi-boot limine-cd-efi.bin -efi-boot-part \
 		--efi-boot-image --protective-msdos-label $(ISO_WORKING_DIR) -o $(ISO_TARGET)
-	@$(LIMINE_DIR)/limine-install $(ISO_TARGET)
+	@$(LIMINE_DIR)/limine-deploy $(ISO_TARGET)
 	@rm -r $(ISO_WORKING_DIR)
 	@echo "Iso generated @ $(ISO_TARGET)."
 	@echo "If qemu is installed, try it out with 'make run'."

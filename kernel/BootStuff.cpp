@@ -1,6 +1,9 @@
 #include <boot/Stivale2.h>
 
-uint8_t kernelStackReserve[8192];
+constexpr uint64_t bootStackSize = 0x2000;
+
+[[gnu::aligned(16)]]
+static uint8_t kernelBootStack[bootStackSize];
 
 static stivale2_tag stivale5LevelPaging
 {
@@ -25,7 +28,7 @@ static stivale2_header_tag_framebuffer stivaleTagFramebuffer
 static stivale2_header stivaleHdr
 {
     .entry_point = 0,
-    .stack = (uint64_t)kernelStackReserve + sizeof(kernelStackReserve),
+    .stack = (uint64_t)&kernelBootStack + bootStackSize,
     .flags = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4),
     .tags = (uint64_t)&stivaleTagFramebuffer
 };

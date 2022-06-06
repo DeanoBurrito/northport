@@ -41,6 +41,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] UDP.
         - [ ] TCP.
     - [ ] Reclaiming bootloader and boot shim memory.
+    - [ ] KASLR.
 
 - [x] x86_64
     - [x] IDT, GDT, TSS.
