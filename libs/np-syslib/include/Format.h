@@ -47,11 +47,11 @@ Northport specific:
 
 namespace sl
 {
-    string FormatToString(string& format, int ignored, ...);
+    string FormatToString(const string& format, int ignored, ...);
     string FormatToString(string&& format, int ignored, ...);
-    string FormatToStringV(string& format, va_list args);
+    string FormatToStringV(const string& format, va_list args);
 
-    size_t FormatToBuffer(void* buffer, size_t bufferLength, string& format, int ignored, ...);
+    size_t FormatToBuffer(void* buffer, size_t bufferLength, const string& format, int ignored, ...);
     size_t FormatToBuffer(void* buffer, size_t bufferLength, string&& format, int ignored, ...);
-    size_t FormatToBufferV(void* buffer, size_t bufferLength, string& format, va_list args);
+    size_t FormatToBufferV(void* buffer, size_t bufferLength, const string& format, va_list args);
 }

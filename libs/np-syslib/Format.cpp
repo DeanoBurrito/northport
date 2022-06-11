@@ -3,7 +3,7 @@
 
 namespace sl
 {
-    string FormatToString(string& format, int ignored, ...)
+    string FormatToString(const string& format, int ignored, ...)
     {
         va_list argsList;
         va_start(argsList, ignored);
@@ -23,7 +23,7 @@ namespace sl
         return str;
     }
 
-    string FormatToStringV(string& format, va_list args)
+    string FormatToStringV(const string& format, va_list args)
     {
         FormatPrinter printer(format.C_Str(), FormatPrinter::OUTPUT_LENGTH_DONT_CARE);
         printer.FormatAll(args);
@@ -32,7 +32,7 @@ namespace sl
         return sl::String(const_cast<char*>(printer.GetOutput()), true);
     }
 
-    size_t FormatToBuffer(void* buffer, size_t bufferLength, string& format, int ignored, ...)
+    size_t FormatToBuffer(void* buffer, size_t bufferLength, const string& format, int ignored, ...)
     {
         va_list argsList;
         va_start(argsList, ignored);
@@ -50,7 +50,7 @@ namespace sl
         return charsWritten;
     }
 
-    size_t FormatToBufferV(void* buffer, size_t bufferLength, string& format, va_list args)
+    size_t FormatToBufferV(void* buffer, size_t bufferLength, const string& format, va_list args)
     {
         FormatPrinter printer(format.C_Str(), bufferLength);
         printer.FormatAll(args);
