@@ -11,14 +11,17 @@ namespace Kernel::Memory
         debugAllocBase = debugBase;
         blocks = blockCount;
         this->blockSize = blockSize;
+
         const size_t bitmapBytes = blockCount / 8 + 1;
-        allocRegion = { base, blockCount * blockSize };
-        blockCount += (bitmapBytes / blockSize + 1) * blockSize; //round up the bitmap size to the nearest block count
+        const size_t bitmapBlocks = bitmapBytes / bitmapBlocks + 1;
+        blockCount += bitmapBlocks;
 
-        PageTableManager::Current()->MapRange(base, blockCount * blockSize / PAGE_FRAME_SIZE + 1, MemoryMapFlags::AllowWrites);
+        const size_t mapPages = blockCount * blockSize / PAGE_FRAME_SIZE + 1;
+        PageTableManager::Current()->MapRange(base, mapPages, MemoryMapFlags::AllowWrites);
 
-        bitmapBase = allocRegion.base.As<uint8_t>();
-        allocRegion.base.raw += (bitmapBytes / blockSize + 1) * blockSize;
+        bitmapBase = base.As<uint8_t>();
+        allocRegion = { base.raw + bitmapBlocks * blockSize, mapPages * PAGE_FRAME_SIZE };
+        allocRegion.length -= bitmapBlocks * blockSize;
 
         if (debugAllocBase.ptr != nullptr) //the alloc region is much bigger when using page-heap
             allocRegion = { debugBase, blocks * PAGE_FRAME_SIZE * 2 };

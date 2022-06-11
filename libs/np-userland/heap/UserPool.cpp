@@ -1,21 +1,22 @@
-#include <memory/KernelPool.h>
-#include <memory/KernelHeap.h>
-#include <memory/Paging.h>
+#include <heap/UserPool.h>
+#include <heap/UserHeap.h>
+#include <SyscallFunctions.h>
 #include <PlacementNew.h>
+#include <Logging.h>
+#include <Memory.h>
 #include <Locks.h>
-#include <Log.h>
 
-namespace Kernel::Memory
+namespace np::Userland
 {
-    void KernelPool::TrySplit(KernelPoolNode* node, size_t allocSize)
+    void UserPool::TrySplit(UserPoolNode* node, size_t allocSize)
     {
         if (node == nullptr)
             return;
-        if (node->length <= allocSize + sizeof(KernelPoolNode))
+        if (node->length <= allocSize + sizeof(UserPoolNode))
             return;
         
-        const size_t latestLength = node->length - sizeof(KernelPoolNode) - allocSize;
-        KernelPoolNode* latest = new(sl::NativePtr(node->Data()).As<void>(allocSize)) KernelPoolNode(node, node->next, latestLength);
+        const size_t latestLength = node->length - sizeof(UserPoolNode) - allocSize;
+        UserPoolNode* latest = new(sl::NativePtr(node->Data()).As<void>(allocSize)) UserPoolNode(node, node->next, latestLength);
 
         latest->isFree = true;
         if (node->next)
@@ -26,10 +27,10 @@ namespace Kernel::Memory
         if (tail == node)
             tail = latest;
 
-        usedBytes += sizeof(KernelPoolNode);
+        usedBytes += sizeof(UserPoolNode);
     }
 
-    void KernelPool::TryMerge(KernelPoolNode* node)
+    void UserPool::TryMerge(UserPoolNode* node)
     {
         if (node == nullptr)
             return;
@@ -39,9 +40,9 @@ namespace Kernel::Memory
         //try merge forwards first
         if (node->next != nullptr && node->next->isFree)
         {
-            KernelPoolNode* next = node->next;
+            UserPoolNode* next = node->next;
 
-            node->length += next->length + sizeof(KernelPoolNode);
+            node->length += next->length + sizeof(UserPoolNode);
             if (next->next != nullptr)
                 next->next->prev = node;
             node->next = next->next;
@@ -49,15 +50,15 @@ namespace Kernel::Memory
             if (tail == next)
                 tail = node;
 
-            usedBytes -= sizeof(KernelPoolNode);
+            usedBytes -= sizeof(UserPoolNode);
         }
         
         //then merge backwards
         if (node->prev != nullptr && node->prev->isFree)
         {
-            KernelPoolNode* prev = node->prev;
+            UserPoolNode* prev = node->prev;
 
-            prev->length += node->length + sizeof(KernelPoolNode);
+            prev->length += node->length + sizeof(UserPoolNode);
             if (node->next != nullptr)
                 node->next->prev = prev;
             prev->next = node->next;
@@ -65,18 +66,20 @@ namespace Kernel::Memory
             if (tail == node)
                 tail = prev;
 
-            usedBytes -= sizeof(KernelPoolNode);
+            usedBytes -= sizeof(UserPoolNode);
         }
     }
 
-    void KernelPool::Expand(size_t allocSize)
+    void UserPool::Expand(size_t allocSize)
     {
-        const size_t newPages = (allocSize - (tail->isFree ? tail->length : 0)) / PAGE_FRAME_SIZE + 1;
-        const size_t newBytes = newPages * PAGE_FRAME_SIZE * KernelPoolExpandFactor;
-        if (newPages > 1)
-            Logf("Kernel heap pool is expanding by %u pages.", LogSeverity::Warning, newPages * KernelPoolExpandFactor);
+        const size_t newPages = (allocSize - (tail->isFree ? tail->length : 0)) / UserHeapPageSize + 1;
+        const size_t newBytes = newPages * UserHeapPageSize * UserPoolExpandFactor;
 
-        PageTableManager::Current()->MapRange(allocRegion.base.raw + allocRegion.length, newPages * KernelPoolExpandFactor, MemoryMapFlags::AllowWrites);
+        if (newPages > 1)
+            Log("User heap pool is expanding by %u pages.", LogLevel::Debug, newPages * UserPoolExpandFactor);
+
+        Syscall::MapMemory(allocRegion.base.raw + allocRegion.length, 
+            newPages * UserHeapPageSize * UserPoolExpandFactor, Syscall::MemoryMapFlags::Writable);
         allocRegion.length += newBytes;
 
         if (tail->isFree)
@@ -84,32 +87,32 @@ namespace Kernel::Memory
         else
         {
             //add a new node after the tail
-            KernelPoolNode* latest = new(sl::NativePtr(tail->Data()).As<void>(tail->length)) 
-                KernelPoolNode(tail, nullptr, newBytes - sizeof(KernelPoolNode));
+            UserPoolNode* latest = new(sl::NativePtr(tail->Data()).As<void>(tail->length)) 
+                UserPoolNode(tail, nullptr, newBytes - sizeof(UserPoolNode));
             tail->next = latest;
             latest->isFree = true;
             tail = latest;
         }
     }
     
-    void KernelPool::Init(sl::NativePtr base)
+    void UserPool::Init(sl::NativePtr base)
     {
-        allocRegion = { base, KernelHeapStartSize };
+        allocRegion = { base, UserHeapStartSize };
         usedBytes = 0;
 
-        PageTableManager::Current()->MapRange(base, KernelHeapStartSize / PAGE_FRAME_SIZE, MemoryMapFlags::AllowWrites);
-        tail = head = new (base.ptr) KernelPoolNode(nullptr, nullptr, KernelHeapStartSize - sizeof(KernelPoolNode));
+        Syscall::MapMemory(base.raw, UserHeapStartSize, Syscall::MemoryMapFlags::Writable);
+        tail = head = new (base.ptr) UserPoolNode(nullptr, nullptr, UserHeapStartSize - sizeof(UserPoolNode));
         head->isFree = true;
 
         sl::SpinlockRelease(&lock);
     }
 
-    void* KernelPool::Alloc(size_t size)
+    void* UserPool::Alloc(size_t size)
     { 
         sl::ScopedSpinlock scopeLock(&lock);
         
-        KernelPoolNode* returnNode = nullptr;
-        for (KernelPoolNode* scan = head; scan != nullptr; scan = scan->next)
+        UserPoolNode* returnNode = nullptr;
+        for (UserPoolNode* scan = head; scan != nullptr; scan = scan->next)
         {
             if (!scan->isFree)
                 continue;
@@ -130,7 +133,7 @@ namespace Kernel::Memory
             returnNode = tail->prev;
         else if (tail->isFree && tail->length >= size)
             returnNode = tail;
-        
+
         if (returnNode != nullptr)
             goto claim_node;
         return nullptr;
@@ -142,13 +145,13 @@ claim_node:
         return returnNode->Data();
     }
 
-    bool KernelPool::Free(sl::NativePtr where)
+    bool UserPool::Free(sl::NativePtr where)
     {
         if (where.raw < allocRegion.base.raw || where.raw > allocRegion.length + allocRegion.base.raw)
             return false;
 
         sl::ScopedSpinlock scopeLock(&lock);
-        for (KernelPoolNode* scan = head; scan != nullptr; scan = scan->next)
+        for (UserPoolNode* scan = head; scan != nullptr; scan = scan->next)
         {
             if (scan->Data() != where.ptr)
                 continue;
@@ -156,7 +159,7 @@ claim_node:
             //at this point scan contains our allocation
             if (scan->isFree)
             {
-                Log("Attempted to free kpool memory already marked as free.", LogSeverity::Error);
+                np::Syscall::Log("Attempted to free upool memory already marked as free.", LogLevel::Error);
                 return true;
             }
 
@@ -167,20 +170,5 @@ claim_node:
         }
 
         return false; 
-    }
-
-    void KernelPool::GetStats(HeapPoolStats& stats) const
-    { 
-        stats.totalSizeBytes = allocRegion.length;
-        stats.usedBytes = usedBytes;
-
-        stats.nodes = 0;
-        KernelPoolNode* scan = head;
-        while (scan != nullptr)
-        {
-            //NOTE: this is potentially invalid data since we arent locking (heap can be modified during scan)
-            stats.nodes++;
-            scan = scan->next;
-        }
     }
 }

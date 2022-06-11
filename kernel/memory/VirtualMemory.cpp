@@ -34,7 +34,10 @@ namespace Kernel::Memory
     VMRange VirtualMemoryManager::FindRange(size_t length, NativeUInt lowerBound, NativeUInt upperBound)
     {
         if (lowerBound >= upperBound - length)
-            return {};
+            return {}; //not enough space within bounds to allocate
+
+        if (lowerBound > ranges.Last().base + ranges.Last().length)
+            return { lowerBound, length };
         
         auto searchStart = ranges.Begin();
         while (searchStart != ranges.End())
@@ -47,6 +50,7 @@ namespace Kernel::Memory
         if (searchStart == ranges.End()) //this also handles an empty range set
             return { lowerBound, length };
         
+        //TODO: rewrite, this is quite borked
         auto test = searchStart;
         ++test;
         while (test != ranges.End())
@@ -62,7 +66,11 @@ namespace Kernel::Memory
             ++test;
         }
 
-        return {};
+        const size_t base = sl::max(searchStart->base + searchStart->length, lowerBound);
+        if (base + length < upperBound)
+            return { base, length };
+        else
+            return {};
     }
 
     size_t VirtualMemoryManager::DoMemoryOp(sl::BufferView sourceBuffer, sl::NativePtr destBase, bool isCopy)

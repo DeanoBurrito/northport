@@ -1,5 +1,5 @@
 #include <Userland.h>
-#include <GeneralHeap.h>
+#include <heap/UserHeap.h>
 #include <SyscallFunctions.h>
 
 namespace np::Userland
@@ -7,7 +7,7 @@ namespace np::Userland
     void InitUserlandApp()
     {
         //initialize the global heap so we have malloc()/free()
-        GeneralHeap::Default().Init(heapStartingAddr, heapStartingSize);
+        UserHeap::Global()->Init(HeapBaseAddr, false);
     }
 
     void ExitUserlandApp(unsigned long exitCode)

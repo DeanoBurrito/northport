@@ -12,8 +12,9 @@ namespace Kernel::Memory
     constexpr size_t KernelSlabBaseSize = 32;
     constexpr size_t KernelHeapPoolOffset = 1 * GB;
     constexpr size_t KernelHeapStartSize = 32 * KB;
+    constexpr size_t KernelPoolExpandFactor = 2;
     
-    //this s a chonky boi of a struct.
+    //this is a chonky boi of a struct.
     struct HeapMemoryStats
     {
         sl::NativePtr slabsGlobalBase;

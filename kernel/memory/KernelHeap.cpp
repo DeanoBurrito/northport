@@ -40,7 +40,7 @@ namespace Kernel::Memory
             else
                 slabs[i].Init(base, nextBlockSize, nextBlockCount);
 
-            base.raw += slabs[i].Region().length;
+            base.raw = slabs[i].Region().base.raw + slabs[i].Region().length;
             nextBlockSize *= 2;
         }
 
