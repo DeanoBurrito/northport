@@ -68,6 +68,7 @@ void InitPs2Task()
 void InitPciTask()
 {
     Kernel::Devices::PciBridge::Global()->Init();
+    Scheduler::Global()->CreateThread((size_t)InitUserspaceTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
 }
 
 void InitManagersTask()
@@ -88,7 +89,6 @@ void InitManagersTask()
 
     Scheduler::Global()->CreateThread((size_t)InitPs2Task, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
     Scheduler::Global()->CreateThread((size_t)InitPciTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
-    Scheduler::Global()->CreateThread((size_t)InitUserspaceTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
 }
 
 extern "C" void QueueInitTasks()

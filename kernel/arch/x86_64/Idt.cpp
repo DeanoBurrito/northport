@@ -68,7 +68,7 @@ namespace Kernel
         
         //check we'll need to allocate another page or not
         uint64_t nextPage = latestPage;
-        if (pageOffset + stubFullsize > PAGE_FRAME_SIZE)
+        if (pageOffset + stubFullsize >= PAGE_FRAME_SIZE)
         {
             using namespace Memory;
             nextPage = latestPage + PAGE_FRAME_SIZE;
@@ -80,7 +80,7 @@ namespace Kernel
 
         //keep track of where we are in the latest page
         pageOffset += stubFullsize;
-        if (pageOffset > PAGE_FRAME_SIZE)
+        if (pageOffset >= PAGE_FRAME_SIZE)
             pageOffset -= PAGE_FRAME_SIZE;
         
         if (pushDummyErrorCode)

@@ -96,7 +96,7 @@ namespace Kernel::ACPI
 
         char* oemId = new char[7];
         sl::memcopy(header->oemId, oemId, 6);
-        oemId[7] = 0;
+        oemId[6] = 0;
 
         Logf("SDT Header: sig=%s, len=0x%x, rev=%u, oemId=%s, addr=0x%lx", LogSeverity::Verbose, sig, header->length, header->revision, oemId, (uint64_t)header);
         if (!ChecksumValid(header))

@@ -13,7 +13,7 @@ namespace Kernel::Memory
         this->blockSize = blockSize;
 
         const size_t bitmapBytes = blockCount / 8 + 1;
-        const size_t bitmapBlocks = bitmapBytes / bitmapBlocks + 1;
+        const size_t bitmapBlocks = bitmapBytes / blockSize + 1;
         blockCount += bitmapBlocks;
 
         const size_t mapPages = blockCount * blockSize / PAGE_FRAME_SIZE + 1;
