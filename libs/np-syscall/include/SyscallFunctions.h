@@ -46,9 +46,9 @@ namespace np::Syscall
     bool LoopbackTest();
 
     //0x1* - memory
-    MappedMemoryDetails MapMemory(NativeUInt base, size_t bytesLength, MemoryMapFlags flags);
+    sl::BufferView MapMemory(NativeUInt base, size_t bytesLength, MemoryMapFlags flags);
     NativeUInt UnmapMemory(NativeUInt base, size_t bytesLength);
-    MappedMemoryDetails ModifyMemoryFlags(NativeUInt base, size_t bytesLength, MemoryMapFlags flags);
+    sl::BufferView ModifyMemoryFlags(NativeUInt base, size_t bytesLength, MemoryMapFlags flags);
 
     //0x2* - devices
     sl::Opt<DeviceInfo> GetPrimaryDeviceInfo(DeviceType type);
@@ -56,6 +56,7 @@ namespace np::Syscall
     sl::Opt<DeviceInfo> GetDeviceInfo(size_t deviceId);
     void EnableDeviceEvents(size_t deviceId);
     void DisableDeviceEvents(size_t deviceId);
+    sl::Opt<size_t> GetAggregateId(DeviceType type);
 
     //0x3* - filesystem
     sl::Opt<FileInfo*> GetFileInfo(const sl::String& filepath); 

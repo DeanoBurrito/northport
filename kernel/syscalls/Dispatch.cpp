@@ -84,6 +84,10 @@ namespace Kernel::Syscalls
                 DisableDeviceEvents(syscallRegs);
                 syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
+            case SyscallId::GetAggregateId:
+                GetAggregateId(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
 
             case SyscallId::GetFileInfo:
                 GetFileInfo(syscallRegs);

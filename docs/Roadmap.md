@@ -93,3 +93,4 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] Terminal emulator.
     - [ ] ELF library (move existing stuff from syslib).
     - [ ] Dynamic linker.
+        - [ ] Force np-syscall to be a dynamic library, so the latest API is always used.

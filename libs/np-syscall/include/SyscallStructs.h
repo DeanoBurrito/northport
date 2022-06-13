@@ -1,18 +1,11 @@
 #pragma once
 
-#include <NativePtr.h>
 #include <SyscallEnums.h>
 #include <Vectors.h>
 #include <Keys.h>
 
 namespace np::Syscall
 {
-    struct MappedMemoryDetails
-    {
-        NativeUInt base;
-        NativeUInt length;
-    };
-    
     struct GraphicsAdaptorInfo
     {
 

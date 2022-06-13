@@ -144,8 +144,7 @@ Returns the device id and some basic (device-dependent) info about the primary d
 The return values depend on the device type, and whether basic or advanced info was queried. See their description above.
 
 ### Notes:
-- The idea of there being a single primary device for some device types shouldn't be taken too seriously. For example if there are multiple monitors connected, the primary framebuffer will always be the main monitor. Application developers using a framebuffer directly will want to iterate through
-the available choices, and pick the most appropriate one in that case. Primary devices are just a hint.
+- The idea of there being a single primary device for some device types shouldn't be taken too seriously. For example if there are multiple monitors connected, the primary framebuffer will always be the main monitor. Application developers using a framebuffer directly will want to iterate throughthe available choices, and pick the most appropriate one in that case. Primary devices are just a hint.
 
 ## 0x21 - GetDevicesOfType
 //TODO:
@@ -178,6 +177,17 @@ Disables receiving events from this device.
 
 ### Notes:
 - None.
+
+## 0x25 - GetAggregateId
+Gets the (virtual) aggregate device id for this device type, if supported. Aggregate devices represent the combined input of all devices of that type.
+
+### Args:
+- `arg0`: Device type to query.
+- All other args are ignored.
+
+### Returns:
+- `arg0`: Aggregate id of requested device type, if any.
+- All other return values should be ignored.
 
 ----
 # 0x3* - Filesystem Operations
@@ -520,7 +530,7 @@ Does as you expect, prevents the current thread from running until the requested
 - A timeout of 0 is treated as 'no timeout'. If wake-on-events is not set, the thread is effectively dead until another thread chooses to wake it.
 - If wake-on-event is set, and no events are received within the timeout window, the function will still return. It is up to the programmer to determine what to do here, or use a timeout of `0`.
 
-## 0x72 - Exit
+## 0x71 - Exit
 Causes the current thread to exit, and be destroyed. If this thread is the last thread in a process, the owning process is destroyed as well.
 
 ### Args:

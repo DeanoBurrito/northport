@@ -52,6 +52,7 @@ namespace Kernel::Syscalls
     void GetDeviceInfo(SyscallRegisters& regs);
     void EnableDeviceEvents(SyscallRegisters& regs);
     void DisableDeviceEvents(SyscallRegisters& regs);
+    void GetAggregateId(SyscallRegisters& regs);
 
     //0x3* - filesystem
     void GetFileInfo(SyscallRegisters& regs);

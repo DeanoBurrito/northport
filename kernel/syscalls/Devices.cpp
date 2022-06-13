@@ -4,12 +4,11 @@
 #include <scheduling/Thread.h>
 #include <Log.h>
 
-#define GET_DEVICE(regs, deviceId, expectedType) \
+#define CHECK_DEVICE(expectedType) \
 using namespace Devices; \
-auto maybeDevice = DeviceManager::Global()->GetDevice(deviceId); \
 if (!maybeDevice) \
 { \
-    regs.id = (uint64_t)np::Syscall::DeviceError::InvalidDeviceId; \
+    regs.id = (uint64_t)np::Syscall::DeviceError::NoPrimaryDevice; \
     return; \
 } \
 if (maybeDevice.Value()->Type() != DeviceType::expectedType) \
@@ -20,18 +19,17 @@ if (maybeDevice.Value()->Type() != DeviceType::expectedType) \
 
 namespace Kernel::Syscalls
 {
-    void FetchGraphicsAdaptorInfo(SyscallRegisters& regs, size_t deviceId)
+    void FetchGraphicsAdaptorInfo(SyscallRegisters& regs, sl::Opt<Devices::GenericDevice*> maybeDevice)
     {
-        GET_DEVICE(regs, deviceId, GraphicsAdaptor)
-
-        regs.arg0 = deviceId;
+        CHECK_DEVICE(GraphicsAdaptor)
+        regs.arg0 = maybeDevice.Value()->GetId();
     }
     
-    void FetchFramebufferInfo(SyscallRegisters& regs, size_t deviceId)
+    void FetchFramebufferInfo(SyscallRegisters& regs, sl::Opt<Devices::GenericDevice*> maybeDevice)
     {
-        GET_DEVICE(regs, deviceId, GraphicsFramebuffer)
+        CHECK_DEVICE(GraphicsFramebuffer)
 
-        const auto* fb = static_cast<Devices::Interfaces::GenericFramebuffer*>(*maybeDevice);
+        const auto* fb = static_cast<Interfaces::GenericFramebuffer*>(maybeDevice.Value());
         const auto modeset = fb->GetCurrentMode();
         regs.arg0 = fb->GetId();
 
@@ -64,48 +62,40 @@ namespace Kernel::Syscalls
             MFlags::AllowWrites | MFlags::UserAccessible | MFlags::SystemRegion).base;
     }
 
-    void FetchKeyboardInfo(SyscallRegisters& regs, size_t deviceId)
+    void FetchKeyboardInfo(SyscallRegisters& regs, sl::Opt<Devices::GenericDevice*> maybeDevice)
     {
-        GET_DEVICE(regs, deviceId, Keyboard)
-        regs.arg0 = deviceId;
-        regs.arg1 = DeviceManager::Global()->GetAggregateId(DeviceType::Keyboard);
+        CHECK_DEVICE(Keyboard)
     }
 
-    void FetchMouseInfo(SyscallRegisters& regs, size_t deviceId)
+    void FetchMouseInfo(SyscallRegisters& regs, sl::Opt<Devices::GenericDevice*> maybeDevice)
     {
-        GET_DEVICE(regs, deviceId, Mouse)
-        regs.arg0 = deviceId;
-        regs.arg1 = DeviceManager::Global()->GetAggregateId(DeviceType::Mouse);
+        CHECK_DEVICE(Mouse);
     }
     
     void GetPrimaryDeviceInfo(SyscallRegisters& regs)
     { 
         using namespace np::Syscall;
+
         //NOTE: we are converting from a syscall device type to an inbuilt device type.
         Devices::DeviceType devType = static_cast<Devices::DeviceType>(regs.arg0);
         auto maybeDevice = Devices::DeviceManager::Global()->GetPrimaryDevice(devType);
-        if (!maybeDevice)
-        {
-            regs.id = (uint64_t)DeviceError::NoPrimaryDevice;
-            return;
-        }
 
         switch (devType)
         {
         case Devices::DeviceType::GraphicsAdaptor:
-            FetchGraphicsAdaptorInfo(regs, maybeDevice.Value()->GetId());
+            FetchGraphicsAdaptorInfo(regs, maybeDevice);
             break;
 
         case Devices::DeviceType::GraphicsFramebuffer:
-            FetchFramebufferInfo(regs, maybeDevice.Value()->GetId());
+            FetchFramebufferInfo(regs, maybeDevice);
             break;
         
         case Devices::DeviceType::Keyboard:
-            FetchKeyboardInfo(regs, maybeDevice.Value()->GetId());
+            FetchKeyboardInfo(regs, maybeDevice);
             break;
         
         case Devices::DeviceType::Mouse:
-            FetchMouseInfo(regs, maybeDevice.Value()->GetId());
+            FetchMouseInfo(regs, maybeDevice);
             break;
         
         default:
@@ -129,5 +119,18 @@ namespace Kernel::Syscalls
     void DisableDeviceEvents(SyscallRegisters& regs)
     {
         Devices::DeviceManager::Global()->UnsubscribeFromDeviceEvents(regs.arg0);
+    }
+
+    void GetAggregateId(SyscallRegisters& regs)
+    {
+        //NOTE: we are converting from a syscall device type to an inbuilt device type.
+        Devices::DeviceType devType = static_cast<Devices::DeviceType>(regs.arg0);
+
+        if (devType == Devices::DeviceType::Keyboard)
+            regs.arg0 = Devices::DeviceManager::Global()->GetAggregateId(Devices::DeviceType::Keyboard);
+        else if (devType == Devices::DeviceType::Mouse)
+            regs.arg0 = Devices::DeviceManager::Global()->GetAggregateId(Devices::DeviceType::Mouse);
+        else
+            regs.id = (uint64_t)np::Syscall::DeviceError::FeatureNotAvailable;
     }
 }

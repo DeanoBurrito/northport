@@ -20,6 +20,7 @@ namespace np::Syscall
         GetDeviceInfo = 0x22,
         EnableDeviceEvents = 0x23,
         DisableDeviceEvents = 0x24,
+        GetAggregateId = 0x25,
 
         GetFileInfo = 0x30,
         OpenFile = 0x31,

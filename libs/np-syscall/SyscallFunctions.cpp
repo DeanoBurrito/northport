@@ -11,7 +11,7 @@ namespace np::Syscall
         return data.id == SyscallSuccess;
     }
 
-    MappedMemoryDetails MapMemory(NativeUInt base, size_t bytesLength, MemoryMapFlags flags)
+    sl::BufferView MapMemory(NativeUInt base, size_t bytesLength, MemoryMapFlags flags)
     {
         SyscallData data((uint64_t)SyscallId::MapMemory, base, bytesLength, (uint64_t)flags, 0);
         DoSyscall(&data);
@@ -27,7 +27,7 @@ namespace np::Syscall
         return data.arg0;
     }
 
-    MappedMemoryDetails ModifyMemoryFlags(NativeUInt base, size_t bytesLength, MemoryMapFlags flags)
+    sl::BufferView ModifyMemoryFlags(NativeUInt base, size_t bytesLength, MemoryMapFlags flags)
     {
         SyscallData data((uint64_t)SyscallId::ModifyMemoryFlags, base, bytesLength, (uint64_t)flags, 0);
         DoSyscall(&data);
@@ -75,6 +75,16 @@ namespace np::Syscall
     {
         SyscallData data((uint64_t)SyscallId::DisableDeviceEvents, deviceId, 0, 0, 0);
         DoSyscall(&data);
+    }
+
+    sl::Opt<size_t> GetAggregateId(DeviceType type)
+    {
+        SyscallData data((uint64_t)SyscallId::GetPrimaryDeviceInfo, (uint64_t)type, 0, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id != SyscallSuccess)
+            return {};
+        return data.arg0;
     }
 
     sl::Opt<FileInfo*> GetFileInfo(const sl::String& filepath)
