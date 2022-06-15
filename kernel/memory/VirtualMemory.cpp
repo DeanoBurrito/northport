@@ -149,10 +149,12 @@ namespace Kernel::Memory
         }
 
         //align the base down, and the length up to the nearest pages
-        if (range.base % PAGE_FRAME_SIZE != 0)
-            range.base = (range.base / PAGE_FRAME_SIZE) * PAGE_FRAME_SIZE;
-        if (range.length % PAGE_FRAME_SIZE != 0)
-            range.length = (range.length / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
+        const size_t patchedBase = (range.base / PAGE_FRAME_SIZE) * PAGE_FRAME_SIZE;
+        const size_t patchedTop = ((range.base + range.length) / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE;
+
+        range.base = patchedBase;
+        if ((range.base + range.length) % PAGE_FRAME_SIZE != 0)
+            range.length = patchedTop - patchedBase;
 
         sl::ScopedSpinlock scopeLock(&rangesLock);
         for (auto it = ranges.Begin(); it != ranges.End(); ++it)

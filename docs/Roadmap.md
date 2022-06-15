@@ -9,8 +9,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] Framebuffer backend.
         - [ ] File backend.
     - [x] ACPI tables.
-        - [ ] ACPI runtime.
-        - [ ] AML intepreter.
+        - [ ] Loadable ACPI driver: either ACPICA or LAI.
     - [x] Device manager.
         - [x] Input forwarding to userspace.
         - [ ] Device streams/queues.
@@ -42,6 +41,9 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] TCP.
     - [ ] Reclaiming bootloader and boot shim memory.
     - [ ] KASLR.
+    - [ ] In-Kernel GDB remote server.
+        - [ ] Debugging active kernel.
+        - [ ] Controlling and debugging userspace programs.
 
 - [x] x86_64
     - [x] IDT, GDT, TSS.
@@ -54,6 +56,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [x] Multicore scheduling.
     - [x] PS2 peripherals.
     - [x] PCI.
+        - [x] MSI and MSI-X.
     - [x] System calls.
     - [x] Extended CPU state (sse/avx).
         - [ ] XSAVE support.
@@ -66,6 +69,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] Vector extension support.
 
 - [ ] Devices
+    - [ ] COM-type serial.
     - [x] Bochs Graphics.
     - [ ] E1000 network driver.
     - [x] VirtIO pci and virtqueue helpers.

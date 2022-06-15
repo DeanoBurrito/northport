@@ -40,7 +40,8 @@ namespace Kernel
                 return {};
             }
 
-            tg->VMM()->CopyInto({ file.base.raw + phdrs[i]->p_offset, phdrs[i]->p_filesz }, phdrs[i]->p_vaddr);
+            if (tg->VMM()->CopyInto({ file.base.raw + phdrs[i]->p_offset, phdrs[i]->p_filesz }, phdrs[i]->p_vaddr) != phdrs[i]->p_filesz)
+                Log("Could not copy elf phdr into foreign VMM range, loaded program may not run correctly.", LogSeverity::Error);
             
             if (phdrs[i]->p_memsz > phdrs[i]->p_filesz)
                 tg->VMM()->ZeroRange({ phdrs[i]->p_vaddr + phdrs[i]->p_filesz, phdrs[i]->p_memsz - phdrs[i]->p_filesz });

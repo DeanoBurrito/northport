@@ -26,3 +26,4 @@ Outside the scope of this project, but a collection of things I've found useful 
 
 # Unrelated Resources
 - *[qoi](https://github.com/phoboslab/qoi)*. The 'Quite Okay Image' format, an extremely simple alternative to PNG. Check the official website for more details, used as the native image format due to a number of reasons (simple implementatin mainly, but the spec is public domain too which is nice).
+- *[GDB Remote Server Protocol Spec](https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html)*. Describes everything required to implement a gdbserver that can response to `target remote` connections. *[This](https://www.embecosm.com/appnotes/ean4/embecosm-howto-rsp-server-ean4-issue-2.html)* is an excellent breakdown of how to write a gdb server stub.

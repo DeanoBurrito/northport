@@ -79,7 +79,7 @@ namespace np::Syscall
 
     sl::Opt<size_t> GetAggregateId(DeviceType type)
     {
-        SyscallData data((uint64_t)SyscallId::GetPrimaryDeviceInfo, (uint64_t)type, 0, 0, 0);
+        SyscallData data((uint64_t)SyscallId::GetAggregateId, (uint64_t)type, 0, 0, 0);
         DoSyscall(&data);
 
         if (data.id != SyscallSuccess)
