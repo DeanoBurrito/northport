@@ -2,17 +2,10 @@
 #include <filesystem/VfsNode.h>
 #include <filesystem/Vfs.h>
 #include <formats/Tar.h>
+#include <boot/Limine.h>
 #include <Memory.h>
 #include <Maths.h>
 #include <Log.h>
-
-//TODO: bootloader abstraction will replace directly using stivale2 header
-#include <boot/Stivale2.h>
-namespace Kernel
-{
-    //there are defined in KernelMain.cpp - cheeky little hack here
-    stivale2_tag* FindStivaleTagInternal(uint64_t id);
-}
 
 namespace Kernel::Filesystem
 {
@@ -125,18 +118,18 @@ namespace Kernel::Filesystem
     void InitDiskFSDriver::Init(Drivers::DriverInitInfo*)
     {
         ramdiskBegin = ramdiskEnd = ramdiskSize = 0;
-        
-        const stivale2_struct_tag_modules* modulesTag = reinterpret_cast<stivale2_struct_tag_modules*>(FindStivaleTagInternal(STIVALE2_STRUCT_TAG_MODULES_ID));
-        if (modulesTag == nullptr || modulesTag->module_count == 0)
-            goto no_initdisk_found;
 
-        for (size_t i = 0; i < modulesTag->module_count; i++)
+        auto mods = Boot::modulesRequest.response;
+        if (Boot::modulesRequest.response == nullptr)
+            goto no_initdisk_found;
+        
+        for (size_t i = 0; i < mods->module_count; i++)
         {
-            if (sl::memcmp(modulesTag->modules[i].string, "northport-initdisk", 18) == 0)
+            if (sl::memcmp(mods->modules[i]->cmdline, "northport-initdisk", 18) == 0)
             {
-                //module is at least pretending to be our initdisk, use it
-                ramdiskBegin.raw = modulesTag->modules[i].begin;
-                ramdiskEnd.raw = modulesTag->modules[i].end;
+                //the module is at least pretending to be our initdisk, let's use it
+                ramdiskBegin = mods->modules[i]->address;
+                ramdiskEnd = (uint64_t)mods->modules[i]->address + mods->modules[i]->size;
                 ramdiskSize = ramdiskEnd.raw - ramdiskBegin.raw;
 
                 Logf("Found \"northport-initdisk\" module, mounting filesystem. begin=0x%lx, bytes=0x%lx", LogSeverity::Info, ramdiskBegin.raw, ramdiskSize);

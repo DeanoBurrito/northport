@@ -150,7 +150,7 @@ namespace Kernel
         uint64_t iret_ss;
     };
 
-    extern NativeUInt vmaHighAddr;
+    extern uint64_t vmaHighAddr;
 
     template<typename T>
     FORCE_INLINE T* EnsureHigherHalfAddr(T* existing)

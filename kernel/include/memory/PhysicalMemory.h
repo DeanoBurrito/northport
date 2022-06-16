@@ -1,7 +1,5 @@
 #pragma once
 
-#include <NativePtr.h>
-#include <boot/Stivale2.h>
 #include <Platform.h>
 
 namespace Kernel::Memory
@@ -42,7 +40,7 @@ namespace Kernel::Memory
         PhysMemoryRegion* rootRegion;
         PhysMemoryStats stats;
 
-        PhysMemoryRegion* InitRegion(stivale2_mmap_entry* mmapEntry);
+        PhysMemoryRegion* InitRegion(void* mmapEntry);
 
         void LockPage(sl::NativePtr address);
         void LockPages(sl::NativePtr lowestAddress, size_t count);
@@ -52,7 +50,7 @@ namespace Kernel::Memory
     public:
         static PhysicalMemoryAllocator* Global();
 
-        void Init(stivale2_struct_tag_memmap* mmap);
+        void InitFromLimine();
 
         void* AllocPage();
         void* AllocPages(size_t count);

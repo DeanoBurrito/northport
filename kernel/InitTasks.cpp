@@ -91,7 +91,7 @@ void InitManagersTask()
     Scheduler::Global()->CreateThread((size_t)InitPciTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
 }
 
-extern "C" void QueueInitTasks()
+void QueueInitTasks()
 {
     initTaskThreadGroup = Scheduler::Global()->CreateThreadGroup();
     initTaskThreadGroup->Name() = "InitTasks";

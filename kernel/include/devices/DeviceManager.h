@@ -4,7 +4,6 @@
 #include <IdAllocator.h>
 #include <containers/Vector.h>
 #include <devices/GenericDevice.h>
-#include <devices/StivaleFramebuffer.h>
 
 namespace Kernel::Devices
 {
@@ -19,8 +18,6 @@ namespace Kernel::Devices
         char allDevicesLock;
         char primaryDevicesLock;
         bool initialized = false;
-
-        StivaleFramebuffer* bootloaderFramebuffer;
 
     public:
         static DeviceManager* Global();

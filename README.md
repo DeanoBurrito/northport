@@ -1,12 +1,10 @@
 ![](https://tokei.rs/b1/github/deanoburrito/northport)
 
 # Northport
-Northport is a monolithic kernel and utilities, targeting x86_64.
-It's booted via the stivale2 protocol (using limine).
+Northport is a monolithic kernel and utilities, targetting x86_64. It's booted via the limine boot protocol. 
+There are limited docs about the kernel and supporting libraries under `docs/`, all available in markdown format. These are very much WIP, so there may be sections that are unfinished or even missing.
 
-Limited docs about the kernel and other sub-projects are contained under [`docs/`](docs/), all available in markdown format. These are a work in progress, and will be expanded over time (haha).
-
-For instructions on building and running northport, check [here](docs/Building.md). Down below there's a brief overview of the current feature-set, but for a roadmap of current and planned features, see [here](docs/Roadmap.md).
+For instructions on building and running, check [here](docs/Building.md). Down below there's a brief overview of the current feature-set, but for a roadmap of current and planned features, see [here](docs/Roadmap.md).
 
 # Project Goals
 ## Planned Features

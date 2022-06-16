@@ -1,6 +1,5 @@
 #pragma once
 
-#include <NativePtr.h>
 #include <Platform.h>
 #include <Optional.h>
 #include <BufferView.h>
@@ -42,15 +41,15 @@ namespace Kernel::Memory
     public:
         static PageTableManager* Current();
         static void Setup();
+        static sl::BufferView GetHhdm();
 
-        void InitKernel(bool reuseBootloaderMaps = false);
+        void InitKernelFromLimine(bool reuseBootloaderMaps = false);
         void InitClone();
         void Teardown(bool includeHigherHalf = false);
 
         void MakeActive() const;
         bool IsActive() const;
         bool PageSizeAvailable(PagingSize size) const;
-        sl::BufferView GetHhdm() const;
 
         sl::Opt<sl::NativePtr> GetPhysicalAddress(sl::NativePtr virtAddr);
 

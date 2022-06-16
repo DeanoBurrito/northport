@@ -1,23 +1,15 @@
 #include <memory/PhysicalMemory.h>
 #include <memory/Paging.h>
-#include <scheduling/Thread.h>
 #include <Memory.h>
-#include <boot/Stivale2.h>
+#include <scheduling/Thread.h>
+#include <boot/Limine.h>
+#include <boot/LinkerSymbols.h>
 #include <Utilities.h>
 #include <Platform.h>
 #include <Cpu.h>
 #include <Log.h>
 #include <Maths.h>
 #include <Locks.h>
-
-namespace Kernel
-{
-    //defined in KernelMain.cpp.
-    extern stivale2_tag* FindStivaleTagInternal(uint64_t id);
-    template<typename TagType>
-    TagType FindStivaleTag(uint64_t id)
-    { return reinterpret_cast<TagType>(FindStivaleTagInternal(id)); }
-}
 
 namespace Kernel::Memory
 {   
@@ -184,8 +176,13 @@ namespace Kernel::Memory
 
         Log("Paging setup successful.", LogSeverity::Info);
     }
+
+    sl::BufferView PageTableManager::GetHhdm()
+    {
+        return { hhdmLowerBound, hhdmUpperBound - hhdmLowerBound };
+    }
     
-    void PageTableManager::InitKernel(bool reuseBootloaderMaps)
+    void PageTableManager::InitKernelFromLimine(bool reuseBootloaderMaps)
     {
         if (reuseBootloaderMaps)
             topLevelAddress = ReadCR3();
@@ -194,54 +191,55 @@ namespace Kernel::Memory
             topLevelAddress = PMM::Global()->AllocPage();
             sl::memset(topLevelAddress.ptr, 0, sizeof(PageTable));
 
-            const stivale2_struct_tag_hhdm* hhdmTag = FindStivaleTag<stivale2_struct_tag_hhdm*>(STIVALE2_STRUCT_TAG_HHDM_ID);
-            const stivale2_struct_tag_pmrs* pmrsTag = FindStivaleTag<stivale2_struct_tag_pmrs*>(STIVALE2_STRUCT_TAG_PMRS_ID);
-            const stivale2_struct_tag_kernel_base_address* baseAddrTag = FindStivaleTag<stivale2_struct_tag_kernel_base_address*>(STIVALE2_STRUCT_TAG_KERNEL_BASE_ADDRESS_ID);
-            const stivale2_struct_tag_memmap* mmapTag = FindStivaleTag<stivale2_struct_tag_memmap*>(STIVALE2_STRUCT_TAG_MEMMAP_ID);
+            hhdmLowerBound = vmaHighAddr;
+            const uint64_t kernelBaseVirt = Boot::kernelAddrRequest.response->virtual_base;
+            const uint64_t kernelBasePhys = Boot::kernelAddrRequest.response->physical_base;
+            const auto memmap = Boot::memmapRequest.response;
 
-            hhdmLowerBound = hhdmTag->addr;
-
-            //map kernel binary using pmrs + kernel base
-            for (size_t i = 0; i < pmrsTag->entries; i++)
+            //utility function for mapping an entire kernel range, accounting for virt/phys skew
+            auto MapKernelSection = [=](uint64_t base, uint64_t top, MemoryMapFlags flags)
             {
-                const stivale2_pmr* pmr = &pmrsTag->pmrs[i];
-                const size_t pagesRequired = pmr->length / PAGE_FRAME_SIZE + 1;
-                const uint64_t physBase = baseAddrTag->physical_base_address + (pmr->base - baseAddrTag->virtual_base_address);
+                const size_t pageCount = (top - base) / PAGE_FRAME_SIZE;
+                const uint64_t physBase = (base - kernelBaseVirt) + kernelBasePhys;
+                MapRange(base, physBase, pageCount, flags);
+            };
 
-                MemoryMapFlags flags = MemoryMapFlags::None;
-                if ((pmr->permissions & STIVALE2_PMR_EXECUTABLE) != 0)
-                    flags = sl::EnumSetFlag(flags, MemoryMapFlags::AllowExecute);
-                if ((pmr->permissions & STIVALE2_PMR_WRITABLE) != 0)
-                    flags = sl::EnumSetFlag(flags, MemoryMapFlags::AllowWrites);
+            //first pass: map kernel binary into the new paging structure.
+            MapKernelSection(
+                (uint64_t)KERNEL_TEXT_BEGIN / PAGE_FRAME_SIZE * PAGE_FRAME_SIZE, 
+                ((uint64_t)KERNEL_TEXT_END / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE, 
+                MemoryMapFlags::AllowExecute
+            );
+            MapKernelSection(
+                (uint64_t)KERNEL_RODATA_BEGIN / PAGE_FRAME_SIZE * PAGE_FRAME_SIZE, 
+                ((uint64_t)KERNEL_RODATA_END / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE, 
+                MemoryMapFlags::None
+            );
+            MapKernelSection(
+                (uint64_t)KERNEL_DATA_BEGIN / PAGE_FRAME_SIZE * PAGE_FRAME_SIZE, 
+                ((uint64_t)KERNEL_DATA_END / PAGE_FRAME_SIZE + 1) * PAGE_FRAME_SIZE, 
+                MemoryMapFlags::AllowWrites
+            );
 
-                for (size_t j = 0; j < pagesRequired; j++)
-                    MapMemory(pmr->base + (j * PAGE_FRAME_SIZE), physBase + (j * PAGE_FRAME_SIZE), flags);
-            }
-
-            //map the first 4gb of physical memory at a known address (we're reusing the address specified by hddm tag for now)
-            //using 2MB pages here to increase startup time. This is fine as this memory view is always read/write/NX, and only visible to the kernel
-            constexpr size_t memUpper = 4 * GB; 
-            for (size_t i = 0; i < memUpper; i += (size_t)PagingSize::_2MB)
-                MapMemory(hhdmTag->addr + i, i, PagingSize::_2MB, MemoryMapFlags::AllowWrites);
+            //second pass: map the first 4gb of memory unconditionally.
+            for (size_t i = 0; i < 4 * GB; i += (size_t)PagingSize::_2MB)
+                MapMemory(hhdmLowerBound + i, i, PagingSize::_2MB, MemoryMapFlags::AllowWrites);
             hhdmUpperBound += 4 * GB;
-            
-            //map any regions of memory that are above the 4gb mark
-            for (size_t i = 0; i < mmapTag->entries; i++)
+
+            //third pass: map any usable regions above 4gb
+            for (size_t i = 0; i < memmap->entry_count; i++)
             {
-                const stivale2_mmap_entry* region = &mmapTag->memmap[i];
+                const limine_memmap_entry* region = memmap->entries[i];
 
-                if (region->base + region->length < memUpper)
-                    continue; //will have already been identity mapped as part of previous step
-                if (region->type == STIVALE2_MMAP_BAD_MEMORY)
-                    continue; //map everything that isnt just bad memory
+                if (region->base + region->length < 4 * GB)
+                    continue;
+                if (region->type == LIMINE_MEMMAP_BAD_MEMORY)
+                    continue;
                 
-                size_t base = region->base;
-                if (base < memUpper)
-                    base = memUpper;
-
+                const uint64_t base = (region->base < 4 * GB) ? 4 * GB : region->base;
                 for (size_t j = 0; j < region->length; j += PAGE_FRAME_SIZE)
-                    MapMemory(hhdmTag->addr + base + j, base + j, MemoryMapFlags::AllowWrites);
-                
+                    MapMemory(hhdmLowerBound + base + j, base + j, MemoryMapFlags::AllowWrites);
+
                 hhdmUpperBound = hhdmLowerBound + region->base + region->length;
             }
 
@@ -362,11 +360,6 @@ namespace Kernel::Memory
         default:
             return false;
         }
-    }
-
-    sl::BufferView PageTableManager::GetHhdm() const
-    {
-        return { hhdmLowerBound, hhdmUpperBound - hhdmLowerBound };
     }
 
     void PageTableManager::MapMemory(sl::NativePtr virtAddr, MemoryMapFlags flags)

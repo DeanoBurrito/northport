@@ -9,8 +9,8 @@ The kernel currently has 3 main states during its lifetime: basic init, threaded
 *Authors note: This section of the kernel init is highly architecture (and platform) dependent, so the kernel will have separate entry points for each of these, however the general structure is described below.*
 
 The kernel takes control of the machine from the bootloader and sets up a physical memory manager. There is only one per system, so this is the first thing to be started.
-After this an initial set of page tables is constructed. These are modelled after the stivale2 boot protocol.
-- A hhdm (**h**igher **h**alf **d**irect **m**ap of physical memory in virtual space) address is decided. This is usually the lowest possible address in the higher half of the virtual address space. If booted via stivale2, we use the provided hhdm address. This changes whether 4 or 5 level paging is used.
+After this an initial set of page tables is constructed. These are modelled after the limine boot protocol.
+- A hhdm (**h**igher **h**alf **d**irect **m**ap of physical memory in virtual space) address is decided. This is usually the lowest possible address in the higher half of the virtual address space. If booted via limine, we use the provided hhdm address. This changes whether 4 or 5 level paging is used.
 - The first 4GB of physical memory is mapped at the hhdm.
 - Any memory regions marked as 'usable', and above 4GB, are mapped into the hhdm, this includes most of ram.
 - The entire kernel blob is mapped at 0xffff'ffff'8000'0000. 

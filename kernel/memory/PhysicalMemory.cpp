@@ -1,11 +1,9 @@
 #include <memory/PhysicalMemory.h>
 #include <Log.h>
 #include <Memory.h>
-#include <Platform.h>
 #include <Utilities.h>
-#include <stdint.h>
-#include <Maths.h>
 #include <Locks.h>
+#include <boot/Limine.h>
 
 namespace Kernel::Memory
 {
@@ -15,7 +13,6 @@ namespace Kernel::Memory
             - We dont support any operations pages across region boundaries (for now).
         
         Improvements to be made:
-            - Logging address on errors, we'd need to check if dynamic memory exists so we can use Logf or not regular Log
             - Always searching from root region seems like a nice place for an optimization
     */
     
@@ -23,8 +20,10 @@ namespace Kernel::Memory
     PhysicalMemoryAllocator* PhysicalMemoryAllocator::Global()
     { return &globalPma; }
 
-    PhysMemoryRegion* PhysicalMemoryAllocator::InitRegion(stivale2_mmap_entry* mmapEntry)
+    PhysMemoryRegion* PhysicalMemoryAllocator::InitRegion(void* entry)
     {
+        limine_memmap_entry* mmapEntry = reinterpret_cast<limine_memmap_entry*>(entry);
+        
         //align the address within the 2x space we allocated for it. Since it's UB to access an unaligned struct.
         const size_t alignBase = (allocBuffer.raw + sizeof(PhysMemoryRegion) - 1) / sizeof(PhysMemoryRegion);
         PhysMemoryRegion* region = reinterpret_cast<PhysMemoryRegion*>(alignBase * sizeof(PhysMemoryRegion));
@@ -45,52 +44,52 @@ namespace Kernel::Memory
         return region;
     }
 
-    void PhysicalMemoryAllocator::Init(stivale2_struct_tag_memmap* mmap)
+
+    void PhysicalMemoryAllocator::InitFromLimine()
     {
         stats.usedPages = stats.totalPages = stats.kernelPages = stats.reclaimablePages = stats.reservedBytes = 0;
-        
-        //determine how much space is needed to manage this memory, and find the biggest region
+
+        //first pass over memmap: determine how much space is needed for the individual bitmaps
         allocBufferSize = 0;
         size_t biggestRegionIndex = (size_t)-1;
 
-        for (size_t i = 0; i < mmap->entries; i++)
+        const limine_memmap_response* mmap = Boot::memmapRequest.response;
+        for (size_t i = 0; i < mmap->entry_count; i++)
         {
-            stivale2_mmap_entry* currentEntry = &mmap->memmap[i];
+            const limine_memmap_entry* currentEntry = mmap->entries[i];
 
-            if (currentEntry->type == STIVALE2_MMAP_USABLE)
+            if (currentEntry->type == LIMINE_MEMMAP_USABLE)
             {
                 size_t bitmapLength = currentEntry->length / PAGE_FRAME_SIZE / 8 + 1;
                 allocBufferSize += (sizeof(PhysMemoryRegion) * 2) + bitmapLength;
 
                 if (biggestRegionIndex == (size_t)-1)
                     biggestRegionIndex = i;
-                if (mmap->memmap[biggestRegionIndex].length < currentEntry->length)
+                if (mmap->entries[biggestRegionIndex]->length < currentEntry->length)
                     biggestRegionIndex = i;
             }
         }
 
-        if (mmap->memmap[biggestRegionIndex].length < allocBufferSize)
-        {
+        if (mmap->entries[biggestRegionIndex]->length < allocBufferSize)
             Log("Could not complete physical memory init, no region big enough to hold bitmaps.", LogSeverity::Fatal);
-            return;
-        }
         else
-            Log("PMM attempting to bootstrap space for physical bitmaps.", LogSeverity::Info);
-        
-        //adjust our selected region to not include our alloc buffer
-        const size_t allocBufferPages = allocBufferSize / PAGE_FRAME_SIZE + 1;
-        allocBuffer = mmap->memmap[biggestRegionIndex].base;
-        mmap->memmap[biggestRegionIndex].base += allocBufferPages * PAGE_FRAME_SIZE;
-        mmap->memmap[biggestRegionIndex].length -= allocBufferPages * PAGE_FRAME_SIZE;
+            Log("PMM carving out space for bitmap from memory map.", LogSeverity::Info);
 
-        //create structs to manage each area of physical memory
+        //adjust the biggest regon, reserving the space we need for ourselves.
+        const size_t allocBufferPages = allocBufferSize / PAGE_FRAME_SIZE + 1;
+        allocBuffer = mmap->entries[biggestRegionIndex]->base;
+        mmap->entries[biggestRegionIndex]->base += allocBufferPages * PAGE_FRAME_SIZE;
+        mmap->entries[biggestRegionIndex]->length -= allocBufferPages * PAGE_FRAME_SIZE;
+        
+        //second pass: actually creating our own structs to manage the phys memory regions
         rootRegion = nullptr;
         PhysMemoryRegion* prevRegion = nullptr;
-        for (size_t i = 0; i < mmap->entries; i++)
+
+        for (size_t i = 0; i < mmap->entry_count; i++)
         {
-            if (mmap->memmap[i].type == STIVALE2_MMAP_USABLE)
+            if (mmap->entries[i]->type == LIMINE_MEMMAP_USABLE)
             {
-                PhysMemoryRegion* region = EnsureHigherHalfAddr(InitRegion(&mmap->memmap[i]));
+                PhysMemoryRegion* region = EnsureHigherHalfAddr(InitRegion(mmap->entries[i]));
                 
                 if (rootRegion == nullptr)
                     rootRegion = region;
@@ -102,19 +101,19 @@ namespace Kernel::Memory
             }
 
             //nothing interesting happening here, just keeping track of stuff for fun stats
-            switch (mmap->memmap[i].type)
+            switch (mmap->entries[i]->type)
             {
-            case STIVALE2_MMAP_RESERVED:
-            case STIVALE2_MMAP_BAD_MEMORY:
-                stats.reservedBytes += mmap->memmap[i].length;
+            case LIMINE_MEMMAP_RESERVED:
+            case LIMINE_MEMMAP_BAD_MEMORY:
+                stats.reservedBytes += mmap->entries[i]->length;
                 break;
-            case STIVALE2_MMAP_ACPI_RECLAIMABLE: //acpi reclaimable dosnt need to be page-aligned, but often is.
-            case STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE:
-                stats.reclaimablePages += mmap->memmap[i].length / PAGE_FRAME_SIZE;
+            case LIMINE_MEMMAP_ACPI_RECLAIMABLE: //acpi reclaimable dosnt need to be page-aligned, but often is.
+            case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
+                stats.reclaimablePages += mmap->entries[i]->length / PAGE_FRAME_SIZE;
                 break;
-            case STIVALE2_MMAP_KERNEL_AND_MODULES:
-                stats.kernelPages += mmap->memmap[i].length / PAGE_FRAME_SIZE;
-                stats.totalPages += mmap->memmap[i].length / PAGE_FRAME_SIZE; //these are placed in ram, so they're part of the total, even if we can never allocate them
+            case LIMINE_MEMMAP_KERNEL_AND_MODULES:
+                stats.kernelPages += mmap->entries[i]->length / PAGE_FRAME_SIZE;
+                stats.totalPages += mmap->entries[i]->length / PAGE_FRAME_SIZE; //these are placed in ram, so they're part of the total, even if we can never allocate them
                 break;
             }
         }
@@ -122,7 +121,7 @@ namespace Kernel::Memory
         //we'll want to reserve the pages at 0x44000 + 0x45000 for AP trampoline code + data
         LockPages(AP_BOOTSTRAP_BASE, 2);
 
-        Log("PMM successfully finished early init.", LogSeverity::Info);
+        Log("PMM finishing creating bitmap.", LogSeverity::Info);
     }
 
     void PhysicalMemoryAllocator::LockPage(sl::NativePtr address)

@@ -1,6 +1,7 @@
 #include <syscalls/Dispatch.h>
 #include <SyscallEnums.h>
 #include <devices/DeviceManager.h>
+#include <devices/interfaces/GenericFramebuffer.h>
 #include <scheduling/Thread.h>
 #include <Log.h>
 

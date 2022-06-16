@@ -1,10 +1,10 @@
 #include <devices/DeviceManager.h>
 #include <Locks.h>
 #include <Log.h>
-#include <devices/StivaleFramebuffer.h>
 #include <devices/Keyboard.h>
 #include <devices/Mouse.h>
 #include <scheduling/ThreadGroup.h>
+#include <devices/BootFramebuffer.h>
 
 namespace Kernel::Devices
 {
@@ -31,13 +31,7 @@ namespace Kernel::Devices
         
         Log("Kernel device manager initialized.", LogSeverity::Info);
 
-        //init bootloader provided device. Weird place for this, but since it's not discovered by anything,
-        //this seems to the only logical place. 
-        //It also has the benefit of being overwritten as the default framebuffer if a suitable gpu is found later.
-        bootloaderFramebuffer = new StivaleFramebuffer();
-        RegisterDevice(bootloaderFramebuffer);
-        SetPrimaryDevice(DeviceType::GraphicsFramebuffer, bootloaderFramebuffer->deviceId);
-
+        RegisterBootFramebuffers(); //keep the bootloader-provided framebuffers, incase we dont find anything else we support later on.
         aggregateIds[(size_t)DeviceType::Keyboard] = RegisterDevice(Keyboard::Global());
         aggregateIds[(size_t)DeviceType::Mouse] = RegisterDevice(Mouse::Global());
     }
@@ -180,12 +174,6 @@ namespace Kernel::Devices
         sl::Opt<GenericDevice*> maybeDevice = GetDevice(deviceId);
         if (!maybeDevice || *maybeDevice == nullptr)
             return;
-
-        if (bootloaderFramebuffer != nullptr && bootloaderFramebuffer->deviceId != deviceId && type == DeviceType::GraphicsFramebuffer)
-        {
-            delete UnregisterDevice(bootloaderFramebuffer->deviceId);
-            bootloaderFramebuffer = nullptr;
-        }
         
         sl::ScopedSpinlock scopeLock(&primaryDevicesLock); //probably unnecessary as this will be an atomic write anyway.
         primaryDevices[(size_t)type] = *maybeDevice;

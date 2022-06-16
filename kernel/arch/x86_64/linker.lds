@@ -12,26 +12,25 @@ PHDRS
 SECTIONS
 {
     . = 0xffffffff80000000;
-    
+    KERNEL_TEXT_BEGIN = .;
+
     .text :
     {
         *(.text*)
     } :text
 
+    KERNEL_TEXT_END = .;
     . += CONSTANT(MAXPAGESIZE);
-
-    /* Lets us boot straight out of limine if we want, unused otherwise */
-    .stivale2hdr :
-    {
-        KEEP(*(.stivale2hdr))
-    } :rodata
+    KERNEL_RODATA_BEGIN = .;
 
     .rodata : 
     {
         *(.rodata*)
     } :rodata
 
+    KERNEL_RODATA_END = .;
     . += CONSTANT(MAXPAGESIZE);
+    KERNEL_DATA_BEGIN = .;
 
     .data : 
     {
@@ -43,4 +42,6 @@ SECTIONS
         *(COMMON)
         *(.bss*)
     } :data
+
+    KERNEL_DATA_END = .;
 }
