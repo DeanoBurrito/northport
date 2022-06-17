@@ -74,6 +74,8 @@ namespace Kernel
             thread->Name() = "Main thread";
             thread->Parent()->Name() = filename;
         }
+
+        delete[] buffer;
         return maybeThread;
     }
 }

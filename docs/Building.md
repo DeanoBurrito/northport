@@ -48,22 +48,8 @@ There are also a few useful settings under the build config section (in the root
 There are a number of flags that can be defined at compile time to enable/disable certain behaviours.
 
 <details>
-    <summary>General Flags</summary>
-
-- `NORTHPORT_PCI_FORCE_LEGACY_ACCESS`: PCI subsystem will ignore the machine config acpi table (if available), and only use the legacy ports
-- `NORTHPORT_SUPPRESS_UBSAN_TYPE_MISMATCH`: When kernel undefined behaviour sanitizer is active, will suppress type-mismatch messages (quite spammy).
-</details>
-
-<details>
     <summary>Logging Flags</summary>
     
 - `NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT`: enables logging over debugcon, useful for debugging early boot in VMs.
-- `NORTHPORT_ENABLE_FRAMEBUFFER_LOG_AT_BOOT`: enables logging directly to framebuffer. Messy, but it works.
 - `NORTHPORT_DEBUG_LOGGING_COLOUR_LEVELS`: serial/debugcon logs will use ANSI escape sequences to colour log output. Can be disabled at compile-time if it intereferes with logging.
-</details>
-
-<details>
-    <summary>Debugging Helpers</summary>
-
-- `NORTHPORT_DEBUG_DISABLE_SMP_BOOT`: disables starting up all cores except the bsp at boot-time. They're currently completely unused if this is enabled. Useful for diagnosing multi-core issues.
 </details>

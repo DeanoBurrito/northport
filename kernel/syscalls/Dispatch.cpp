@@ -1,6 +1,8 @@
 #include <syscalls/Dispatch.h>
 #include <SyscallEnums.h>
 #include <memory/PhysicalMemory.h>
+#include <Configuration.h>
+#include <Log.h>
 
 extern "C"
 {
@@ -45,6 +47,11 @@ namespace Kernel::Syscalls
 
         SyscallRegisters syscallRegs(regs);
         syscallRegs.id = SyscallSuccess; //assume success by default, unless overriden by not found or error code.
+
+        auto enableRequestLog = Configuration::Global()->Get("syscall_log_requests");
+        if (enableRequestLog && enableRequestLog->integer == true)
+            Logf("Syscall request: id=0x%lx, arg0=0x%lx, arg1=0x%lx, arg2=0x%lx, arg3=0x%lx", LogSeverity::Debug,
+            (uint64_t)attemptedId, syscallRegs.arg0, syscallRegs.arg1, syscallRegs.arg2, syscallRegs.arg3);
         
         switch (attemptedId)
         {
@@ -178,6 +185,11 @@ namespace Kernel::Syscalls
         syscallRegs.Transpose(regs);
         if (regs->rax != SyscallSuccess)
             regs->rdi = regs->rsi = regs->rdx = regs->rcx = 0;
+        
+        auto enableResponseLog = Configuration::Global()->Get("syscall_log_responses");
+        if (enableResponseLog && enableResponseLog->integer == true)
+            Logf("Syscall response: id=0x%lx, arg0=0x%lx, arg1=0x%lx, arg2=0x%lx, arg3=0x%lx", LogSeverity::Debug,
+            (uint64_t)attemptedId, syscallRegs.arg0, syscallRegs.arg1, syscallRegs.arg2, syscallRegs.arg3);
 
         CPU::ClearInterruptsFlag(); //disable interrupts while we do some critical stuff
         DoInterruptReturn(regs);

@@ -5,6 +5,7 @@
 #include <drivers/DriverManager.h>
 #include <devices/DeviceManager.h>
 #include <filesystem/Vfs.h>
+#include <Configuration.h>
 #include <Loader.h>
 
 using namespace Kernel::Scheduling;
@@ -86,6 +87,20 @@ void InitManagersTask()
         DriverManager::Global()->StartDriver(*maybeDriver, nullptr);
     else //we should never not have this, its baked into the kernel.
         Log("Initdisk filesystem driver is not available!", Kernel::LogSeverity::Error);
+    
+    //try load config file from initdisk, and parse it into configuration
+    auto maybeConfigFile = Kernel::Filesystem::VFS::Global()->FindNode("/initdisk/config/kernel.cfg");
+    if (maybeConfigFile)
+    {
+        auto file = *maybeConfigFile;
+        uint8_t* buffer = new uint8_t[file->Details().filesize];
+        if (file->Read(0, buffer, 0, file->Details().filesize) == file->Details().filesize)
+            Kernel::Configuration::Global()->SetMany((const char*)buffer);
+        
+        delete[] buffer;
+    }
+    else
+        Log("Could not load extra configuration from /initdisk/config/kernel.cfg: file not found.", Kernel::LogSeverity::Warning);
 
     Scheduler::Global()->CreateThread((size_t)InitPs2Task, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
     Scheduler::Global()->CreateThread((size_t)InitPciTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);

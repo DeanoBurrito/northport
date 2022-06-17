@@ -6,10 +6,7 @@ TOOLCHAIN_DEFAULT = clang
 #build options
 INCLUDE_DEBUG_INFO = true
 OPTIMIZATION_FLAGS = -O0
-DISABLE_SMP = false
-ENABLE_UBSAN = false
 ENABLE_DEBUGCON_LOGGING = true
-ENABLE_FRAMEBUFFER_LOGGING = false
 
 #configuring toolchain binaries (if default dosnt work)
 ifeq ($(TOOLCHAIN_DEFAULT), gcc)

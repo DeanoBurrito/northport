@@ -99,6 +99,8 @@ namespace Kernel::Boot
     void SetupAllCores()
     {
         SmpInfo* smpInfo = BootAPs();
+        const bool smpDisabled = Configuration::Global()->Get("boot_disable_smp").HasValue();
+
         for (size_t i = 0; smpInfo->cores[i].apicId != AP_BOOT_APIC_ID_END; i++)
         {
             SmpCoreInfo* coreInfo = &smpInfo->cores[i];
@@ -106,16 +108,18 @@ namespace Kernel::Boot
             if (coreInfo->apicId == smpInfo->bspApicId)
             {
                 GetCoreLocal()->acpiProcessorId = coreInfo->acpiProcessorId;
-#ifdef NORTHPORT_DEBUG_DISABLE_SMP_BOOT
-                Log("SMP support disabled at compile-time, running in single core mode.", LogSeverity::Info);
-                break;
-#else
-                continue;
-#endif
+                if (smpDisabled)
+                {
+                    Log("Kernel only running on boot processor, SMP disabled by configuration entry.", LogSeverity::Info);
+                    break;
+                }
+                else
+                    continue;
             }
-#ifdef NORTHPORT_DEBUG_DISABLE_SMP_BOOT
-            continue;
-#endif
+
+            if (smpDisabled)
+                continue;
+            
             //unused apic id, ignore it
             if (coreInfo->apicId == AP_BOOT_APIC_ID_INVALID)
                 continue;

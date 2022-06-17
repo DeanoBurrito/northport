@@ -229,9 +229,6 @@ extern "C"
     [[gnu::used]]
     void __ubsan_handle_type_mismatch_v1(const TypeMismatchData& data, void*)
     {
-#ifdef NORTHPORT_SUPPRESS_UBSAN_TYPE_MISMATCH
-        return;
-#endif
         
         Logf("UBSAN: type_mismatch_v1 @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
         INDEF_HALT;

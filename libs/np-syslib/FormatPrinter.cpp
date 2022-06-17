@@ -269,7 +269,9 @@ namespace sl
                     sourceLength = sl::memfirst(source, 0, 0);
                 }
 
-                char* str = new char[sourceLength];
+                char* str = nullptr;
+                if (sourceLength > 0)
+                    str= new char[sourceLength];
                 sl::memcopy(source, str, sourceLength);
 
                 outputBuffers.Append(str);

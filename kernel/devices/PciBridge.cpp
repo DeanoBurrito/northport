@@ -1,9 +1,8 @@
 #include <devices/PciBridge.h>
 #include <acpi/AcpiTables.h>
 #include <drivers/DriverManager.h>
-#include <Platform.h>
+#include <Configuration.h>
 #include <Memory.h>
-#include <Cpu.h>
 #include <Log.h>
 
 namespace Kernel::Devices
@@ -19,9 +18,9 @@ namespace Kernel::Devices
         
         //determine which config mechanism to use, and setup segments accordingly
         ACPI::MCFG* mcfg = reinterpret_cast<ACPI::MCFG*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MCFG));
-#ifdef NORTHPORT_PCI_FORCE_LEGACY_ACCESS
-        mcfg = nullptr;
-#endif
+        auto forceLegacyCfgSlot = Configuration::Global()->Get("pci_force_legacy_access");
+        if (forceLegacyCfgSlot && forceLegacyCfgSlot->integer == true)
+            mcfg = nullptr;
 
         if (mcfg != nullptr)
         {
