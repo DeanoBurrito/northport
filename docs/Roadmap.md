@@ -8,6 +8,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [x] Centralized logging.
         - [ ] Framebuffer backend.
         - [ ] File backend.
+    - [x] Central kernel config.
     - [x] ACPI tables.
         - [ ] Loadable ACPI driver: either ACPICA or LAI.
     - [x] Device manager.

@@ -10,6 +10,7 @@
 #include <filesystem/Vfs.h>
 #include <acpi/AcpiTables.h>
 #include <InterruptManager.h>
+#include <Configuration.h>
 
 //TODO: platform specific stuff, lets get rid of it
 #include <arch/x86_64/ApBoot.h>
@@ -55,6 +56,15 @@ namespace Kernel::Boot
     void InitPlatform()
     {
         Log("Initializing platform ...", LogSeverity::Info);
+        Configuration::Global()->Init();
+        if (kernelFileRequest.response != nullptr)
+        {
+            const char* cmdline = kernelFileRequest.response->kernel_file->cmdline;
+            Configuration::Global()->SetMany(cmdline);
+        }
+        else
+            Log("Bootloader command line not available.", LogSeverity::Info);
+        Configuration::Global()->PrintCurrent(); //this will miss any values from config files, but we can look later as well.
 
         //try get kernel elf file, for debugging symbols
         if (kernelFileRequest.response == nullptr)

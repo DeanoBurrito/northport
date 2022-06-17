@@ -1,5 +1,7 @@
-#name of our target file
+#output name of the kernel binary
 TARGET = $(KERNEL_FULL_FILEPATH)
+#name of the header file we'll use for our compile-time config
+CONFIG_HEADER_TARGET = $(BUILD_DIR)/Configuration.Build.h
 
 CXX_INCLUDE_DIRS = -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include -I$(LIBS_DIR)/np-graphics/include
 CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
@@ -14,7 +16,7 @@ LD_FLAGS = $(LD_LIBS) \
 
 ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
-CXX_SRCS = InitTasks.cpp Log.cpp Logf.cpp Panic.cpp Loader.cpp InterruptManager.cpp \
+CXX_SRCS = InitTasks.cpp Log.cpp Logf.cpp Panic.cpp Loader.cpp InterruptManager.cpp Configuration.cpp \
 	boot/Limine.cpp boot/KernelEntry.cpp \
 	memory/PhysicalMemory.cpp memory/VirtualMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp \
 	memory/New.cpp memory/IpcManager.cpp memory/KernelPool.cpp memory/KernelSlab.cpp \
@@ -60,6 +62,25 @@ $(BUILD_DIR)/%.s.o: %.s
 	@$(ASM) $(ASM_FLAGS) $< -o $@
 
 $(BUILD_DIR)/%.cpp.o: %.cpp
-	@echo "[Kernel] Compiling CPP source: $<"
+	@echo "[Kernel] Compiling C++ source: $<"
 	@mkdir -p $(shell dirname $@)
 	@$(CXX) $(CXX_FLAGS) -c $< -o $@
+
+#An override for this file, since we want it to regen and then built with each compile
+$(BUILD_DIR)/Configuration.cpp.o: Configuration.cpp $(CONFIG_HEADER_TARGET)
+	@echo "[Kernel] Compiling C++ source: $<"
+	@mkdir -p $(shell dirname $@)
+	@$(CXX) $(CXX_FLAGS) -I$(BUILD_DIR) -DNORTHPORT_CONFIG_HEADER_FILENAME="\"$(CONFIG_HEADER_TARGET)\"" -c $< -o $@
+
+#this is where we create & populate the compile-time config header for the kernel
+#values ending in '!' are not me getting excited, it indicates that we want to lock
+#the config slot to prevent further changes.
+.PHONY: $(CONFIG_HEADER_TARGET)
+$(CONFIG_HEADER_TARGET):
+	@echo "[Kernel] Regenerating compile-time config values"
+	@echo "#define NP_KCONFIG_BUILD_NAME \"Northport Kernel!\"" > $(CONFIG_HEADER_TARGET)
+	@echo "#define NP_KCONFIG_BUILD_ID \"0!\"" >> $(CONFIG_HEADER_TARGET)
+	@echo "#define NP_KCONFIG_BUILD_TIME \"$(shell date)!\"" >> $(CONFIG_HEADER_TARGET)
+	@echo "#define NP_KCONFIG_BUILD_HASH \"sha256:$(shell echo $(shell date) $(CXX_FLAGS) $(OBJS) | sha256sum)\"" >> $(CONFIG_HEADER_TARGET)
+	@echo "#define NP_KCONFIG_CPU_ARCH \"$(CPU_ARCH)!\"" >> $(CONFIG_HEADER_TARGET)
+	@echo "\n" >> $(CONFIG_HEADER_TARGET)
