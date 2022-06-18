@@ -2,7 +2,7 @@
 
 /*
     The QOI (quite okay image) format is reasonably performant and straight forward alternative to some
-    of the classic image formats (jpeg, png). It's intent it to be a far simpler (where generally faster, 
+    of the classic image formats (jpeg, png). It's intent is to be a far simpler (where generally faster, 
     if a little less effecient) than png. The spec is public domain and the reference implementation
     is under the MIT license. Both are linked from the website.
 
@@ -10,6 +10,8 @@
 */
 
 #include <formats/GenericImage.h>
+#include <Optional.h>
+#include <BufferView.h>
 
 namespace np::Graphics
 {
@@ -38,5 +40,5 @@ namespace np::Graphics
         };
     }
     
-    GenericImage DecodeQoi(void* buffer, size_t length);
+    sl::Opt<GenericImage> DecodeQoi(sl::BufferView buffer);
 }

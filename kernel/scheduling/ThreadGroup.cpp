@@ -82,7 +82,7 @@ namespace Kernel::Scheduling
         return id;
     }
 
-    bool ThreadGroup::DetachResource(size_t rid, bool force)
+    bool ThreadGroup::DetachResource(size_t rid)
     {
         InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);

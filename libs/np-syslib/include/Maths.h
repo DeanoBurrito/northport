@@ -31,6 +31,23 @@ namespace sl
         return v;
     }
 
+    template<typename T>
+    [[gnu::always_inline]]
+    constexpr inline T _AbsInternal(T v, T zero)
+    { return v < zero ? -v : v; }
+
+    [[gnu::always_inline]]
+    constexpr inline int Abs(int v)
+    { return _AbsInternal(v, 0); }
+
+    [[gnu::always_inline]]
+    constexpr inline int Labs(long v)
+    { return _AbsInternal(v, 0l); }
+
+    [[gnu::always_inline]]
+    constexpr inline int Llabs(long long v)
+    { return _AbsInternal(v, 0ll); }
+
     constexpr bool IsBigEndian()
     {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__

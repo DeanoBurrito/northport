@@ -35,10 +35,10 @@ namespace np::Graphics
         return ((c.r * 3) + (c.g * 5) + (c.b * 7) + (c.a * 11)) % 64;
     }
     
-    GenericImage DecodeQoi(void* buffer, size_t length)
+    sl::Opt<GenericImage> DecodeQoi(sl::BufferView buffer)
     {
         //qoi is big-endian, so we may need to swap byte order
-        const Qoi::Header* header = sl::NativePtr(buffer).As<Qoi::Header>();
+        const Qoi::Header* header = buffer.base.As<Qoi::Header>();
         const size_t width = sl::IsLittleEndian() ? sl::SwapEndianness(header->width) : header->width;
         const size_t height = sl::IsLittleEndian() ? sl::SwapEndianness(header->height) : header->height;
 
@@ -48,11 +48,11 @@ namespace np::Graphics
         Colour indexBuffer[64];
         size_t pixelsDecoded = 0;
 
-        sl::NativePtr current(buffer);
+        sl::NativePtr current = buffer.base;
         current.raw += sizeof(Qoi::Header);
         sl::memset(indexBuffer, 0, 256);
 
-        while (pixelsDecoded < width * height)
+        while (pixelsDecoded < width * height && current.raw < buffer.base.raw + buffer.length)
         {
             const uint8_t byte = *current.As<uint8_t>();
             const Qoi::ChunkType nextChunk = NextChunkType(byte);
@@ -123,7 +123,16 @@ namespace np::Graphics
             pixelsDecoded++;
         }
 
-        //TODO: check for the ending sequence (7x 0x00, then 1x 0x01).
+        if (current.raw + 8 != buffer.base.raw + buffer.length)
+            return {};
+        for (size_t i = 0; i < 7; i++)
+        {
+            if (*current.As<uint8_t>() != 0)
+                return {};
+            current.raw++;
+        }
+        if (*current.As<uint8_t>() != 1)
+            return {};
 
         //this ctor takes ownership of the buffer, so its not leaked.
         return GenericImage(width, height, outputBuffer);

@@ -99,7 +99,8 @@ namespace Kernel::Boot
     void SetupAllCores()
     {
         SmpInfo* smpInfo = BootAPs();
-        const bool smpDisabled = Configuration::Global()->Get("boot_disable_smp").HasValue();
+        const bool smpDisabled = Configuration::Global()->Get("boot_disable_smp").HasValue() 
+            && Configuration::Global()->Get("boot_disable_smp")->integer == true;
 
         for (size_t i = 0; smpInfo->cores[i].apicId != AP_BOOT_APIC_ID_END; i++)
         {

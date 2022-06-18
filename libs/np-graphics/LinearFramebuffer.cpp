@@ -244,7 +244,49 @@ namespace np::Graphics
 
     void LinearFramebuffer::DrawLine(sl::Vector2u begin, sl::Vector2u end, Colour colour, FramebufferNoLockType)
     {
-        //TODO: draw line implementation
+        if (begin.y == end.y)
+        {
+            DrawHLine(begin, (int)end.y - (int)begin.y, colour);
+            return;
+        }
+        if (begin.x == end.x)
+        {
+            DrawVLine(begin, (int)end.x - (int)begin.x, colour);
+            return;
+        }
+        
+        //This is closely based on the wikipedia pseudocode implementation of bresenham's line algorithm:
+        //https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+        
+        const long derivX = sl::Labs((long)end.x - (long)begin.x);
+        const long derivY = -sl::Labs((long)end.y - (long)begin.y);
+        const long slopeX = begin.x < end.x ? 1 : -1;
+        const long slopeY = begin.y < end.y ? 1 : -1;
+        long errorValue = derivX + derivY;
+
+        while (true)
+        {
+            DrawPixel(begin, colour, NoLock);
+            if (begin.x == end.x && begin.y == end.y)
+                return;
+
+            const long error2 = errorValue * 2;
+            if (error2 >= derivY)
+            {
+                if (begin.x == end.x)
+                    return;
+                errorValue += derivY;
+                begin.x += slopeX;
+            }
+
+            if (error2 <= derivX)
+            {
+                if (begin.y == end.y)
+                    return;
+                errorValue += derivX;
+                begin.y += slopeY;
+            }
+        }
     }
     
     void LinearFramebuffer::DrawRect(sl::UIntRect rect, Colour colour, bool filled)

@@ -66,7 +66,7 @@ namespace Kernel::Scheduling
         { return name; }
 
         sl::Opt<size_t> AttachResource(ThreadResourceType type, sl::NativePtr resource);
-        bool DetachResource(size_t rid, bool force = false);
+        bool DetachResource(size_t rid);
         sl::Opt<ThreadResource*> GetResource(size_t rid);
         sl::Opt<size_t> FindResource(sl::NativePtr data);
         

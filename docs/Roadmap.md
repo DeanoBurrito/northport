@@ -86,6 +86,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] xHCI (usb 3).
 
 - [ ] Userspace
+    - [ ] Heap debugging helpers.
     - [ ] Window server.
         - [x] Damage-region based rendering.
         - [ ] Quadtree based window/control mouse picking.
