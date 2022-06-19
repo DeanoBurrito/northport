@@ -4,19 +4,15 @@
 #include <Vectors.h>
 #include <String.h>
 #include <Rects.h>
+#include <protocols/ProtocolClient.h>
 
 namespace WindowServer
 {
     constexpr size_t windowTitleHeight = 32;
     constexpr size_t windowBorderWidth = 4;
-    
+
     enum class WindowControlFlags : size_t
-    {
-        None = 0,
-        RenderControlCluster = (1 << 0),
-        RenderTitleBar = (1 << 1),
-        Resizable = (1 << 2),
-    };
+    {};
 
     enum class WindowStatusFlags : size_t
     {
@@ -40,6 +36,7 @@ namespace WindowServer
         WindowStatusFlags statusFlags;
 
         sl::String title;
+        ProtocolClient owner;
 
         [[gnu::always_inline]] inline
         sl::UIntRect Rect() const

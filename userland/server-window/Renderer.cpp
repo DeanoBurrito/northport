@@ -20,9 +20,15 @@ namespace WindowServer
             const np::Graphics::Qoi::Header* header = sl::NativePtr(fileBuffer).As<np::Graphics::Qoi::Header>();
 
             if (sl::memcmp(header->magic, np::Graphics::Qoi::Magic, np::Graphics::Qoi::MagicLength) == 0)
-                image = np::Graphics::DecodeQoi(fileBuffer, maybeFileInfo.Value()->fileSize);
+            {
+                auto maybeImg = np::Graphics::DecodeQoi({ fileBuffer, maybeFileInfo.Value()->fileSize });
+                if (!maybeImg)
+                    Log("Failed to load QOI image, no image returned.", LogLevel::Error);
+                else
+                    image = *maybeImg;
+            }
             else
-                Log("requested file has incorrect file header.", LogLevel::Error);
+                Log("Requested file has incorrect file header.", LogLevel::Error);
 
             CloseFile(*maybeFileHandle);
         }
@@ -52,15 +58,16 @@ namespace WindowServer
     Renderer::Renderer()
     {
         screenFb = np::Graphics::LinearFramebuffer::Screen();
-        mainFb = np::Graphics::LinearFramebuffer::Create(screenFb->Size().x, screenFb->Size().y, 32, false, screenFb->GetBufferFormat());
+        mainFb = np::Graphics::LinearFramebuffer::Create(screenFb->Size().x, screenFb->Size().y, 32, screenFb->GetBufferFormat());
         mainFb.Clear(np::Graphics::Colours::Black);
-        screenFb->Clear(np::Graphics::Colours::Yellow);
+        screenFb->Clear(np::Graphics::Colours::Black);
 
-        // LoadFile("/initdisk/icons/cursor-default.qoi", cursorImage);
-        LoadFile("/initdisk/icons/window-close.qoi", cursorImage);
+        LoadFile("/initdisk/icons/cursor-default.qoi", cursorImage);
         LoadFile("/initdisk/icons/window-close.qoi", closeImage);
         LoadFile("/initdisk/icons/window-min.qoi", minImage);
         LoadFile("/initdisk/icons/window-max.qoi", maxImage);
+
+        debugDrawLevel = RenderDebugDrawLevel::TextAndDamageRects;
     }
 
     void Renderer::Redraw(const sl::Vector<sl::UIntRect> damageRects, const sl::Vector<WindowDescriptor*> windows, sl::Vector2u cursor)
@@ -84,8 +91,16 @@ namespace WindowServer
             if (damageRects[rectIndex].Intersects(cursorRect))
                 mainFb.DrawImage(cursorImage, cursor);
 
+            if (debugDrawLevel == RenderDebugDrawLevel::DamageRectsOnly || debugDrawLevel == RenderDebugDrawLevel::TextAndDamageRects)
+                mainFb.DrawRect(damageRects[rectIndex], np::Graphics::Colours::Red, false);
+
             mainFb.SwapBuffers();
-            screenFb->CopyFromFront(mainFb, { damageRects[rectIndex].left, damageRects[rectIndex].top }, damageRects[rectIndex] );
+            screenFb->CopyFrom(mainFb, { damageRects[rectIndex].left, damageRects[rectIndex].top }, damageRects[rectIndex] );
+        }
+
+        if (debugDrawLevel == RenderDebugDrawLevel::TextOnly || debugDrawLevel == RenderDebugDrawLevel::TextAndDamageRects)
+        {
+            //TODO: draw debug text
         }
     }
 

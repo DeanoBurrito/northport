@@ -1,5 +1,7 @@
-#include <WindowManager.h>
 #include <SyscallFunctions.h>
+#include <Logging.h>
+#include <protocols/IpcProtocol.h>
+#include <WindowManager.h>
 #include <Format.h>
 #include <Maths.h>
 
@@ -7,92 +9,46 @@ namespace WindowServer
 {
     WindowManager::WindowManager()
     {
-        using namespace np::Syscall;
         keepRunning = true;
-        auto maybeIpcHandle = CreateMailbox("WindowServer/Incoming", IpcMailboxFlags::UseSharedMemory | IpcStreamFlags::AccessPublic);
-        if (!maybeIpcHandle)
-        {
-            Log("Window server could not start ipc listener, aborting init.", LogLevel::Error);
-            return;
-        }
-        listenerIpcHandle = *maybeIpcHandle;
-        damageRects.PushBack({0, 0, compositor.Size().x, compositor.Size().y});
+        ipcProtocol = new IpcProtocol();
+        GenericProtocol::RegisterProto(ipcProtocol);
 
-        EnableDeviceEvents(1);
-        EnableDeviceEvents(2);
-        Log("Window server started, listening at ipc address: \"WindowServer/Incoming\"", LogLevel::Info);
+        //enable event forwarding from keyboard + mouse devices
+        auto maybeMouseId = np::Syscall::GetAggregateId(np::Syscall::DeviceType::Mouse);
+        if (!maybeMouseId)
+            Log("Window server could not get aggregate mouse device, no mouse input will be available for np-gui driven apps.", LogLevel::Error);
+        else
+            np::Syscall::EnableDeviceEvents(*maybeMouseId);
+
+        auto maybeKeyboardId = np::Syscall::GetAggregateId(np::Syscall::DeviceType::Keyboard);
+        if (!maybeKeyboardId)
+            Log("Window server could not get aggregate keyboard device, no keyboard input will be available for np-gui driven apps.", LogLevel::Error);
+        else
+            np::Syscall::EnableDeviceEvents(*maybeKeyboardId);
+
+        np::Userland::Log("Window server started, %u protocols in use.", LogLevel::Info, 1);
     }
 
-    void WindowManager::ProcessPacket(uint8_t* buffer)
-    {
-        const BaseRequest* req = sl::NativePtr(buffer).As<const BaseRequest>();
-        switch (req->type)
-        {
-        case RequestType::CreateWindow:
-            CreateWindow(static_cast<const CreateWindowRequest*>(req));
-            break;
-        default:
-            np::Syscall::Log("WindowServer received unknown request type, dropping packet.", np::Syscall::LogLevel::Error);
-            break;
-        }
-    }
-
-    void WindowManager::CreateWindow(const CreateWindowRequest* request)
-    {
-        WindowDescriptor* window = new WindowDescriptor;
-        window->windowId = (size_t)-1;
-
-        for (size_t i = 0; i < windows.Size(); i++)
-        {
-            if (windows[i] == nullptr)
-            {
-                windows[i] = window;
-                window->windowId = i;
-                break;
-            }
-        }
-
-        if (window->windowId == (size_t)-1)
-        {
-            window->windowId = windows.Size();
-            windows.PushBack(window);
-        }
-
-        window->monitorIndex = request->monitor;
-        window->controlFlags = request->flags;
-        window->size = request->size;
-        window->position = request->position;
-        window->title = request->titleStr;
-        window->statusFlags = WindowStatusFlags::None;
-
-        const string formattedString = sl::FormatToString("New window created: w=%u, h=%u, x=%u, y=%u, flags=0x%x, title=%s", 0, 
-            window->size.x, window->size.y,
-            window->position.x, window->position.y,
-            (size_t)window->controlFlags,
-            window->title.C_Str()
-            );
-        Log(formattedString, np::Syscall::LogLevel::Info);
-
-        damageRects.PushBack(window->BorderRect());
-
-        //send window id to requested mailbox
-    }
-
-    // // void WindowManager::DestroyWindow(const DestroyWindowRequest* request, ProtocolControlBlock* control)
-    // // {}
-
-    // // void WindowManager::MoveWindow(const MoveWindowRequest* request, ProtocolControlBlock* control)
-    // // {}
-
-    // // void WindowManager::ResizeWindow(const ResizeWindowRequest* request, ProtocolControlBlock* control)
-    // // {}
-
+    extern WindowManager* globalWindowManager; //defined in GenericProtocol.cpp
     void WindowManager::Run()
     {
         WindowManager wm;
+        globalWindowManager = &wm;
+
+        //redraw the entire screen by creating a giant damage rect all of it.
+        wm.damageRects.PushBack({ 0, 0, wm.compositor.Size().x, wm.compositor.Size().y });
+        wm.compositor.Redraw(wm.damageRects, wm.windows, { 0, 0 });
+        wm.damageRects.Clear();
+
+        /*
+            Main loop is event based. We only run in response to an external event. Usually this is an IPC message,
+            but it may expand to other things in future. The `Sleep(0, true)` call is the core part.
+            It will sleep the main thread indefinitely until a program event is pushed by the kernel,
+            at which point we awake, process it, optionally redraw the screen, and then sleep again.
+        */
         while (wm.keepRunning)
         {
-            //SleepUntilEvent(0); TODO:
+            np::Syscall::Sleep(0, true);
             
             using namespace np::Syscall;
             auto maybeProgEvent = PeekNextEvent();
@@ -108,9 +64,10 @@ namespace WindowServer
 
             case ProgramEventType::IncomingMail:
                 {
-                    uint8_t buffer[maybeProgEvent->dataLength];
-                    ConsumeNextEvent({ buffer, maybeProgEvent->dataLength });
-                    wm.ProcessPacket(buffer);
+                    if (maybeProgEvent->handle == wm.ipcProtocol->GetIpcHandle())
+                        wm.ipcProtocol->HandlePendingEvents();
+                    else
+                        Log("Window server received unsolicited IPC message.", LogLevel::Error);
                     break;
                 }
 
@@ -144,4 +101,12 @@ namespace WindowServer
             }
         }
     }
+
+    void WindowManager::ProcessPacket(const ProtocolClient from, sl::BufferView packet)
+    {
+        np::Syscall::Log("Window server got packet!", LogLevel::Info);
+    }
+
+    void WindowManager::ProcessNewClient(const ProtocolClient client, const np::Gui::NewClientRequest* request)
+    {}
 }

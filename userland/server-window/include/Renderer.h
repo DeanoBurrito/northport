@@ -8,6 +8,14 @@
 
 namespace WindowServer
 {
+    enum class RenderDebugDrawLevel
+    {
+        None,
+        TextOnly,
+        DamageRectsOnly,
+        TextAndDamageRects,
+    };
+    
     using np::Graphics::GenericImage;
     
     class Renderer
@@ -25,6 +33,8 @@ namespace WindowServer
         void DrawWindow(WindowDescriptor* window);
 
     public:
+        RenderDebugDrawLevel debugDrawLevel;
+
         Renderer();
 
         void Redraw(const sl::Vector<sl::UIntRect> damageRects, const sl::Vector<WindowDescriptor*> windows, sl::Vector2u cursor);
