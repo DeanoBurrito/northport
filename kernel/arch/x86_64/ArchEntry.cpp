@@ -7,7 +7,7 @@
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
 #include <arch/x86_64/Tss.h>
-#include <arch/x86_64/ApBoot.h>
+#include <scheduling/Scheduler.h>
 
 namespace Kernel::Boot
 {
@@ -64,5 +64,16 @@ namespace Kernel::Boot
 
         Devices::LApic::Local()->Init();
         Logf("Core %lu LAPIC initialized.", LogSeverity::Verbose, id);
+    }
+
+    [[noreturn]]
+    void ExitInitArch()
+    {
+        CPU::SetInterruptsFlag();
+        Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INT_VECTOR_SCHEDULER_TICK, true);
+        Logf("Core %lu init completed in: %lu ms. Exiting to scheduler ...", LogSeverity::Info, GetCoreLocal()->apicId, Devices::GetUptime());
+
+        Scheduling::Scheduler::Global()->Yield();
+        __builtin_unreachable();
     }
 }

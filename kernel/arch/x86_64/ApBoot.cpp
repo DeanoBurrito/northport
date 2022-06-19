@@ -1,4 +1,4 @@
-#include <arch/x86_64/ApBoot.h>
+#include <arch/ApBoot.h>
 #include <acpi/AcpiTables.h>
 #include <devices/LApic.h>
 #include <memory/Paging.h>

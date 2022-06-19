@@ -16,8 +16,7 @@ Once created, trigger the parsing and printing with `FormatAll(va_args args)`. `
 
 The 2 output functions both perform similar duties: copying each segment into a single buffer, end to end, forming a single string for the output.
 
-- `FormatPrinter::GetOutput()` returns an **owning** (you must free this pointer yourself!) c-string. This can easily be cast to a string using the owning
-constructor (passing in a `true` after the buffer).
+- `FormatPrinter::GetOutput()` a wrapper around OutputToBuffer(), it allocates and returns a string of the appropriate size.
 - `FormatPrinter::OutputToBuffer()` performs the coalescing writes to a pre-allocated buffer, taking into account the buffer length.
 
 ## Format specifier extensions

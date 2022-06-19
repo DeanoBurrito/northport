@@ -25,11 +25,10 @@ namespace sl
 
     string FormatToStringV(const string& format, va_list args)
     {
-        FormatPrinter printer(format.C_Str(), FormatPrinter::OUTPUT_LENGTH_DONT_CARE);
+        FormatPrinter printer(format.C_Str(), OUTPUT_LENGTH_DONT_CARE);
         printer.FormatAll(args);
 
-        //const_cast is okay here, as we know we've allocated this on the heap, and strings are usually read only.
-        return sl::String(const_cast<char*>(printer.GetOutput()), true);
+        return printer.GetOutput();
     }
 
     size_t FormatToBuffer(void* buffer, size_t bufferLength, const string& format, int ignored, ...)
@@ -55,7 +54,7 @@ namespace sl
         FormatPrinter printer(format.C_Str(), bufferLength);
         printer.FormatAll(args);
 
-        printer.OutputToBuffer(static_cast<char*>(buffer), bufferLength);
+        printer.OutputToBuffer({ buffer, bufferLength });
         return printer.CharsWritten();
     }
 }

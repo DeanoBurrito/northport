@@ -18,8 +18,7 @@ namespace np::Graphics
     class LinearFramebuffer
     {
     private:
-        sl::NativePtr backBuffer;
-        sl::NativePtr frontBuffer;
+        sl::NativePtr buffer;
         size_t stride;
         size_t width;
         size_t height;
@@ -27,15 +26,14 @@ namespace np::Graphics
         ColourFormat bufferFormat;
         
         char lock;
-        bool doubleBuffered;
         bool owningBuffer;
 
     public:
         LinearFramebuffer() = default;
         
         static LinearFramebuffer* Screen();
-        static LinearFramebuffer Create(size_t width, size_t height, size_t bpp, bool doubleBuffered, ColourFormat format);
-        static LinearFramebuffer CreateAt(sl::NativePtr frontBuffer, sl::NativePtr backBuffer, size_t width, size_t height, size_t bpp, size_t stride, ColourFormat format);
+        static LinearFramebuffer Create(size_t width, size_t height, size_t bpp, ColourFormat format);
+        static LinearFramebuffer CreateAt(sl::NativePtr buffer, size_t width, size_t height, size_t bpp, size_t stride, ColourFormat format);
         
         ~LinearFramebuffer();
 
@@ -44,7 +42,7 @@ namespace np::Graphics
         void SetBufferFormat(const ColourFormat& format);
         ColourFormat GetBufferFormat() const;
         sl::Vector2u Size() const;
-        void CopyFromFront(LinearFramebuffer& source, sl::Vector2u destPos, sl::UIntRect srcRect);
+        void CopyFrom(LinearFramebuffer& source, sl::Vector2u destPos, sl::UIntRect srcRect);
 
         char* GetLock();
 

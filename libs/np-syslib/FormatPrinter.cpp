@@ -220,7 +220,6 @@ namespace sl
 
     void FormatPrinter::PrintFormatToken(FormatToken token, va_list args)
     {
-
         //check if width or precision need to read their values from the input
         if (token.minimumPrintWidth == PRINT_WIDTH_READ_FROM_INPUT)
             token.minimumPrintWidth = (uint64_t)va_arg(args, int);
@@ -257,17 +256,11 @@ namespace sl
                 char* source = va_arg(args, char*);
                 size_t sourceLength;
                 if (token.precision == PRECISION_DEFAULT) 
-                {
                     break;
-                }
                 else if (token.precision != PRECISION_UNSPECIFIED)
-                {
                     sourceLength = token.precision;
-                } 
                 else 
-                {
                     sourceLength = sl::memfirst(source, 0, 0);
-                }
 
                 char* str = nullptr;
                 if (sourceLength > 0)
@@ -399,6 +392,7 @@ namespace sl
         }
     }
 
+    //TODO: would be nice to replace a lot of the random heap allocations with stack allocs here.
     void FormatPrinter::FormatAll(va_list args)
     {
         inputMaxLength = sl::memfirst(inputBuffer, 0, 0);
@@ -439,31 +433,29 @@ namespace sl
     size_t FormatPrinter::CharsWritten() const
     { return outputPos; }
 
-    const char* FormatPrinter::GetOutput()
+    sl::String FormatPrinter::GetOutput()
     {
-        //TODO: would be better to stop parsing input if we ever overrun this limit too
         const size_t finalBufferSize = outputPos < outputMaxLength ? outputPos : outputMaxLength;
         
         char* buffer = new char[finalBufferSize + 1];
+        OutputToBuffer({ buffer, finalBufferSize + 1 });
+        return sl::String(buffer, true);
+    }
+
+    void FormatPrinter::OutputToBuffer(sl::BufferView buffer)
+    {
+        const size_t finalLength = sl::min(buffer.length, outputPos);
+
         size_t bufferPos = 0;
         size_t bufferIndex = 0;
 
         for (auto it = outputBuffers.Begin(); it != outputBuffers.End(); ++it)
         {
-            sl::memcopy(*it, 0, buffer, bufferPos, bufferLengths[bufferIndex]);
+            sl::memcopy(*it, 0, buffer.base.ptr, bufferPos, sl::min(bufferLengths[bufferIndex], finalLength - bufferPos));
             bufferPos += bufferLengths[bufferIndex];
             bufferIndex++;
         }
 
-        bufferLengths.Clear();
-        outputBuffers.Clear();
-
-        buffer[bufferPos] = 0;
-        return buffer;
-    }
-
-    void FormatPrinter::OutputToBuffer(char* buffer, size_t bufferLength)
-    {
-        //TODO: an easy sunday morning job...
+        buffer.base.As<uint8_t>()[bufferPos] = 0;
     }
 }

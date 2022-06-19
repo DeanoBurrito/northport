@@ -1,6 +1,7 @@
 #include <Log.h>
 #include <Panic.h>
 #include <boot/Limine.h>
+#include <arch/ApBoot.h>
 #include <memory/PhysicalMemory.h>
 #include <memory/Paging.h>
 #include <memory/KernelHeap.h>
@@ -11,10 +12,6 @@
 #include <acpi/AcpiTables.h>
 #include <InterruptManager.h>
 #include <Configuration.h>
-
-//TODO: platform specific stuff, lets get rid of it
-#include <arch/x86_64/ApBoot.h>
-#include <devices/LApic.h>
 
 //this is used for demangling stack traces
 sl::NativePtr currentProgramElf;
@@ -32,6 +29,8 @@ namespace Kernel::Boot
     extern size_t InitPlatformArch();
     //initializes the local core, using the given id.
     void InitCore(size_t id, size_t acpiId);
+    [[noreturn]]
+    extern void ExitInitArch();
     
     void InitMemory()
     {
@@ -139,13 +138,8 @@ namespace Kernel::Boot
     [[noreturn]]
     void ExitInit()
     {
-        CPU::SetInterruptsFlag();
-        Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INT_VECTOR_SCHEDULER_TICK, true);
-        Logf("Core %lu init completed in: %lu ms. Exiting to scheduler ...", LogSeverity::Info, GetCoreLocal()->apicId, Devices::GetUptime());
-
-        //NOTE: this time includes local apic timer calibration time (100ms)
-        Scheduling::Scheduler::Global()->Yield();
-        __builtin_unreachable();
+        //nothing to here presently, just a wrapper.
+        ExitInitArch();
     }
 }
 

@@ -123,16 +123,26 @@ namespace np::Graphics
             pixelsDecoded++;
         }
 
+        //check file length is what we expected, and that ending sequence is present.
         if (current.raw + 8 != buffer.base.raw + buffer.length)
+        {
+            delete[] outputBuffer;
             return {};
+        }
         for (size_t i = 0; i < 7; i++)
         {
             if (*current.As<uint8_t>() != 0)
+            {
+                delete[] outputBuffer;
                 return {};
+            }
             current.raw++;
         }
         if (*current.As<uint8_t>() != 1)
+        {
+            delete[] outputBuffer;
             return {};
+        }
 
         //this ctor takes ownership of the buffer, so its not leaked.
         return GenericImage(width, height, outputBuffer);

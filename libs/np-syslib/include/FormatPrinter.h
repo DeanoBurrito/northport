@@ -5,6 +5,8 @@
 #include <stdarg.h>
 #include <containers/LinkedList.h>
 #include <containers/Vector.h>
+#include <String.h>
+#include <BufferView.h>
 
 namespace sl
 {
@@ -29,7 +31,8 @@ namespace sl
     constexpr static uint64_t PRINT_WIDTH_UNSPECIFIED = (uint64_t)-2;
     constexpr static uint64_t PRECISION_READ_FROM_INPUT = (uint64_t)-1;
     constexpr static uint64_t PRECISION_UNSPECIFIED = (uint64_t)-2;
-    constexpr static uint64_t PRECISION_DEFAULT = (uint64_t) 0;
+    constexpr static uint64_t PRECISION_DEFAULT = (uint64_t)0;
+    constexpr static size_t OUTPUT_LENGTH_DONT_CARE = (size_t)-1;
 
     enum class FormatLengthMod
     {
@@ -83,7 +86,7 @@ namespace sl
         To actually process the input string, call FormatAll() with the va_list of args required, this MUST match what is expected.
         FormatAll() does a single pass over the input text, and creates a linked list of plain text, and formatted data.
         To get a single string output, use one of the output functions.
-        GetOutput() returns an exclusive (read: you now own this pointer, see the [[nodiscard]] attribute).
+        GetOutput() returns allocates an appropriately sized string buffer, and return its, after using OutputToBuffer().
         OutputToBuffer() takes an existing buffer, and performs the list collapse into that instead of an internal one.
     */
     class FormatPrinter
@@ -114,7 +117,6 @@ namespace sl
         void PrintFormatToken(FormatToken token, va_list args);
         
     public:
-        constexpr static size_t OUTPUT_LENGTH_DONT_CARE = (size_t)-1;
         
         FormatPrinter() = delete;
         FormatPrinter(const char* formatString, size_t outputLength) 
@@ -128,8 +130,7 @@ namespace sl
 
         void FormatAll(va_list args);
         size_t CharsWritten() const;
-        [[nodiscard]] 
-        const char* GetOutput();
-        void OutputToBuffer(char* buffer, size_t bufferLength);
+        sl::String GetOutput();
+        void OutputToBuffer(sl::BufferView buffer);
     };
 }

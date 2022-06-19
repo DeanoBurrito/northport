@@ -17,8 +17,7 @@ namespace np::Graphics
             Syscall::FramebufferInfo& fbInfo = maybeDeviceData->framebuffer;
             
             primaryFramebuffer = new LinearFramebuffer();
-            primaryFramebuffer->doubleBuffered = false;
-            primaryFramebuffer->backBuffer = primaryFramebuffer->frontBuffer = fbInfo.address;
+            primaryFramebuffer->buffer = fbInfo.address;
             primaryFramebuffer->stride = fbInfo.stride;
             primaryFramebuffer->width = fbInfo.width;
             primaryFramebuffer->height = fbInfo.height;
@@ -40,12 +39,10 @@ namespace np::Graphics
         return primaryFramebuffer;
     }
 
-    LinearFramebuffer LinearFramebuffer::Create(size_t width, size_t height, size_t bpp, bool doubleBuffered, ColourFormat format)
+    LinearFramebuffer LinearFramebuffer::Create(size_t width, size_t height, size_t bpp, ColourFormat format)
     {
         LinearFramebuffer fb;
         
-        //TODO: memory hinting in allocations, will probably need to map via the kernel and add flags there
-        fb.doubleBuffered = doubleBuffered;
         fb.owningBuffer = true;
         fb.width = width;
         fb.height = height;
@@ -53,23 +50,17 @@ namespace np::Graphics
         fb.bufferFormat = format;
         fb.stride = width * (bpp / 8);
         
-        fb.frontBuffer.ptr = new uint32_t[width * height];
-        if (doubleBuffered)
-            fb.backBuffer.ptr = new uint32_t[width * height];
-        else
-            fb.backBuffer = fb.frontBuffer;
+        fb.buffer.ptr = new uint32_t[width * height];
         
         sl::SpinlockRelease(&fb.lock);
         return fb;
     }
 
-    LinearFramebuffer LinearFramebuffer::CreateAt(sl::NativePtr frontBuffer, sl::NativePtr backBuffer, size_t width, size_t height, size_t bpp, size_t stride, ColourFormat format)
+    LinearFramebuffer LinearFramebuffer::CreateAt(sl::NativePtr buffer, size_t width, size_t height, size_t bpp, size_t stride, ColourFormat format)
     {
         LinearFramebuffer fb;
         
-        fb.doubleBuffered = (frontBuffer.raw == backBuffer.raw);
-        fb.frontBuffer = frontBuffer;
-        fb.backBuffer = backBuffer;
+        fb.buffer = buffer;
         fb.width = width;
         fb.height = height;
         fb.stride = stride;
@@ -86,9 +77,7 @@ namespace np::Graphics
         
         if (owningBuffer)
         {
-            delete[] frontBuffer.As<uint8_t>();
-            if (doubleBuffered)
-                delete[] backBuffer.As<uint8_t>();
+            delete[] buffer.As<uint8_t>();
         }
         width = height = stride = bitsPerPixel = 0;
     }
@@ -99,13 +88,13 @@ namespace np::Graphics
         uint32_t packedColour = colour.Pack(bufferFormat);
 
         for (size_t i = 0; i < height; i++)
-            sl::memsetT<uint32_t>(backBuffer.As<void>(i * stride), packedColour, width);
+            sl::memsetT<uint32_t>(buffer.As<void>(i * stride), packedColour, width);
     }
 
     void LinearFramebuffer::SwapBuffers()
     {
         sl::ScopedSpinlock scopeLock(&lock);
-        sl::Swap(frontBuffer.ptr, backBuffer.ptr);
+        sl::Swap(buffer.ptr, buffer.ptr);
     }
 
     void LinearFramebuffer::SetBufferFormat(const ColourFormat& format)
@@ -122,9 +111,8 @@ namespace np::Graphics
         return { width, height };
     }
 
-    void LinearFramebuffer::CopyFromFront(LinearFramebuffer& source, sl::Vector2u destPos, sl::UIntRect srcRect)
+    void LinearFramebuffer::CopyFrom(LinearFramebuffer& source, sl::Vector2u destPos, sl::UIntRect srcRect)
     {
-        //TODO: would be nice to have more granular locking. One lock per buffer so we can still render to back buffer while front buffer is locked.
         //TODO: we assume both buffers are using the same colour format here
         sl::ScopedSpinlock sourceLock(&source.lock);
         sl::ScopedSpinlock localLock(&lock);
@@ -140,8 +128,8 @@ namespace np::Graphics
 
         for (size_t i = 0; i < srcRect.height; i++)
             sl::memcopy(
-                source.frontBuffer.As<void>((srcRect.top + i) * source.stride + (srcRect.left * srcBytesPerPixel)), 
-                backBuffer.As<void>((i + destPos.y) * stride + (destPos.x * bitsPerPixel / 8)), 
+                source.buffer.As<void>((srcRect.top + i) * source.stride + (srcRect.left * srcBytesPerPixel)), 
+                buffer.As<void>((i + destPos.y) * stride + (destPos.x * bitsPerPixel / 8)), 
                 srcRect.width * srcBytesPerPixel
                 );
     }
@@ -198,7 +186,7 @@ namespace np::Graphics
         if (where.x >= width || where.y >= height)
             return;
 
-        sl::MemWrite<uint32_t>(backBuffer.As<void>((where.x * bitsPerPixel / 8) + (where.y * stride)), colour.Pack(bufferFormat));
+        sl::MemWrite<uint32_t>(buffer.As<void>((where.x * bitsPerPixel / 8) + (where.y * stride)), colour.Pack(bufferFormat));
     }
     
     void LinearFramebuffer::DrawHLine(sl::Vector2u begin, int length, Colour colour)
@@ -215,7 +203,7 @@ namespace np::Graphics
             sl::Swap(start, end);
 
         uint32_t packedColour = colour.Pack(bufferFormat);
-        sl::memsetT<uint32_t>(backBuffer.As<void>(begin.y * stride + (start * bitsPerPixel / 8)), packedColour, end - start);
+        sl::memsetT<uint32_t>(buffer.As<void>(begin.y * stride + (start * bitsPerPixel / 8)), packedColour, end - start);
     }
 
     void LinearFramebuffer::DrawVLine(sl::Vector2u begin, int length, Colour colour)
@@ -233,7 +221,7 @@ namespace np::Graphics
 
         uint32_t packedColour = colour.Pack(bufferFormat);
         for (size_t i = start; i < end; i++)
-            sl::MemWrite<uint32_t>(backBuffer.raw + i * stride + (begin.x * bitsPerPixel / 8), packedColour);
+            sl::MemWrite<uint32_t>(buffer.raw + i * stride + (begin.x * bitsPerPixel / 8), packedColour);
     }
     
     void LinearFramebuffer::DrawLine(sl::Vector2u begin, sl::Vector2u end, Colour colour)
@@ -337,7 +325,7 @@ namespace np::Graphics
                     break;
 
                 const size_t offset = (fbY * stride) + (fbX * bitsPerPixel / 8);
-                sl::MemWrite<uint32_t>(backBuffer.raw + offset, image.Data()[y * image.Size().x + x]);
+                sl::MemWrite<uint32_t>(buffer.raw + offset, image.Data()[y * image.Size().x + x]);
             }
         }
     }
