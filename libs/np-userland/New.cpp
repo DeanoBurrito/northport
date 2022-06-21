@@ -43,4 +43,9 @@ extern "C"
     {
         Log("__cxa_atexit called.", np::Syscall::LogLevel::Debug);
     }
+
+    void __dso_handle()
+    {
+        Log("__dso_handle called.", np::Syscall::LogLevel::Debug);
+    }
 }

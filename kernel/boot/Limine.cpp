@@ -9,7 +9,8 @@ namespace Kernel::Boot
     limine_bootloader_info_request bootloaderInfoRequest
     {
         .id = LIMINE_BOOTLOADER_INFO_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
@@ -17,6 +18,7 @@ namespace Kernel::Boot
     {
         .id = LIMINE_STACK_SIZE_REQUEST,
         .revision = 0,
+        .response = nullptr,
         .stack_size = 0x2000
     };
 
@@ -24,70 +26,80 @@ namespace Kernel::Boot
     limine_hhdm_request hhdmRequest
     {
         .id = LIMINE_HHDM_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
     
     [[gnu::used]]
     limine_framebuffer_request framebufferRequest
     {
         .id = LIMINE_FRAMEBUFFER_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
     limine_5_level_paging_request la57PagingRequest
     {
         .id = LIMINE_5_LEVEL_PAGING_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
     limine_memmap_request memmapRequest
     {
         .id = LIMINE_MEMMAP_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
     limine_kernel_file_request kernelFileRequest
     {
         .id = LIMINE_KERNEL_FILE_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
     limine_module_request modulesRequest
     {
         .id = LIMINE_MODULE_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
     limine_rsdp_request rsdpRequest
     {
         .id = LIMINE_RSDP_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
     limine_efi_system_table_request efiTableRequest
     {
         .id = LIMINE_EFI_SYSTEM_TABLE_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
     limine_boot_time_request bootTimeRequest
     {
         .id = LIMINE_BOOT_TIME_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     [[gnu::used]]
     limine_kernel_address_request kernelAddrRequest
     {
         .id = LIMINE_KERNEL_ADDRESS_REQUEST,
-        .revision = 0
+        .revision = 0,
+        .response = nullptr
     };
 
     void PrintBootInfo()

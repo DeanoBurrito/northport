@@ -51,7 +51,7 @@ namespace Kernel
         SmpInfo* smpInfo = gdtBase.As<SmpInfo>(0x100);
         smpInfo->bspApicId = LApic::Local()->GetId();
         smpInfo->bootstrapDetails.cr3 = ReadCR3();
-        smpInfo->bootstrapDetails.gdtr = (((uint64_t)gdt) << 16) | (uint16_t)(8 * 7) - 1;
+        smpInfo->bootstrapDetails.gdtr = (((uint64_t)gdt) << 16) | ((uint16_t)(8 * 7) - 1);
         if (CPU::FeatureSupported(CpuFeature::ExecuteDisable))
             smpInfo->bootstrapDetails.flags |= SMP_FLAG_XD;
         if ((ReadCR4() & (1 << 12)) != 0)

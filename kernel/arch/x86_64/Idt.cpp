@@ -96,7 +96,7 @@ namespace Kernel
         //now we have to patch the relative call instruction, use the offset from above
         sl::MemWrite<uint8_t>((uint64_t)handlerData + patchCallOffset, 0xE8); //CALL, taking imm32 (in 64bit mode). 
         const int32_t relativeOffset = (uint64_t)&InterruptDispatch - ((uint64_t)handlerData + patchCallOffset + 5);
-        sl::MemWrite<uint32_t>((uint64_t)handlerData + patchCallOffset + 1, relativeOffset);
+        sl::MemWrite<int32_t>((uint64_t)handlerData + patchCallOffset + 1, relativeOffset);
 
         latestPage = nextPage;
         return handlerData;

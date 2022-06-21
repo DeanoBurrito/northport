@@ -11,7 +11,7 @@ namespace sl
     size_t ExtractNumber(const uint8_t* str, size_t count)
     {
         size_t out = 0;
-        int i = 0;
+        size_t i = 0;
 
         while ((i < count) && (str[i] != 0))
             out = (out << 3) | (unsigned int) (str[i++] - '0');

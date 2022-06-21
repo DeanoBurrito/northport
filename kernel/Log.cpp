@@ -8,6 +8,7 @@
 namespace Kernel
 {
     bool fullLoggingAvail; //a bit cheeky, but I dont want to advertise this.
+    bool panicOnError;
     bool logDestsStatus[(unsigned)LogDestination::EnumCount];
     
     char debugconLock;
@@ -19,6 +20,7 @@ namespace Kernel
             logDestsStatus[i] = false;
 
         fullLoggingAvail = false;
+        panicOnError = false;
 
         sl::SpinlockRelease(&debugconLock);
     }
@@ -39,6 +41,11 @@ namespace Kernel
     {
         if ((unsigned)dest < (unsigned)LogDestination::EnumCount)
             logDestsStatus[(unsigned)dest] = enabled;
+    }
+
+    void SetPanicOnError(bool yes)
+    {
+        panicOnError = yes;
     }
     
     void Log(const char* message, LogSeverity level)
@@ -125,7 +132,7 @@ namespace Kernel
             }
         }
 
-        if (level == LogSeverity::Fatal)
+        if (level == LogSeverity::Fatal || (panicOnError && level == LogSeverity::Error))
             Panic(message);
     }
 }

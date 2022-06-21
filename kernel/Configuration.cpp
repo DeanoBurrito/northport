@@ -22,7 +22,7 @@ namespace Kernel
 
         if (value.Size() == 0)
         {
-            slot->value = ""; //this should resolve to the same empty string literal, used everywhere.
+            slot->value = {}; //this should resolve to the same empty string literal, used everywhere.
             slot->integer = 1;
             slot->type = ConfigSlotType::Bool;
             return;

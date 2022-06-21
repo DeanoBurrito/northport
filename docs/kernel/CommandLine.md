@@ -11,3 +11,6 @@ This serves as a listing of all the currently supported kernel command line opti
 ## System Calls
 - `syscall_log_requests`: The kernel will emit a log message for every each system call. This only dumps the registers passed to the syscall.
 - `syscall_log_responses`: Similar to above, but the registers are dumped after the system call has completed, which shows the values being returned to the user program.
+
+## Logging
+- `log_panic_on_error`: By default on logs with the `Fatal` level will cause a panic, enabling this causes `Error` logs to do the same.

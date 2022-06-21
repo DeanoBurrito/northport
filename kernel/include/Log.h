@@ -43,6 +43,7 @@ namespace Kernel
 
     bool IsLogDestinationEnabled(LogDestination dest);
     void EnableLogDestinaton(LogDestination dest, bool enabled = true);
+    void SetPanicOnError(bool yes);
 
     void Log(const char* message, LogSeverity level);
 

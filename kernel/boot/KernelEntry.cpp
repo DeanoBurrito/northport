@@ -17,9 +17,6 @@
 sl::NativePtr currentProgramElf;
 uint64_t Kernel::vmaHighAddr;
 
-//forward decl, used in SetupAllCores()
-[[noreturn]]
-extern "C" void _ApEntry(Kernel::SmpCoreInfo* smpInfo);
 extern void QueueInitTasks();
 
 namespace Kernel::Boot
@@ -31,6 +28,10 @@ namespace Kernel::Boot
     void InitCore(size_t id, size_t acpiId);
     [[noreturn]]
     extern void ExitInitArch();
+
+    //forward decl, used in SetupAllCores()
+    [[noreturn]]
+    void _ApEntry(Kernel::SmpCoreInfo* smpInfo);
     
     void InitMemory()
     {
@@ -64,6 +65,10 @@ namespace Kernel::Boot
         else
             Log("Bootloader command line not available.", LogSeverity::Info);
         Configuration::Global()->PrintCurrent(); //this will miss any values from config files, but we can look later as well.
+        
+        auto panicOnLogError = Configuration::Global()->Get("log_panic_on_error");
+        if (panicOnLogError)
+            SetPanicOnError(panicOnLogError->integer);
 
         //try get kernel elf file, for debugging symbols
         if (kernelFileRequest.response == nullptr)
@@ -98,8 +103,8 @@ namespace Kernel::Boot
     void SetupAllCores()
     {
         SmpInfo* smpInfo = BootAPs();
-        const bool smpDisabled = Configuration::Global()->Get("boot_disable_smp").HasValue() 
-            && Configuration::Global()->Get("boot_disable_smp")->integer == true;
+        auto maybeSmpDisabled = Configuration::Global()->Get("boot_disable_smp");
+        const bool smpDisabled = maybeSmpDisabled && (maybeSmpDisabled->integer == true);
 
         for (size_t i = 0; smpInfo->cores[i].apicId != AP_BOOT_APIC_ID_END; i++)
         {
@@ -141,10 +146,7 @@ namespace Kernel::Boot
         //nothing to here presently, just a wrapper.
         ExitInitArch();
     }
-}
 
-extern "C"
-{
     [[noreturn]]
     void _ApEntry(Kernel::SmpCoreInfo* smpInfo)
     {
@@ -157,7 +159,10 @@ extern "C"
         Boot::ExitInit();
         __builtin_unreachable();
     }
-    
+}
+
+extern "C"
+{
     void _KernelEntry()
     {
         using namespace Kernel::Boot;
