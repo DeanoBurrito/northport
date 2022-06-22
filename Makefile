@@ -6,6 +6,7 @@ TOOLCHAIN_DEFAULT = clang
 #build options
 INCLUDE_DEBUG_INFO = true
 OPTIMIZATION_FLAGS = -O0
+ENABLE_KERNEL_UBSAN = false
 ENABLE_DEBUGCON_LOGGING = true
 
 #configuring toolchain binaries (if default dosnt work)
@@ -64,10 +65,10 @@ export ISO_TARGET = $(abspath $(ISO_FILENAME))
 LIMINE_CFG = misc/limine.cfg
 SUBMAKE_FLAGS = --no-print-directory -j $(shell nproc)
 
-export CXX_DEBUG_FLAGS = 
-#BuildPrep.mk populates debug flags
+export CXX_GLOBAL_FLAGS = $(OPTIMIZATION_FLAGS) -DNORTHPORT_DEBUG_LOGGING_COLOUR_LEVELS
+export CXX_KERNEL_FLAGS = 
+#BuildPrep.mk populates the above flags
 include BuildPrep.mk
-export CXX_GLOBAL_FLAGS = $(OPTIMIZATION_FLAGS) $(CXX_DEBUG_FLAGS) -DNORTHPORT_DEBUG_LOGGING_COLOUR_LEVELS
 
 #ENDSECTION
 

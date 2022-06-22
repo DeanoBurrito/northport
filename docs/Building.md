@@ -38,11 +38,14 @@ The full list of make targets are below:
 
 - `make run`: builds everything, creates an iso and launches qemu with the iso.
 - `make debug`: same as run, but it starts a gdb server on port 1234, and waits for a connection before starting execution.
+- `make debug-hang`: same as debug, but stops the the qemu vm after a triple fault, instead of resetting.
 - `make attach`: a convinient way to have gdb attach to a waiting vm, and load kernel symbols.
 
 There are also a few useful settings under the build config section (in the root makefile):
 - `OPTIMIZATION_FLAGS`: does what you'd expect, just a macro with a nice name.
-- `INCLUDE_DEBUG_INFO`: set to true to have gcc add debug info to the kernel, false if not needed.
+- `ENABLE_DEBUG_SYMBOLS`: set to true to have gcc add debug info to the kernel, false if not needed.
+- `ENABLE_DEBUGCON_LOGGING`: if set, the kernel will assume debugcon is available (port 0xE9) to send logging output to. **Do not** use this with real hardware, as they may be an actual device on that port.
+- `ENABLE_KERNEL_UBSAN`: Enables undefined behaviour sanitizer for the kernel. This will substantially increase the binary size, and slow down the kernel. 
 
 # Build flags
 There are a number of flags that can be defined at compile time to enable/disable certain behaviours.

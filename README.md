@@ -31,7 +31,7 @@ Kernel:
 - Single-root style VFS, full support for mounting/unmount and file lookup. Currently only has the init ramdisk driver implemented.
 - IPC, both stream and packet based. 
 - System calls. Nothing too technically interesting, but an implementation I'm quite proud of.
-- Optional UBsan, enabled in the kernel, disabled everywhere else for now.
+- Optional UBsan. Can be enabled globally, or just for the kernel.
 - Logging layer. Can enable/disable the various backends at runtime. Support for debugcon currently, framebuffer and serial planned.
 
 Support libraries:
