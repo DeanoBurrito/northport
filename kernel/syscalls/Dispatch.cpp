@@ -7,7 +7,7 @@
 extern "C"
 {
     [[noreturn]]
-    extern void DoInterruptReturn(Kernel::StoredRegisters* regs); //defined in IdtStub.s
+    extern void TrapExit(Kernel::StoredRegisters* regs); //defined in arch/x86_64/Trap.s
 }
 
 namespace Kernel::Syscalls
@@ -192,7 +192,7 @@ namespace Kernel::Syscalls
             (uint64_t)attemptedId, syscallRegs.arg0, syscallRegs.arg1, syscallRegs.arg2, syscallRegs.arg3);
 
         CPU::ClearInterruptsFlag(); //disable interrupts while we do some critical stuff
-        DoInterruptReturn(regs);
+        TrapExit(regs);
         __builtin_unreachable();
     }
 }

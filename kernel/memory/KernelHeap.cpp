@@ -83,7 +83,7 @@ namespace Kernel::Memory
         if (pool.Free(ptr))
             return;
         
-        Log("Unable to free kernel heap memory, address outside of all allocators.", LogSeverity::Error);
+        Logf("Kernel heap unable to free address 0x%lx, not inside any allocators.", LogSeverity::Error, (uint64_t)ptr);
     }
 
     void KernelHeap::GetStats(HeapMemoryStats& stats) const

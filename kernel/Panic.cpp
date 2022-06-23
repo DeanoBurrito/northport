@@ -61,7 +61,11 @@ namespace Kernel
         Devices::LApic::Local()->BroadcastIpi(INT_VECTOR_PANIC, false);
         EnableLogDestinaton(LogDestination::FramebufferOverwrite, true);
 
-        Logf("Thread %u (core %u) triggered kernel panic.", LogSeverity::Info, Scheduling::Thread::Current()->Id(), details.responseCore);
+        if (currentThread != nullptr)
+            Logf("Thread %u (core %u) triggered kernel panic.", LogSeverity::Info, currentThread != nullptr ? currentThread->Id() : -1, details.responseCore);
+        else
+            Logf("Core %u (no current thread) triggered kernel panic.", LogSeverity::Info, details.responseCore);
+        
         Log("Reason: ", LogSeverity::Info);
         Log(details.message, LogSeverity::Info);
 
@@ -86,7 +90,7 @@ namespace Kernel
         Log("---- Virtual Memory Ranges: ----", LogSeverity::Info);
         currentThread->Parent()->VMM()->PrintRanges(ReadCR2());
 
-        Log("---- Process & Thread ----", LogSeverity::Info);
+        Log("---- Process & Thread: ----", LogSeverity::Info);
         Logf("threadId: %u, threadName: %s", LogSeverity::Info, currentThread->Id(), currentThread->Name().C_Str());
         Logf("threadFlags: 0x%x, threadState: 0x%x", LogSeverity::Info, (size_t)currentThread->Flags(), (size_t)currentThread->State());
         Logf("processId: %u, processName: %s", LogSeverity::Info, currentThread->Parent()->Id(), currentThread->Parent()->Name().C_Str());

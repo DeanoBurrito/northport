@@ -12,15 +12,31 @@ namespace sl
     String::String(const char* const cstr)
     {
         length = memfirst(cstr, 0, 0);
-        buffer = new char[length + 1];
-        memcopy(cstr, buffer, length);
-        buffer[length] = 0;
+
+        if (length > 0)
+        {
+            buffer = new char[length + 1];
+            memcopy(cstr, buffer, length);
+            buffer[length] = 0;
+        }
+        else
+            buffer = emptyString;
     }
 
     String::String(char* const cstr, bool reuseBuffer)
     {
-        length = memfirst(cstr, 0, 0);
-        buffer = cstr;
+        if (reuseBuffer)
+        {
+            length = memfirst(cstr, 0, 0);
+            buffer = cstr;
+        }
+        else
+        {
+            length = memfirst(cstr, 0, 0);
+            buffer = new char[length + 1];
+            memcopy(cstr, buffer, length);
+            buffer[length] = 0;
+        }
     }
 
     String::String(const char c)
@@ -46,6 +62,11 @@ namespace sl
             buffer = new char[length + 1];
             memcopy(other.buffer, buffer, length);
             buffer[length] = 0;
+        }
+        else
+        {
+            length = 0;
+            buffer = emptyString;
         }
     }
 

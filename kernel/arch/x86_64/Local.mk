@@ -1,7 +1,7 @@
 CXX_SRCS += $(ARCH_DIR)/Cpu.cpp $(ARCH_DIR)/Gdt.cpp $(ARCH_DIR)/Idt.cpp $(ARCH_DIR)/InterruptDispatch.cpp \
 	$(ARCH_DIR)/StackTrace.cpp $(ARCH_DIR)/Tss.cpp $(ARCH_DIR)/ApBoot.cpp $(ARCH_DIR)/ArchEntry.cpp
 
-ASM_SRCS += $(ARCH_DIR)/asm/IdtStubs.s
+ASM_SRCS += $(ARCH_DIR)/asm/Trap.s
 
 build/arch/x86_64/ApBoot.cpp.o: build/arch/x86_64/asm/ApTrampoline.s.temp
 

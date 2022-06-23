@@ -44,10 +44,14 @@ namespace Kernel
             return false;
         }
     }
-    
+}
+
+extern "C"
+{
     [[gnu::used]]
-    StoredRegisters* InterruptDispatch(StoredRegisters* regs)
+    Kernel::StoredRegisters* InterruptDispatch(Kernel::StoredRegisters* regs)
     {
+        using namespace Kernel;
         StoredRegisters* returnRegs = regs;
 
         if ((uint8_t)regs->vectorNumber > ALLOC_INT_VECTOR_BASE && 

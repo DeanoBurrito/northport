@@ -1,14 +1,12 @@
 #include <arch/x86_64/Idt.h>
-#include <Memory.h>
 #include <memory/Paging.h>
+#include <Memory.h>
 #include <Log.h>
 
 namespace Kernel
 {
-    extern void* InterruptStub_Begin asm ("InterruptStub_Begin");
-    extern void* InterruptStub_End asm ("InterruptStub_End");
-    extern void* InterruptStub_PatchCall asm("InterruptStub_PatchCall");
-    extern StoredRegisters* InterruptDispatch(StoredRegisters* regs);
+    extern uint8_t TrapEntry[] asm ("TrapEntry");
+    extern uint8_t TrapExit[] asm ("TrapExit");
     
     void IdtEntry::SetAddress(uint64_t where)
     {
@@ -49,57 +47,37 @@ namespace Kernel
         return &idtEntries[index];
     }
 
-    void* CreateClonedEntry(uint8_t vectorNum, bool pushDummyErrorCode, uint64_t& latestPage, size_t& pageOffset)
+    sl::NativePtr CreateIdtStub(uint8_t vector, bool needsDummyErrorCode, sl::NativePtr& codeStack)
     {
         /*
-            This function is not for the fainthearted, you have been warned.
-
-            In an attempt to not store a nearly identical stub for 256 interrupts, only to have them funnel to c++ code,
-            I created this monster.
-            It takes the output of IdtStub.s (marked by 2 labels InterruptStub_[Begin|End]), copies that to a new region of memory,
-            we're allocating that ourselves (heap is not executable). It'll add opcodes to push the current interrupt vector before
-            the pre-compiled stub, and optionally push a dummy error code of zero if needed.
-            It'll also replace the 5 zero bytes with a call to InterruptDispatch, which actually handles the interrupts.
+            For entry interrupt entry we need either 7 bytes (no EC) or 9 bytes (we need to push an EC).
+            To keep things simple we'll round up to 16 bytes per entry stub, which nicely occupies a full 4K page.
         */
-        
-        const size_t stubSourceSize = (uint64_t)&InterruptStub_End - (uint64_t)&InterruptStub_Begin;
-        const size_t stubFullsize = stubSourceSize + (pushDummyErrorCode ? 4 : 2);
-        const size_t patchCallOffset = (uint64_t)&InterruptStub_PatchCall - (uint64_t)&InterruptStub_Begin + (pushDummyErrorCode ? 4 : 2);
-        
-        //check we'll need to allocate another page or not
-        uint64_t nextPage = latestPage;
-        if (pageOffset + stubFullsize >= PAGE_FRAME_SIZE)
+
+        constexpr size_t EntryAlignment = 0x10;
+
+        const sl::NativePtr vectorEntry = codeStack;
+        if (needsDummyErrorCode)
         {
-            using namespace Memory;
-            nextPage = latestPage + PAGE_FRAME_SIZE;
-            PageTableManager::Current()->MapMemory(nextPage, MemoryMapFlags::AllowExecute | MemoryMapFlags::AllowWrites);
+            sl::StackPush<uint8_t, true>(codeStack, 0x6A); //0x6A = pushq
+            sl::StackPush<uint8_t, true>(codeStack, 0);
         }
+        sl::StackPush<uint8_t, true>(codeStack, 0x6A);
+        sl::StackPush<uint8_t, true>(codeStack, vector);
 
-        uint8_t* handlerData = (uint8_t*)(latestPage + pageOffset);
-        sl::NativePtr stubStackPtr = handlerData;
+        const int32_t relativeJumpOperand = (int32_t)(uint64_t)&TrapEntry - ((int32_t)codeStack.raw + 5);
 
-        //keep track of where we are in the latest page
-        pageOffset += stubFullsize;
-        if (pageOffset >= PAGE_FRAME_SIZE)
-            pageOffset -= PAGE_FRAME_SIZE;
-        
-        if (pushDummyErrorCode)
-        {
-            sl::StackPush<uint8_t, true>(stubStackPtr, 0x6A);
-            sl::StackPush<uint8_t, true>(stubStackPtr, 0);
-        }
-        sl::StackPush<uint8_t, true>(stubStackPtr, 0x6A);
-        sl::StackPush<uint8_t, true>(stubStackPtr, vectorNum);
+        //jmp imm32 (1 byte opcode + 4 byte operand: signed 32bit offset)
+        //we have to write the operand as 4 individual bytes, otherwise ubsan will freak out.
+        sl::StackPush<uint8_t, true>(codeStack, 0xE9);
+        sl::StackPush<uint8_t, true>(codeStack, (relativeJumpOperand >> 0) & 0xFF);
+        sl::StackPush<uint8_t, true>(codeStack, (relativeJumpOperand >> 8) & 0xFF);
+        sl::StackPush<uint8_t, true>(codeStack, (relativeJumpOperand >> 16) & 0xFF);
+        sl::StackPush<uint8_t, true>(codeStack, (relativeJumpOperand >> 24) & 0xFF);
 
-        sl::memcopy(&InterruptStub_Begin, 0, handlerData, (pushDummyErrorCode ? 4 : 2), stubSourceSize);
-
-        //now we have to patch the relative call instruction, use the offset from above
-        sl::MemWrite<uint8_t>((uint64_t)handlerData + patchCallOffset, 0xE8); //CALL, taking imm32 (in 64bit mode). 
-        const int32_t relativeOffset = (uint64_t)&InterruptDispatch - ((uint64_t)handlerData + patchCallOffset + 5);
-        sl::MemWrite<int32_t>((uint64_t)handlerData + patchCallOffset + 1, relativeOffset);
-
-        latestPage = nextPage;
-        return handlerData;
+        //align address for next entry
+        codeStack.raw = (codeStack.raw / EntryAlignment + 1) * EntryAlignment;
+        return vectorEntry;
     }
     
     void SetupIDT()
@@ -108,10 +86,8 @@ namespace Kernel
         defaultIDTR.base = reinterpret_cast<uint64_t>(idtEntries);
 
         sl::memset(idtEntries, 0, sizeof(IdtEntry) * (HighestUserInterrupt + 1));
-
-        uint64_t stubsBase = 0xffff'ffff'f000'0000;
-        size_t pageOffset = 0;
-        Memory::PageTableManager::Current()->MapMemory(stubsBase, Memory::MemoryMapFlags::AllowExecute | Memory::MemoryMapFlags::AllowWrites);
+        Memory::PageTableManager::Current()->MapMemory(INTERRUPT_VECTORS_BASE, Memory::MemoryMapFlags::AllowExecute | Memory::MemoryMapFlags::AllowWrites);
+        sl::NativePtr codeStack = INTERRUPT_VECTORS_BASE;
 
         for (size_t i = 0; i <= HighestUserInterrupt; i++)
         {
@@ -138,9 +114,9 @@ namespace Kernel
                     break;
             }
             
-            void* entry = CreateClonedEntry(i, needsDummyEC, stubsBase, pageOffset);
+            const sl::NativePtr entryPoint = CreateIdtStub(i, needsDummyEC, codeStack);
             IdtEntry* idtEntry = defaultIDTR.GetEntry(i);
-            idtEntry->SetAddress((uint64_t)entry);
+            idtEntry->SetAddress(entryPoint.raw);
             idtEntry->SetDetails(0, 0x8, IdtGateType::InterruptGate, userDpl ? 3 : 0);
         }
 

@@ -4,10 +4,10 @@ TARGET = $(KERNEL_FULL_FILEPATH)
 CONFIG_HEADER_TARGET = $(BUILD_DIR)/Configuration.Build.h
 
 CXX_INCLUDE_DIRS = -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include -I$(LIBS_DIR)/np-graphics/include
-CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_INCLUDE_DIRS) \
+CXX_FLAGS = $(CXX_GLOBAL_FLAGS) $(CXX_KERNEL_FLAGS) $(CXX_INCLUDE_DIRS) \
 	-Wall -Wextra -fno-pie -fno-stack-protector -fno-omit-frame-pointer -ffreestanding \
 	-mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow -mcmodel=kernel \
-	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables -fsanitize=undefined
+	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
 
 LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-syslib
 LD_SCRIPT = arch/$(CPU_ARCH)/linker.lds

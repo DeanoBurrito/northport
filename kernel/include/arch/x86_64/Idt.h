@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <NativePtr.h>
 
 namespace Kernel
 {
@@ -85,16 +86,7 @@ namespace Kernel
         IdtEntry* GetEntry(size_t index);
     };
     
-    struct StoredRegisters;
-
-    extern "C"
-    {
-        //all interrupt stubs route here
-        StoredRegisters* InterruptDispatch(StoredRegisters* regs);
-    }
-
-    [[gnu::used]]
-    void* CreateClonedEntry(uint8_t vectorNum, bool pushDummyErrorCode, uint64_t& latestPage, size_t& pageOffset);
+    sl::NativePtr CreateIdtStub(uint8_t vector, bool needsDummyErrorCode, sl::NativePtr& codeStack); 
     void SetupIDT();
 
     [[gnu::naked]]
