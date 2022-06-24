@@ -182,7 +182,7 @@ namespace sl
         case 'I': ParseTemplate(); break;
 
         default:
-            if (StringCulture::current->IsDigit(input[inputIndex]))
+            if (IsDigit(input[inputIndex]))
                 ParseNameSegment(true);
         }
     }
@@ -229,10 +229,10 @@ namespace sl
         size_t digitsLength = 0;
         if (input[inputIndex] != '_')
         {
-            StringCulture::current->TryGetUInt64(&shorthandIndex, input, inputIndex);
+            shorthandIndex = GetUInt64(input, inputIndex, Base::Decimal);
             shorthandIndex++; //since 'S_' is index 0, and 'S0_' is actually index 1. Thanks GCC.. :/
         }
-        while (StringCulture::current->IsDigit(input[inputIndex + digitsLength]))
+        while (IsDigit(input[inputIndex + digitsLength]))
             digitsLength++;
         
         nodes.PushBack(shorthandReferences[shorthandIndex]);
@@ -251,7 +251,7 @@ namespace sl
 { EmplaceOp(opIndex); return true; }
     bool CxxDemangler::ParseOperator()
     {
-        if (!StringCulture::current->IsLower(input[inputIndex]))
+        if (!IsLower(input[inputIndex]))
             return false; //all operators begin with lower case text
         if (inputIndex + 1 >= input.Size())
             return false; //operators are all 2 chars long
@@ -359,7 +359,7 @@ namespace sl
             //we dont care about the ctor's index, just make sure we consume the digits properly
             inputIndex++;
             size_t digitsCount = 0;
-            while (StringCulture::current->IsDigit(input[inputIndex + digitsCount]))
+            while (IsDigit(input[inputIndex + digitsCount]))
                 digitsCount++;
             inputIndex += digitsCount;
 
@@ -370,7 +370,7 @@ namespace sl
         {
             inputIndex++;
             size_t digitsCount = 0;
-            while (StringCulture::current->IsDigit(input[inputIndex + digitsCount]))
+            while (IsDigit(input[inputIndex + digitsCount]))
                 digitsCount++;
             inputIndex += digitsCount;
 
@@ -383,10 +383,9 @@ namespace sl
             if (ParseOperator())
                 break;
             
-            size_t nameLength = 0;
+            size_t nameLength = GetUInt64(input, inputIndex, Base::Decimal);
             size_t digitsLength = 0;
-            StringCulture::current->TryGetUInt64(&nameLength, input, inputIndex);
-            while (StringCulture::current->IsDigit(input[inputIndex + digitsLength]))
+            while (IsDigit(input[inputIndex + digitsLength]))
                 digitsLength++;
 
             nodes.EmplaceBack(inputIndex + digitsLength, nameLength, false);

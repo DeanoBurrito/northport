@@ -54,30 +54,19 @@ namespace Kernel
         sl::Opt<uint32_t> intValue = {};
         if (value[0] == '0')
         {
-            uint32_t out = 0;
             if (value.Size() == 1)
                 intValue = 0;
             else if (value[1] == 'x' || value[1] == 'X')
-                sl::StringCulture::current->TryGetUInt32(&out, value, 2, sl::Base::HEX);
+                intValue = sl::GetUInt32(value, 2, sl::Base::Hex);
             else if (value[1] == 'b' || value[1] == 'B')
-                sl::StringCulture::current->TryGetUInt32(&out, value, 2, sl::Base::BINARY);
+                intValue = sl::GetUInt32(value, 2, sl::Base::Binary);
             else
-                sl::StringCulture::current->TryGetUInt32(&out, value, 1, sl::Base::OCTAL);
-
-            intValue = out;
+                intValue = sl::GetUInt32(value, 1, sl::Base::Octal);
         }
-        else if (sl::StringCulture::current->IsDigit(value[0]))
-        {
-            uint32_t out = 0;
-            sl::StringCulture::current->TryGetUInt32(&out, value, 0);
-            intValue = out;
-        }
-        else if (value[0] == '-' && sl::StringCulture::current->IsDigit(value[1]))
-        {
-            int32_t out = 0;
-            sl::StringCulture::current->TryGetInt32(&out, value, 0);
-            intValue = (uint32_t)out; //underflow negative values backed into unsigned range.
-        }
+        else if (sl::IsDigit(value[0]))
+            intValue = sl::GetUInt32(value, 0, sl::Base::Decimal);
+        else if (value[0] == '-' && sl::IsDigit(value[1]))
+            intValue = (uint32_t)sl::GetInt32(value, 0, sl::Base::Decimal);
         
         if (intValue.HasValue())
         {

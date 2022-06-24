@@ -92,17 +92,17 @@ namespace sl
     class FormatPrinter
     {
     private:
-        constexpr static inline const char* Literals[] =
+        constexpr static const char* Literals[] =
         {
             "false", "true", "FALSE", "TRUE",
             "UnsupportedFormat", "%", ".",
-            "B", "KB", "MB", "GB", "TB", "PT",
+            "B", "KiB", "MiB", "GiB", "TiB", "PiT",
         };
-        constexpr static inline size_t LiteralSizes[] =
+        constexpr static size_t LiteralSizes[] =
         {
             5, 4, 5, 4,
             17, 1, 1,
-            1, 2, 2, 2, 2, 2,
+            1, 3, 3, 3, 3, 3,
         };
 
         const char* inputBuffer;

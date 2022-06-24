@@ -1,19 +1,17 @@
 # String Culture
 
-The `StringCulture` class represents a unique combination of lexical rules, where the definitions of what is a letter or number may change. It also allows reuse between languages that share the same fundamental letters and number system.
-The whole idea behind it, rather than just implementing these for ASCII, is it makes supporting other languages as first class citizens much easier down the road.
+The idea of a `StringCulture` instance is to represent a unique combination of lexical rules, where the definitions of what is a number or letter may change. The base character sets may change or stay the same. This is implemented as a layer under the usual `is_digit` or `is_alpha` functions, meaning we can swap out the definitins these use, but still use existing code. This should allow careful crafted programs to support potentially any language supported by the OS, to a certain degree.
 
-The default string culture is based on British English (the real english), and has definitons as such. Of course US english can use the same culture, because while some spellings may be different, the underlaying characters and definitions are the same.
-
-An instance of a `StringCulture` implements many of usual string functions like `bool IsDigit()`, `bool IsAlpha()`, or `ToLower()`. These implementations use `int/int32_t/uint8_t[4]` as their character type, as there are plans for utf-8 support.
+The default (and currently only) culture is Australian english (basically british english), as has definitions as such. Of course most english dialects can use the same culture, because the definitions of the underlying characters do not change. 
 
 ## Implementing a String Culture
 It's very straight forward! Simply create a class that inherits from `class StringCulture`, and overload all the virtual methods.
 
-This looks a little intimdating as there is a lot, but if your custom culture uses the arabic numbering system, you can reuse the existing number functions (they're templated in `StringCulture.h`).
+This looks a little intimdating as there is a lot, but if your custom culture uses the arabic numbering system, you can reuse the existing number functions (they're templated in `cultures/Helpers.h`).
 
 Check how the default culture uses these for an example.
 
 ## Related source files:
 - [StringCulture.h](../../libs/np-syslib/include/StringCulture.h)
 - [StringCulture.cpp](../../libs/np-syslib/StringCulture.cpp)
+- [Helpers.h](../../libs/np-syslib/include/cultures/Helpers.h)

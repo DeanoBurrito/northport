@@ -38,14 +38,12 @@ namespace np::Graphics
         ~LinearFramebuffer();
 
         void Clear(Colour col = Colours::Black);
-        void SwapBuffers();
         void SetBufferFormat(const ColourFormat& format);
         ColourFormat GetBufferFormat() const;
         sl::Vector2u Size() const;
         void CopyFrom(LinearFramebuffer& source, sl::Vector2u destPos, sl::UIntRect srcRect);
 
         char* GetLock();
-
         void DrawTestPattern();
 
         //puts a single pixel on the screen.

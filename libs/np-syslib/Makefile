@@ -5,8 +5,9 @@ CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude \
 	-mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow
 
 CXX_SRCS = Memory.cpp String.cpp StringCulture.cpp FormatPrinter.cpp Format.cpp Bitmap.cpp \
+	cultures/AustralianCulture.cpp \
 	elf/HeaderParser.cpp elf/Demangle.cpp \
-	formats/XPixMap.cpp formats/Tar.cpp
+	 formats/Tar.cpp
 
 include $(LIB_COMMON_MK)
 

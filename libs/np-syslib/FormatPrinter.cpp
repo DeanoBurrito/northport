@@ -49,11 +49,11 @@ namespace sl
         
         //try parse width
         size_t segmentStart = inputPos;
-        while (StringCulture::current->IsDigit(inputBuffer[inputPos]))
+        while (IsDigit(inputBuffer[inputPos]))
             inputPos++;
 
         if (inputPos > segmentStart)
-            StringCulture::current->TryGetUInt64(&token.minimumPrintWidth, inputBuffer, segmentStart);
+            token.minimumPrintWidth = GetUInt64(inputBuffer, segmentStart, Base::Decimal);
         else if (inputBuffer[inputPos] == '*')
         {
             token.minimumPrintWidth = PRINT_WIDTH_READ_FROM_INPUT;
@@ -70,11 +70,11 @@ namespace sl
         {
             inputPos++;
             segmentStart = inputPos;
-            while (StringCulture::current->IsDigit(inputBuffer[inputPos]))
+            while (IsDigit(inputBuffer[inputPos]))
                 inputPos++;
             
             if (inputPos > segmentStart)
-                StringCulture::current->TryGetUInt64(&token.precision, inputBuffer, segmentStart);
+                token.precision = GetUInt64(inputBuffer, segmentStart, Base::Decimal);
             else if (inputBuffer[inputPos] == '*')
             {
                 token.precision = PRECISION_READ_FROM_INPUT;
@@ -220,6 +220,17 @@ namespace sl
 
     void FormatPrinter::PrintFormatToken(FormatToken token, va_list args)
     {
+        auto ApplyPadding = [&](bool padLeft, char padChar, size_t padLength)
+        {
+            char* padBuff = new char[padLength];
+            for (size_t i = 0; i < padLength; i++)
+                padBuff[i] = padChar; //use a for loop instead of memset, since a char may be more than 1 byte
+            
+            outputBuffers.Append(padBuff);
+            bufferLengths.PushBack(padLength);
+            outputPos += padLength;
+        };
+        
         //check if width or precision need to read their values from the input
         if (token.minimumPrintWidth == PRINT_WIDTH_READ_FROM_INPUT)
             token.minimumPrintWidth = (uint64_t)va_arg(args, int);
@@ -289,7 +300,14 @@ namespace sl
                     break;
                 }
 
-                string strValue = StringCulture::current->ToString(source);
+                string strValue = ToString(source, Base::Decimal);
+                if (sl::EnumHasFlag(token.flags, FormatFlag::PadWithZeros))
+                {
+                    const size_t padLimit = IntStringLength(INT64_MIN, Base::Decimal);
+                    if (padLimit > strValue.Size())
+                        ApplyPadding(sl::EnumHasFlag(token.flags, FormatFlag::LeftJustified), '0', padLimit - strValue.Size());
+                }
+
                 outputPos += strValue.Size();
                 bufferLengths.PushBack(strValue.Size());
                 outputBuffers.Append(strValue.DetachBuffer());
@@ -298,30 +316,41 @@ namespace sl
 
         case FormatSpecifier::UnsignedIntOctal:
             if (formatBase == 0)
-                formatBase = Base::OCTAL;
+                formatBase = Base::Octal;
         case FormatSpecifier::UnsignedIntHex:
             if (formatBase == 0)
-                formatBase = Base::HEX;
+                formatBase = Base::Hex;
         case FormatSpecifier::UnsignedIntDecimal:
             {
                 if (formatBase == 0)
-                    formatBase = Base::DECIMAL;
+                    formatBase = Base::Decimal;
 
                 uint64_t source;
+                uint64_t sourcePad;
                 switch (token.lengthMod)
                 {
                 case FormatLengthMod::Long:
                     source = va_arg(args, unsigned long);
+                    sourcePad = (unsigned long)-1;
                     break;
                 case FormatLengthMod::LongLong:
                     source = va_arg(args, unsigned long long);
+                    sourcePad = (unsigned long long)-1;
                     break;
                 default:
                     source = va_arg(args, unsigned int);
+                    sourcePad = (unsigned int)-1;
                     break;
                 }
 
-                string strValue = StringCulture::current->ToString(source, formatBase);
+                string strValue = ToString(source, formatBase);
+                if (sl::EnumHasFlag(token.flags, FormatFlag::PadWithZeros))
+                {
+                    const size_t padLimit = IntStringLength(sourcePad, formatBase);
+                    if (padLimit > strValue.Size())
+                        ApplyPadding(sl::EnumHasFlag(token.flags, FormatFlag::LeftJustified), '0', padLimit - strValue.Size());
+                }
+
                 outputPos += strValue.Size();
                 bufferLengths.PushBack(strValue.Size());
                 outputBuffers.Append(strValue.DetachBuffer());
@@ -375,13 +404,13 @@ namespace sl
                 if (unitIndex > 0)
                     unitIndex--;
 
-                string strValue = StringCulture::current->ToString(majorUnits, Base::DECIMAL);
+                string strValue = ToString(majorUnits, Base::Decimal);
                 outputPos += strValue.Size();
                 bufferLengths.PushBack(strValue.Size());
                 outputBuffers.Append(strValue.DetachBuffer());
                 OUTPUT_SIMPLE_TOKEN(Literals[6], LiteralSizes[6]);
 
-                strValue = StringCulture::current->ToString(minorUnits % KB, Base::DECIMAL);
+                strValue = ToString(minorUnits % KB, Base::Decimal);
                 outputPos += strValue.Size();
                 bufferLengths.PushBack(strValue.Size());
                 outputBuffers.Append(strValue.DetachBuffer());

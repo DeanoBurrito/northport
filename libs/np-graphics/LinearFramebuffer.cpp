@@ -91,12 +91,6 @@ namespace np::Graphics
             sl::memsetT<uint32_t>(buffer.As<void>(i * stride), packedColour, width);
     }
 
-    void LinearFramebuffer::SwapBuffers()
-    {
-        sl::ScopedSpinlock scopeLock(&lock);
-        sl::Swap(buffer.ptr, buffer.ptr);
-    }
-
     void LinearFramebuffer::SetBufferFormat(const ColourFormat& format)
     { 
         sl::ScopedSpinlock scopeLock(&lock); //we dont want to change framebuffer format mid-operation

@@ -30,6 +30,7 @@ namespace WindowServer
             else
                 Log("Requested file has incorrect file header.", LogLevel::Error);
 
+            delete[] fileBuffer;
             CloseFile(*maybeFileHandle);
         }
     }
@@ -62,7 +63,7 @@ namespace WindowServer
         mainFb.Clear(np::Graphics::Colours::Black);
         screenFb->Clear(np::Graphics::Colours::Black);
 
-        LoadFile("/initdisk/icons/cursor-default.qoi", cursorImage);
+        LoadFile("/initdisk/icons/window-close.qoi", cursorImage);
         LoadFile("/initdisk/icons/window-close.qoi", closeImage);
         LoadFile("/initdisk/icons/window-min.qoi", minImage);
         LoadFile("/initdisk/icons/window-max.qoi", maxImage);
@@ -93,8 +94,7 @@ namespace WindowServer
 
             if (debugDrawLevel == RenderDebugDrawLevel::DamageRectsOnly || debugDrawLevel == RenderDebugDrawLevel::TextAndDamageRects)
                 mainFb.DrawRect(damageRects[rectIndex], np::Graphics::Colours::Red, false);
-
-            mainFb.SwapBuffers();
+            
             screenFb->CopyFrom(mainFb, { damageRects[rectIndex].left, damageRects[rectIndex].top }, damageRects[rectIndex] );
         }
 

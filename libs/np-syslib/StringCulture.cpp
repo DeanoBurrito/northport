@@ -1,153 +1,98 @@
 #include <StringCulture.h>
+#include <cultures/AustralianCulture.h>
 
 namespace sl
 {
-    StrayaCulture defaultCulture;
-    StringCulture* StringCulture::current = &defaultCulture;
+    Cultures::AustralianCulture strayaTime; //yeah baby, straya time. 8D
+    StringCulture* currentCulture = &strayaTime;
 
-    bool StrayaCulture::IsAlpha(int character)
-    {
-        if (character >= 'a' && character <= 'z')
-            return true;
-        if (character >= 'A' && character <= 'Z')
-            return true;
-        return false;
-    }
+    bool IsAlpha(CharType character)
+    { return currentCulture->IsAlpha(character); }
 
-    bool StrayaCulture::IsUpper(int character)
-    { return character >= 'A' && character <= 'Z'; }
+    bool IsUpper(CharType character)
+    { return currentCulture->IsUpper(character); }
 
-    bool StrayaCulture::IsLower(int character)
-    { return character >= 'a' && character <= 'z'; }
+    bool IsLower(CharType character)
+    { return currentCulture->IsLower(character); }
 
-    bool StrayaCulture::IsPrintable(int character)
-    { return character >= ' ' && character <= '~'; }
+    bool IsPrintable(CharType character)
+    { return currentCulture->IsPrintable(character); }
 
-    bool StrayaCulture::IsDigit(int character)
-    { return character >= '0' && character <= '9'; }
+    bool IsDigit(CharType character)
+    { return currentCulture->IsDigit(character); }
 
-    bool StrayaCulture::IsHexDigit(int character)
-    { 
-        if (character >= 'a' && character <= 'f')
-            return true;
-        if (character >= 'A' && character <= 'F')
-            return true;
-        return IsDigit(character);
-    }
+    bool IsHexDigit(CharType character)
+    { return currentCulture->IsHexDigit(character); }
 
-    bool StrayaCulture::IsAlphaNum(int character)
-    {
-        return IsAlpha(character) || IsDigit(character);
-    }
+    bool IsAlphaNum(CharType character)
+    { return currentCulture->IsAlphaNum(character); }
 
-    bool StrayaCulture::IsSpace(int character)
-    {
-        switch (character)
-        {
-        case ' ':
-        case '\t':
-        case '\n':
-        case '\r':
-            return true;
-            
-        default:
-            return false;
-        }
-    }
+    bool IsSpace(CharType character)
+    { return currentCulture->IsSpace(character); }
+
+    CharType ToUpper(CharType character)
+    { return currentCulture->ToUpper(character); }
+
+    CharType ToLower(CharType character)
+    { return currentCulture->ToLower(character); }
+
+    uint8_t GetUInt8(const sl::String& str, size_t start, size_t base)
+    { return currentCulture->GetUInt8(str, start, base); }
+
+    uint16_t GetUInt16(const sl::String& str, size_t start, size_t base)
+    { return currentCulture->GetUInt16(str, start, base); }
+
+    uint32_t GetUInt32(const sl::String& str, size_t start, size_t base)
+    { return currentCulture->GetUInt32(str, start, base); }
+
+    uint64_t GetUInt64(const sl::String& str, size_t start, size_t base)
+    { return currentCulture->GetUInt64(str, start, base); }
     
-    int StrayaCulture::ToUpper(int character)
-    {
-        if (IsLower(character))
-            return character -= 0x20;
-        return character;
-    }
+    int8_t GetInt8(const sl::String& str, size_t start, size_t base)
+    { return currentCulture->GetInt8(str, start, base); }
 
-    int StrayaCulture::ToLower(int character)
-    {
-        if (IsUpper(character))
-            return character += 0x20;
-        return character;
-    }
+    int16_t GetInt16(const sl::String& str, size_t start, size_t base)
+    { return currentCulture->GetInt16(str, start, base); }
 
-    using namespace sl::Helpers;
+    int32_t GetInt32(const sl::String& str, size_t start, size_t base)
+    { return currentCulture->GetInt32(str, start, base); }
 
-    bool StrayaCulture::TryGetUInt8(uint8_t* out, const string& str, size_t start, size_t base)
-    { 
-        return TryGetUInt<uint8_t>(out, str, start, base); 
-    }
+    int64_t GetInt64(const sl::String& str, size_t start, size_t base)
+    { return currentCulture->GetInt64(str, start, base); }
 
-    bool StrayaCulture::TryGetUInt16(uint16_t* out, const string& str, size_t start, size_t base)
-    { 
-        return TryGetUInt<uint16_t>(out, str, start, base); 
-    }
+    sl::String ToString(uint8_t num, size_t base)
+    { return currentCulture->ToString(num, base); }
 
-    bool StrayaCulture::TryGetUInt32(uint32_t* out, const string& str, size_t start, size_t base)
-    { 
-        return TryGetUInt<uint32_t>(out, str, start, base); 
-    }
+    sl::String ToString(uint16_t num, size_t base)
+    { return currentCulture->ToString(num, base); }
 
-    bool StrayaCulture::TryGetUInt64(uint64_t* out, const string& str, size_t start, size_t base)
-    { 
-        return TryGetUInt<uint64_t>(out, str, start, base); 
-    }
+    sl::String ToString(uint32_t num, size_t base)
+    { return currentCulture->ToString(num, base); }
 
-    bool StrayaCulture::TryGetInt8(int8_t* out, const string& str, size_t start, size_t base)
-    { 
-        return TryGetInt<int8_t>(out, str, start, base); 
-    }
+    sl::String ToString(uint64_t num, size_t base)
+    { return currentCulture->ToString(num, base); }
+    
+    sl::String ToString(int8_t num, size_t base)
+    { return currentCulture->ToString(num, base); }
 
-    bool StrayaCulture::TryGetInt16(int16_t* out, const string& str, size_t start, size_t base)
-    { 
-        return TryGetInt<int16_t>(out, str, start, base); 
-    }
+    sl::String ToString(int16_t num, size_t base)
+    { return currentCulture->ToString(num, base); }
 
-    bool StrayaCulture::TryGetInt32(int32_t* out, const string& str, size_t start, size_t base)
-    { 
-        return TryGetInt<int32_t>(out, str, start, base); 
-    }
+    sl::String ToString(int32_t num, size_t base)
+    { return currentCulture->ToString(num, base); }
 
-    bool StrayaCulture::TryGetInt64(int64_t* out, const string& str, size_t start, size_t base)
-    { 
-        return TryGetInt<int64_t>(out, str, start, base); 
-    }
+    sl::String ToString(int64_t num, size_t base)
+    { return currentCulture->ToString(num, base); }
 
-    string StrayaCulture::ToString(uint8_t num, size_t base)
-    { 
-        return String(UIntToString<uint8_t, 4>(num, base), true); 
-    }
+    size_t IntStringLength(int64_t num, size_t base)
+    { return currentCulture->IntStringLength(num, base); }
 
-    string StrayaCulture::ToString(uint16_t num, size_t base)
-    { 
-        return String(UIntToString<uint16_t, 7>(num, base), true); 
-    }
+    size_t UIntStringLength(uint64_t num, size_t base)
+    { return currentCulture->UIntStringLength(num, base); }
 
-    string StrayaCulture::ToString(uint32_t num, size_t base)
-    { 
-        return String(UIntToString<uint32_t, 12>(num, base), true); 
-    }
+    StringCulture* StringCulture::GetCurrent()
+    { return currentCulture; }
 
-    string StrayaCulture::ToString(uint64_t num, size_t base)
-    { 
-        return String(UIntToString<uint64_t, 21>(num, base), true); 
-    }
-
-    string StrayaCulture::ToString(int8_t num, size_t base)
-    { 
-        return String(IntToString<int8_t, 4>(num, base), true); 
-    }
-
-    string StrayaCulture::ToString(int16_t num, size_t base)
-    { 
-        return String(IntToString<int16_t, 7>(num, base), true); 
-    }
-
-    string StrayaCulture::ToString(int32_t num, size_t base)
-    { 
-        return String(IntToString<int32_t, 12>(num, base), true); 
-    }
-
-    string StrayaCulture::ToString(int64_t num, size_t base)
-    { 
-        return String(IntToString<int64_t, 21>(num, base), true); 
-    }
+    void StringCulture::SetCurrent(StringCulture* culture)
+    { currentCulture = culture; }
 }
