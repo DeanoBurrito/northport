@@ -12,7 +12,6 @@ namespace Kernel::Filesystem
     
     size_t VfsNode::Read(size_t fromOffset, uint8_t* toBuffer, size_t toOffset, size_t readLength)
     {
-        //TODO: memory-caching of files. This is where we would handle that, on the vfs node, before it's passed off to the driver layer
         if (driver)
             return driver->DoRead(this, fromOffset, toBuffer, toOffset, readLength);
         return 0;

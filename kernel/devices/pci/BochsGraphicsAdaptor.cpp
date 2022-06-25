@@ -1,9 +1,7 @@
 #include <devices/pci/BochsGraphicsAdaptor.h>
-#include <devices/interfaces/GenericGraphicsAdaptor.h>
 #include <devices/DeviceManager.h>
-#include <memory/Paging.h>
-#include <Memory.h>
-#include <Maths.h>
+#include <devices/PciBridge.h>
+#include <memory/VirtualMemory.h>
 #include <Log.h>
 #include <Locks.h>
 
@@ -125,9 +123,7 @@ namespace Kernel::Devices::Pci
             mmioRegsAvailable = true; //bochs standard variant, but BAR2 is populated so mmio regs are available
 
         linearFramebufferBase.raw = pciFunc->Header()->bars[0].address;
-        const size_t fbPageCount = pciFunc->Header()->bars[0].size / PAGE_FRAME_SIZE; //TODO: investigate map issues here, puts framebuffer in a weird state
-        // VMM::Local()->MapRange(EnsureHigherHalfAddr(linearFramebufferBase.raw), linearFramebufferBase, fbPageCount, Memory::MemoryMapFlags::AllowWrites);
-        linearFramebufferBase.raw = EnsureHigherHalfAddr(linearFramebufferBase.raw);
+        const size_t fbPageCount = pciFunc->Header()->bars[0].size / PAGE_FRAME_SIZE;
 
         if (mmioRegsAvailable)
         {

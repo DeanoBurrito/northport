@@ -1,6 +1,6 @@
 TARGET = startup
 
-CXX_FLAGS = -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include -I$(LIBS_DIR)/np-userland/include \
+CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include -I$(LIBS_DIR)/np-userland/include \
 	-Wall -Wextra -fno-stack-protector -fno-omit-frame-pointer -ffreestanding \
 	-mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow \
 	-std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables

@@ -270,11 +270,6 @@ namespace Kernel::Memory
         return DoMemoryOp(sourceBuffer, destBase, true);
     }
 
-    size_t VirtualMemoryManager::CopyFrom(sl::BufferView sourceBuffer, sl::NativePtr destBase)
-    {
-        Log("CopyFrom() not implemented. TODO:", LogSeverity::Fatal);
-    }
-
     size_t VirtualMemoryManager::ZeroRange(sl::BufferView where)
     {
         return DoMemoryOp({ 0ul, where.length }, where.base, false);

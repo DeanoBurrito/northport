@@ -1,6 +1,6 @@
 TARGET = server-window
 
-CXX_FLAGS = -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include \
+CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(LIBS_DIR)/np-syslib/include \
 	-I$(LIBS_DIR)/np-graphics/include -I$(LIBS_DIR)/np-userland/include  -I$(LIBS_DIR)/np-gui/include \
 	-Wall -Wextra -fno-stack-protector -fno-omit-frame-pointer -ffreestanding \
 	-mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow \

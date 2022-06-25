@@ -65,8 +65,6 @@ namespace Kernel::Memory
         //copies data from the current address space into this vmm, at the specified virt addr.
         //NOTE: This uses accesses physical memory directly, so it ignores read-only + user flags.
         size_t CopyInto(sl::BufferView sourceBuffer, sl::NativePtr destBase);
-        //copies data from this vmm, to the current vmm. It uses hhdm to access pages directly, ignoring read-only + use flags
-        size_t CopyFrom(sl::BufferView sourceBuffer, sl::NativePtr destBase);
         //zeroes a range of memory in this vmm, returns number of bytes zeroed.
         size_t ZeroRange(sl::BufferView where);
 

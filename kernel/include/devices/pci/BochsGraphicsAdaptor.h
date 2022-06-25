@@ -1,6 +1,5 @@
 #pragma once
 
-#include <devices/PciBridge.h>
 #include <drivers/GenericDriver.h>
 #include <devices/interfaces/GenericGraphicsAdaptor.h>
 
