@@ -108,6 +108,12 @@ namespace Kernel::Boot
         auto panicOnLogError = Configuration::Global()->Get("log_panic_on_error");
         if (panicOnLogError)
             SetPanicOnLogError(panicOnLogError->integer);
+        auto enableDebugconLog = Configuration::Global()->Get("log_enable_debugcon");
+        if (enableDebugconLog)
+            LogEnableDest(LogDest::DebugCon, enableDebugconLog->integer);
+        auto enableFramebufferLog = Configuration::Global()->Get("log_enable_framebuffer");
+        if (enableFramebufferLog)
+            LogEnableDest(LogDest::FramebufferOverwrite, enableFramebufferLog->integer);
 
         //try get kernel elf file, for debugging symbols
         if (kernelFileRequest.response == nullptr)
