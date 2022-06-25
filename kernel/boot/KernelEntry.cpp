@@ -33,6 +33,45 @@ namespace Kernel::Boot
     [[noreturn]]
     void _ApEntry(Kernel::SmpCoreInfo* smpInfo);
     
+    void InitLogging()
+    {
+        LoggingInitEarly();
+#ifdef NORTHPORT_LOG_DEBUGCON_ENABLE_EARLY
+        LogEnableDest(LogDest::DebugCon);
+        LogEnableColours(LogDest::DebugCon);
+#endif
+        
+        //if the bootloader provided a framebuffer to us, lets use it for logging output for now.
+        //once DeviceManager is initialized, it may change this to a more sensible framebuffer.
+        if (Kernel::Boot::framebufferRequest.response != nullptr 
+            && Kernel::Boot::framebufferRequest.response->framebuffer_count > 0)
+        {
+            const auto fb = Kernel::Boot::framebufferRequest.response->framebuffers[0];
+            LogFramebuffer logFb;
+            logFb.base = fb->address;
+            logFb.bpp = fb->bpp;
+            logFb.width = fb->width;
+            logFb.height = fb->height;
+            logFb.stride = fb->pitch;
+            logFb.pixelMask = 0xFFFF'FFFF;
+            logFb.isNotBgr = false;
+            if (fb->blue_mask_shift != 0 || fb->red_mask_shift != 24)
+                logFb.isNotBgr = true;
+
+            SetLogFramebuffer(logFb);
+
+            //we have a framebuffer, may as well use it for logging.
+#ifdef NORTHPORT_LOG_FRAMEBUFFER_ENABLE_EARLY
+            LogEnableDest(LogDest::FramebufferOverwrite);
+#endif
+            LogEnableColours(LogDest::FramebufferOverwrite);
+        }
+
+
+        Log("", LogSeverity::EnumCount); //log empty line so the output of debugcon/serial is starting in a known place.
+        Log("Northport kernel succesfully started.", LogSeverity::Info);
+    }
+    
     void InitMemory()
     {
         using namespace Memory;
@@ -68,7 +107,7 @@ namespace Kernel::Boot
         
         auto panicOnLogError = Configuration::Global()->Get("log_panic_on_error");
         if (panicOnLogError)
-            SetPanicOnError(panicOnLogError->integer);
+            SetPanicOnLogError(panicOnLogError->integer);
 
         //try get kernel elf file, for debugging symbols
         if (kernelFileRequest.response == nullptr)
@@ -175,13 +214,7 @@ extern "C"
         CPU::DoCpuId();
         CPU::WriteMsr(MSR_GS_BASE, 0);
 
-        LoggingInitEarly();
-#ifdef NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT
-        EnableLogDestinaton(LogDestination::DebugCon);
-#endif
-        Log("", LogSeverity::EnumCount); //log empty line so the output of debugcon/serial is starting in a known place.
-        Log("Northport kernel succesfully started.", LogSeverity::Info);
-        
+        InitLogging();
         InitMemory();
         LoggingInitFull();
         PrintBootInfo();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <NativePtr.h>
 
 namespace Kernel
 {
@@ -30,7 +31,7 @@ namespace Kernel
         const char* message;
     };
 
-    enum class LogDestination
+    enum class LogDest
     {
         DebugCon,
         FramebufferOverwrite,
@@ -38,12 +39,26 @@ namespace Kernel
         EnumCount
     };
 
+    struct LogFramebuffer
+    {
+        sl::NativePtr base;
+        size_t width;
+        size_t height;
+        size_t stride;
+        size_t bpp;
+
+        uint32_t pixelMask;
+        bool isNotBgr; //we assume BGR (lowest byte -> highest byte) order by default. Set this to assume RGB.
+    };
+
     void LoggingInitEarly(); //gets basic logging capabilities going, no message log though
     void LoggingInitFull(); //initializes the logging buffer and other nice features that require the heap and virtual memory
 
-    bool IsLogDestinationEnabled(LogDestination dest);
-    void EnableLogDestinaton(LogDestination dest, bool enabled = true);
-    void SetPanicOnError(bool yes);
+    void LogEnableDest(LogDest dest, bool enabled = true);
+    void LogEnableColours(LogDest dest, bool enabled = true);
+    void SetPanicOnLogError(bool yes);
+    void SetLogFramebuffer(LogFramebuffer fb);
+    void LogFramebufferClear(uint32_t colour);
 
     void Log(const char* message, LogSeverity level);
 

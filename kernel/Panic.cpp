@@ -8,6 +8,9 @@
 
 namespace Kernel
 {
+    //defined in Log.cpp
+    extern void RenderPanicImage();
+    
     struct PanicData
     {
         const char* message;
@@ -59,7 +62,9 @@ namespace Kernel
 
         //this core has already claimed the panic response, all other cores will jump straight to halt
         Devices::LApic::Local()->BroadcastIpi(INT_VECTOR_PANIC, false);
-        EnableLogDestinaton(LogDestination::FramebufferOverwrite, true);
+
+        LogEnableDest(LogDest::FramebufferOverwrite, true);
+        LogFramebufferClear(0x804000); //clear and reset framebuffer, with a nice brown colour.
 
         if (currentThread != nullptr)
             Logf("Thread %u (core %u) triggered kernel panic.", LogSeverity::Info, currentThread != nullptr ? currentThread->Id() : -1, details.responseCore);
@@ -94,6 +99,8 @@ namespace Kernel
         Logf("threadId: %u, threadName: %s", LogSeverity::Info, currentThread->Id(), currentThread->Name().C_Str());
         Logf("threadFlags: 0x%x, threadState: 0x%x", LogSeverity::Info, (size_t)currentThread->Flags(), (size_t)currentThread->State());
         Logf("processId: %u, processName: %s", LogSeverity::Info, currentThread->Parent()->Id(), currentThread->Parent()->Name().C_Str());
+
+        RenderPanicImage();
 
         //TODO: would be nice to print details about current thread (id, name, sibling processes. Basic code/data locations)
         //and a stack trace of course!

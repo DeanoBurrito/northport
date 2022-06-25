@@ -8,6 +8,7 @@ INCLUDE_DEBUG_INFO = true
 OPTIMIZATION_FLAGS = -O0
 ENABLE_KERNEL_UBSAN = false
 ENABLE_DEBUGCON_LOGGING = true
+ENABLE_FRAMEBUFFER_LOGGING = false
 
 #configuring toolchain binaries (if default dosnt work)
 ifeq ($(TOOLCHAIN_DEFAULT), gcc)

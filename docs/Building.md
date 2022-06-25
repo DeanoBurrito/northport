@@ -53,6 +53,7 @@ There are a number of flags that can be defined at compile time to enable/disabl
 <details>
     <summary>Logging Flags</summary>
     
-- `NORTHPORT_ENABLE_DEBUGCON_LOG_AT_BOOT`: enables logging over debugcon, useful for debugging early boot in VMs.
+- `NORTHPORT_LOG_DEBUGCON_ENABLE_EARLY`: Enables the debugcon (port 0xE9) early in the kernel init sequence, before we are able to parse the command line or config.
+- `NORTHPORT_LOG_FRAMEBUFFER_ENABLE_EARLY`: Similar to above, enables using the framebuffer for log output early in the init sequence.
 - `NORTHPORT_DEBUG_LOGGING_COLOUR_LEVELS`: serial/debugcon logs will use ANSI escape sequences to colour log output. Can be disabled at compile-time if it intereferes with logging.
 </details>

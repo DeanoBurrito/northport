@@ -40,6 +40,7 @@ void InitUserspaceTask()
         return;
     }
 
+    Kernel::LogEnableDest(Kernel::LogDest::FramebufferOverwrite, false);
     Thread* serverStartupThread = Scheduler::Global()->GetThread(*maybeWindowid);
     serverStartupThread->Start(nullptr);
 }

@@ -69,6 +69,9 @@ Currently not much to see, as there is no functional GUI yet, for now you'll hav
 ![PCI discovery, loading userspace ELFs and a kernel panic.](https://user-images.githubusercontent.com/12033165/173810625-6209a8e3-d244-4149-8b6c-c6ca9523e802.png)
 - Just showing some PCI device discovery, and then some userspace ELFs being loaded (those are the kernel heap expansion warnings). We can see the window server starting, and then a page fault to demonstrate the panic output.
 
+![Brown screen of death, triggered manually](https://user-images.githubusercontent.com/12033165/175759524-ed527b91-4390-4d39-8ee4-edbc25a2faf3.png)
+- A graphical update to the kernel panic.
+
 # Project layout
 Each of sub-projects are in their own folder:
 - `docs/`: documentation for various parts of the project. 

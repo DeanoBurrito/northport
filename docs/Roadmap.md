@@ -6,7 +6,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [x] Multi-tiered allocator: slabs over linked list.
         - [x] Improved debugging.
     - [x] Centralized logging.
-        - [ ] Framebuffer backend.
+        - [x] Framebuffer backend.
         - [ ] File backend.
     - [x] Central kernel config.
     - [x] ACPI tables.

@@ -177,6 +177,24 @@ namespace Kernel::Devices
         
         sl::ScopedSpinlock scopeLock(&primaryDevicesLock); //probably unnecessary as this will be an atomic write anyway.
         primaryDevices[(size_t)type] = *maybeDevice;
+
+        if (type == DeviceType::GraphicsFramebuffer)
+        {
+            const Interfaces::GenericFramebuffer* fb = static_cast<const Interfaces::GenericFramebuffer*>(*maybeDevice);
+            const Interfaces::FramebufferModeset mode = fb->GetCurrentMode();
+            LogFramebuffer logfb;
+
+            logfb.base = fb->GetAddress().Value();
+            logfb.bpp = mode.bitsPerPixel;
+            logfb.width = mode.width;
+            logfb.height = mode.height;
+            logfb.stride = mode.width * logfb.bpp / 8;
+            logfb.pixelMask = 0xFFFF'FFFF;
+            logfb.isNotBgr = false;
+            if (mode.pixelFormat.blueOffset != 0 || mode.pixelFormat.redMask != 24)
+                logfb.isNotBgr = true;
+            SetLogFramebuffer(logfb);
+        }
     }
 
     void DeviceManager::SubscribeToDeviceEvents(size_t deviceId)

@@ -16,7 +16,7 @@ LD_FLAGS = $(LD_LIBS) \
 
 ASM_FLAGS = $(GLOBAL_ASM_FLAGS)
 
-CXX_SRCS = InitTasks.cpp Log.cpp Logf.cpp Panic.cpp Loader.cpp InterruptManager.cpp Configuration.cpp \
+CXX_SRCS = InitTasks.cpp Log.cpp Logf.cpp LogFont.cpp Panic.cpp Loader.cpp InterruptManager.cpp Configuration.cpp \
 	boot/Limine.cpp boot/KernelEntry.cpp \
 	memory/PhysicalMemory.cpp memory/VirtualMemory.cpp memory/Paging.cpp memory/KernelHeap.cpp \
 	memory/New.cpp memory/IpcManager.cpp memory/KernelPool.cpp memory/KernelSlab.cpp \
