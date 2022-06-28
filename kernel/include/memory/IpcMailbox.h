@@ -10,6 +10,7 @@ namespace Kernel::Memory
     {
         uint64_t length;
         uint64_t positionInStream; //used to locate mailbox control from a header
+        uint64_t sender;
         uint8_t data[];
 
         IpcMailHeader* Next()

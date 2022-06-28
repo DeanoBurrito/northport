@@ -19,6 +19,7 @@ namespace Kernel::Syscalls
         }
 
         regs.arg1 = 0;
+        regs.arg2 = 0;
         using Kernel::Scheduling::ThreadGroupEventType;
         switch (maybeEvent->type)
         {
@@ -65,12 +66,15 @@ namespace Kernel::Syscalls
         case ThreadGroupEventType::IncomingMail:
         {
             //the event data is the address of the mailbox control/ipc stream
-            Memory::IpcManager::Global()->ReceiveMail(maybeEvent->address.As<Memory::IpcStream>(), { regs.arg0, maybeEvent->length });
+            auto maybeSenderId = Memory::IpcManager::Global()->ReceiveMail(maybeEvent->address.As<Memory::IpcStream>(), { regs.arg0, maybeEvent->length });
             auto maybeRid = Scheduling::ThreadGroup::Current()->FindResource(maybeEvent->address);
             if (maybeRid)
+            {
                 regs.arg1 = *maybeRid;
+                regs.arg2 = *maybeSenderId;
+            }
             else
-                regs.arg1 = 0;
+                regs.arg2 = regs.arg1 = 0;
             break;
         }
 

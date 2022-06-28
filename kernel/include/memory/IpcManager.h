@@ -63,6 +63,6 @@ namespace Kernel::Memory
         void DestroyMailbox(const sl::String& mailbox);
         bool PostMail(const sl::String& destMailbox, const sl::BufferView data, bool keepOpenHint);
         bool MailAvailable(const sl::String& mailbox);
-        void ReceiveMail(IpcStream* hostStream, sl::BufferView receiveInto);
+        sl::Opt<uint64_t> ReceiveMail(IpcStream* hostStream, sl::BufferView receiveInto);
     };
 }

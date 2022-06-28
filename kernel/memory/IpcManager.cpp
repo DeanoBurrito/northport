@@ -114,6 +114,8 @@ namespace Kernel::Memory
             Log("IPC Streams currently only support using shared memory.", LogSeverity::Error);
             return {};
         }
+        
+        //TODO: we should check that the stream isn't already open
 
         sl::ScopedSpinlock scopeLock(&lock);
 
@@ -241,6 +243,7 @@ access_allowed:
         nextBlank->length = data.length;
         nextBlank->positionInStream = sl::NativePtr(nextBlank).raw - sl::NativePtr(mailControl).raw;
         nextBlank->Next()->length = 0;
+        nextBlank->sender = Scheduling::ThreadGroup::Current()->Id();
         sl::memcopy(data.base.ptr, nextBlank->data, data.length);
 
         mailControl->tail = nextBlank->positionInStream;
@@ -273,12 +276,12 @@ access_allowed:
         return mailControl->head > 0;
     }
 
-    void IpcManager::ReceiveMail(IpcStream* hostStream, sl::BufferView receiveInto)
+    sl::Opt<uint64_t> IpcManager::ReceiveMail(IpcStream* hostStream, sl::BufferView receiveInto)
     {
         if (hostStream == nullptr)
-            return;
+            return {};
         if (hostStream->ownerId != Scheduling::ThreadGroup::Current()->Id())
-            return;
+            return {};
         
         IpcMailboxControl* mailControl = hostStream->buffer.base.As<IpcMailboxControl>();
         sl::ScopedSpinlock mailLock(&mailControl->lock);
@@ -287,10 +290,10 @@ access_allowed:
         if (latestMail->length > receiveInto.length)
         {
             Log("Attempted to receive IPC mail into undersized buffer.", LogSeverity::Warning);
-            return;
+            return {};
         }
         if (receiveInto.base.ptr == nullptr)
-            return;
+            return {};
         
         //copy mail data if we have somewhere to put it
         if (receiveInto.base.ptr != nullptr && latestMail->length > 0)
@@ -301,5 +304,7 @@ access_allowed:
             mailControl->head = (size_t)latestMail->Next() - (size_t)mailControl;
         else
             mailControl->head = mailControl->tail = 0;
+        
+        return latestMail->sender;
     }
 }

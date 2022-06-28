@@ -491,7 +491,8 @@ Consumes the next event, and if given a non-null buffer will copy the data into 
 
 ### Returns:
 - `arg0`: bits 31:0 are the event type, bits 63:32 are the data length.
-- `arg1`: contains an event associated with the handle if appropriate (ipc, file, etc ...), otherwise ignored.
+- `arg1`: contains an event associated with the handle if appropriate (ipc, file, etc ...), otherwise unused.
+- `arg2`: if the event is IncomingMail, this contains the sender's process id, otherwise unused.
 - All other return values should be ignored.
 
 ### Notes:
