@@ -264,4 +264,11 @@ namespace np::Syscall
         DoSyscall(&data);
         __builtin_unreachable();
     }
+
+    size_t GetId(GetIdType idType)
+    {
+        SyscallData data((uint64_t)SyscallId::GetId, (uint64_t)idType, 0, 0, 0);
+        DoSyscall(&data);
+        return data.arg0;
+    }
 }

@@ -48,6 +48,7 @@ namespace np::Syscall
 
         Sleep = 0x70,
         Exit = 0x71,
+        GetId = 0x72,
     };
 
     enum class MemoryMapFlags : NativeUInt
@@ -146,5 +147,11 @@ namespace np::Syscall
     enum class ProgramEventError : NativeUInt
     {
         InvalidBufferRange = 3,
+    };
+
+    enum class GetIdType : NativeUInt
+    {
+        Thread = 0,
+        ThreadGroup = 1,
     };
 }

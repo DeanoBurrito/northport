@@ -175,6 +175,10 @@ namespace Kernel::Syscalls
             case SyscallId::Exit:
                 Exit(syscallRegs);
                 __builtin_unreachable();
+            case SyscallId::GetId:
+                GetId(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
 
             default:
                 syscallRegs.id = SyscallNotFound;

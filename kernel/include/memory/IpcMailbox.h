@@ -14,7 +14,11 @@ namespace Kernel::Memory
         uint8_t data[];
 
         IpcMailHeader* Next()
-        { return sl::NativePtr(this).As<IpcMailHeader>(length + sizeof(IpcMailHeader)); }
+        { 
+            uintptr_t next = (uintptr_t)this + length + sizeof(IpcMailHeader);
+            next = (next / sizeof(IpcMailHeader) + 1) * sizeof(IpcMailHeader);
+            return reinterpret_cast<IpcMailHeader*>(next);
+        }
 
         IpcMailboxControl* Control()
         { return sl::NativePtr(this).As<IpcMailboxControl>(-positionInStream); }

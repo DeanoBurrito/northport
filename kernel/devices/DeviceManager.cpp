@@ -184,7 +184,7 @@ namespace Kernel::Devices
             const Interfaces::FramebufferModeset mode = fb->GetCurrentMode();
             LogFramebuffer logfb;
 
-            logfb.base = fb->GetAddress().Value();
+            logfb.base.ptr = EnsureHigherHalfAddr(fb->GetAddress().Value().ptr);
             logfb.bpp = mode.bitsPerPixel;
             logfb.width = mode.width;
             logfb.height = mode.height;

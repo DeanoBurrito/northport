@@ -123,7 +123,6 @@ namespace Kernel::Devices::Pci
             mmioRegsAvailable = true; //bochs standard variant, but BAR2 is populated so mmio regs are available
 
         linearFramebufferBase.raw = pciFunc->Header()->bars[0].address;
-        const size_t fbPageCount = pciFunc->Header()->bars[0].size / PAGE_FRAME_SIZE;
 
         if (mmioRegsAvailable)
         {

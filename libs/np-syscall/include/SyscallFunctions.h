@@ -92,4 +92,5 @@ namespace np::Syscall
     void Sleep(size_t timeout, bool wakeOnEvents);
     [[noreturn]]
     void Exit(unsigned long exitCode);
+    size_t GetId(GetIdType idType);
 }

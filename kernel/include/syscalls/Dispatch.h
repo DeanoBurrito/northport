@@ -83,4 +83,5 @@ namespace Kernel::Syscalls
     void Sleep(SyscallRegisters& regs);
     [[noreturn]]
     void Exit(SyscallRegisters& regs);
+    void GetId(SyscallRegisters& regs);
 }

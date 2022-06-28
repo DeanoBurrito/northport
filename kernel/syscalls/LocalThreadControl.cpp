@@ -1,5 +1,6 @@
 #include <syscalls/Dispatch.h>
 #include <scheduling/Thread.h>
+#include <SyscallEnums.h>
 #include <Log.h>
 
 namespace Kernel::Syscalls
@@ -21,5 +22,26 @@ namespace Kernel::Syscalls
 
         Scheduling::Thread::Current()->Exit();
         __builtin_unreachable();
+    }
+
+    void GetId(SyscallRegisters& regs)
+    {
+        using np::Syscall::GetIdType;
+        GetIdType type = (GetIdType)regs.arg0;
+
+        switch (type)
+        {
+            case GetIdType::Thread:
+                regs.arg0 = Scheduling::Thread::Current()->Id();
+                break;
+
+            case GetIdType::ThreadGroup:
+                regs.arg0 = Scheduling::ThreadGroup::Current()->Id();
+                break;
+            
+            default:
+                regs.id = 1;
+                break;
+        }
     }
 }

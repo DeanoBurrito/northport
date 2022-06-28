@@ -541,6 +541,19 @@ Causes the current thread to exit, and be destroyed. If this thread is the last 
 ### Notes:
 - For hopefully obvious reasons, this function will never return.
 
+## 0x72 - GetId
+Gets the id of the current thread/process.
+
+### Args:
+- `arg0`: Type of object to get id of. 0 = thread, 1 = thread group (process). Other values reserved for future expansion.
+- All other args ignored.
+
+### Returns:
+- `arg0`: The requested id.
+
+### Notes:
+- None.
+
 ----
 # 0x8* - Remote Thread and Program Control
 Functions for controlling how remote threads in the same process, or child processes behave. These functions cannot affect threads that this process has not started.
