@@ -28,6 +28,7 @@ namespace Kernel::Syscalls
         CPU::AllowSumac(true);
         sl::String streamName(sl::NativePtr(regs.arg0).As<const char>());
         CPU::AllowSumac(false);
+
         auto maybeStream = IpcManager::Global()->StartStream(streamName, regs.arg2, (IpcStreamFlags)regs.arg1, accessFlags);
         if (!maybeStream)
         {
@@ -39,7 +40,8 @@ namespace Kernel::Syscalls
         auto maybeResId = Scheduling::ThreadGroup::Current()->AttachResource(Scheduling::ThreadResourceType::IpcStream, *maybeStream);
         if (!maybeResId)
         {
-            IpcManager::Global()->StopStream(sl::String(regs.arg0));
+            
+            IpcManager::Global()->StopStream(streamName);
             regs.id = (uint64_t)np::Syscall::IpcError::NoResourceId;
             return;
         }
@@ -63,10 +65,43 @@ namespace Kernel::Syscalls
             return;
         }
 
-        //NOTE: this seems a bit wasteful to do a lookup in ipcmanager when we have a pointer to the stream right here.
         IpcStream* stream = maybeResource.Value()->res.As<IpcStream>();
         Scheduling::ThreadGroup::Current()->DetachResource(regs.arg0);
         IpcManager::Global()->StopStream(stream->name);
+    }
+
+    void HandleStreamClosing(const Memory::IpcStream* stream, const Memory::IpcStreamClient* client)
+    {
+        //NOTE: we can't assume the context this callback will be run in. It may not run inside the same
+        //address space as the client we're cleaning up.
+        
+        Scheduling::ThreadGroup* tg = Scheduling::Scheduler::Global()->GetThreadGroup(client->threadGroupId);
+        if (tg == nullptr)
+        {
+            Logf("Weird state when closing ipc stream: threadgroup (id=%u) marked as connected, but does not exist.", 
+                LogSeverity::Warning, client->threadGroupId);
+            return;
+        }
+
+        auto maybeRes = tg->FindResource(client->localMapping.base);
+        if (!maybeRes)
+        {
+            Logf("Weird state when closing ipc stream: threadgroup (id=%u) has no handle, even though it is marked as connected.", 
+                LogSeverity::Warning, client->threadGroupId);
+        }
+        else
+        {
+            //we have a valid rid, detach the resource
+            tg->DetachResource(*maybeRes);
+        }
+        
+        //remove the range from the vmm.
+        if (!tg->VMM()->RemoveRange({ client->localMapping.base.raw, client->localMapping.length }) 
+            && sl::EnumHasFlag(stream->flags, Memory::IpcStreamFlags::UseSharedMemory))
+        {
+            Logf("Error closing ipc stream: failed to remove client (threadgroup=%u) vmrange into shared physical memory.", 
+                LogSeverity::Error, client->threadGroupId);
+        }
     }
 
     void OpenIpcStream(SyscallRegisters& regs)
@@ -83,14 +118,15 @@ namespace Kernel::Syscalls
         CPU::AllowSumac(true);
         sl::String streamName(sl::NativePtr(regs.arg0).As<const char>());
         CPU::AllowSumac(false);
-        auto maybeStream = IpcManager::Global()->OpenStream(streamName, (IpcStreamFlags)regs.arg1);
+
+        auto maybeStream = IpcManager::Global()->OpenStream(streamName, (IpcStreamFlags)regs.arg1, HandleStreamClosing);
         if (!maybeStream)
         {
             regs.id = (uint64_t)np::Syscall::IpcError::StreamStartFail;
             return;
         }
 
-        auto maybeResId = Scheduling::ThreadGroup::Current()->AttachResource(Scheduling::ThreadResourceType::IpcStream, *maybeStream);
+        auto maybeResId = Scheduling::ThreadGroup::Current()->AttachResource(Scheduling::ThreadResourceType::IpcStream, maybeStream->base);
         if (!maybeResId)
         {
             IpcManager::Global()->CloseStream(streamName);
@@ -100,10 +136,10 @@ namespace Kernel::Syscalls
 
         regs.arg0 = *maybeResId;
         if (sl::EnumHasFlag(regs.arg1, IpcStreamFlags::UseSharedMemory))
-            regs.arg2 = maybeStream->raw;
+            regs.arg2 = maybeStream->base.raw;
         else
             regs.arg2 = 0;
-        regs.arg1 = 0; //TODO: fetch info about the stream, like its size. We probably need a rewrite of the ipc stream API anyway. A lot has been learnt.
+        regs.arg1 = maybeStream->length;
     }
 
     void CloseIpcStream(SyscallRegisters& regs)

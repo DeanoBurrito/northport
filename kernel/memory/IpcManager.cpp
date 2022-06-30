@@ -95,10 +95,19 @@ namespace Kernel::Memory
                 continue; //this isnt too awful as sl::String::!= uses short circuit logic based on the string lengths first.
 
             IpcStream* stream = streams->At(i);
+
+            //tell any clients that we're closing the stream and to gtfo
+            for (size_t j = 0; j < stream->clients.Size(); j++)
+            {
+                if (stream->clients[j].callback == nullptr)
+                    continue;
+                
+                stream->clients[j].callback(stream, &stream->clients[j]);
+            }
+
             streams->At(i) = nullptr;
             idAlloc->Free(i);
 
-            //TODO: we'll need to tell any other buffers that are connected to this one that the stream has been broken.
             VMM::Current()->RemoveRange({ stream->buffer.base.raw, stream->buffer.length });
             delete stream;
             return;
@@ -107,7 +116,7 @@ namespace Kernel::Memory
         Logf("Could not close IPC stream, no stream exists with the name: %s", LogSeverity::Error, name.C_Str());
     }
 
-    sl::Opt<sl::NativePtr> IpcManager::OpenStream(const sl::String& name, IpcStreamFlags flags)
+    sl::Opt<sl::BufferView> IpcManager::OpenStream(const sl::String& name, IpcStreamFlags flags, const StreamCleanupCallback& callback)
     {
         if (!sl::EnumHasFlag(flags, IpcStreamFlags::UseSharedMemory))
         {
@@ -115,8 +124,6 @@ namespace Kernel::Memory
             return {};
         }
         
-        //TODO: we should check that the stream isn't already open
-
         sl::ScopedSpinlock scopeLock(&lock);
 
         for (size_t i = 0; i < streams->Size(); i++)
@@ -126,12 +133,23 @@ namespace Kernel::Memory
             if (streams->At(i)->name != name)
                 continue;
             
-            MemoryMapFlags flags = MemoryMapFlags::SystemRegion | MemoryMapFlags::AllowWrites;
+            MemoryMapFlags memFlags = MemoryMapFlags::SystemRegion | MemoryMapFlags::AllowWrites;
             if (!sl::EnumHasFlag(Scheduling::Thread::Current()->Flags(), Scheduling::ThreadFlags::KernelMode)
                 && !sl::EnumHasFlag(flags, IpcStreamFlags::SuppressUserAccess))
-                flags = flags | MemoryMapFlags::UserAccessible;
+                memFlags = memFlags | MemoryMapFlags::UserAccessible;
             
             IpcStream* existingStream = streams->At(i);
+
+            //check if the stream is already open, return it if so
+            const size_t currentTgId = Scheduling::ThreadGroup::Current()->Id();
+            for (size_t j = 0; j < existingStream->clients.Size(); j++)
+            {
+                if (existingStream->clients[j].threadGroupId != currentTgId)
+                    continue;
+
+                //we're already connected, return the current mapping.
+                return existingStream->clients[j].localMapping;
+            }
 
             //check if we are allowed to access this stream
             if (existingStream->accessFlags == IpcAccessFlags::Disallowed)
@@ -148,15 +166,18 @@ namespace Kernel::Memory
 
                 return {};
             }
-access_allowed:
 
+access_allowed:
+            //we're allowed to access the stream, map the physical pages, and add ourselves to the connected list
             auto foreignVmm = Scheduling::Scheduler::Global()->GetThreadGroup(existingStream->ownerId)->VMM();
             const sl::BufferView range = VMM::Current()->AddSharedRange(
                     *foreignVmm, 
-                    { existingStream->buffer.base.raw, existingStream->buffer.length, flags }
+                    { existingStream->buffer.base.raw, existingStream->buffer.length, memFlags }
                 ).ToView();
             
-            return range.base;
+            existingStream->clients.PushBack({ currentTgId, range, callback });
+            
+            return range;
         }
 
         return {};
@@ -219,11 +240,12 @@ access_allowed:
             return false; //no lookback support for now.
 
         //TODO: we're forcing use of shared memory, but not when the mailbox is created.
-        auto maybeMailbox = OpenStream(destMailbox, sl::EnumSetFlag(IpcStreamFlags::UseSharedMemory, IpcStreamFlags::SuppressUserAccess));
+        //TODO: what happens if stream closes while we're posting mail? We'd need some kind of cancellation token. Or just a lock?
+        auto maybeMailbox = OpenStream(destMailbox, sl::EnumSetFlag(IpcStreamFlags::UseSharedMemory, IpcStreamFlags::SuppressUserAccess), nullptr);
         if (!maybeMailbox)
             return false;
 
-        IpcMailboxControl* mailControl = maybeMailbox->As<IpcMailboxControl>();
+        IpcMailboxControl* mailControl = maybeMailbox->base.As<IpcMailboxControl>();
         sl::ScopedSpinlock mailLock(&mailControl->lock);
 
         //determine where the next message will go

@@ -125,6 +125,15 @@ namespace Kernel::Memory
 
     void VirtualMemoryManager::Deinit()
     {
+        //do some housekeeping before we teardown the paging structure
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
+        {
+            //if we've mapped another vmm's physical pages, we need to remove those
+            //since we dont own them: we shouldn't free them.
+            if (sl::EnumHasFlag(it->flags, MFlags::ForeignMemory))
+                pageTables.UnmapRange(it->base, it->length / PAGE_FRAME_SIZE, false);
+        }
+        
         ranges.Clear();
         pageTables.Teardown();
     }
@@ -187,21 +196,21 @@ namespace Kernel::Memory
         if (foundRange == ranges.End())
             return false;
 
-        if (!sl::EnumHasFlag(foundRange->flags, MemoryMapFlags::ForceUnmapped)
-            && !sl::EnumHasFlag(foundRange->flags, MemoryMapFlags::ForeignMemory))
-            pageTables.UnmapRange(foundRange->base, foundRange->length / PAGE_FRAME_SIZE);
+        const bool foreignMemory = sl::EnumHasFlag(foundRange->flags, MemoryMapFlags::ForeignMemory);
+        if (!sl::EnumHasFlag(foundRange->flags, MemoryMapFlags::ForceUnmapped))
+            pageTables.UnmapRange(foundRange->base, foundRange->length / PAGE_FRAME_SIZE, !foreignMemory);
         ranges.Remove(foundRange);
         return true;
     }
 
     void VirtualMemoryManager::ModifyRange(VMRange range, MemoryMapFlags flags)
     {
-        Log("Not implemented: ModifyRange", LogSeverity::Fatal);
+        Log("Not implemented: VMM::ModifyRange", LogSeverity::Fatal); (void)range; (void)flags;
     }
 
     void VirtualMemoryManager::ModifyRange(VMRange range, int adjustLength, bool fromEnd)
     {
-        Log("Not implemented: ModifyRange", LogSeverity::Fatal);
+        Log("Not implemented: VMM::ModifyRange", LogSeverity::Fatal); (void)range; (void)adjustLength; (void)fromEnd;
     }
 
     VMRange VirtualMemoryManager::AllocRange(size_t length, bool backNow, MemoryMapFlags flags, NativeUInt lowerBound, NativeUInt upperBound)

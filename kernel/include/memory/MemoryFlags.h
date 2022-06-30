@@ -26,5 +26,6 @@ namespace Kernel::Memory
         ForeignMemory = 1 << 5,
     };
 
-    using MFlags = MemoryMapFlags;
 }
+
+using MFlags = Kernel::Memory::MemoryMapFlags;
