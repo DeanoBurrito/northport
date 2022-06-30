@@ -4,54 +4,54 @@
 #include <devices/DeviceManager.h>
 #include <acpi/AcpiTables.h>
 #include <Platform.h>
-#include <Cpu.h>
+#include <arch/Cpu.h>
 #include <Log.h>
 
 namespace Kernel::Devices::Ps2
 {
     bool InputBufferEmpty()
-    { return (CPU::PortRead8(PORT_PS2_COMMAND_STATUS) & (1 << 1)) == 0; }
+    { return (PortRead8(PORT_PS2_COMMAND_STATUS) & (1 << 1)) == 0; }
 
     bool OutputBufferEmpty()
-    { return (CPU::PortRead8(PORT_PS2_COMMAND_STATUS) & (1 << 0)) == 0; }
+    { return (PortRead8(PORT_PS2_COMMAND_STATUS) & (1 << 0)) == 0; }
     
     void WriteCmd(uint8_t cmd)
     {
         while (!InputBufferEmpty());
-        CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
+        PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
     }
 
     void WriteCmd(uint8_t cmd, uint8_t data)
     {
         while (!InputBufferEmpty());
-        CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
+        PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
 
         while (!InputBufferEmpty());
-        CPU::PortWrite8(PORT_PS2_DATA, data);
+        PortWrite8(PORT_PS2_DATA, data);
     }
 
     uint8_t ReadCmd(uint8_t cmd)
     {
         while (!InputBufferEmpty());
-        CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
+        PortWrite8(PORT_PS2_COMMAND_STATUS, cmd);
 
         while (OutputBufferEmpty());
-        return CPU::PortRead8(PORT_PS2_DATA);
+        return PortRead8(PORT_PS2_DATA);
     }
 
     void WriteData(bool secondary, uint8_t data)
     {
         if (secondary)
-            CPU::PortWrite8(PORT_PS2_COMMAND_STATUS, Cmds::NextDataToPortB);
+            PortWrite8(PORT_PS2_COMMAND_STATUS, Cmds::NextDataToPortB);
         
         while (!InputBufferEmpty());
-        CPU::PortWrite8(PORT_PS2_DATA, data);
+        PortWrite8(PORT_PS2_DATA, data);
     }
     
     uint8_t ReadData()
     {
         while (OutputBufferEmpty());
-        return CPU::PortRead8(PORT_PS2_DATA);
+        return PortRead8(PORT_PS2_DATA);
     }
     
     GenericDriver* CreateNewPs2Driver()
@@ -99,7 +99,7 @@ namespace Kernel::Devices::Ps2
         WriteCmd(Cmds::DisableMousePort);
         
         while (!OutputBufferEmpty())
-            CPU::PortRead8(PORT_PS2_DATA);
+            PortRead8(PORT_PS2_DATA);
         
         uint8_t config = ReadCmd(Cmds::ReadConfig);
         config &= 0b1011'1100; //preserve reserved bits, disable interrupts for both ports/

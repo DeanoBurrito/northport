@@ -4,7 +4,7 @@
 #include <devices/Keyboard.h>
 #include <drivers/DriverManager.h>
 #include <Locks.h>
-#include <Cpu.h>
+#include <arch/Cpu.h>
 #include <Log.h>
 
 namespace Kernel::Devices::Ps2
@@ -99,7 +99,7 @@ namespace Kernel::Devices::Ps2
     uint8_t Ps2Keyboard::ReadByte()
     {
         //since we got an irq, no need to flags for whether data is available
-        return CPU::PortRead8(PORT_PS2_DATA);
+        return PortRead8(PORT_PS2_DATA);
     }
 
     void Ps2Keyboard::TranslateAndStore()

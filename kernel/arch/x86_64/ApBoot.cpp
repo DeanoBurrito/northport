@@ -29,7 +29,7 @@ namespace Kernel
 
         //we'll need to identity map the trampoline code, data and lapic mmio register pages
         Memory::PageTableManager::Current()->MapRange(AP_BOOTSTRAP_BASE, AP_BOOTSTRAP_BASE, 2, Memory::MemoryMapFlags::AllowExecute | Memory::MemoryMapFlags::AllowWrites);
-        const size_t lapicBase = CPU::ReadMsr(MSR_APIC_BASE) & ~(size_t)0xFFF;
+        const size_t lapicBase = ReadMsr(MSR_APIC_BASE) & ~(size_t)0xFFF;
         Memory::PageTableManager::Current()->MapMemory(lapicBase, lapicBase, Memory::MemoryMapFlags::AllowWrites);
         
         //zero space for code, data and config block

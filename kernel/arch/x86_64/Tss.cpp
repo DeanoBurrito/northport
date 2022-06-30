@@ -11,12 +11,12 @@ namespace Kernel
     {
         sl::ScopedSpinlock scopeLock(&tssInitLock);
 
-        SetTssDescriptorAddr(GetCoreLocal()->ptrs[CoreLocalIndices::TSS].raw);
+        SetTssDescriptorAddr(CoreLocal()->ptrs[CoreLocalIndices::TSS].raw);
         asm volatile("ltr %0" :: "r"((uint16_t)GDT_ENTRY_TSS));
     }
 
     TaskStateSegment* CurrentTss()
     {
-        return GetCoreLocal()->ptrs[CoreLocalIndices::TSS].As<TaskStateSegment>();
+        return CoreLocal()->ptrs[CoreLocalIndices::TSS].As<TaskStateSegment>();
     }
 }

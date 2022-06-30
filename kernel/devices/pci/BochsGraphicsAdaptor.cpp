@@ -56,7 +56,7 @@ namespace Kernel::Devices::Pci
         if (mmioBase.ptr != nullptr)
             sl::MemWrite<uint16_t>(mmioBase.raw + reg - 0x3c0 + 0x400, data);
         else
-            CPU::PortWrite16(reg, data);
+            PortWrite16(reg, data);
     }
 
     uint16_t BochsFramebuffer::ReadVgaReg(uint16_t reg) const
@@ -64,7 +64,7 @@ namespace Kernel::Devices::Pci
         if (mmioBase.ptr != nullptr)
             return sl::MemRead<uint16_t>(mmioBase.raw + reg - 0x3c0 + 0x400);
         else
-            return CPU::PortRead16(reg);
+            return PortRead16(reg);
     }
 
     void BochsFramebuffer::WriteDispiReg(uint16_t reg, uint16_t data) const
@@ -74,8 +74,8 @@ namespace Kernel::Devices::Pci
         else
         {
             //magic numbers here are BGA DISPI index and data ports, respectively.
-            CPU::PortWrite16(0x01CE, reg);
-            CPU::PortWrite16(0x01CF, data);
+            PortWrite16(0x01CE, reg);
+            PortWrite16(0x01CF, data);
         }
     }
 
@@ -85,8 +85,8 @@ namespace Kernel::Devices::Pci
             return sl::MemRead<uint16_t>(mmioBase.raw + 0x500 + (reg << 1));
         else
         {
-            CPU::PortWrite16(0x01CE, reg);
-            return CPU::PortRead16(0x01CF);
+            PortWrite16(0x01CE, reg);
+            return PortRead16(0x01CF);
         }
     }
 

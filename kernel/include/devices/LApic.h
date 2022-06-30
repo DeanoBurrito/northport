@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-
 namespace Kernel::Devices
 {
     enum class LocalApicRegister : uint16_t

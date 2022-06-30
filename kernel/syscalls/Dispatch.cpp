@@ -195,7 +195,7 @@ namespace Kernel::Syscalls
             Logf("Syscall response: id=0x%lx, arg0=0x%lx, arg1=0x%lx, arg2=0x%lx, arg3=0x%lx", LogSeverity::Debug,
             (uint64_t)attemptedId, syscallRegs.arg0, syscallRegs.arg1, syscallRegs.arg2, syscallRegs.arg3);
 
-        CPU::ClearInterruptsFlag(); //disable interrupts while we do some critical stuff
+        CPU::DisableInterrupts(); //disable interrupts while we do some critical stuff
         TrapExit(regs);
         __builtin_unreachable();
     }

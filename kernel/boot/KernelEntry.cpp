@@ -157,7 +157,7 @@ namespace Kernel::Boot
 
             if (coreInfo->apicId == smpInfo->bspApicId)
             {
-                GetCoreLocal()->acpiProcessorId = coreInfo->acpiProcessorId;
+                CoreLocal()->acpiProcessorId = coreInfo->acpiProcessorId;
                 if (smpDisabled)
                 {
                     Log("Kernel only running on boot processor, SMP disabled by configuration entry.", LogSeverity::Info);
@@ -216,9 +216,9 @@ extern "C"
         //NOTE: we dont check if the response is valid here. If it's not valid, we're pretty fucked.
         vmaHighAddr = hhdmRequest.response->offset;
 
-        CPU::ClearInterruptsFlag();
+        CPU::DisableInterrupts();
         CPU::DoCpuId();
-        CPU::WriteMsr(MSR_GS_BASE, 0);
+        WriteMsr(MSR_GS_BASE, 0);
 
         InitLogging();
         InitMemory();

@@ -6,7 +6,7 @@
 #include <boot/LinkerSymbols.h>
 #include <Utilities.h>
 #include <Platform.h>
-#include <Cpu.h>
+#include <arch/Cpu.h>
 #include <Log.h>
 #include <Maths.h>
 #include <Locks.h>
@@ -136,7 +136,7 @@ namespace Kernel::Memory
     PageTableManager defaultPageTableManager;
     PageTableManager* PageTableManager::Current()
     {
-        if (CPU::ReadMsr(MSR_GS_BASE) == 0 || GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
+        if (ReadMsr(MSR_GS_BASE) == 0 || CoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
             return &defaultPageTableManager;
         else 
             return &Scheduling::Thread::Current()->Parent()->VMM()->pageTables; //ah oops... its starting to look like LINQ
@@ -150,9 +150,9 @@ namespace Kernel::Memory
         if (CPU::FeatureSupported(CpuFeature::ExecuteDisable))
         {
             //ensure EFER.NX is enabled (might already be enabled from bootloader)
-            uint64_t eferCurrent = CPU::ReadMsr(MSR_IA32_EFER);
+            uint64_t eferCurrent = ReadMsr(MSR_IA32_EFER);
             eferCurrent |= (1 << 11);
-            CPU::WriteMsr(MSR_IA32_EFER, eferCurrent);
+            WriteMsr(MSR_IA32_EFER, eferCurrent);
 
             Log("Execute disable is available, and enabled in EFER.", LogSeverity::Verbose);
         }

@@ -32,8 +32,14 @@ namespace Kernel
         EnumCount
     };
 
-    //real definition in Platform.h
-    struct CpuFrequencies;
+    //if any values are pinned at (uint32_t)-1, they're invalid
+    struct CpuFrequencies
+    {
+        uint32_t coreClockBaseHertz;
+        uint32_t coreMaxBaseHertz;
+        uint32_t coreTimerHertz; //TSC freq on x86
+        uint32_t busClockHertz;
+    };
     
     class CPU
     {
@@ -43,24 +49,15 @@ namespace Kernel
         static void DoCpuId();
         static void Halt();
 
+        static bool HasExtenedState();
         static void SetupExtendedState();
         static size_t GetExtendedStateBufferSize();
         static void SaveExtendedState(uint8_t* buff);
         static void LoadExtendedState(uint8_t* buff);
 
         static bool InterruptsEnabled();
-        static void SetInterruptsFlag(bool state = true);
-        static void ClearInterruptsFlag();
-
-        static void PortWrite8(uint16_t port, uint8_t data);
-        static void PortWrite16(uint16_t port, uint16_t data);
-        static void PortWrite32(uint16_t port, uint32_t data);
-        static uint8_t PortRead8(uint16_t port);
-        static uint16_t PortRead16(uint16_t port);
-        static uint32_t PortRead32(uint16_t port);
-
-        static void WriteMsr(uint32_t address, uint64_t data);
-        static uint64_t ReadMsr(uint32_t address);
+        static void EnableInterrupts(bool state = true);
+        static void DisableInterrupts();
 
         static bool FeatureSupported(CpuFeature feature);
         static const char* GetFeatureStr(CpuFeature feature, bool getFullname = false);

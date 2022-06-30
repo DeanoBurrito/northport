@@ -111,10 +111,10 @@ namespace Kernel::Memory
 
     VirtualMemoryManager* VirtualMemoryManager::Current()
     {
-        if (CPU::ReadMsr(MSR_GS_BASE) == 0 || GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
+        if (ReadMsr(MSR_GS_BASE) == 0 || CoreLocal()->ptrs[CoreLocalIndices::CurrentThread].ptr == nullptr)
             return nullptr;
         else
-            return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Scheduling::Thread>()->Parent()->VMM();
+            return CoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Scheduling::Thread>()->Parent()->VMM();
     }
 
     void VirtualMemoryManager::Init()

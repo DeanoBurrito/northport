@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <Platform.h>
 #include <Log.h>
-#include <Cpu.h>
+#include <arch/Cpu.h>
 
 namespace UB
 {

@@ -2,12 +2,8 @@
 
 #include <stdint.h>
 
-#define BASE_CENTURY 2000
-#define SECONDS_IN_A_DAY 86400
-
 namespace Kernel::Devices
 {
-
     enum RtcRegisters : uint8_t 
     {
         Seconds = 0x00,
@@ -21,7 +17,6 @@ namespace Kernel::Devices
         StatusPortA = 0x0A,
         StatusPortB = 0x0B
     };
-
 
     uint8_t ReadRtcRegister(RtcRegisters rtcRegister);
     uint64_t ConvertBCDToBinary(uint64_t value);

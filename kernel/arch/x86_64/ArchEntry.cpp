@@ -25,12 +25,13 @@ namespace Kernel::Boot
         SetPitMasked(false);
 
         //use the lapic id as the core id
-        return sl::MemRead<uint32_t>(EnsureHigherHalfAddr(CPU::ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + 0x20);
+        return sl::MemRead<uint32_t>(EnsureHigherHalfAddr(ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + 0x20);
     }
 
     void InitCore(size_t id, size_t acpiId)
     {
         CoreLocalStorage* coreStore = new CoreLocalStorage();
+        coreStore->selfAddress = (uint64_t)coreStore;
         coreStore->apicId = id;
         coreStore->acpiProcessorId = acpiId;
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
@@ -55,9 +56,9 @@ namespace Kernel::Boot
         CPU::AllowSumac(false);
 
         FlushGDT();
-        CPU::WriteMsr(MSR_GS_BASE, (size_t)coreStore);
+        WriteMsr(MSR_GS_BASE, (size_t)coreStore);
 
-        CPU::SetupExtendedState();
+        CPU::SetupExtendedState(); //no need to check if there is xstate, this is a gimme on x86
         LoadIDT();
         FlushTSS();
         Logf("Core %lu has setup core (GDT, IDT, TSS) and extended state.", LogSeverity::Info, id);
@@ -69,9 +70,9 @@ namespace Kernel::Boot
     [[noreturn]]
     void ExitInitArch()
     {
-        CPU::SetInterruptsFlag();
+        CPU::EnableInterrupts();
         Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INT_VECTOR_SCHEDULER_TICK, true);
-        Logf("Core %lu init completed in: %lu ms. Exiting to scheduler ...", LogSeverity::Info, GetCoreLocal()->apicId, Devices::GetUptime());
+        Logf("Core %lu init completed in: %lu ms. Exiting to scheduler ...", LogSeverity::Info, CoreLocal()->apicId, Devices::GetUptime());
 
         Scheduling::Scheduler::Global()->Yield();
         __builtin_unreachable();

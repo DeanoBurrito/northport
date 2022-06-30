@@ -12,8 +12,8 @@ namespace Kernel::Devices::Pci
             return sl::MemRead<uint32_t>(EnsureHigherHalfAddr(addr + (index * 4)));
         else
         {
-            CPU::PortWrite32(PORT_PCI_CONFIG_ADDRESS, (uint32_t)addr | (PciEnableConfigCycle + (index * 4)));
-            return CPU::PortRead32(PORT_PCI_CONFIG_DATA);
+            PortWrite32(PORT_PCI_CONFIG_ADDRESS, (uint32_t)addr | (PciEnableConfigCycle + (index * 4)));
+            return PortRead32(PORT_PCI_CONFIG_DATA);
         }
     }
 
@@ -23,8 +23,8 @@ namespace Kernel::Devices::Pci
             sl::MemWrite(EnsureHigherHalfAddr(addr + (index * 4)), data);
         else
         {
-            CPU::PortWrite32(PORT_PCI_CONFIG_ADDRESS, (uint32_t)addr | (PciEnableConfigCycle + (index * 4)));
-            CPU::PortWrite32(PORT_PCI_CONFIG_DATA, data);
+            PortWrite32(PORT_PCI_CONFIG_ADDRESS, (uint32_t)addr | (PciEnableConfigCycle + (index * 4)));
+            PortWrite32(PORT_PCI_CONFIG_DATA, data);
         }
     }
 }

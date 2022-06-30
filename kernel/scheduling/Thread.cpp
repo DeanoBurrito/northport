@@ -6,7 +6,7 @@
 namespace Kernel::Scheduling
 {
     Thread* Thread::Current()
-    { return GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Thread>(); }
+    { return CoreLocal()->ptrs[CoreLocalIndices::CurrentThread].As<Thread>(); }
 
     void Thread::Start(sl::NativePtr arg)
     {

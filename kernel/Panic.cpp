@@ -40,9 +40,9 @@ namespace Kernel
         sl::SpinlockAcquire(&details.lock);
         Scheduling::Scheduler::Global()->Suspend(true);
         details.message = message;
-        details.responseCore = GetCoreLocal()->apicId;
+        details.responseCore = CoreLocal()->apicId;
 
-        CPU::SetInterruptsFlag();
+        CPU::EnableInterrupts();
         asm volatile("int $0xFE");
         __builtin_unreachable();
     }
@@ -53,7 +53,7 @@ namespace Kernel
             regs = &details.overrideRegisters;
         const Scheduling::Thread* currentThread = Scheduling::Thread::Current();
 
-        if (details.responseCore != GetCoreLocal()->apicId)
+        if (details.responseCore != CoreLocal()->apicId)
             goto final_loop_no_log;
         
         //if we can, ensure we have the processes's page tables loaded here
@@ -82,7 +82,7 @@ namespace Kernel
 
         Log("---- Control Registers: ----", LogSeverity::Info);
         Logf("cr0: 0x%0lx, cr2: 0x%0lx, cr3: 0x%0lx, cr4: 0x%0lx", LogSeverity::Info, ReadCR0(), ReadCR2(), ReadCR3(), ReadCR4());
-        Logf("EFER: 0x%0lx", LogSeverity::Info, CPU::ReadMsr(MSR_IA32_EFER));
+        Logf("EFER: 0x%0lx", LogSeverity::Info, ReadMsr(MSR_IA32_EFER));
 
         Log("---- Return Frame: ----", LogSeverity::Info);
         Logf("stack: 0x%x:0x%lx", LogSeverity::Info, regs->iret_ss, regs->iret_rsp);

@@ -1,4 +1,4 @@
-#include <Cpu.h>
+#include <arch/Cpu.h>
 #include <cpuid.h>
 #include <Platform.h>
 #include <Log.h>
@@ -40,7 +40,7 @@ namespace Kernel
         return (rflags & 0b10'0000'0000) != 0;
     }
 
-    void CPU::SetInterruptsFlag(bool state)
+    void CPU::EnableInterrupts(bool state)
     {
         if (state)
             asm volatile("sti" ::: "cc");
@@ -48,7 +48,7 @@ namespace Kernel
             asm volatile("cli" ::: "cc");
     }
 
-    void CPU::ClearInterruptsFlag()
+    void CPU::DisableInterrupts()
     {
         asm volatile("cli" ::: "cc");
     }
@@ -114,6 +114,11 @@ namespace Kernel
         asm volatile("hlt");
     }
 
+    bool CPU::HasExtenedState()
+    {
+        return true;
+    }
+
     void CPU::SetupExtendedState()
     {
         if (extendedState.setup)
@@ -161,7 +166,7 @@ namespace Kernel
         else
         {} 
 
-        Logf("Extended cpu state setup for core %lu", LogSeverity::Verbose, GetCoreLocal()->apicId);
+        Logf("Extended cpu state setup for core %lu", LogSeverity::Verbose, CoreLocal()->apicId);
         extendedState.setup = true;
     }
 
@@ -188,42 +193,6 @@ namespace Kernel
         {}
         else
             asm volatile("fxrstor %0" :: "m"(buff));
-    }
-
-    void CPU::PortWrite8(uint16_t port, uint8_t data)
-    {
-        asm volatile("outb %0, %1" :: "a"(data), "Nd"(port));
-    }
-
-    void CPU::PortWrite16(uint16_t port, uint16_t data)
-    {
-        asm volatile("outw %0, %1" :: "a"(data), "Nd"(port));
-    }
-
-    void CPU::PortWrite32(uint16_t port, uint32_t data)
-    {
-        asm volatile("outl %0, %1" :: "a"(data), "Nd"(port));
-    }
-
-    uint8_t CPU::PortRead8(uint16_t port)
-    {
-        uint8_t value;
-        asm volatile("inb %1, %0" : "=a"(value) : "Nd"(port));
-        return value;
-    }
-
-    uint16_t CPU::PortRead16(uint16_t port)
-    {
-        uint16_t value;
-        asm volatile("inw %1, %0" : "=a"(value) : "Nd"(port));
-        return value;
-    }
-
-    uint32_t CPU::PortRead32(uint16_t port)
-    {
-        uint32_t value;
-        asm volatile("inl %1, %0" : "=a"(value) : "Nd"(port));
-        return value;
     }
 
     bool CPU::FeatureSupported(CpuFeature feature)
@@ -274,18 +243,6 @@ namespace Kernel
         default:
             return false;
         }
-    }
-
-    void CPU::WriteMsr(uint32_t address, uint64_t data)
-    {
-        asm volatile("wrmsr" :: "a"((uint32_t)data), "d"(data >> 32), "c"(address));
-    }
-
-    uint64_t CPU::ReadMsr(uint32_t address)
-    {
-        uint32_t high, low;
-        asm volatile("rdmsr": "=a"(low), "=d"(high) : "c"(address));
-        return ((uint64_t)high << 32) | low;
     }
 
     const char* cpuFeatureNamesShort[] = 

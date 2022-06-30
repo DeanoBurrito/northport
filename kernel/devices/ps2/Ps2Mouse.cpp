@@ -4,7 +4,7 @@
 #include <devices/Keyboard.h>
 #include <devices/Mouse.h>
 #include <Platform.h>
-#include <Cpu.h>
+#include <arch/Cpu.h>
 
 #include <Log.h>
 

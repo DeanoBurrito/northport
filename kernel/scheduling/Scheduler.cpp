@@ -144,7 +144,7 @@ namespace Kernel::Scheduling
             }
         }
 
-        SchedulerProcessorStatus& localCpuStatus = processorStatus[GetCoreLocal()->apicId];
+        SchedulerProcessorStatus& localCpuStatus = processorStatus[CoreLocal()->apicId];
         if (next == nullptr)
             next = nextBehindIndex; //loop around
         if (next == nullptr)
@@ -162,7 +162,7 @@ namespace Kernel::Scheduling
 
         sl::ScopedSpinlock nextScopeLock(&next->lock);
         next->flags = sl::EnumSetFlag(next->flags, ThreadFlags::Executing);
-        GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = next;
+        CoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = next;
         return LoadContext(next);
     }
 
@@ -324,7 +324,7 @@ namespace Kernel::Scheduling
         }
 
         if (thread == Thread::Current())
-            GetCoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = nullptr;
+            CoreLocal()->ptrs[CoreLocalIndices::CurrentThread] = nullptr;
         delete thread;
         thread = nullptr;
     }

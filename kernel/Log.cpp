@@ -168,7 +168,7 @@ namespace Kernel
                     auto PrintToE9 = [](const char* str)
                     {
                         for (size_t index = 0; str[index] != 0; index++)
-                            CPU::PortWrite8(PORT_DEBUGCON, str[index]);
+                            PortWrite8(PORT_DEBUGCON, str[index]);
                     };
 
                     sl::ScopedSpinlock scopeLock(&debugconLock);
@@ -181,8 +181,8 @@ namespace Kernel
                     
                     PrintToE9(message);
 
-                    CPU::PortWrite8(PORT_DEBUGCON, '\n');
-                    CPU::PortWrite8(PORT_DEBUGCON, '\r');
+                    PortWrite8(PORT_DEBUGCON, '\n');
+                    PortWrite8(PORT_DEBUGCON, '\r');
                     break;
                 }
 
