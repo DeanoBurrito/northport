@@ -12,7 +12,11 @@ namespace WindowServer
     constexpr size_t windowBorderWidth = 4;
 
     enum class WindowControlFlags : size_t
-    {};
+    {
+        None = 0,
+        Resizable = (1 << 0),
+        ShowTitlebar = (1 << 2),
+    };
 
     enum class WindowStatusFlags : size_t
     {
@@ -37,6 +41,9 @@ namespace WindowServer
 
         sl::String title;
         ProtocolClient owner;
+
+        WindowDescriptor(ProtocolClient owner) : owner(owner)
+        {}
 
         [[gnu::always_inline]] inline
         sl::UIntRect Rect() const

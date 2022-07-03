@@ -71,7 +71,7 @@ namespace WindowServer
         debugDrawLevel = RenderDebugDrawLevel::TextAndDamageRects;
     }
 
-    void Renderer::Redraw(const sl::Vector<sl::UIntRect> damageRects, const sl::Vector<WindowDescriptor*> windows, sl::Vector2u cursor)
+    void Renderer::Redraw(const sl::Vector<sl::UIntRect>& damageRects, const sl::Vector<WindowDescriptor*>& windows, sl::Vector2u cursor)
     {
         const sl::UIntRect cursorRect = { cursor.x, cursor.y, CursorSize().x, CursorSize().y };
         
@@ -81,12 +81,16 @@ namespace WindowServer
 
             for (size_t winIndex = 0; winIndex < windows.Size(); winIndex++)
             {
+                if (windows[winIndex] == nullptr)
+                    continue;
+
                 WindowDescriptor* window = windows[winIndex];
                 if (sl::EnumHasFlag(window->statusFlags, WindowStatusFlags::Minimized))
                     continue;
                 
                 if (damageRects[rectIndex].Intersects(window->BorderRect()))
                     DrawWindow(window);
+                mainFb.DrawRect(window->Rect(), np::Graphics::Colours::Blue, true);
             }
 
             if (damageRects[rectIndex].Intersects(cursorRect))
@@ -109,4 +113,10 @@ namespace WindowServer
 
     sl::Vector2u Renderer::CursorSize() const
     { return cursorImage.Size(); }
+
+    void Renderer::AttachFramebuffer(WindowDescriptor*)
+    {}
+
+    void Renderer::DeteachFramebuffer(WindowDescriptor*)
+    {}
 }

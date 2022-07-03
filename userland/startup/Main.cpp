@@ -1,12 +1,20 @@
 #include <Userland.h>
 #include <SyscallFunctions.h>
+#include <WindowServerClient.h>
 
 void Main()
 {
-    // using namespace np::Gui;
-    
-    // Window window = Window::Create({ 100, 100 }, "Hello Window!");
-    // Window window2 = Window::Create({ 200, 120 }, "Hello Window 2!", { 100, 100 });
+    np::Gui::WindowServerClient client;
+
+    //this is one way to test ipc haha.. 
+    for (size_t i = 0; i < 10; i++)
+        np::Gui::Window window(&client, { i, i }, "Hello example!");
+
+    while (client.KeepGoing())
+    {
+        client.ProcessEvent();
+        np::Syscall::Sleep(0, true);
+    }
 }
 
 extern "C"

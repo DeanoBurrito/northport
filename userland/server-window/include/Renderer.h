@@ -37,8 +37,11 @@ namespace WindowServer
 
         Renderer();
 
-        void Redraw(const sl::Vector<sl::UIntRect> damageRects, const sl::Vector<WindowDescriptor*> windows, sl::Vector2u cursor);
+        void Redraw(const sl::Vector<sl::UIntRect>& damageRects, const sl::Vector<WindowDescriptor*>& windows, sl::Vector2u cursor);
         sl::Vector2u Size() const;
         sl::Vector2u CursorSize() const;
+
+        void AttachFramebuffer(WindowDescriptor* window);
+        void DeteachFramebuffer(WindowDescriptor* window);
     };
 }

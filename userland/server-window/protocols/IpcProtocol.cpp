@@ -8,6 +8,17 @@ namespace WindowServer
 {
     //never check more than this many events at a time. Prevents being blocked by message spam
     constexpr size_t EventProcessLimit = 20;
+
+    sl::Opt<IpcClient*> IpcProtocol::GetClient(size_t id)
+    {
+        for (size_t i = 0; i < clients.Size(); i++)
+        {
+            if (clients[i].processId == id)
+                return &clients[i];
+        }
+
+        return {};
+    }
     
     IpcProtocol::IpcProtocol()
     {
@@ -30,18 +41,23 @@ namespace WindowServer
     {
         if (dest.protocol != Type())
             return;
-        if (dest.clientId >= returnMailboxes.Size() || returnMailboxes[dest.clientId].IsEmpty())
-            return;
         if (packet.base.ptr == nullptr || packet.length == 0)
             return;
+
+        auto maybeClient = GetClient(dest.clientId);
+        if (!maybeClient)
+            return;
         
-        np::Syscall::PostToMailbox(returnMailboxes[dest.clientId], packet);
+        np::Syscall::PostToMailbox(maybeClient.Value()->returnMailbox, packet);
     }
 
     void IpcProtocol::InjectReceivedPacket(ProtocolClient source, sl::BufferView packet)
     {
         WM()->ProcessPacket({ Type(), source.clientId }, packet);
     }
+
+    void IpcProtocol::RemoveClient(ProtocolClient client)
+    { np::Syscall::Log("Not implemented() IpcProtocol::RemoveClien()", LogLevel::Warning); }
 
     void IpcProtocol::HandlePendingEvents()
     {
@@ -55,28 +71,35 @@ namespace WindowServer
             //there is the potential for crashing the window server by overflowing the stack here.
             //if you're reading this, no I am not awarding a bug bounty for this.
             uint8_t packetBuffer[maybeEvent->dataLength];
-            np::Syscall::ConsumeNextEvent({ packetBuffer, maybeEvent->dataLength });
+            const np::Syscall::ProgramEvent event = np::Syscall::ConsumeNextEvent({ packetBuffer, maybeEvent->dataLength }).Value();
             
-            sl::NativePtr packetOp(packetBuffer);
-            const IpcProtocolHeader* header = packetOp.As<IpcProtocolHeader>();
-            const ProtocolClient clientHandle(Type(), header->key);
-            packetOp.raw += sizeof(IpcProtocolHeader);
-
-            if (clientHandle.clientId == 0 && packetOp.As<np::Gui::RequestBase>()->type == np::Gui::RequestType::NewClient)
+            auto maybeClient = GetClient(event.sender);
+            if (!maybeClient)
             {
-                const np::Gui::NewClientRequest* request = packetOp.As<np::Gui::NewClientRequest>();
-                np::Userland::Log("New IPC window client, return mailbox: %s", LogLevel::Verbose, request->responseAddr);
+                const np::Gui::NewClientRequest* request = reinterpret_cast<np::Gui::NewClientRequest*>(packetBuffer);
+                if (request->type == np::Gui::RequestType::NewClient)
+                {
+                    //non-existing client, must be a new request.
+                    np::Userland::Log("New IPC window client: sender=%u, mailbox=%s", LogLevel::Verbose, event.sender, request->responseAddr);
 
-                const size_t newClientId = idAlloc.Alloc();
-                returnMailboxes.EnsureCapacity(newClientId + 1);
-                returnMailboxes[newClientId] = sl::String(reinterpret_cast<const char*>(request->responseAddr));
-                WM()->ProcessNewClient({ Type(), newClientId }, request);
+                    IpcClient ipcClient;
+                    ipcClient.processId = event.sender;
+                    //TODO: we assume the string is null-terminated, we should only read until the end of the buffer
+                    ipcClient.returnMailbox = sl::String(reinterpret_cast<const char*>(request->responseAddr));
+                    clients.PushBack(ipcClient);
+                    
+                    WM()->ProcessPacket({ Type(), ipcClient.processId}, { packetBuffer, event.dataLength });
+                }
+                else
+                    np::Userland::Log("IPC protocol received unconnected message from client: type=%u", LogLevel::Error, request->type);
             }
-            else if (clientHandle.clientId >= returnMailboxes.Size() || returnMailboxes[clientHandle.clientId].IsEmpty())
-                Log("Received IPC protocol message from unknown client.", LogLevel::Warning);
             else
-                WM()->ProcessPacket(clientHandle, { packetOp, maybeEvent->dataLength - sizeof(IpcProtocolHeader) });
-
+            {
+                //existing client, process as normal
+                const ProtocolClient incomingClient(Type(), maybeClient.Value()->processId);
+                WM()->ProcessPacket(incomingClient, { packetBuffer, event.dataLength});
+            }
+            
             //check if there's any more messages for us.
             maybeEvent = np::Syscall::PeekNextEvent();
             eventsProcessed++;

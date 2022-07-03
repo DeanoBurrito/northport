@@ -10,6 +10,7 @@ namespace WindowServer
     WindowManager::WindowManager()
     {
         keepRunning = true;
+        windowIdAllocator.Alloc();
         ipcProtocol = new IpcProtocol();
         GenericProtocol::RegisterProto(ipcProtocol);
 
@@ -27,6 +28,42 @@ namespace WindowServer
             np::Syscall::EnableDeviceEvents(*maybeKeyboardId);
 
         np::Userland::Log("Window server started, %u protocols in use.", LogLevel::Info, 1);
+    }
+
+    uint64_t WindowManager::CreateWindow(const np::Gui::CreateWindowRequest* req, const ProtocolClient client)
+    {
+        const uint64_t id = windowIdAllocator.Alloc();
+
+        while (id >= windows.Size())
+            windows.EmplaceBack();
+        windows[id] = new WindowDescriptor(client);
+        WindowDescriptor* desc = windows[id];
+
+        desc->monitorIndex = 0;
+        desc->controlFlags = WindowControlFlags::ShowTitlebar;
+        desc->statusFlags = WindowStatusFlags::NeedsRedraw;
+        desc->windowId = id;
+
+        if (req->width == -1ul || req->height == -1ul)
+            desc->size = { np::Gui::WindowMinWidth, np::Gui::WindowMinHeight }; //TODO: smarter default sizing and placement
+        else
+            desc->size = { sl::max(req->width, np::Gui::WindowMinWidth), sl::max(req->height, np::Gui::WindowMinHeight) };
+        
+        if (req->posX == -1ul || req->posY == -1ul)
+            desc->position = { 20, 20 };
+        else
+            desc->position = { req->posX, req->posY }; //TODO: make sure we can't spawn windows *outside* of the screen.
+
+        const size_t titleLength = sl::memfirst(req->title, 0, np::Gui::NameLengthLimit);
+        char* titleBuffer = new char[titleLength == (size_t)-1 ? np::Gui::NameLengthLimit + 1 : titleLength + 1];
+        sl::memcopy(req->title, titleBuffer, titleLength == (size_t)-1 ? np::Gui::NameLengthLimit : titleLength + 1);
+        desc->title = sl::String(titleBuffer, true);
+
+        np::Userland::Log("Created window: mon=%u, x=%u, y=%u, w=%u, h=%u, title=%s", LogLevel::Verbose, 
+            desc->monitorIndex, desc->position.x, desc->position.y, desc->size.x, desc->size.y, desc->title.C_Str());
+
+        compositor.AttachFramebuffer(desc);
+        return id;
     }
 
     extern WindowManager* globalWindowManager; //defined in GenericProtocol.cpp
@@ -79,11 +116,11 @@ namespace WindowServer
             case ProgramEventType::MouseEvent:
             {
                 sl::Vector2i cursorOffset;
-                ConsumeNextEvent({ &cursorOffset, sizeof(cursorOffset)});
+                ConsumeNextEvent({ &cursorOffset, sizeof(cursorOffset) });
 
                 wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
-                wm.cursorPos.x = sl::clamp<long>(wm.cursorPos.x + cursorOffset.x, 0, wm.compositor.Size().x);
-                wm.cursorPos.y = sl::clamp<long>(wm.cursorPos.y -cursorOffset.y, 0, wm.compositor.Size().y);
+                wm.cursorPos.x = sl::clamp<long>(wm.cursorPos.x + cursorOffset.x, 0, (long)wm.compositor.Size().x);
+                wm.cursorPos.y = sl::clamp<long>(wm.cursorPos.y -cursorOffset.y, 0, (long)wm.compositor.Size().y);
                 wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
 
                 break;
@@ -104,9 +141,38 @@ namespace WindowServer
 
     void WindowManager::ProcessPacket(const ProtocolClient from, sl::BufferView packet)
     {
-        np::Syscall::Log("Window server got packet!", LogLevel::Info);
-    }
+        using namespace np::Gui;
 
-    void WindowManager::ProcessNewClient(const ProtocolClient client, const np::Gui::NewClientRequest* request)
-    {}
+        const RequestBase* baseReq = packet.base.As<RequestBase>();
+        switch (baseReq->type)
+        {
+        case RequestType::NewClient:
+        {
+            GeneralAcknowledgeResponse ack;
+            GenericProtocol::Send(from, { &ack, sizeof(GeneralAcknowledgeResponse) });
+            break;
+        }
+        
+        case RequestType::RemoveClient:
+            np::Userland::Log("Removing client %lu:%lu, as per it's request.", LogLevel::Verbose, from.protocol, from.clientId);
+            GenericProtocol::Remove(from);
+            break;
+        
+        case RequestType::CreateWindow:
+        {
+            AcknowledgeValueResponse ack;
+            ack.value = CreateWindow(static_cast<const CreateWindowRequest*>(baseReq), from);
+            GenericProtocol::Send(from, { &ack, sizeof(AcknowledgeValueResponse) });
+            break;
+        }
+
+        default:
+        {
+            GeneralErrorResponse error;
+            GenericProtocol::Send(from, { &error, sizeof(GeneralErrorResponse) });
+            np::Userland::Log("Unknown request type %lu, from client %lu:%lu", LogLevel::Debug, baseReq->type, from.protocol, from.clientId);
+            break;
+        }
+        }
+    }
 }

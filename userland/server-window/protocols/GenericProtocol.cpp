@@ -27,9 +27,16 @@ namespace WindowServer
     {
         const size_t protoIndex = (size_t)client.protocol;
         if (protoIndex < protos.Size() && protos[protoIndex] != nullptr)
-            protos[protoIndex]->Send(client, packet);
+            protos[protoIndex]->SendPacket(client, packet);
     }
 
     void GenericProtocol::CloseAll()
     {}
+
+    void GenericProtocol::Remove(ProtocolClient client)
+    {
+        const size_t protoIndex = (size_t)client.protocol;
+        if (protoIndex < protos.Size() && protos[protoIndex] != nullptr)
+            protos[protoIndex]->RemoveClient(client);
+    }
 }
