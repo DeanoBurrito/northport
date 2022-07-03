@@ -11,11 +11,12 @@ namespace Kernel::Memory
         uint64_t length;
         uint64_t positionInStream; //used to locate mailbox control from a header
         uint64_t sender;
+        uint64_t reserved;
         uint8_t data[];
 
         IpcMailHeader* Next()
         { 
-            uintptr_t next = (uintptr_t)this + length + sizeof(IpcMailHeader);
+            uintptr_t next = ((uintptr_t)this) + length + sizeof(IpcMailHeader);
             next = (next / sizeof(IpcMailHeader) + 1) * sizeof(IpcMailHeader);
             return reinterpret_cast<IpcMailHeader*>(next);
         }

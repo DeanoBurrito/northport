@@ -106,6 +106,7 @@ namespace Kernel::Memory
 
     void* KernelPool::Alloc(size_t size)
     { 
+        InterruptLock intLock; //TODO: would be nice to find a better solution to this.
         sl::ScopedSpinlock scopeLock(&lock);
         
         KernelPoolNode* returnNode = nullptr;
@@ -147,6 +148,7 @@ claim_node:
         if (where.raw < allocRegion.base.raw || where.raw > allocRegion.length + allocRegion.base.raw)
             return false;
 
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
         for (KernelPoolNode* scan = head; scan != nullptr; scan = scan->next)
         {

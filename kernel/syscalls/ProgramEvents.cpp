@@ -68,13 +68,17 @@ namespace Kernel::Syscalls
             //the event data is the address of the mailbox control/ipc stream
             auto maybeSenderId = Memory::IpcManager::Global()->ReceiveMail(maybeEvent->address.As<Memory::IpcStream>(), { regs.arg0, maybeEvent->length });
             auto maybeRid = Scheduling::ThreadGroup::Current()->FindResource(maybeEvent->address);
-            if (maybeRid)
+            if (maybeRid && maybeSenderId)
             {
                 regs.arg1 = *maybeRid;
                 regs.arg2 = *maybeSenderId;
             }
             else
+            {
                 regs.arg2 = regs.arg1 = 0;
+                regs.id = 1; //TODO: actual error code,
+                return;
+            }
             break;
         }
 

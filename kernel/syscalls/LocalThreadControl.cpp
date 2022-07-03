@@ -9,7 +9,12 @@ namespace Kernel::Syscalls
     {
         const bool wakeOnEvents = (regs.arg1 != 0);
         if (wakeOnEvents)
+        {
+            if (Scheduling::ThreadGroup::Current()->PendingEventCount() != 0)
+                return;
+            
             Scheduling::Thread::Current()->SleepUntilEvent(regs.arg0);
+        }
         else
             Scheduling::Thread::Current()->Sleep(regs.arg0);
     }

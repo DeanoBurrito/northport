@@ -14,12 +14,20 @@ namespace Kernel::Syscalls
 {
     StoredRegisters* EnterSyscall(StoredRegisters* regs)
     {
-        StoredRegisters* tempRegs = new StoredRegisters();
+        //We're going to be a bit cheeky here: we need a temporary iret frame so we can return somewhere
+        //else, and preserve the current one (back to the running program).
+        //Assuming the stack is *at least* 1 page (its usually 4-8), we can just pick a space in the middle
+        //somewhere. 
+        //The big danger here is the compiler, since its naturally eating into the stack on it's own.
+        //I figure 0x500 bytes should be fine for now, if there's weird crashes, maybe we increase it.
+        sl::NativePtr regsStack = sl::NativePtr(regs).raw - 0x500;
+
+        StoredRegisters* tempRegs = regsStack.As<StoredRegisters>();
         tempRegs->iret_flags = 0x202;
         tempRegs->iret_cs = GDT_ENTRY_RING_0_CODE;
         tempRegs->iret_rip = (NativeUInt)Dispatch;
         tempRegs->iret_ss = GDT_ENTRY_RING_0_DATA;
-        tempRegs->iret_rsp = sl::NativePtr(regs).raw - sizeof(StoredRegisters); //re-use existing stack, but leave a buffer zone between us and the existing regds.
+        tempRegs->iret_rsp = (NativeUInt)regs;
 
         tempRegs->errorCode = 0;
         tempRegs->vectorNumber = 0;
@@ -31,17 +39,13 @@ namespace Kernel::Syscalls
 
         //we're using the sys v x86_64 calling convention here
         tempRegs->rdi = (NativeUInt)regs;
-        tempRegs->rsi = (NativeUInt)tempRegs;
 
         return tempRegs;
     }
     
     [[noreturn]]
-    void Dispatch(StoredRegisters* regs, StoredRegisters* deleteMePlease)
+    void Dispatch(StoredRegisters* regs)
     {
-        delete deleteMePlease;
-        deleteMePlease = nullptr;
-        
         using namespace np::Syscall;
         SyscallId attemptedId = static_cast<SyscallId>(regs->rax);
 

@@ -36,7 +36,7 @@ namespace Kernel::Syscalls
     
     StoredRegisters* EnterSyscall(StoredRegisters* regs);
     [[noreturn]]
-    void Dispatch(StoredRegisters* regs, StoredRegisters* deleteMePlease);
+    void Dispatch(StoredRegisters* regs);
 
     //0x0* - testing
     void LoopbackTest(SyscallRegisters& regs);

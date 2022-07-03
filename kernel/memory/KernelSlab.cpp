@@ -32,6 +32,7 @@ namespace Kernel::Memory
     
     void* KernelSlab::Alloc()
     {
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
 
         for (size_t i = 0; i < blocks; i++)
@@ -67,6 +68,7 @@ namespace Kernel::Memory
 
     bool KernelSlab::Free(sl::NativePtr where)
     {
+        InterruptLock intLock;
         sl::ScopedSpinlock scopeLock(&lock);
 
         if (where.raw < allocRegion.base.raw || where.raw + blockSize > allocRegion.base.raw + allocRegion.length)

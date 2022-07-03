@@ -249,27 +249,27 @@ access_allowed:
         sl::ScopedSpinlock mailLock(&mailControl->lock);
 
         //determine where the next message will go
-        IpcMailHeader* nextBlank = sl::NativePtr(mailControl + 1).As<IpcMailHeader>();
-        if (mailControl->head > 0)
+        IpcMailHeader* nextBlank = nullptr;
+        if (mailControl->tail == 0)
         {
-            //there is data, jump to the end and check if there is enough space.
-            sl::NativePtr scan = mailControl->Last()->Next();
-            if (scan.raw + sizeof(IpcMailHeader) + data.length > streamDetails->buffer.length)
-            {
-                //TODO: we should implement this as a circular buffer
-                return false; //buffer is full, cannot receive mail
-            }
-            nextBlank = scan.As<IpcMailHeader>();
+            sl::NativePtr nextAddr = mailControl + 1;
+            nextAddr.raw = (nextAddr.raw / sizeof(IpcMailHeader) + 1) * sizeof(IpcMailHeader);
+            nextBlank = nextAddr.As<IpcMailHeader>();
         }
+        else
+            nextBlank = mailControl->Last()->Next();
 
         nextBlank->length = data.length;
         nextBlank->positionInStream = sl::NativePtr(nextBlank).raw - sl::NativePtr(mailControl).raw;
+        if (nextBlank->positionInStream + sizeof(IpcMailHeader) + data.length > streamDetails->buffer.length)
+            return false; //not enough space in stream.
+
         nextBlank->Next()->length = 0;
         nextBlank->sender = Scheduling::ThreadGroup::Current()->Id();
         sl::memcopy(data.base.ptr, nextBlank->data, data.length);
 
         mailControl->tail = nextBlank->positionInStream;
-        if ((size_t)(mailControl + 1) == (size_t)nextBlank)
+        if (mailControl->head == 0)
             mailControl->head = nextBlank->positionInStream;
 
         //send an event to the target process
@@ -307,6 +307,9 @@ access_allowed:
         
         IpcMailboxControl* mailControl = hostStream->buffer.base.As<IpcMailboxControl>();
         sl::ScopedSpinlock mailLock(&mailControl->lock);
+        if (mailControl->head == 0)
+            return {};
+
         IpcMailHeader* latestMail = mailControl->First();
 
         if (latestMail->length > receiveInto.length)
@@ -318,12 +321,12 @@ access_allowed:
             return {};
         
         //copy mail data if we have somewhere to put it
-        if (receiveInto.base.ptr != nullptr && latestMail->length > 0)
+        if (latestMail->length > 0)
             sl::memcopy(latestMail->data, receiveInto.base.ptr, latestMail->length);
         
         //update head + tail pointers
-        if (latestMail->Next()->length > 0)
-            mailControl->head = (size_t)latestMail->Next() - (size_t)mailControl;
+        if (latestMail->positionInStream != mailControl->tail)
+            mailControl->head = latestMail->Next()->positionInStream;
         else
             mailControl->head = mailControl->tail = 0;
         

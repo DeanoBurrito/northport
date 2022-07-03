@@ -36,41 +36,22 @@ namespace Kernel::Memory
         if (lowerBound >= upperBound - length)
             return {}; //not enough space within bounds to allocate
 
-        if (lowerBound > ranges.Last().base + ranges.Last().length)
+        if (ranges.Size() == 0 || lowerBound > ranges.Last().base + ranges.Last().length)
             return { lowerBound, length };
         
-        auto searchStart = ranges.Begin();
-        while (searchStart != ranges.End())
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
         {
-            if (searchStart->base + searchStart->length >= lowerBound)
-                break;
-            ++searchStart;
+            if (it->base + it->length < lowerBound)
+                continue;
+            
+            auto next = it;
+            ++next;
+            if (it->base + it->length + length + PAGE_FRAME_SIZE <= next->base)
+                return { it->base + it->length + PAGE_FRAME_SIZE, length };
         }
 
-        if (searchStart == ranges.End()) //this also handles an empty range set
-            return { lowerBound, length };
-        
-        //TODO: rewrite, this is quite borked
-        auto test = searchStart;
-        ++test;
-        while (test != ranges.End())
-        {
-            const size_t testBot = searchStart->base + searchStart->length;
-            if (testBot + length > upperBound)
-                return {};
-            
-            if (testBot + length < test->base)
-                return { testBot, length };
-            
-            ++searchStart;
-            ++test;
-        }
-
-        const size_t base = sl::max(searchStart->base + searchStart->length, lowerBound);
-        if (base + length < upperBound)
-            return { base, length };
-        else
-            return {};
+        Log("Could not allocate VM range, all attempts failed.", LogSeverity::Error);
+        return {};
     }
 
     size_t VirtualMemoryManager::DoMemoryOp(sl::BufferView sourceBuffer, sl::NativePtr destBase, bool isCopy)
