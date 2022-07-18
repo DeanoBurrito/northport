@@ -8,13 +8,16 @@
 
 namespace Kernel::Syscalls
 {
+    using np::Syscall::GeneralError;
+    using np::Syscall::FileError;
+    
     void GetFileInfo(SyscallRegisters& regs)
     {
         using namespace Filesystem;
 
         if (!Memory::VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
-            regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
+            regs.id = (uint64_t)GeneralError::InvalidBufferRange;
             return;
         }
 
@@ -24,29 +27,12 @@ namespace Kernel::Syscalls
         auto maybeFile =  VFS::Global()->FindNode(filename);
         if (!maybeFile)
         {
-            regs.id = (uint64_t)np::Syscall::FileError::FileNotFound;
+            regs.id = (uint64_t)FileError::FileNotFound;
             return;
         }
 
         VfsNode* file = *maybeFile;
-        using np::Syscall::FileInfo;
-        auto maybeRange = Memory::VMM::Current()->AllocRange(sizeof(FileInfo), true, Memory::MemoryMapFlags::UserAccessible | Memory::MemoryMapFlags::AllowWrites);
-        if (maybeRange.base == 0)
-        {
-            regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
-            return;
-        }
-
-        FileInfo* userCopy = sl::NativePtr(maybeRange.base).As<FileInfo>();
-        regs.arg3 = (uint64_t)userCopy;
-
-        //populate user's copy of the file details
-        CPU::AllowSumac(true);
-        userCopy->fileSize = file->Details().filesize;
-        CPU::AllowSumac(false);
-        
-        //return success code
-        regs.id = np::Syscall::SyscallSuccess;
+        regs.arg0 = file->Details().filesize;
     }
 
     void OpenFile(SyscallRegisters& regs)
@@ -54,7 +40,7 @@ namespace Kernel::Syscalls
         using namespace Filesystem;
         if (!Memory::VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
-            regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
+            regs.id = (uint64_t)GeneralError::InvalidBufferRange;
             return;
         }
         
@@ -64,7 +50,7 @@ namespace Kernel::Syscalls
         CPU::AllowSumac(false);
         if (!maybeFile)
         {
-            regs.id = (uint64_t)np::Syscall::FileError::FileNotFound;
+            regs.id = (uint64_t)FileError::FileNotFound;
             return;
         }
 
@@ -74,11 +60,10 @@ namespace Kernel::Syscalls
         auto maybeRid = threadGroup->AttachResource(Scheduling::ThreadResourceType::FileHandle, file);
         if (!maybeRid)
         {
-            regs.id = (uint64_t)np::Syscall::FileError::NoResourceId;
+            regs.id = (uint64_t)GeneralError::BadHandleId;
             return;
         }
         
-        regs.id = np::Syscall::SyscallSuccess;
         regs.arg0 = *maybeRid;
     }
 
@@ -88,8 +73,6 @@ namespace Kernel::Syscalls
 
         Scheduling::ThreadGroup* threadGroup = Scheduling::ThreadGroup::Current();
         threadGroup->DetachResource(regs.arg0);
-
-        regs.id = np::Syscall::SyscallSuccess;
     }
 
     void ReadFromFile(SyscallRegisters& regs)
@@ -109,7 +92,7 @@ namespace Kernel::Syscalls
         //check with the vmm that the buffer region we're reading from is actually mapped.
         if (!threadGroup->VMM()->RangeExists({ regs.arg2 + (regs.arg1 >> 32), regs.arg3 }))
         {
-            regs.id = (uint64_t)np::Syscall::FileError::InvalidBufferRange;
+            regs.id = (uint64_t)GeneralError::InvalidBufferRange;
             return;
         }
 

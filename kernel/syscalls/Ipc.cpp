@@ -9,6 +9,9 @@
 
 namespace Kernel::Syscalls
 {
+    using np::Syscall::GeneralError;
+    using np::Syscall::IpcError;
+    
     void StartIpcStream(SyscallRegisters& regs)
     {
         using namespace Memory;
@@ -16,7 +19,7 @@ namespace Kernel::Syscalls
         if (!VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
             //this can fail either because the memory isnt mapped, or because the string is greater than 1 page long (if so, probably not a valid request anyway).
-            regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
+            regs.id = (uint64_t)GeneralError::InvalidBufferRange;
             return;
         }
 
@@ -32,7 +35,7 @@ namespace Kernel::Syscalls
         auto maybeStream = IpcManager::Global()->StartStream(streamName, regs.arg2, (IpcStreamFlags)regs.arg1, accessFlags);
         if (!maybeStream)
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::StreamStartFail;
+            regs.id = (uint64_t)IpcError::StreamStartFail;
             return;
         }
 
@@ -42,7 +45,7 @@ namespace Kernel::Syscalls
         {
             
             IpcManager::Global()->StopStream(streamName);
-            regs.id = (uint64_t)np::Syscall::IpcError::NoResourceId;
+            regs.id = (uint64_t)GeneralError::BadHandleId;
             return;
         }
 
@@ -61,7 +64,7 @@ namespace Kernel::Syscalls
         auto maybeResource = Scheduling::ThreadGroup::Current()->GetResource(regs.arg0);
         if (!maybeResource)
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::NoResourceId;
+            regs.id = (uint64_t)GeneralError::BadHandleId;
             return;
         }
 
@@ -110,7 +113,7 @@ namespace Kernel::Syscalls
 
         if (!VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
+            regs.id = (uint64_t)GeneralError::InvalidBufferRange;
             return;
         }
 
@@ -122,7 +125,7 @@ namespace Kernel::Syscalls
         auto maybeStream = IpcManager::Global()->OpenStream(streamName, (IpcStreamFlags)regs.arg1, HandleStreamClosing);
         if (!maybeStream)
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::StreamStartFail;
+            regs.id = (uint64_t)IpcError::StreamStartFail;
             return;
         }
 
@@ -130,7 +133,7 @@ namespace Kernel::Syscalls
         if (!maybeResId)
         {
             IpcManager::Global()->CloseStream(streamName);
-            regs.id = (uint64_t)np::Syscall::IpcError::NoResourceId;
+            regs.id = (uint64_t)GeneralError::BadHandleId;
             return;
         }
 
@@ -149,7 +152,7 @@ namespace Kernel::Syscalls
         auto maybeResource = Scheduling::ThreadGroup::Current()->GetResource(regs.arg0);
         if (!maybeResource)
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::NoResourceId;
+            regs.id = (uint64_t)GeneralError::BadHandleId;
             return;
         }
 
@@ -163,7 +166,7 @@ namespace Kernel::Syscalls
         using namespace Memory;
         if (!VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
+            regs.id = (uint64_t)GeneralError::InvalidBufferRange;
             return;
         }
 
@@ -176,7 +179,7 @@ namespace Kernel::Syscalls
         CPU::AllowSumac(false);
         if (!maybeMailbox)
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::StreamStartFail;
+            regs.id = (uint64_t)IpcError::StreamStartFail;
             return;
         }
 
@@ -185,7 +188,7 @@ namespace Kernel::Syscalls
         if (!maybeResId)
         {
             IpcManager::Global()->DestroyMailbox(mailboxName);
-            regs.id = (uint64_t)np::Syscall::IpcError::NoResourceId;
+            regs.id = (uint64_t)GeneralError::BadHandleId;
             return;
         }
 
@@ -203,12 +206,12 @@ namespace Kernel::Syscalls
         //usual safety checks, ensure the string's buffer and incoming data buffers are valid memory regions
         if (!VMM::Current()->RangeExists({ regs.arg0, PAGE_FRAME_SIZE }))
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
+            regs.id = (uint64_t)GeneralError::InvalidBufferRange;
             return;
         }
         if (regs.arg2 > 0 && !VMM::Current()->RangeExists({ regs.arg1, regs.arg2 }))
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::InvalidBufferRange;
+            regs.id = (uint64_t)GeneralError::InvalidBufferRange;
             return;
         }
 
@@ -217,7 +220,7 @@ namespace Kernel::Syscalls
         sl::String mailboxName(sl::NativePtr(regs.arg0).As<const char>());
         if (!IpcManager::Global()->PostMail(mailboxName, {regs.arg1, regs.arg2}, leaveOpenHint))
         {
-            regs.id = (uint64_t)np::Syscall::IpcError::MailDeliveryFailed;
+            regs.id = (uint64_t)IpcError::MailDeliveryFailed;
             return;
         }
         CPU::AllowSumac(false);

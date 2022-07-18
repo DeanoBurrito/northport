@@ -19,13 +19,13 @@ namespace WindowServer
         if (!maybeMouseId)
             Log("Window server could not get aggregate mouse device, no mouse input will be available for np-gui driven apps.", LogLevel::Error);
         else
-            np::Syscall::EnableDeviceEvents(*maybeMouseId);
+            np::Syscall::DeviceEventControl(*maybeMouseId, true);
 
         auto maybeKeyboardId = np::Syscall::GetAggregateId(np::Syscall::DeviceType::Keyboard);
         if (!maybeKeyboardId)
             Log("Window server could not get aggregate keyboard device, no keyboard input will be available for np-gui driven apps.", LogLevel::Error);
         else
-            np::Syscall::EnableDeviceEvents(*maybeKeyboardId);
+            np::Syscall::DeviceEventControl(*maybeKeyboardId, true);
 
         np::Userland::Log("Window server started, %u protocols in use.", LogLevel::Info, 1);
     }

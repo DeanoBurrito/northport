@@ -50,17 +50,18 @@ namespace Kernel::Syscalls
         SyscallId attemptedId = static_cast<SyscallId>(regs->rax);
 
         SyscallRegisters syscallRegs(regs);
-        syscallRegs.id = SyscallSuccess; //assume success by default, unless overriden by not found or error code.
+        //assume success by default, unless overriden by not found or error code.
+        syscallRegs.id = (NativeUInt)GeneralError::Success;
 
         auto enableRequestLog = Configuration::Global()->Get("syscall_log_requests");
         if (enableRequestLog && enableRequestLog->integer == true)
             Logf("Syscall request: id=0x%lx, arg0=0x%lx, arg1=0x%lx, arg2=0x%lx, arg3=0x%lx", LogSeverity::Debug,
             (uint64_t)attemptedId, syscallRegs.arg0, syscallRegs.arg1, syscallRegs.arg2, syscallRegs.arg3);
         
+        //TODO: replace this with a function pointer array, and let each subsystem populate its own array.
         switch (attemptedId)
         {
             case SyscallId::LoopbackTest:
-                syscallRegs.id = SyscallSuccess;
                 syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
 
@@ -87,12 +88,8 @@ namespace Kernel::Syscalls
             case SyscallId::GetDeviceInfo:
                 GetDeviceInfo(syscallRegs);
                 break;
-            case SyscallId::EnableDeviceEvents:
-                EnableDeviceEvents(syscallRegs);
-                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
-                break;
-            case SyscallId::DisableDeviceEvents:
-                DisableDeviceEvents(syscallRegs);
+            case SyscallId::DeviceEventControl:
+                DeviceEventControl(syscallRegs);
                 syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
             case SyscallId::GetAggregateId:
@@ -102,7 +99,7 @@ namespace Kernel::Syscalls
 
             case SyscallId::GetFileInfo:
                 GetFileInfo(syscallRegs);
-                syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = 0;
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
             case SyscallId::OpenFile:
                 OpenFile(syscallRegs);
@@ -158,6 +155,10 @@ namespace Kernel::Syscalls
                 Log(syscallRegs);
                 syscallRegs.arg0 = syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
                 break;
+            case SyscallId::GetVersion:
+                GetVersion(syscallRegs);
+                syscallRegs.arg1 = syscallRegs.arg2 = syscallRegs.arg3 = 0;
+                break;
 
             case SyscallId::PeekNextEvent:
                 PeekNextEvent(syscallRegs);
@@ -185,13 +186,13 @@ namespace Kernel::Syscalls
                 break;
 
             default:
-                syscallRegs.id = SyscallNotFound;
+                syscallRegs.id = (NativeUInt)GeneralError::InvalidSyscallId;
                 break;
         }
 
         //move data back to orginal regs, and if we didnt succeed wipe the data registers.
         syscallRegs.Transpose(regs);
-        if (regs->rax != SyscallSuccess)
+        if (regs->rax != (NativeUInt)GeneralError::Success)
             regs->rdi = regs->rsi = regs->rdx = regs->rcx = 0;
         
         auto enableResponseLog = Configuration::Global()->Get("syscall_log_responses");

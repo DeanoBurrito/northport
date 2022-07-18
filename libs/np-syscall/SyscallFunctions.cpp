@@ -3,12 +3,14 @@
 
 namespace np::Syscall
 {
+    constexpr uint64_t SuccessVal = (uint64_t)GeneralError::Success;
+    
     bool LoopbackTest()
     {
         SyscallData data((uint64_t)SyscallId::LoopbackTest, 0, 0, 0, 0);
         DoSyscall(&data);
 
-        return data.id == SyscallSuccess;
+        return data.id == SuccessVal;
     }
 
     sl::BufferView MapMemory(NativeUInt base, size_t bytesLength, MemoryMapFlags flags)
@@ -40,7 +42,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::GetPrimaryDeviceInfo, (uint64_t)type, 0, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         return DeviceInfo(data.arg0, data.arg1, data.arg2, data.arg3);
     }
@@ -50,7 +52,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::GetPrimaryDeviceInfo, (uint64_t)type, 0, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         return sl::Vector<DeviceInfo>(sl::NativePtr(data.arg3).As<DeviceInfo>(), data.arg2);
     }
@@ -60,20 +62,14 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::GetDeviceInfo, deviceId, 0, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         return DeviceInfo(data.arg0, data.arg1, data.arg2, data.arg3);
     }
 
-    void EnableDeviceEvents(size_t deviceId)
+    void DeviceEventControl(size_t deviceId, bool subscribe)
     {
-        SyscallData data((uint64_t)SyscallId::EnableDeviceEvents, deviceId, 0, 0, 0);
-        DoSyscall(&data);
-    }
-
-    void DisableDeviceEvents(size_t deviceId)
-    {
-        SyscallData data((uint64_t)SyscallId::DisableDeviceEvents, deviceId, 0, 0, 0);
+        SyscallData data((uint64_t)SyscallId::DeviceEventControl, deviceId, subscribe ? 1 : 0, 0, 0);
         DoSyscall(&data);
     }
 
@@ -82,19 +78,22 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::GetAggregateId, (uint64_t)type, 0, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         return data.arg0;
     }
 
-    sl::Opt<FileInfo*> GetFileInfo(const sl::String& filepath)
+    sl::Opt<FileInfo> GetFileInfo(const sl::String& filepath)
     {
         SyscallData data((uint64_t)SyscallId::GetFileInfo, (uint64_t)filepath.C_Str(), 0, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
-        return sl::NativePtr(data.arg3).As<FileInfo>();
+        
+        FileInfo info;
+        info.fileSize = data.arg0;
+        return info;
     }
 
     sl::Opt<FileHandle> OpenFile(const sl::String& filepath)
@@ -102,7 +101,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::OpenFile, (uint64_t)filepath.C_Str(), 0, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         return data.arg0;
     }
@@ -119,7 +118,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::ReadFromFile, file, arg1, (uint64_t)outputBuffer, readLength);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return 0;
         return data.arg0;
     }
@@ -130,7 +129,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::WriteToFile, handle, arg1, (uint64_t)inputBuffer, writeLength);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return 0;
         return data.arg0;
     }
@@ -140,7 +139,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::StartIpcStream, (uint64_t)name.C_Str(), (uint64_t)flags, streamSize, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         
         streamSize = data.arg1;
@@ -159,7 +158,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::OpenIpcStream, (uint64_t)name.C_Str(), (uint64_t)flags, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         
         bufferAddr = data.arg2;
@@ -177,7 +176,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::CreateMailbox, (uint64_t)name.C_Str(), (uint64_t)flags, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
 
         return data.arg0;
@@ -194,7 +193,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::PostToMailbox, (uint64_t)name.C_Str(), mail.base.raw, mail.length, leaveOpenHint ? 1 : 0);
         DoSyscall(&data);
 
-        return data.id == SyscallSuccess;
+        return data.id == SuccessVal;
     }
 
     void ModifyIpcConfig(IpcConfigOperation op, NativeUInt arg1, NativeUInt arg2, NativeUInt arg3)
@@ -208,13 +207,23 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::Log, (uint64_t)text.C_Str(), (uint64_t)level, 0, 0);
         DoSyscall(&data);
     }
+
+    sl::Opt<size_t> GetVersion(SyscallGroupId group)
+    {
+        SyscallData data((uint64_t)SyscallId::GetVersion, (uint64_t)group, 0, 0, 0);
+        DoSyscall(&data);
+
+        if (data.id != SuccessVal)
+            return {};
+        return data.arg0;
+    }
     
     sl::Opt<ProgramEvent> PeekNextEvent()
     {
         SyscallData data((uint64_t)SyscallId::PeekNextEvent, 0, 0, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         
         ProgramEvent event;
@@ -230,7 +239,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::ConsumeNextEvent, buffer.base.raw, buffer.length, 0, 0);
         DoSyscall(&data);
 
-        if (data.id != SyscallSuccess)
+        if (data.id != SuccessVal)
             return {};
         
         ProgramEvent event;
@@ -246,7 +255,7 @@ namespace np::Syscall
         SyscallData data((uint64_t)SyscallId::GetPendingEventCount, 0, 0, 0, 0);
         DoSyscall(&data);
 
-        if (data.id == SyscallSuccess)
+        if (data.id == SuccessVal)
             return data.arg0;
         return 0;
     }

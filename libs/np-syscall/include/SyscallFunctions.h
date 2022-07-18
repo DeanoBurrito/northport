@@ -54,12 +54,11 @@ namespace np::Syscall
     sl::Opt<DeviceInfo> GetPrimaryDeviceInfo(DeviceType type);
     sl::Opt<sl::Vector<DeviceInfo>> GetDevicesOfType(DeviceType type);
     sl::Opt<DeviceInfo> GetDeviceInfo(size_t deviceId);
-    void EnableDeviceEvents(size_t deviceId);
-    void DisableDeviceEvents(size_t deviceId);
+    void DeviceEventControl(size_t deviceId, bool subscribe);
     sl::Opt<size_t> GetAggregateId(DeviceType type);
 
     //0x3* - filesystem
-    sl::Opt<FileInfo*> GetFileInfo(const sl::String& filepath); 
+    sl::Opt<FileInfo> GetFileInfo(const sl::String& filepath); 
     [[nodiscard]]
     sl::Opt<FileHandle> OpenFile(const sl::String& filepath);
     void CloseFile(FileHandle handle);
@@ -82,6 +81,7 @@ namespace np::Syscall
 
     //0x5* - utilties
     void Log(const sl::String& text, LogLevel level);
+    sl::Opt<size_t> GetVersion(SyscallGroupId group);
 
     //0x6* - program events
     sl::Opt<ProgramEvent> PeekNextEvent();

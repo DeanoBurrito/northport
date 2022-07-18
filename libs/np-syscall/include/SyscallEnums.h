@@ -4,51 +4,84 @@
 
 namespace np::Syscall
 {
-    constexpr NativeUInt SyscallSuccess = 0;
-    constexpr NativeUInt SyscallNotFound = 0x404;
+    enum class SyscallGroupId : NativeUInt
+    {
+        Experiments = 0x0,
+        Memory = 0x1,
+        Devices = 0x2,
+        Filesystem = 0x3,
+        Ipc = 0x4,
+        Utilities = 0x5,
+        ProgramEvents = 0x6,
+        LocalThreadControl = 0x7,
+    };
+
+    constexpr static size_t SyscallGroupVersions[] = 
+    {
+        1, //Experiments
+        1, //Memory
+        1, //Devices
+        1, //Filesystem
+        1, //Ipc
+        1, //Utilities
+        1, //ProgramEvents
+        1, //LocalThreadControl
+    };
     
+#define MAKE_SCID(group, offset) ((NativeUInt)SyscallGroupId::group << 32) + offset
     enum class SyscallId : NativeUInt
     {
-        LoopbackTest = 0x0,
+        LoopbackTest = MAKE_SCID(Experiments, 0),
 
-        MapMemory = 0x10,
-        UnmapMemory = 0x11,
-        ModifyMemoryFlags = 0x12,
+        MapMemory = MAKE_SCID(Memory, 0),
+        UnmapMemory = MAKE_SCID(Memory, 1),
+        ModifyMemoryFlags = MAKE_SCID(Memory, 2),
 
-        GetPrimaryDeviceInfo = 0x20,
-        GetDevicesOfType = 0x21,
-        GetDeviceInfo = 0x22,
-        EnableDeviceEvents = 0x23,
-        DisableDeviceEvents = 0x24,
-        GetAggregateId = 0x25,
+        GetPrimaryDeviceInfo = MAKE_SCID(Devices, 0),
+        GetDevicesOfType = MAKE_SCID(Devices, 1),
+        GetDeviceInfo = MAKE_SCID(Devices, 2),
+        DeviceEventControl = MAKE_SCID(Devices, 3),
+        GetAggregateId = MAKE_SCID(Devices, 4),
 
-        GetFileInfo = 0x30,
-        OpenFile = 0x31,
-        CloseFile = 0x32,
-        ReadFromFile = 0x33,
-        WriteToFile = 0x34,
-        FlushFile = 0x35,
+        GetFileInfo = MAKE_SCID(Filesystem, 0),
+        OpenFile = MAKE_SCID(Filesystem, 1),
+        CloseFile = MAKE_SCID(Filesystem, 2),
+        ReadFromFile = MAKE_SCID(Filesystem, 3),
+        WriteToFile = MAKE_SCID(Filesystem, 4),
+        FlushFile = MAKE_SCID(Filesystem, 5),
 
-        StartIpcStream = 0x40,
-        StopIpcStream = 0x41,
-        OpenIpcStream = 0x42,
-        CloseIpcStream = 0x43,
-        ReadFromIpcStream = 0x44,
-        WriteToIpcStream = 0x45,
-        CreateMailbox = 0x46,
-        DestroyMailbox = 0x47,
-        PostToMailbox = 0x48,
-        ModifyIpcConfig = 0x49,
+        StartIpcStream = MAKE_SCID(Ipc, 0),
+        StopIpcStream = MAKE_SCID(Ipc, 1),
+        OpenIpcStream = MAKE_SCID(Ipc, 2),
+        CloseIpcStream = MAKE_SCID(Ipc, 3),
+        ReadFromIpcStream = MAKE_SCID(Ipc, 4),
+        WriteToIpcStream = MAKE_SCID(Ipc, 5),
+        CreateMailbox = MAKE_SCID(Ipc, 6),
+        DestroyMailbox = MAKE_SCID(Ipc, 7),
+        PostToMailbox = MAKE_SCID(Ipc, 8),
+        ModifyIpcConfig = MAKE_SCID(Ipc, 9),
 
-        Log = 0x50,
+        Log = MAKE_SCID(Utilities, 0),
+        GetVersion = MAKE_SCID(Utilities, 1),
 
-        PeekNextEvent = 0x60,
-        ConsumeNextEvent = 0x61,
-        GetPendingEventCount = 0x62,
+        PeekNextEvent = MAKE_SCID(ProgramEvents, 0),
+        ConsumeNextEvent = MAKE_SCID(ProgramEvents, 1),
+        GetPendingEventCount = MAKE_SCID(ProgramEvents, 2),
 
-        Sleep = 0x70,
-        Exit = 0x71,
-        GetId = 0x72,
+        Sleep = MAKE_SCID(LocalThreadControl, 0),
+        Exit = MAKE_SCID(LocalThreadControl, 1),
+        GetId = MAKE_SCID(LocalThreadControl, 2),
+    };
+#undef MAKE_SCID
+
+    enum class GeneralError : NativeUInt
+    {
+        Success = 0,
+        InvalidSyscallId = 1,
+        InvalidBufferRange = 2,
+        BadHandleId = 3,
+
+        MaxGeneralError = 0xFF,
     };
 
     enum class MemoryMapFlags : NativeUInt
@@ -69,18 +102,15 @@ namespace np::Syscall
 
     enum class DeviceError : NativeUInt
     {
-        FeatureNotAvailable = 1,
-        NoPrimaryDevice = 2,
-        UnknownDeviceType = 3,
-        MismatchedDeviceType = 4,
-        InvalidDeviceId = 5,
+        FeatureNotAvailable = 0x100,
+        NoPrimaryDevice = 0x101,
+        UnknownDeviceType = 0x102,
+        MismatchedDeviceType = 0x103,
     };
 
     enum class FileError : NativeUInt
     {
-        FileNotFound = 1,
-        NoResourceId = 2,
-        InvalidBufferRange = 3,
+        FileNotFound = 0x100,
     };
 
     enum class IpcStreamFlags : NativeUInt
@@ -103,10 +133,8 @@ namespace np::Syscall
 
     enum class IpcError : NativeUInt
     {
-        StreamStartFail = 1,
-        NoResourceId = 2,
-        InvalidBufferRange = 3,
-        MailDeliveryFailed = 4,
+        StreamStartFail = 0x100,
+        MailDeliveryFailed = 0x101,
     };
 
     enum class IpcConfigOperation : NativeUInt
@@ -129,8 +157,7 @@ namespace np::Syscall
 
     enum class LogError : NativeUInt
     {
-        BadLogLevel = 1,
-        InvalidBufferRange = 3,
+        BadLogLevel = 0x100,
     };
 
     enum class ProgramEventType : uint32_t
@@ -141,12 +168,6 @@ namespace np::Syscall
         IncomingMail = 3,
         KeyboardEvent = 4,
         MouseEvent = 5,
-    };
-
-    //TODO: this is not necessary, lets move to errors 1-32 being generic errors usable by all
-    enum class ProgramEventError : NativeUInt
-    {
-        InvalidBufferRange = 3,
     };
 
     enum class GetIdType : NativeUInt

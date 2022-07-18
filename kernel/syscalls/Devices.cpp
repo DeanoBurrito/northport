@@ -112,14 +112,13 @@ namespace Kernel::Syscalls
     void GetDeviceInfo(SyscallRegisters& regs)
     { regs.id = 1; }
 
-    void EnableDeviceEvents(SyscallRegisters& regs)
+    void DeviceEventControl(SyscallRegisters& regs)
     {
-        Devices::DeviceManager::Global()->SubscribeToDeviceEvents(regs.arg0);
-    }
-
-    void DisableDeviceEvents(SyscallRegisters& regs)
-    {
-        Devices::DeviceManager::Global()->UnsubscribeFromDeviceEvents(regs.arg0);
+        const bool subscribe = (regs.arg1 == 1);
+        if (subscribe)
+            Devices::DeviceManager::Global()->SubscribeToDeviceEvents(regs.arg0);
+        else
+            Devices::DeviceManager::Global()->UnsubscribeFromDeviceEvents(regs.arg0);
     }
 
     void GetAggregateId(SyscallRegisters& regs)

@@ -14,14 +14,14 @@ namespace WindowServer
             Log("Window renderer could not open requested file.", LogLevel::Error);
         else
         {
-            uint8_t* fileBuffer = new uint8_t[maybeFileInfo.Value()->fileSize];
-            ReadFromFile(*maybeFileHandle, 0, 0, fileBuffer, maybeFileInfo.Value()->fileSize);
+            uint8_t* fileBuffer = new uint8_t[maybeFileInfo->fileSize];
+            ReadFromFile(*maybeFileHandle, 0, 0, fileBuffer, maybeFileInfo->fileSize);
 
             const np::Graphics::Qoi::Header* header = sl::NativePtr(fileBuffer).As<np::Graphics::Qoi::Header>();
 
             if (sl::memcmp(header->magic, np::Graphics::Qoi::Magic, np::Graphics::Qoi::MagicLength) == 0)
             {
-                auto maybeImg = np::Graphics::DecodeQoi({ fileBuffer, maybeFileInfo.Value()->fileSize });
+                auto maybeImg = np::Graphics::DecodeQoi({ fileBuffer, maybeFileInfo->fileSize });
                 if (!maybeImg)
                     Log("Failed to load QOI image, no image returned.", LogLevel::Error);
                 else

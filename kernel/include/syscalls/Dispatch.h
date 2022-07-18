@@ -38,30 +38,29 @@ namespace Kernel::Syscalls
     [[noreturn]]
     void Dispatch(StoredRegisters* regs);
 
-    //0x0* - testing
+    //Group 0x0 - Tests
     void LoopbackTest(SyscallRegisters& regs);
 
-    //0x1* - memory
+    //Group 0x1 - Memory
     void MapMemory(SyscallRegisters& regs);
     void UnmapMemory(SyscallRegisters& regs);
     void ModifyMemoryFlags(SyscallRegisters& regs);
     
-    //0x2* - devices
+    //Group 0x2 - Devices
     void GetPrimaryDeviceInfo(SyscallRegisters& regs);
     void GetDevicesOfType(SyscallRegisters& regs);
     void GetDeviceInfo(SyscallRegisters& regs);
-    void EnableDeviceEvents(SyscallRegisters& regs);
-    void DisableDeviceEvents(SyscallRegisters& regs);
+    void DeviceEventControl(SyscallRegisters& regs);
     void GetAggregateId(SyscallRegisters& regs);
 
-    //0x3* - filesystem
+    //Group 0x3 - Filesystem
     void GetFileInfo(SyscallRegisters& regs);
     void OpenFile(SyscallRegisters& regs);
     void CloseFile(SyscallRegisters& regs);
     void ReadFromFile(SyscallRegisters& regs);
     void WriteToFile(SyscallRegisters& regs);
     
-    //0x4* - ipc
+    //Group 0x4 - Ipc
     void StartIpcStream(SyscallRegisters& regs);
     void StopIpcStream(SyscallRegisters& regs);
     void OpenIpcStream(SyscallRegisters& regs);
@@ -71,15 +70,16 @@ namespace Kernel::Syscalls
     void PostToMailbox(SyscallRegisters& regs);
     void ModifyIpcConfig(SyscallRegisters& regs);
 
-    //0x5* - utilities
+    //Group 0x5 - Utilities
     void Log(SyscallRegisters& regs);
+    void GetVersion(SyscallRegisters& regs);
 
-    //0x6* - program events
+    //Group 0x6 - Program Events
     void PeekNextEvent(SyscallRegisters& regs);
     void ConsumeNextEvent(SyscallRegisters& regs);
     void GetPendingEventCount(SyscallRegisters& regs);
 
-    //0x7* - local thread control
+    //Group 0x7 - Local Thread Control
     void Sleep(SyscallRegisters& regs);
     [[noreturn]]
     void Exit(SyscallRegisters& regs);
