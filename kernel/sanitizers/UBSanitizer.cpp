@@ -5,6 +5,14 @@
 
 namespace UB
 {
+/*
+    A lot of the symbols and their interpretations were pulled from Serenity
+    and thom_tl's Luna hypervisor, special thanks to them for their work.
+    Abb1x's tiny ubsan also deserves a mention as the original inspiration.
+*/
+    using Kernel::Logf;
+    using Kernel::LogSeverity;
+
     struct SourceLocation
     {
         const char* file;
@@ -13,6 +21,11 @@ namespace UB
 
         SourceLocation() : file(nullptr), line(0), column(0)
         {}
+
+        void Print(const char* header) const
+        {
+            Logf("%sSource: %s line %u column %u", LogSeverity::Warning, header, file, line, column);
+        }
     };
 
     struct TypeDescriptor
@@ -21,16 +34,18 @@ namespace UB
         uint16_t info;
         char name[];
 
-        FORCE_INLINE bool IsInt() const
-        { return kind == 0; }
-        FORCE_INLINE bool IsFloat() const
-        { return kind == 1; }
-        FORCE_INLINE bool IsSigned() const
-        { return info & 1; }
-        FORCE_INLINE bool IsUnsigned() const
-        { return !IsSigned(); }
-        FORCE_INLINE size_t BitWidth() const
-        { return 1 << (info >> 1); }
+        void Print(const char* header) const
+        {
+            const char* typeStr;
+            switch (kind)
+            {
+                case 0: typeStr = "Integer"; break;
+                case 1: typeStr = "Float"; break;
+                default: typeStr = "Unknown"; break;
+            }
+
+            Logf("%sType: %s %u-bit %s", LogSeverity::Warning, typeStr, 2 << info, name);
+        }
     };
 
     struct InvalidValueData
@@ -124,34 +139,33 @@ namespace UB
     };
 }
 
-//these symbols are pulled from serenity OS and gcc/clang error logs when compiling.
 extern "C"
 {
     using namespace UB;
-    using Kernel::Logf;
-    using Kernel::LogSeverity;
 
     [[gnu::used]]
-    void __ubsan_handle_load_invalid_value(const InvalidValueData& data, void*)
+    void __ubsan_handle_load_invalid_value(const InvalidValueData& data, uint64_t value)
     {
-        Logf("UBSAN: load_invalid_value @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.type->Print("");
+        Logf("UBSAN: load_invalid_value (value=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, value);
     }
 
     [[gnu::used]]
     void __ubsan_handle_nonnull_arg(const NonNullArgData& data)
     {
-        Logf("UBSAN: nonnull_arg @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        Logf("UBSAN: nonnull_arg @ %s:%u,%u (arg=%u)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, data.argumentIndex);
     }
 
     [[gnu::used]]
     void __ubsan_handle_nullability_arg(const NonNullArgData& data)
     {
-        Logf("UBSAN: nullability_arg @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        Logf("UBSAN: nullability_arg @ %s:%u,%u (arg=%u)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, data.argumentIndex);
     }
 
     [[gnu::used]]
-    void __ubsan_handle_nonnull_return_v1(const NonNullReturnData&, const SourceLocation& where)
+    void __ubsan_handle_nonnull_return_v1(const NonNullReturnData& data, const SourceLocation& where)
     {
+        data.where.Print("");
         Logf("UBSAN: nonnull_return @ %s:%u,%u", LogSeverity::Error, where.file, where.line, where.column);
     }
 
@@ -162,57 +176,66 @@ extern "C"
     }
 
     [[gnu::used]]
-    void __ubsan_handle_vla_bound_not_positive(const VLABoundData& data, void*)
+    void __ubsan_handle_vla_bound_not_positive(const VLABoundData& data, uint64_t bound)
     {
-        Logf("UBSAN: vla_bound_not_positive @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.type->Print("");
+        Logf("UBSAN: vla_bound_not_positive @ %s:%u,%u (bound=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, bound);
     }
 
     [[gnu::used]]
-    void __ubsan_handle_add_overflow(const OverflowData& data, void*, void*)
+    void __ubsan_handle_add_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
     {
-        Logf("UBSAN: add_overflow @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.type->Print("");
+        Logf("UBSAN: add_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     [[gnu::used]]
-    void __ubsan_handle_sub_overflow(const OverflowData& data, void*, void*)
+    void __ubsan_handle_sub_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
     {
-        Logf("UBSAN: sub_overflow @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.type->Print("");
+        Logf("UBSAN: sub_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     [[gnu::used]]
-    void __ubsan_handle_negate_overflow(const OverflowData& data, void*)
+    void __ubsan_handle_negate_overflow(const OverflowData& data, uint64_t op)
     {
-        Logf("UBSAN: negate_overflow @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.type->Print("");
+        Logf("UBSAN: negate_overflow @ %s:%u,%u (lhs=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, op);
     }
 
     [[gnu::used]]
-    void __ubsan_handle_mul_overflow(const OverflowData& data, void*, void*)
+    void __ubsan_handle_mul_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
     {
-        Logf("UBSAN: mul_overflow @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.type->Print("");
+        Logf("UBSAN: mul_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     [[gnu::used]]
-    void __ubsan_handle_shift_out_of_bounds(const ShiftOutOfBoundsData& data, void*, void*)
+    void __ubsan_handle_shift_out_of_bounds(const ShiftOutOfBoundsData& data, uint64_t lhs, uint64_t rhs)
     {
-        Logf("UBSAN: shift_out_of_bounds @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.leftOperand->Print("lhs:");
+        data.leftOperand->Print("rhs:");
+        Logf("UBSAN: shift_out_of_bounds @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     [[gnu::used]]
-    void __ubsan_handle_divrem_overflow(const OverflowData& data, void*, void*)
+    void __ubsan_handle_divrem_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
     {
-        Logf("UBSAN: divrem_overflow @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.type->Print("");
+        Logf("UBSAN: divrem_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     [[gnu::used]]
-    void __ubsan_handle_out_of_bounds(const OutOfBoundsData& data, void*)
+    void __ubsan_handle_out_of_bounds(const OutOfBoundsData& data, uint64_t operand)
     {
-        Logf("UBSAN: out_of_bounds @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
+        data.arrayType->Print("array:");
+        data.indexType->Print("index:");
+        Logf("UBSAN: out_of_bounds @ %s:%u,%u (index=0x%lx)", LogSeverity::Error, data.where.file, data.where.line, data.where.column, operand);
     }
 
     [[gnu::used]]
     void __ubsan_handle_type_mismatch_v1(const TypeMismatchData& data, void* ptr)
     {
-        //Thanks to the developers behind serenityOS: wouldn't have been able to figure out what the various error strings were otherwise.
         constexpr const char* opStrings[] = 
         {
             "load of",
@@ -267,6 +290,8 @@ extern "C"
     [[gnu::used]]
     void __ubsan_handle_implicit_conversion(const ImplicitConversationData& data, void*, void*)
     {
+        data.fromType->Print("from:");
+        data.toType->Print("  to:");
         Logf("UBSAN: implicit_conversion @ %s:%u,%u", LogSeverity::Error, data.where.file, data.where.line, data.where.column);
     }
 
