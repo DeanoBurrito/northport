@@ -123,8 +123,15 @@ namespace Kernel::Devices::Ps2
         KeyIdentity keyId;
         if (inputBuffer[scan] == BEGIN_EXTENDED_PACKET)
             keyId = GetExtendedKeyIdentity(inputBuffer[scan + 1]);
-        else
+        else if (inputBuffer[scan] < sizeof(ps2Set2Identities) / sizeof(KeyIdentity))
             keyId = ps2Set2Identities[inputBuffer[scan]];
+        else
+        {
+            //If we've ended up here its either a key we don't support, or we've encountered a race condition with the ps2 mouse + keyboard.
+            //where the mouse and kb both try to write to the data port, but the other one sends the interrupt first.
+            inputLength = 0;
+            return;
+        }
 
         UpdateModifiers(keyId, released);
         

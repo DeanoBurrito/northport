@@ -109,6 +109,7 @@ namespace Kernel::Devices
         using namespace Scheduling;
         sl::Vector<ThreadGroupEvent> convEvents;
         {
+            InterruptLock intLock;
             sl::ScopedSpinlock scopeLock(&lock);
             convEvents.EnsureCapacity(events.Size());
 
@@ -129,7 +130,7 @@ namespace Kernel::Devices
         
         for (size_t i = 0; i < eventSubscribers->Size(); i++)
         {
-            ThreadGroup* destGroup = Scheduler::Global()->GetThreadGroup(eventSubscribers->At(i));
+            ThreadGroup* destGroup = *Scheduler::Global()->GetThreadGroup(eventSubscribers->At(i));
             destGroup->PushEvents(convEvents);
         }
     }

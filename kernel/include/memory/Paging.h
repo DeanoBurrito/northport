@@ -50,6 +50,7 @@ namespace Kernel::Memory
         void MakeActive() const;
         bool IsActive() const;
         bool PageSizeAvailable(PagingSize size) const;
+        sl::NativePtr GetTla() const; //I'm going to regret exposing this pointer arent I?
 
         sl::Opt<sl::NativePtr> GetPhysicalAddress(sl::NativePtr virtAddr);
 

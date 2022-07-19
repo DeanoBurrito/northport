@@ -362,6 +362,9 @@ namespace Kernel::Memory
         }
     }
 
+    sl::NativePtr PageTableManager::GetTla() const
+    { return topLevelAddress; }
+
     void PageTableManager::MapMemory(sl::NativePtr virtAddr, MemoryMapFlags flags)
     {
         sl::NativePtr physAddr = PMM::Global()->AllocPage();

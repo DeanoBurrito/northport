@@ -47,6 +47,10 @@ namespace Kernel::Memory
         void MakeActive();
         bool IsActive() const;
 
+        [[gnu::always_inline]] inline
+        sl::NativePtr GetTla() const
+        { return pageTables.GetTla(); }
+
         bool AddRange(VMRange range, bool backImmediately);
         bool RemoveRange(VMRange range);
         void ModifyRange(VMRange range, MemoryMapFlags newFlags);
