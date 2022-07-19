@@ -15,28 +15,27 @@ namespace Kernel::Scheduling
 
         auto maybeStack = parent->VMM()->GetPhysAddr(programStack.raw - 8);
         sl::NativePtr stackAccess = EnsureHigherHalfAddr(maybeStack->raw + 8);
-        stackAccess.As<StoredRegisters>()->rsi = arg.raw;
+        stackAccess.As<StoredRegisters>()->rdi = arg.raw;
         runState = ThreadState::Running;
     }
 
     void Thread::Exit()
     {
-        //NOTE: after calling exit() this thread's instance is actually deleted, we cannot use any instance variables or use the id for anything.
         bool localExit = false;
         {
             InterruptLock intLock;
             runState = ThreadState::PendingCleanup;
             localExit = (Thread::Current() == this);
-            Scheduler::Global()->RemoveThread(this->id);
+            Scheduler::Global()->RemoveThread(id);
         }
 
         //we only want to reschedule if we are exiting the current thread
         if (localExit)
+        {
             Scheduler::Global()->Yield();
+            __builtin_unreachable();
+        }
     }
-
-    void Thread::Kill()
-    {}
 
     void Thread::Sleep(size_t millis)
     {

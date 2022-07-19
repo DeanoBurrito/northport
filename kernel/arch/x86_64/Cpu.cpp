@@ -166,7 +166,7 @@ namespace Kernel
         else
         {} 
 
-        Logf("Extended cpu state setup for core %lu", LogSeverity::Verbose, CoreLocal()->apicId);
+        Logf("Extended cpu state setup for core %lu", LogSeverity::Verbose, CoreLocal()->id);
         extendedState.setup = true;
     }
 

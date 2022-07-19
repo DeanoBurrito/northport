@@ -1,5 +1,4 @@
 #include <scheduling/BuiltinThreads.h>
-#include <scheduling/Scheduler.h>
 #include <devices/DeviceManager.h>
 #include <Locks.h>
 
@@ -15,12 +14,21 @@ namespace Kernel::Scheduling
         while (true)
         {
             sl::SpinlockAcquire(&data->lock);
-            for (size_t i = 0; i < data->processes.Size(); i++)
+            // for (size_t i = 0; i < data->threads.Size(); i++)
+            // {
+            //     if (!data->threads[i]->Parent()->CleanupChild(data->threads[i]))
+            //         continue;
+                
+            //     delete data->threads[i];
+            //     data->threads.Erase(i);
+            // } TODO: implement cleaning up threads
+
+            for (size_t i = 0; i < data->groups.Size(); i++)
             {
-                data->processes[i]->VMM()->Deinit();
-                delete data->processes[i];
+                data->groups[i]->VMM()->Deinit();
+                delete data->groups[i];
             }
-            data->processes.Clear();
+            data->groups.Clear();
 
             sl::SpinlockRelease(&data->lock);
             Thread::Current()->Sleep(1000 / SchedulerCleanupThreadFreq);

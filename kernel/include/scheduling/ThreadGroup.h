@@ -39,6 +39,7 @@ namespace Kernel::Scheduling
         sl::Vector<Thread*> threads;
         Memory::VirtualMemoryManager vmm;
         sl::Bitmap userStackBitmap;
+        sl::Bitmap kernelStackBitmap;
         
         sl::UIdAllocator resourceIdAlloc;
         sl::Vector<ThreadResource> resources;

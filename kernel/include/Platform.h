@@ -8,6 +8,8 @@
     #error "Unknown cpu architecture, cannot include platform specific defines. Refusing to compile."
 #endif
 
+#define MACRO_STR_INNER(x) #x
+#define MACRO_STR(x) MACRO_STR_INNER(x)
 #define FORCE_INLINE [[gnu::always_inline]] inline
 
 namespace Kernel

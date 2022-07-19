@@ -1,5 +1,6 @@
 #include <Log.h>
 #include <scheduling/Scheduler.h>
+#include <scheduling/Thread.h>
 #include <devices/ps2/Ps2Driver.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
@@ -30,7 +31,7 @@ void InitUserspaceTask()
         return;
     }
 
-    Thread* startupThread = Scheduler::Global()->GetThread(*maybeThreadId);
+    Thread* startupThread = Scheduler::Global()->GetThread(*maybeThreadId).Value();
     startupThread->Start(nullptr);
     
     auto maybeWindowid = Kernel::LoadElfFromFile("/initdisk/apps/server-window.elf", ThreadFlags::None);
@@ -41,8 +42,10 @@ void InitUserspaceTask()
     }
 
     Kernel::LogEnableDest(Kernel::LogDest::FramebufferOverwrite, false);
-    Thread* serverStartupThread = Scheduler::Global()->GetThread(*maybeWindowid);
+    Thread* serverStartupThread = Scheduler::Global()->GetThread(*maybeWindowid).Value();
     serverStartupThread->Start(nullptr);
+
+    Thread::Current()->Exit();
 }
 
 void InitPs2Task()
@@ -65,12 +68,14 @@ void InitPs2Task()
     }
 
     DriverManager::Global()->StartDriver(*maybeManifest, nullptr);
+    Thread::Current()->Exit();
 }
 
 void InitPciTask()
 {
     Kernel::Devices::PciBridge::Global()->Init();
     Scheduler::Global()->CreateThread((size_t)InitUserspaceTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
+    Thread::Current()->Exit();
 }
 
 void InitManagersTask()
@@ -105,6 +110,7 @@ void InitManagersTask()
 
     Scheduler::Global()->CreateThread((size_t)InitPs2Task, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
     Scheduler::Global()->CreateThread((size_t)InitPciTask, ThreadFlags::KernelMode, initTaskThreadGroup)->Start(nullptr);
+    Thread::Current()->Exit();
 }
 
 void QueueInitTasks()

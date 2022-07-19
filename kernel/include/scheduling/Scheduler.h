@@ -1,59 +1,75 @@
 #pragma once
 
 #include <IdAllocator.h>
-#include <scheduling/BuiltinThreads.h>
 #include <containers/Vector.h>
-#include <containers/LinkedList.h>
+#include <scheduling/Thread.h>
+#include <scheduling/BuiltinThreads.h>
 
-#define SCHEDULER_TIMER_TICK_MS 10
+namespace Kernel
+{
+    struct [[gnu::packed]] StoredRegisters;
+}
 
 namespace Kernel::Scheduling
 {
-    //holds details about what a particular core is up to
-    struct SchedulerProcessorStatus
-    {
-        bool isIdling = false;
-        Thread* currentThread = nullptr;
-        Thread* idleThread = nullptr;
+    class ThreadGroup;
 
-        //there may be gaps in how we store these (if cpu-ids have gaps in them).
-        [[gnu::always_inline]] inline
-        bool IsPlaceholder()
-        { return currentThread == nullptr && idleThread == nullptr; }
+    //This struct is accessed from the trap handler, so the order of these fields must be fixed.
+    struct [[gnu::packed]] ForeignStack
+    {
+        NativeUInt magic;
+        NativeUInt translationAddr;
+        NativeUInt stackAddr;
+    };
+
+    struct ProcessorStatus
+    {
+        char lock;
+        bool isPlaceholder = true;
+
+        //temporary data store, see Scheduler::Tick()
+        ForeignStack targetStack;
+
+        Thread* idleThread;
+        Thread* lastSelected;
+        sl::Vector<Thread*> threads; //non-owning ptrs
     };
 
     class Scheduler
     {
     friend Thread;
     private:
-        char lock;
+        char globalLock;
         bool suspended;
-        sl::UIdAllocator idAllocator;
-        sl::Vector<Thread*> allThreads;
-        sl::LinkedList<ThreadGroup*> threadGroups;
-        sl::Vector<SchedulerProcessorStatus> processorStatus;
-        Thread* lastSelectedThread;
 
-        //anything contained here is available to the cleanup thread
+        sl::UIdAllocator threadIdAlloc;
+        sl::UIdAllocator groupIdAlloc;
+        sl::Vector<ThreadGroup*> threadGroups;
+        sl::Vector<Thread*> allThreads;
+        sl::Vector<ProcessorStatus> processors;
+
+        ThreadGroup* idleGroup;
         CleanupData cleanupData;
 
-        void SaveContext(Thread* thread, StoredRegisters* regs);
-        StoredRegisters* LoadContext(Thread* thread);
+        void SpawnUtilityThreads();
+        bool EnqueueOnCore(Thread* thread, size_t core);
+        bool DequeueFromCore(Thread* thread, size_t core);
 
     public:
         static Scheduler* Global();
 
-        void Init(size_t baseProcessorId);
+        void Init();
         void AddProcessor(size_t id);
-        StoredRegisters* Tick(StoredRegisters* current);
+        StoredRegisters* Tick(StoredRegisters* regs);
         void Yield();
-        void Suspend(bool suspendScheduling = true);
+        void YieldCore(size_t core);
+        void Suspend(bool yes = true);
 
         ThreadGroup* CreateThreadGroup();
-        //TODO: void RemoveThreadGroup(size_t id); //see down below, mirror function to RemoveThread()
-        ThreadGroup* GetThreadGroup(size_t id) const;
-        Thread* CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent = nullptr);
+        void RemoveThreadGroup(size_t id);
+        sl::Opt<ThreadGroup*> GetThreadGroup(size_t id) const;
+        Thread* CreateThread(sl::NativePtr entryAddress, ThreadFlags flags, ThreadGroup* parent = nullptr, size_t coreIndex = (size_t)-1);
         void RemoveThread(size_t id);
-        Thread* GetThread(size_t id) const;
+        sl::Opt<Thread*> GetThread(size_t id) const;
     };
 }

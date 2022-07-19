@@ -1,10 +1,6 @@
 #pragma once
 
 #include <Platform.h>
-#include <containers/Vector.h>
-#include <memory/VirtualMemory.h>
-#include <Optional.h>
-#include <IdAllocator.h>
 #include <scheduling/ThreadGroup.h>
 
 namespace Kernel::Scheduling
@@ -17,7 +13,6 @@ namespace Kernel::Scheduling
         PendingStart,
         PendingCleanup,
         Running,
-        Waiting,
         Sleeping,
         SleepingForEvents,
     };
@@ -41,9 +36,9 @@ namespace Kernel::Scheduling
         ThreadFlags flags;
         ThreadState runState;
         size_t id;
+        size_t core;
         ThreadGroup* parent;
 
-        //there are actually where the stacks are
         sl::NativePtr programStack;
         sl::NativePtr kernelStack;
 
@@ -70,7 +65,7 @@ namespace Kernel::Scheduling
 
         void Start(sl::NativePtr arg);
         void Exit();
-        void Kill();
+        //NOTE: Exit() can be used on non-local threads, so there's no Kill().
         void Sleep(size_t millis);
         void SleepUntilEvent(size_t timeout); //timeout of 0 means indefinite
     };

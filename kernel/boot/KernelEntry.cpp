@@ -138,7 +138,8 @@ namespace Kernel::Boot
 
         Filesystem::VFS::Global()->Init();
         Memory::IpcManager::Global()->Init();
-        Scheduling::Scheduler::Global()->Init(bootCoreId);
+        Scheduling::Scheduler::Global()->Init();
+        Scheduling::Scheduler::Global()->AddProcessor(bootCoreId);
 
         InitCore(bootCoreId, 0);
 

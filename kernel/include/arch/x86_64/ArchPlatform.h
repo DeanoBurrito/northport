@@ -6,6 +6,8 @@
 #define PAGE_FRAME_SIZE 0x1000
 #define AP_BOOTSTRAP_BASE 0x44000
 #define INTERRUPT_VECTORS_BASE 0xFFFF'FFFF'FF00'0000
+#define SCHEDULER_TICK_MS 10
+
 #define PORT_DEBUGCON 0xE9
 #define PORT_PS2_DATA 0x60
 #define PORT_PS2_COMMAND_STATUS 0x64
@@ -19,7 +21,6 @@
 #define INT_VECTOR_IGNORE 0xFF
 #define INT_VECTOR_PANIC 0xFE
 #define INT_VECTOR_PS2KEYBOARD 0x21
-//NOTE: scheduler has this hardcoded in Yield() -> update it there if modifying
 #define INT_VECTOR_SCHEDULER_TICK 0x22
 #define INT_VECTOR_PIT_TICK 0x23
 #define INT_VECTOR_SYSCALL 0x24
@@ -119,7 +120,7 @@ namespace Kernel
     struct CoreLocalStorage
     {
         uint64_t selfAddress; //you're welcome, future me
-        uint64_t apicId;
+        uint64_t id;
         uint64_t acpiProcessorId;
         sl::NativePtr ptrs[CoreLocalIndices::EnumCount];
     };
@@ -134,6 +135,9 @@ namespace Kernel
 
     struct [[gnu::packed]] StoredRegisters
     {
+        //zero for local stack, non-zero for foreign stack.
+        uint64_t stackType;
+        
         uint64_t r15;
         uint64_t r14;
         uint64_t r13;

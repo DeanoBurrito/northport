@@ -78,7 +78,7 @@ namespace Kernel::Syscalls
         //NOTE: we can't assume the context this callback will be run in. It may not run inside the same
         //address space as the client we're cleaning up.
         
-        Scheduling::ThreadGroup* tg = Scheduling::Scheduler::Global()->GetThreadGroup(client->threadGroupId);
+        Scheduling::ThreadGroup* tg = *Scheduling::Scheduler::Global()->GetThreadGroup(client->threadGroupId);
         if (tg == nullptr)
         {
             Logf("Weird state when closing ipc stream: threadgroup (id=%u) marked as connected, but does not exist.", 

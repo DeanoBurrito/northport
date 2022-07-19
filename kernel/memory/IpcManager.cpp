@@ -169,7 +169,7 @@ namespace Kernel::Memory
 
 access_allowed:
             //we're allowed to access the stream, map the physical pages, and add ourselves to the connected list
-            auto foreignVmm = Scheduling::Scheduler::Global()->GetThreadGroup(existingStream->ownerId)->VMM();
+            auto foreignVmm = Scheduling::Scheduler::Global()->GetThreadGroup(existingStream->ownerId).Value()->VMM();
             const sl::BufferView range = VMM::Current()->AddSharedRange(
                     *foreignVmm, 
                     { existingStream->buffer.base.raw, existingStream->buffer.length, memFlags }
@@ -273,7 +273,7 @@ access_allowed:
             mailControl->head = nextBlank->positionInStream;
 
         //send an event to the target process
-        Scheduling::ThreadGroup* ownerGroup = Scheduling::Scheduler::Global()->GetThreadGroup(streamDetails->ownerId);
+        Scheduling::ThreadGroup* ownerGroup = Scheduling::Scheduler::Global()->GetThreadGroup(streamDetails->ownerId).Value();
         if (ownerGroup == nullptr)
             return false;
         

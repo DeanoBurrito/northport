@@ -32,7 +32,7 @@ namespace Kernel::Boot
     {
         CoreLocalStorage* coreStore = new CoreLocalStorage();
         coreStore->selfAddress = (uint64_t)coreStore;
-        coreStore->apicId = id;
+        coreStore->id = id;
         coreStore->acpiProcessorId = acpiId;
         coreStore->ptrs[CoreLocalIndices::LAPIC] = new Devices::LApic();
         coreStore->ptrs[CoreLocalIndices::TSS] = new TaskStateSegment();
@@ -71,8 +71,8 @@ namespace Kernel::Boot
     void ExitInitArch()
     {
         CPU::EnableInterrupts();
-        Devices::LApic::Local()->SetupTimer(SCHEDULER_TIMER_TICK_MS, INT_VECTOR_SCHEDULER_TICK, true);
-        Logf("Core %lu init completed in: %lu ms. Exiting to scheduler ...", LogSeverity::Info, CoreLocal()->apicId, Devices::GetUptime());
+        Devices::LApic::Local()->SetupTimer(SCHEDULER_TICK_MS, INT_VECTOR_SCHEDULER_TICK, true);
+        Logf("Core %lu init completed in: %lu ms. Exiting to scheduler ...", LogSeverity::Info, CoreLocal()->id, Devices::GetUptime());
 
         Scheduling::Scheduler::Global()->Yield();
         __builtin_unreachable();

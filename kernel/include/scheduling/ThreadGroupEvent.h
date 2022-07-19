@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stdint.h>
 #include <NativePtr.h>
 
 namespace Kernel::Scheduling

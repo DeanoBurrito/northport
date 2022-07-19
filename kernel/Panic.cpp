@@ -40,10 +40,10 @@ namespace Kernel
         sl::SpinlockAcquire(&details.lock);
         Scheduling::Scheduler::Global()->Suspend(true);
         details.message = message;
-        details.responseCore = CoreLocal()->apicId;
+        details.responseCore = CoreLocal()->id;
 
         CPU::EnableInterrupts();
-        asm volatile("int $0xFE");
+        asm volatile("int $" MACRO_STR(INT_VECTOR_PANIC));
         __builtin_unreachable();
     }
 
@@ -53,7 +53,7 @@ namespace Kernel
             regs = &details.overrideRegisters;
         const Scheduling::Thread* currentThread = Scheduling::Thread::Current();
 
-        if (details.responseCore != CoreLocal()->apicId)
+        if (details.responseCore != CoreLocal()->id)
             goto final_loop_no_log;
         
         //if we can, ensure we have the processes's page tables loaded here

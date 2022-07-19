@@ -70,7 +70,7 @@ namespace Kernel
         sl::Opt<size_t> maybeThread = LoadElfFromMemory({ buffer, fileNode->Details().filesize }, threadFlags);
         if (maybeThread)
         {
-            Scheduling::Thread* thread = Scheduling::Scheduler::Global()->GetThread(*maybeThread);
+            Scheduling::Thread* thread = Scheduling::Scheduler::Global()->GetThread(*maybeThread).Value();
             thread->Name() = "Main thread";
             thread->Parent()->Name() = filename;
         }

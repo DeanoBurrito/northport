@@ -8,7 +8,8 @@ namespace Kernel::Scheduling
     struct CleanupData
     {
         char lock;
-        sl::Vector<ThreadGroup*> processes;
+        sl::Vector<ThreadGroup*> groups;
+        sl::Vector<Thread*> threads;
     };
 
     void CleanupThreadMain(void* arg);

@@ -1,16 +1,15 @@
 #include <scheduling/ThreadGroup.h>
 #include <scheduling/Thread.h>
-#include <memory/PhysicalMemory.h>
 #include <Locks.h>
 #include <Log.h>
 
 namespace Kernel::Scheduling
 {
-    //address chosen because it's easy to identity in memory dumps/traces. No other real significance.
-    constexpr size_t userGlobalStackBase = 0x55'5555'0000;
-    constexpr size_t userStackPages = 4;
-    // constexpr size_t kernelGlobalStackBase = 0xFFFF'D555'0000'0000; //TODO: use virtual kernel stacks instead of hhdm ones
-    constexpr size_t kernelStackPages = 4;
+    //Addresses chosen because it's easy to identity in memory dumps/traces. No other real significance.
+    constexpr size_t UserGlobalStackBase = 0x55'5555'0000;
+    constexpr size_t UserStackPages = 4;
+    constexpr size_t KernelGlobalStackBase = 0xFFFF'D555'0000'0000;
+    constexpr size_t KernelStackPages = 4;
     
     sl::NativePtr ThreadGroup::AllocUserStack()
     {
@@ -19,43 +18,60 @@ namespace Kernel::Scheduling
         size_t index = userStackBitmap.FindAndClaimFirst();
         while (index == (size_t)-1)
         {
-            userStackBitmap.Resize(userStackBitmap.Size() + userStackBitmap.Size() * 2);
+            userStackBitmap.Resize(userStackBitmap.Size() * 2);
             index = userStackBitmap.FindAndClaimFirst();
         }
-        const sl::NativePtr base = userGlobalStackBase + index * (userStackPages + 1) * PAGE_FRAME_SIZE; //+1 because of the gaurd page we leave unmapped
+        const sl::NativePtr base = UserGlobalStackBase + index * (UserStackPages + 1) * PAGE_FRAME_SIZE; //+1 because of the gaurd page we leave unmapped
         
-        using MFlags = Memory::MemoryMapFlags;
-        vmm.AddRange({ base.raw, userStackPages * PAGE_FRAME_SIZE, MFlags::UserAccessible | MFlags::AllowWrites | MFlags::SystemRegion }, true);
-        return base.raw + userStackPages * PAGE_FRAME_SIZE;
+        vmm.AddRange({ base.raw, UserStackPages * PAGE_FRAME_SIZE, MFlags::UserAccessible | MFlags::AllowWrites | MFlags::SystemRegion }, true);
+        return base.raw + UserStackPages * PAGE_FRAME_SIZE;
     }
 
     void ThreadGroup::FreeUserStack(sl::NativePtr base)
     {
-        base.raw -= userStackPages * PAGE_FRAME_SIZE;
-        if (!vmm.RangeExists({ base.raw, userStackPages * PAGE_FRAME_SIZE }))
+        base.raw -= UserStackPages * PAGE_FRAME_SIZE;
+        if (!vmm.RangeExists({ base.raw, UserStackPages * PAGE_FRAME_SIZE }))
         {
             Log("Tried to free user stack: stack VM range not found.", LogSeverity::Warning);
             return;
         }
         
         sl::ScopedSpinlock scopeLock(&lock);
-        vmm.RemoveRange({ base.raw, userStackPages * PAGE_FRAME_SIZE });
+        vmm.RemoveRange({ base.raw, UserStackPages * PAGE_FRAME_SIZE });
         
-        const size_t index = (base.raw - userGlobalStackBase) / (userStackPages + 1);
+        const size_t index = (base.raw - UserGlobalStackBase) / (UserStackPages + 1);
         userStackBitmap.Clear(index);
     }
 
     sl::NativePtr ThreadGroup::AllocKernelStack()
     {
-        //TODO: would be nice to move away from allocating stacks in the hhdm.
-        const sl::NativePtr base = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPages(kernelStackPages));
-        return base.raw + kernelStackPages * PAGE_FRAME_SIZE;
+        sl::ScopedSpinlock scopeLock(&lock);
+
+        size_t index = kernelStackBitmap.FindAndClaimFirst();
+        while (index == (size_t)-1)
+        {
+            kernelStackBitmap.Resize(kernelStackBitmap.Size() * 2);
+            index = kernelStackBitmap.FindAndClaimFirst();
+        }
+        const sl::NativePtr base = KernelGlobalStackBase + index * (KernelStackPages + 1) * PAGE_FRAME_SIZE;
+
+        vmm.AddRange({ base.raw, KernelStackPages * PAGE_FRAME_SIZE, MFlags::AllowWrites }, true);
+        return base.raw + KernelStackPages * PAGE_FRAME_SIZE;
     }
 
     void ThreadGroup::FreeKernelStack(sl::NativePtr base)
     {
-        base.raw -= kernelStackPages * PAGE_FRAME_SIZE;
-        Memory::PMM::Global()->FreePages(EnsureLowerHalfAddr(base.raw), kernelStackPages);
+        base.raw -= KernelStackPages * PAGE_FRAME_SIZE;
+        if (!vmm.RangeExists({ base.raw, KernelStackPages * PAGE_FRAME_SIZE }))
+        {
+            Log("Tried to free kernel stack: stack VM range not found.", LogSeverity::Warning);
+            return;
+        }
+
+        sl::ScopedSpinlock scopeLock(&lock);
+        vmm.RemoveRange({ base.raw, KernelStackPages * PAGE_FRAME_SIZE });
+        const size_t index = (base.raw - KernelGlobalStackBase) / (KernelStackPages + 1);
+        kernelStackBitmap.Clear(index);
     }
     
     ThreadGroup* ThreadGroup::Current()
