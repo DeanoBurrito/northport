@@ -32,7 +32,7 @@ void InitUserspaceTask()
     }
 
     Thread* startupThread = Scheduler::Global()->GetThread(*maybeThreadId).Value();
-    startupThread->Start(nullptr);
+    // startupThread->Start(nullptr);
     
     auto maybeWindowid = Kernel::LoadElfFromFile("/initdisk/apps/server-window.elf", ThreadFlags::None);
     if (!maybeWindowid)

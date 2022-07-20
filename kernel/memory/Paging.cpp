@@ -69,7 +69,7 @@ namespace Kernel::Memory
 
         void SetFlag(PageEntryFlag flagMask)
         {
-            raw |= flagMask & 0xFFF0'0000'0000'0FFF;
+            raw |= flagMask & 0xFFF0'0000'0000'0FFF; //TODO: this does not support 57-bit address!
         }
 
         void ClearFlag(PageEntryFlag flagMask)
@@ -237,15 +237,22 @@ namespace Kernel::Memory
                     continue;
                 
                 const uint64_t base = (region->base < 4 * GB) ? 4 * GB : region->base;
-                for (size_t j = 0; j < region->length; j += PAGE_FRAME_SIZE)
+                const size_t regionTop = sl::min(region->length, HHDM_LIMIT - region->base);
+                for (size_t j = 0; j < regionTop; j += PAGE_FRAME_SIZE)
                     MapMemory(hhdmLowerBound + base + j, base + j, MemoryMapFlags::AllowWrites);
 
                 hhdmUpperBound = hhdmLowerBound + region->base + region->length;
+                if (hhdmUpperBound >= HHDM_LIMIT + hhdmLowerBound)
+                {
+                    Log("HHDM Limit (" MACRO_STR(HHDM_LIMIT) " bytes) has been hit, the upper reaches of physical memory may be unavailable.", LogSeverity::Warning);
+                    hhdmUpperBound = hhdmLowerBound + HHDM_LIMIT;
+                    break;
+                }
             }
 
-            MakeActive();
         }
 
+        MakeActive();
         Log("Kernel root page table initialized.", LogSeverity::Info);
     }
 

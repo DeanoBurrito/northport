@@ -48,14 +48,17 @@ namespace Kernel::Devices
 
     void IoApic::Init(uint64_t address, uint8_t id, uint8_t gsiBase)
     {
-        baseAddress = address;
-        baseAddress.ptr = EnsureHigherHalfAddr(baseAddress.ptr);
+        baseAddress = EnsureHigherHalfAddr(address);
         Memory::PageTableManager::Current()->MapMemory(baseAddress, address, Memory::MemoryMapFlags::AllowWrites);
 
         apicId = id;
         this->gsiBase = gsiBase;
         maxRedirects = (ReadReg(IoApicRegister::Version) >> 16) & 0xFF;
         maxRedirects++; //stored value is n - 1
+
+        //ensure everything is masked by default
+        for (size_t i = 0; i < maxRedirects; i++)
+            SetPinMask(i, true);
 
         Logf("New IO APIC initialized: base=0x%lx, id=%u, gsiBase=%u, maxRedirects=%u", LogSeverity::Info, baseAddress.raw, apicId, gsiBase, maxRedirects);
     }

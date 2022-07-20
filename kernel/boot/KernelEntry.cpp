@@ -85,10 +85,9 @@ namespace Kernel::Boot
         PMM::Global()->InitFromLimine();
         PageTableManager::Setup();
         PageTableManager::Current()->InitKernelFromLimine();
-        PageTableManager::Current()->MakeActive();
 
         const sl::BufferView hhdm = PageTableManager::GetHhdm();
-        KernelHeap::Global()->Init(hhdm.base.raw + hhdm.length + 2 * GB, false);
+        KernelHeap::Global()->Init(hhdm.base.raw + hhdm.length + GB, false);
         Log("Memory init complete.", LogSeverity::Info);
     }
 
@@ -223,6 +222,7 @@ extern "C"
 
         InitLogging();
         InitMemory();
+
         LoggingInitFull();
         PrintBootInfo();
         //TODO: would be nice to have PrintCpuInfo() as well

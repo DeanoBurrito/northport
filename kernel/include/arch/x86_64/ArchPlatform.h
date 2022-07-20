@@ -2,10 +2,12 @@
 
 #include <stdint.h>
 #include <NativePtr.h>
+#include <Maths.h>
 
 #define PAGE_FRAME_SIZE 0x1000
 #define AP_BOOTSTRAP_BASE 0x44000
 #define INTERRUPT_VECTORS_BASE 0xFFFF'FFFF'FF00'0000
+#define HHDM_LIMIT (512 * GB)
 #define SCHEDULER_TICK_MS 10
 
 #define PORT_DEBUGCON 0xE9

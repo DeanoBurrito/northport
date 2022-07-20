@@ -233,7 +233,7 @@ namespace Kernel::Devices
 
     void DeviceManager::EventPump()
     {
-        if (!initialized)
+        if (!initialized || allDevices == nullptr)
             return;
         
         sl::ScopedSpinlock scopeLock(&allDevicesLock);

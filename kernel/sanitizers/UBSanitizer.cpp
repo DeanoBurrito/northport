@@ -44,7 +44,7 @@ namespace UB
                 default: typeStr = "Unknown"; break;
             }
 
-            Logf("%sType: %s %u-bit %s", LogSeverity::Warning, typeStr, 2 << info, name);
+            Logf("%sType: %s %u-bit %s", LogSeverity::Warning, header, typeStr, 2 << info, name);
         }
     };
 
