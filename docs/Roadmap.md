@@ -4,6 +4,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
 - [x] Core infrastructure
     - [x] Kernel memory management: PMM and heap.
         - [x] Multi-tiered allocator: slabs over linked list.
+        - [ ] Slab allocator expansion.
         - [x] Improved debugging.
     - [x] Centralized logging.
         - [x] Framebuffer backend.
@@ -16,9 +17,11 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] Device streams/queues.
     - [x] Driver manager.
     - [x] Scheduler.
-        - [ ] Rewrite: per-core thread queue to reduce use of the main lock.
         - [x] Threads and processes.
         - [x] Process resource handles.
+        - [ ] Work borrowing/stealing.
+        - [ ] DPC.
+        - [ ] Tickless and timer chains.
     - [x] Virtual file system.
         - [x] Loadable filesystem drivers.
         - [x] Init-time FS (ustar based).
@@ -32,7 +35,6 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [x] RTC real-time read.
     - [x] Undefined behaviour sanitizer.
     - [x] Panic().
-        - [ ] Graphical output.
     - [ ] Networking stack.
         - [ ] Ethernet layer.
         - [ ] ARP.
@@ -56,20 +58,20 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [x] Multicore booting.
     - [x] Multicore scheduling.
     - [x] PS2 peripherals.
-    - [x] PCI.
-        - [x] MSI and MSI-X.
     - [x] System calls.
     - [x] Extended CPU state (sse/avx).
         - [ ] XSAVE support.
     
 - [ ] rv64
-    - [ ] SBI stivale2 boot shim.
+    - [ ] SBI liminebp boot shim.
     - [ ] Paging: Generic implementation supporting 3+ levels.
     - [ ] (A)PLIC.
     - [ ] (A)CLINT.
     - [ ] Vector extension support.
 
 - [ ] Devices
+    - [x] PCI.
+        - [x] MSI and MSI-X.
     - [ ] COM-type serial.
     - [x] Bochs Graphics.
     - [ ] E1000 network driver.
@@ -80,8 +82,8 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] Intel AC97 audio.
     - [ ] Intel HD audio.
     - [ ] NVME controllers.
+    - [ ] AHCI (SATA).
     - [ ] EHCI (usb 2).
-        - [ ] OHCI.
         - [ ] UHCI.
     - [ ] xHCI (usb 3).
 
@@ -99,4 +101,3 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] Terminal emulator.
     - [ ] ELF library (move existing stuff from syslib).
     - [ ] Dynamic linker.
-        - [ ] Force np-syscall to be a dynamic library, so the latest API is always used.

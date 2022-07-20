@@ -1,10 +1,12 @@
 ![](https://tokei.rs/b1/github/deanoburrito/northport)
 
 # Northport
-Northport is a monolithic kernel and utilities, targetting x86_64. It's booted via the limine boot protocol. 
-There are limited docs about the kernel and supporting libraries under `docs/`, all available in markdown format. These are very much WIP, so there may be sections that are unfinished or even missing.
+Northport is a monolithic kernel, libraries and some userspace programs. It's very much a WIP right now.
+It's booted by the limine boot protocol, and has support for x86_64 with rv64 support planned.
 
-For instructions on building and running, check [here](docs/Building.md). Down below there's a brief overview of the current feature-set, but for a roadmap of current and planned features, see [here](docs/Roadmap.md).
+For instructions on building and running, [check here](docs/Building.md). Documentation for the rest of the project is written in LaTeX and contained a [separate repo](https://github.com/DeanoBurrito/northport-docs/). If you're not into that, a pdf version of the latest commit is [available here](https://github.com/DeanoBurrito/northport-docs/releases/tag/latest). 
+
+Down below there's a brief overview of the current feature-set, but for a roadmap of current and planned features, see [here](docs/Roadmap.md).
 
 # Project Goals
 ## Planned Features
@@ -20,7 +22,7 @@ For instructions on building and running, check [here](docs/Building.md). Down b
 
 ## Current Features
 Kernel:
-- Physical memory manager (does page frame allocation, in single or multiple pages).
+- Physical memory manager, bitmap based.
 - Per-process virtual memory manager, with paging support for x86 (4 or 5 levels).
 - GDT and IDT implementations. IDT implementation is nothing unique, but something I think is quite cool.
 - Kernel heap: combination of slab and pool allocators, with some handy debug features.
@@ -30,9 +32,9 @@ Kernel:
 - Loadable drivers. Currently only a handful of simple drivers exist, more to come over time.
 - Single-root style VFS, full support for mounting/unmount and file lookup. Currently only has the init ramdisk driver implemented.
 - IPC, both stream and packet based. 
-- System calls. Nothing too technically interesting, but an implementation I'm quite proud of.
-- Optional UBsan. Can be enabled globally, or just for the kernel.
+- System calls. Growing over time, nothing too technically interesting so far.
 - Logging layer. Can enable/disable the various backends at runtime. Support for debugcon currently, framebuffer and serial planned.
+- Option UBSan, currently only supported in the kernel. 
 
 Support libraries:
 - np-graphics: cpu-driven graphics, limited drawing functions.
@@ -42,7 +44,7 @@ Support libraries:
 - np-gui: framework for building user interfaces.
     - Provides a wrapper around communication with the window server (also the reference implementation).
 - np-syscall: friendly c++ wrapper around kernel system calls.
-    - There is also the abi [description](docs/kernel/SystemCalls.md) and [spec](docs/kernel/SystemCallList.md) itself you want to go that route.
+    - System calls do have a formal ABI and spec if you want to roll your own interface for them. It's all in the documentation.
 - np-syslib: utility library. It provides parts of the STL and std library I miss in a freestanding environment.
     - Printf-compatable string formatting, with a few extras.
     - String <-> number conversions.
@@ -71,24 +73,6 @@ Currently not much to see, as there is no functional GUI yet, for now you'll hav
 
 ![Brown screen of death, triggered manually](https://user-images.githubusercontent.com/12033165/175759524-ed527b91-4390-4d39-8ee4-edbc25a2faf3.png)
 - A graphical update to the kernel panic.
-
-# Project layout
-Each of sub-projects are in their own folder:
-- `docs/`: documentation for various parts of the project. 
-- `initdisk/`: the init ramdisk for the kernel. All the files included are stored here.
-- `iso/`: is where the final iso is built, not included in the git repo.
-- `kernel/`: the kernel itself. 
-    - `kernel/syscalls/`: each file contains the implementation of a the syscall group of the same name. It's done this way as each group will deal with vastly different functionality.
-    - `kernel/arch/`: contains architecture specific code.
-    - the other various folders contain code for a specific subsystem.
-- `misc/`: contains unrelated project files, limine.cfg lives here.
-- `libs/np-xyz/`: contains project files for northport (np) library xyz.
-- `libs/build/`: built libraries are stored here, not included in the git repo for obvious reasons.
-- `userspace/xyz/`: contains project files for a native app called xyz.
-
-Most sub-projects share a common internal layout:
-- `project_name_here/include/`: header files in here, making installing them later really easy.
-- `project_name_here/build/`: not included in git repo, but where build files are stored.
 
 # Related Projects
 - [DreamOS64](https://github.com/dreamos82/Dreamos64): a 64-bit OS by one of the northport contributors, [Ivan G](https://github.com/dreamos82). 

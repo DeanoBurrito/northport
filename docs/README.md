@@ -1,11 +1,6 @@
 # Northport Documentation
 
-This is the general documentation dump for northport.
-The folder structure roughly matches the source tree itself, although it rarely goes as deep.
-The plan isn't to document everything (although that would be nice), but start with the more complex systems.
-Things like PCI, the loadable driver system, USB and some other protocol stacks.
-
-All documentation is written in standard markdown.
+Northport's main documentation can be found [here](https://github.com/deanoburrito/northport-docs), these files are just an in-tree dumping ground for various resources related to the main readme. 
 
 # Project Contributors
 While git and github track commits, it's nice to put this in some solid text within the project.
