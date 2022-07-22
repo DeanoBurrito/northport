@@ -416,12 +416,17 @@ namespace sl
                 outputPos += strValue.Size();
                 bufferLengths.PushBack(strValue.Size());
                 outputBuffers.Append(strValue.DetachBuffer());
-                OUTPUT_SIMPLE_TOKEN(Literals[6], LiteralSizes[6]);
+                
+                minorUnits = minorUnits % KB;
+                if (minorUnits > 0)
+                {
+                    OUTPUT_SIMPLE_TOKEN(Literals[6], LiteralSizes[6]);
 
-                strValue = ToString(minorUnits % KB, Base::Decimal);
-                outputPos += strValue.Size();
-                bufferLengths.PushBack(strValue.Size());
-                outputBuffers.Append(strValue.DetachBuffer());
+                    strValue = ToString(minorUnits, Base::Decimal);
+                    outputPos += strValue.Size();
+                    bufferLengths.PushBack(strValue.Size());
+                    outputBuffers.Append(strValue.DetachBuffer());
+                }
 
                 //output the unit as a simple token
                 OUTPUT_SIMPLE_TOKEN(Literals[7 + unitIndex], LiteralSizes[7 + unitIndex]);

@@ -6,6 +6,13 @@
 
 namespace Kernel::Drivers
 {
+    constexpr const char* SubsystemStrs[] =
+    {
+        "misc",
+        "pci",
+        "filesystem",
+    };
+
     //NOTE: DriverManager::LoadBuiltIns() is contained in BuiltInDrivers.cpp
 
     DriverExtendedManifest* DriverManager::GetExtendedManifest(const DriverSubsystem subsystem, const DriverMachineName& machineName)
@@ -40,7 +47,8 @@ namespace Kernel::Drivers
     {
         sl::ScopedSpinlock scopeLock(&lock);
         manifests->Append(manifest);
-        Logf("New driver registered: name=%s, subsystem=0x%lx", LogSeverity::Verbose, manifest.name, (size_t)manifest.subsystem);
+        Logf("Added driver manifest: subsystem=%u (%s), name=%s", LogSeverity::Verbose, 
+            (size_t)manifest.subsystem, SubsystemStrs[(size_t)manifest.subsystem], manifest.name);
     }
 
     sl::Opt<DriverManifest*> DriverManager::FindDriver(DriverSubsystem subsystem, DriverMachineName machineName)
@@ -120,7 +128,7 @@ namespace Kernel::Drivers
         }
         if (instanceNumber >= extManifest->instances.Size() || extManifest->instances[instanceNumber] == nullptr)
         {
-            Logf("Unable to stop driver %s:%u, no instance with that id.", LogSeverity::Error, manifest->name, instanceNumber);
+            Logf("Unable to stop driver %s:%u, invalid instance id.", LogSeverity::Error, manifest->name, instanceNumber);
             return false;
         }
 
@@ -164,7 +172,7 @@ namespace Kernel::Drivers
         
         if (instanceNumber >= extManifest->instances.Size() || extManifest->instances[instanceNumber] == nullptr)
         {
-            Logf("Failed to inject driver event: %s:%u, no instance with that id.", LogSeverity::Error, manifest->name, instanceNumber);
+            Logf("Failed to inject driver event: %s:%u, invalid id", LogSeverity::Error, manifest->name, instanceNumber);
             return;
         }
 

@@ -13,6 +13,7 @@ namespace Kernel::Devices::Ps2
     void Ps2Mouse::Init()
     {
         state = DeviceState::Initializing;
+        type = DeviceType::Mouse;
 
         inputBuffer = new uint8_t[4];
         inputLength = 0;

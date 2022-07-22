@@ -60,7 +60,7 @@ namespace Kernel::ACPI
             sdtCount = (rsdt->length - sizeof(SdtHeader)) / 4;
         }
 
-        Logf("%u acpi tables detected.", LogSeverity::Verbose, sdtCount);
+        Logf("%u ACPI tables detected.", LogSeverity::Verbose, sdtCount);
 
         //dump all the acpi tables
         for (size_t i = 0; i < sdtCount; i++)
@@ -90,19 +90,14 @@ namespace Kernel::ACPI
 
     void AcpiTables::PrintSdt(SdtHeader* header) const
     {
-        char* sig = new char[5];
-        sl::memcopy(header->signature, sig, 4);
-        sig[4] = 0;
+        char signature[5] = { 0, 0, 0, 0, 0 };
+        sl::memcopy(header->signature, signature, 4);
+        char oem[7] = { 0, 0, 0, 0, 0, 0, 0};
+        sl::memcopy(header->oemId, oem, sl::min(6ul, sl::memfirst(header->oemId, ' ', 0)));
 
-        char* oemId = new char[7];
-        sl::memcopy(header->oemId, oemId, 6);
-        oemId[6] = 0;
-
-        Logf("SDT Header: sig=%s, len=0x%x, rev=%u, oemId=%s, addr=0x%lx", LogSeverity::Verbose, sig, header->length, header->revision, oemId, (uint64_t)header);
+        Logf("Found ACPI SDT: signature=%s, oem=%s, rev=%u, addr=0x%lx", LogSeverity::Verbose, 
+            signature, oem, header->revision, (size_t)header);
         if (!ChecksumValid(header))
-            Log("  \\- Table has invalid checksum, data may not be valid.", LogSeverity::Error);
-
-        delete[] sig;
-        delete[] oemId;
+            Logf("ACPI table has bad checksum: %s", LogSeverity::Warning, signature);
     }
 }

@@ -7,6 +7,12 @@
 
 namespace Kernel::Devices
 {
+    constexpr const char* TriggerModeStrs[] =
+    { "edge", "level" };
+
+    constexpr const char* PinPolarityStrs[] = 
+    { "active-high", "active-low"};
+    
     void IoApicRedirectEntry::SetNmi(IoApicEntryModifier nmi)
     {
         uint64_t destApicId = 0;
@@ -97,48 +103,52 @@ namespace Kernel::Devices
             case MadtEntryType::InterruptSourceOverride:
                 {
                     MadtEntries::InterruptSourceOverrideEntry* realEntry = scan.As<MadtEntries::InterruptSourceOverrideEntry>();
-                    modifiers->EmplaceBack();
-                    IoApicEntryModifier* last = &modifiers->Back();
-                    last->irqNum = realEntry->source;
-                    last->gsiNum = realEntry->mappedSource;
+                    IoApicEntryModifier& last = modifiers->EmplaceBack();
+                    last.irqNum = realEntry->source;
+                    last.gsiNum = realEntry->mappedSource;
 
                     if (((uint16_t)realEntry->flags & 0b10) != 0)
-                        last->polarity = IoApicPinPolarity::ActiveLow;
+                        last.polarity = IoApicPinPolarity::ActiveLow;
                     else if (((uint16_t)realEntry->flags & 0b01) != 0)
-                        last->polarity = IoApicPinPolarity::ActiveHigh;
+                        last.polarity = IoApicPinPolarity::ActiveHigh;
                     else
-                        last->polarity = IoApicPinPolarity::Default;
+                        last.polarity = IoApicPinPolarity::Default;
 
                     if (((uint16_t)realEntry->flags & 0b1000) != 0)
-                        last->triggerMode = IoApicTriggerMode::Level;
+                        last.triggerMode = IoApicTriggerMode::Level;
                     else if (((uint16_t)realEntry->flags & 0b0100) != 0)
-                        last->triggerMode = IoApicTriggerMode::Edge;
+                        last.triggerMode = IoApicTriggerMode::Edge;
                     else
-                        last->triggerMode = IoApicTriggerMode::Default;
+                        last.triggerMode = IoApicTriggerMode::Default;
+                    
+                    Logf("MADT ISO entry: irq%u -> gsi%u, polarity=%s, mode=%s", LogSeverity::Verbose,
+                        last.irqNum, last.gsiNum, PinPolarityStrs[(size_t)last.polarity], TriggerModeStrs[(size_t)last.polarity]);
                     
                     break;
                 }
             case MadtEntryType::NmiSource:
                 {
                     MadtEntries::NmiSourceEntry* realEntry = scan.As<MadtEntries::NmiSourceEntry>();
-                    nmis->EmplaceBack();
-                    IoApicEntryModifier* last = &modifiers->Back();
-                    last->irqNum = 0;
-                    last->gsiNum = realEntry->gsiNumber;
+                    IoApicEntryModifier& last = nmis->EmplaceBack();
+                    last.irqNum = 0;
+                    last.gsiNum = realEntry->gsiNumber;
 
                     if (((uint16_t)realEntry->flags & 0b10) != 0)
-                        last->polarity = IoApicPinPolarity::ActiveLow;
+                        last.polarity = IoApicPinPolarity::ActiveLow;
                     else if (((uint16_t)realEntry->flags & 0b01) != 0)
-                        last->polarity = IoApicPinPolarity::ActiveHigh;
+                        last.polarity = IoApicPinPolarity::ActiveHigh;
                     else
-                        last->polarity = IoApicPinPolarity::Default;
+                        last.polarity = IoApicPinPolarity::Default;
 
                     if (((uint16_t)realEntry->flags & 0b1000) != 0)
-                        last->triggerMode = IoApicTriggerMode::Level;
+                        last.triggerMode = IoApicTriggerMode::Level;
                     else if (((uint16_t)realEntry->flags & 0b0100) != 0)
-                        last->triggerMode = IoApicTriggerMode::Edge;
+                        last.triggerMode = IoApicTriggerMode::Edge;
                     else
-                        last->triggerMode = IoApicTriggerMode::Default;
+                        last.triggerMode = IoApicTriggerMode::Default;
+                    
+                    Logf("MADT NMI entry: gsi%u, polarity=%s, mode=%s", LogSeverity::Verbose,
+                        last.irqNum, last.gsiNum, PinPolarityStrs[(size_t)last.polarity], TriggerModeStrs[(size_t)last.polarity]);
 
                     break;
                 }

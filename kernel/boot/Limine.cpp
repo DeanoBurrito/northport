@@ -164,14 +164,14 @@ namespace Kernel::Boot
                         typeStr = "boot framebuffer"; break;
                 }
                 
-                Logf("Memory region %u: base=0x%0lx, length=%lx, type=%s", LogSeverity::Verbose, 
+                Logf("Memory region %0hhu: base=0x%0lx, length=%lx, type=%s", LogSeverity::Verbose, 
                     i, mmap->entries[i]->base, mmap->entries[i]->length, typeStr);
             }
         }
 
         if (kernelFileRequest.response != nullptr)
         {
-            Logf("Kernel file located at addr=0x%lx, size=0x%lx", LogSeverity::Verbose,
+            Logf("Kernel ELF located at addr=0x%lx, size=%U", LogSeverity::Verbose,
                 (uint64_t)kernelFileRequest.response->kernel_file->address, kernelFileRequest.response->kernel_file->size);
         }
 
@@ -182,7 +182,7 @@ namespace Kernel::Boot
             auto mods = modulesRequest.response->modules;
             for (unsigned i = 0; i < modulesRequest.response->module_count; i++)
             {
-                Logf("Module %u: addr=0x%lx size=0x%lx, cmdline=%s", LogSeverity::Verbose,
+                Logf("Module %u: addr=0x%lx size=%U, cmdline=%s", LogSeverity::Verbose,
                     i, (uint64_t)mods[i]->address, mods[i]->size, mods[i]->cmdline);
             }
         }
@@ -197,7 +197,7 @@ namespace Kernel::Boot
             Logf("Bootloader epoch: %i", LogSeverity::Verbose, bootTimeRequest.response->boot_time);
         if (kernelAddrRequest.response != nullptr)
         {
-            Logf("Kernel load mapping: virtualBase=0x%lx, physicalBase=0x%lx", LogSeverity::Verbose,
+            Logf("Kernel virtual mapping: virtualBase=0x%lx, physicalBase=0x%lx", LogSeverity::Verbose,
             kernelAddrRequest.response->virtual_base, kernelAddrRequest.response->physical_base);
         }
 

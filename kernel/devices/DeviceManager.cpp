@@ -8,6 +8,14 @@
 
 namespace Kernel::Devices
 {
+    constexpr const char* DeviceTypeStrs[] =
+    {
+        "graphics adaptor",
+        "framebuffer",
+        "keyboard",
+        "mouse"
+    };
+    
     DeviceManager deviceManagerGlobal;
     DeviceManager* DeviceManager::Global()
     { return &deviceManagerGlobal; }
@@ -59,7 +67,8 @@ namespace Kernel::Devices
 
         device->Init();
         const bool initError = device->state != DeviceState::Ready;
-        Logf("New device registered: id=%u, initError=%b, type=%u", LogSeverity::Verbose, device->deviceId, initError, device->type);
+        Logf("New device registered: id=%u, initError=%b, type=%u (%s)", LogSeverity::Verbose, 
+            device->deviceId, initError, device->type, DeviceTypeStrs[(size_t)device->type]);
 
         return device->deviceId;
     }
@@ -102,7 +111,8 @@ namespace Kernel::Devices
             dev->Deinit();
         }
 
-        Logf("Device unregistered: id=%u, shutdownError=%b", LogSeverity::Verbose, dev->deviceId, dev->state != DeviceState::Shutdown);
+        Logf("Device unregistered: id=%u, type=%u (%s) shutdownError=%b", LogSeverity::Verbose, 
+            dev->type, dev->deviceId, DeviceTypeStrs[(size_t)dev->type], dev->state != DeviceState::Shutdown);
 
         idAlloc->Free(dev->deviceId);
         dev->deviceId = 0;

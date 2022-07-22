@@ -34,20 +34,23 @@ namespace Kernel::Filesystem
             if (sl::memcmp(tar->archiveSignature, "ustar", 5) != 0)
                 continue;
 
-            Logf("Found initdisk file: %s, size=%lu", LogSeverity::Verbose, tar->Filename().C_Str(), tar->SizeInBytes());
             VfsNodeType fileType = VfsNodeType::File;
             size_t filenameBegin = 0, filenameLength = 0;
             switch (tar->Type())
             {
-                case sl::TarEntryType::NormalFile: 
+                case sl::TarEntryType::NormalFile:
+                {
+                    Logf("Initdisk file: %s, size=%U", LogSeverity::Verbose, tar->Filename().C_Str(), tar->SizeInBytes());
                     fileType = VfsNodeType::File;
                     filenameBegin = tar->Filename().FindLast('/') + 1;
                     if (filenameBegin == 1)
                         filenameBegin = 0;
                     filenameLength = tar->Filename().Size() - filenameBegin;
                     break;
+                }
                 case sl::TarEntryType::Directory:
                 {
+                    Logf("Initdisk dir:  %s", LogSeverity::Verbose, tar->Filename().C_Str());
                     fileType = VfsNodeType::Directory;
                     string tempFilename = tar->Filename().SubString(0, tar->Filename().Size() - 1);
                     filenameBegin = tempFilename.FindLast('/');
@@ -132,7 +135,7 @@ namespace Kernel::Filesystem
                 ramdiskEnd = (uint64_t)mods->modules[i]->address + mods->modules[i]->size;
                 ramdiskSize = ramdiskEnd.raw - ramdiskBegin.raw;
 
-                Logf("Found \"northport-initdisk\" module, mounting filesystem. begin=0x%lx, bytes=0x%lx", LogSeverity::Info, ramdiskBegin.raw, ramdiskSize);
+                Logf("Found \"northport-initdisk\" module, mounting filesystem. begin=0x%lx, size=%U", LogSeverity::Info, ramdiskBegin.raw, ramdiskSize);
                 break;
             }
         }
