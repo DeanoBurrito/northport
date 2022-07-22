@@ -337,6 +337,14 @@ namespace sl
                     source = va_arg(args, unsigned long long);
                     sourcePad = (unsigned long long)-1;
                     break;
+                case FormatLengthMod::Half:
+                    source = va_arg(args, unsigned int);
+                    sourcePad = (unsigned short)-1;
+                    break;
+                case FormatLengthMod::HalfHalf:
+                    source = va_arg(args, unsigned int);
+                    sourcePad = (unsigned char)-1;
+                    break;
                 default:
                     source = va_arg(args, unsigned int);
                     sourcePad = (unsigned int)-1;

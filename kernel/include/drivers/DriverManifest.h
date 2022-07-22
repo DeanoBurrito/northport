@@ -14,6 +14,10 @@ namespace Kernel::Drivers
         Filesystem = 2,
     };
 
+    //prefixes for pci driver machine names.
+    constexpr uint8_t PciIdMatching = 'I';
+    constexpr uint8_t PciClassMatching = 'C';
+
     enum class DriverStatusFlags : uint64_t
     {
         None = 0,

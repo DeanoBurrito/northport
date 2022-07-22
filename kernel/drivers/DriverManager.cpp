@@ -83,13 +83,14 @@ namespace Kernel::Drivers
         initInfo.next = userTags; //yes, loads of security issues waiting to happen. I know :(
 
         GenericDriver* instance = extManifest->manifest.CreateNew();
-        instance->manifest = &extManifest->manifest;
-        instance->Init(&initInfo);
         if (instance == nullptr)
         {
             Logf("Unable to start driver %s, instance pointer is null. Check relevent logs for more info.", LogSeverity::Error, manifest->name);
             return false;
         }
+        
+        instance->manifest = &extManifest->manifest;
+        instance->Init(&initInfo);
 
         if (index < extManifest->instances.Size())
             extManifest->instances[index] = instance;
@@ -98,7 +99,7 @@ namespace Kernel::Drivers
         
         //ensure running flag is set
         extManifest->manifest.status = sl::EnumSetFlag(extManifest->manifest.status, DriverStatusFlags::Running);
-        Logf("Started new instance %u of driver %s", LogSeverity::Info, index, manifest->name);
+        Logf("New driver started: %s (instance %u).", LogSeverity::Info, manifest->name, index);
         return true;
     }
 
@@ -141,7 +142,7 @@ namespace Kernel::Drivers
 
         if (!anyInstances)
             extManifest->manifest.status = sl::EnumClearFlag(extManifest->manifest.status, DriverStatusFlags::Running);
-        Logf("Stopped running instance %u of driver %s, final=%b", LogSeverity::Info, instanceNumber, manifest->name, !anyInstances);
+        Logf("Stopped insance %u of driver %s, final=%b", LogSeverity::Info, instanceNumber, manifest->name, !anyInstances);
         return true;
     }
 
@@ -152,18 +153,18 @@ namespace Kernel::Drivers
         DriverExtendedManifest* extManifest = GetExtendedManifest(manifest->subsystem, manifest->machineName);
         if (extManifest == nullptr)
         {
-            Logf("Unable to inject event into driver %s, matching manifest not found.", LogSeverity::Error, manifest->name);
+            Logf("Failed to inject driver event: %s, matching manifest not found.", LogSeverity::Error, manifest->name);
             return;
         }
         if (!sl::EnumHasFlag(extManifest->manifest.status, DriverStatusFlags::Running))
         {
-            Logf("Unable to inject event into driver %s, no instances.", LogSeverity::Error, manifest->name);
+            Logf("Failed to inject driver event: %s, no instances.", LogSeverity::Error, manifest->name);
             return;
         }
         
         if (instanceNumber >= extManifest->instances.Size() || extManifest->instances[instanceNumber] == nullptr)
         {
-            Logf("Unable to inject event into driver %s:%u, no instance with that id.", LogSeverity::Error, manifest->name, instanceNumber);
+            Logf("Failed to inject driver event: %s:%u, no instance with that id.", LogSeverity::Error, manifest->name, instanceNumber);
             return;
         }
 
