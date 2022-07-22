@@ -2,11 +2,102 @@
 #include <acpi/AcpiTables.h>
 #include <drivers/DriverManager.h>
 #include <Configuration.h>
-#include <Memory.h>
 #include <Log.h>
 
 namespace Kernel::Devices
 {
+    constexpr uint16_t PciVendorNonExistant = 0xFFFF;
+
+    void PciSegmentGroup::TryFindDrivers(PciAddress addr)
+    {
+        //check if there are any drivers available. We look for a vendor+device id matched
+        //driver first, if that doesn't exist we'll look for a generic one based on the class + subclass
+        //+ program interface.
+        const uint32_t specificId = addr.ReadReg(0);
+        const uint32_t generalId = addr.ReadReg(2);
+
+        using namespace Drivers;
+        const uint8_t idMachName[] = 
+        {
+            PciIdMatching,
+            (uint8_t)(specificId >> 0),
+            (uint8_t)(specificId >> 8),
+            (uint8_t)(specificId >> 16),
+            (uint8_t)(specificId >> 24),
+        };
+        const uint8_t classMachName[] = 
+        {
+            PciClassMatching,
+            (uint8_t)(generalId >> 8),
+            (uint8_t)(generalId >> 16),
+            (uint8_t)(generalId >> 24),
+        };
+
+        const uint16_t vendorId = specificId & 0xFFFF;
+        const uint16_t deviceId = specificId >> 16;
+
+        auto maybeIdDriver = DriverManager::Global()->FindDriver(DriverSubsystem::PCI, { .length = 5, .name = idMachName });
+        auto maybeClassDriver = DriverManager::Global()->FindDriver(DriverSubsystem::PCI, { .length = 4, .name = classMachName });
+
+        if (maybeIdDriver)
+        {
+            PciBridge::Global()->pendingDriverLoads->EmplaceBack(addr, *maybeIdDriver);
+            Logf("PCI function (%0hx:%0hx) will load id-matched driver: %s", LogSeverity::Info, vendorId, deviceId, maybeIdDriver.Value()->name);
+        }
+        else if (maybeClassDriver)
+        {
+            PciBridge::Global()->pendingDriverLoads->EmplaceBack(addr, *maybeClassDriver);
+            Logf("PCI function (%0hx:%0hx) will load class-matched driver: %s", LogSeverity::Info, vendorId, deviceId, maybeClassDriver.Value()->name);
+        }
+        else
+        {
+            Logf("PCI function (%0hx:%0hx) has no driver available.", LogSeverity::Verbose, vendorId, deviceId);
+        }
+    }
+
+    void PciSegmentGroup::Init()
+    {
+        const bool ecamAvail = PciBridge::Global()->EcamAvailable();
+        
+        //brute-force scan, could be better. 
+        //TODO: only scan busses we know exist
+        for (size_t bus = 0; bus < 256; bus++)
+        {
+            for (size_t dev = 0; dev < 32; dev++)
+            {
+                PciAddress addr = ecamAvail ? PciAddress::CreateEcam(baseAddress.raw, bus, dev, 0, 0) : PciAddress::CreateLegacy(bus, dev, 0, 0);
+                const uint32_t reg0 = addr.ReadReg(0);
+
+                if ((reg0 & 0xFFFF) == PciVendorNonExistant)
+                    continue; //no d(ev)ice
+
+                //check if we're multi-function or not
+                const size_t maxFunctions = ((addr.ReadReg(3) >> 16) & 0x80) != 0 ? 8 : 1;
+                for (size_t func = 0; func < maxFunctions; func++)
+                {
+                    PciAddress funcAddr = ecamAvail ? PciAddress::CreateEcam(baseAddress.raw, bus, dev, func, 0) : PciAddress::CreateLegacy(bus, dev, func, 0);
+                    
+                    if ((funcAddr.ReadReg(0) & 0xFFFF) == PciVendorNonExistant)
+                        continue;
+
+                    PciFunction& function = functions.EmplaceBack();
+                    function.id = func;
+                    function.deviceId = dev;
+                    function.busId = bus;
+                    function.address = funcAddr;
+
+                    //TODO: would be nice to parse pci-ids or something here, for prettier output
+                    const uint32_t functionId = funcAddr.ReadReg(0);
+                    const uint32_t funcClass = funcAddr.ReadReg(2);
+                    Logf("Discovered PCI function %x::%0hhx:%0hhx.%x: id=%0hx:%0hx, class=0x%x, subclass=0x%x, progIf=0x%x", LogSeverity::Verbose, 
+                        id, bus, dev, func, functionId & 0xFFFF, functionId >> 16, funcClass >> 24, (funcClass >> 16) & 0xFF, (funcClass >> 8) & 0xFF);
+
+                    TryFindDrivers(funcAddr);
+                }
+            }
+        }
+    }
+    
     PciBridge globalPciBridge;
     PciBridge* PciBridge::Global()
     { return &globalPciBridge; }
@@ -17,7 +108,7 @@ namespace Kernel::Devices
         pendingDriverLoads = new sl::Vector<DelayLoadedPciDriver>();
         
         //determine which config mechanism to use, and setup segments accordingly
-        ACPI::MCFG* mcfg = reinterpret_cast<ACPI::MCFG*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MCFG));
+        const ACPI::MCFG* mcfg = reinterpret_cast<ACPI::MCFG*>(ACPI::AcpiTables::Global()->Find(ACPI::SdtSignature::MCFG));
         auto forceLegacyCfgSlot = Configuration::Global()->Get("pci_force_legacy_access");
         if (forceLegacyCfgSlot && forceLegacyCfgSlot->integer == true)
             mcfg = nullptr;
@@ -30,21 +121,25 @@ namespace Kernel::Devices
             size_t segmentCount = (mcfg->length - sizeof(ACPI::MCFG)) / sizeof(ACPI::EcamEntry);
             for (size_t i = 0; i < segmentCount; i++)
             {
-                ACPI::EcamEntry* entry = &mcfg->entries[i];
+                const ACPI::EcamEntry* entry = &mcfg->entries[i];
 
-                segments->EmplaceBack((size_t)entry->pciSegmentGroup, (NativeUInt)entry->baseAddress);
+                PciSegmentGroup& latestSeg = segments->EmplaceBack();
+                latestSeg.id = entry->pciSegmentGroup;
+                latestSeg.baseAddress = entry->baseAddress;
                 Logf("PCIe segment group added: id=0x%lx, baseAddress=0x%lx", LogSeverity::Verbose, entry->pciSegmentGroup, entry->baseAddress);
             }
 
-            Logf("PCIe ecam parsed, %lu segment groups located", LogSeverity::Verbose, segments->Size());
+            Logf("MCFG parsed, %lu PCIe segment groups located", LogSeverity::Info, segments->Size());
         }
         else
         {
             ecamAvailable = false;
             
             //create segment group 0 to hold the root pci bus
-            segments->EmplaceBack(PciSegmentGroup(0, 0));
-            Log("PCIe ecam not available, using legacy pci config mechanism.", LogSeverity::Verbose);
+            PciSegmentGroup& latestSeg = segments->EmplaceBack();
+            latestSeg.id = 0;
+            latestSeg.baseAddress = nullptr;
+            Log("PCIe ecam not available, using legacy pci config mechanism.", LogSeverity::Info);
         }
 
         //create a map of the current pci devices
@@ -66,87 +161,25 @@ namespace Kernel::Devices
         pendingDriverLoads = nullptr;
     }
 
-    sl::Opt<const PciSegmentGroup*> PciBridge::GetSegment(size_t id) const
+    sl::Vector<PciAddress> PciBridge::FindFunctions(uint16_t vendorId, uint16_t deviceId, bool onlyOne)
     {
-        for (auto it = segments->Begin(); it != segments->End(); ++it)
-        {
-            if (it->id == id)
-                return it;
-        }
-
-        return {};
-    }
-
-    sl::Opt<const PciBus*> PciBridge::GetBus(size_t segment, size_t bus) const
-    {
-        sl::Opt<const PciSegmentGroup*> seg = GetSegment(segment);
-        if (!seg)
-            return {};
-
-        const PciSegmentGroup* segVal = *seg;
-        for (auto it = segVal->children.Begin(); it != segVal->children.End(); ++it)
-        {
-            if (it->id == bus)
-                return it;
-        }
-
-        return {};
-    }
-
-    sl::Opt<const PciDevice*> PciBridge::GetDevice(size_t segment, size_t bus, size_t device) const
-    {
-        sl::Opt<const PciBus*> maybeBus = GetBus(segment, bus);
-        if (!maybeBus)
-            return {};
+        sl::Vector<PciAddress> found;
         
-        const PciBus* busVal = *maybeBus;
-        for (auto it = busVal->devices.Begin(); it != busVal->devices.End(); ++it)
+        for (size_t segment = 0; segment < segments->Size(); segment++)
         {
-            if (it->id == device)
-                return it;
-        }
-
-        return {};
-    }
-
-    sl::Opt<const PciFunction*> PciBridge::GetFunction(size_t segment, size_t bus, size_t device, size_t function) const
-    {
-        sl::Opt<const PciDevice*> maybeDev = GetDevice(segment, bus, device);
-        if (!maybeDev)
-            return {};
-
-        const PciDevice* devVal = *maybeDev;
-        for (auto it = devVal->functions.Begin(); it != devVal->functions.End(); ++it)
-        {
-            if (it->id == function)
-                return it;
-        }
-
-        return {};
-    }
-
-    sl::Opt<const PciFunction*> PciBridge::GetFunction(Pci::PciAddress addr)
-    {
-        if ((addr.addr >> 32) == 0xFFFF'FFFF)
-            return GetFunction(0, (addr.addr >> 16) & 0xFF, (addr.addr >> 11) & 0b11111, (addr.addr >> 8) & 0b111);
-        else
-            return GetFunction(0, (addr.addr >> 20) & 0xFF, (addr.addr >> 15) & 0b11111, (addr.addr >> 12) & 0b111);
-    }
-
-    sl::Opt<const PciDevice*> PciBridge::FindDevice(uint16_t vendorId, uint16_t deviceId) const
-    {
-        for (auto segmentIt = segments->Begin(); segmentIt != segments->End(); ++segmentIt)
-        {
-            for (auto busIt = segmentIt->children.Begin(); busIt != segmentIt->children.End(); ++busIt)
+            const PciSegmentGroup& seg = segments->At(segment);
+            for (size_t i = 0 ; i < seg.functions.Size(); i++)
             {
-                for (auto deviceIt = busIt->devices.Begin(); deviceIt != busIt->devices.End(); ++deviceIt)
-                {   
-                    if (deviceIt->functions[0].header.ids.vendor == vendorId && deviceIt->functions[0].header.ids.device == deviceId)
-                        return deviceIt;
-                }
+                const uint32_t functionId = seg.functions[i].address.ReadReg(0);
+                if ((functionId & 0xFFFF) != vendorId || (functionId >> 16) != deviceId)
+                    continue;
+
+                found.PushBack(seg.functions[i].address);
+                if (onlyOne)
+                    return found;
             }
         }
 
-        return {};
+        return found;
     }
 }

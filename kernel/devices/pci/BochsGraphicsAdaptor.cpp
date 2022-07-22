@@ -99,36 +99,19 @@ namespace Kernel::Devices::Pci
 
         type = DeviceType::GraphicsFramebuffer;
 
-        auto maybePciDevice = PciBridge::Global()->FindDevice(0x1234, 0x1111);
-        if (!maybePciDevice)
+        const sl::Vector<PciAddress> foundDevices = PciBridge::Global()->FindFunctions(0x1234, 0x1111);
+        if (foundDevices.Empty())
         {
             Log("Cannot initialize bochs framebuffer: matching pci device not found.", LogSeverity::Error);
             return;
         };
 
-        auto maybePciFunction = maybePciDevice.Value()->GetFunction(0);
-        if (!maybePciFunction)
+        PciAddress pciAddr = foundDevices[0];
+        const uint8_t subclass = pciAddr.ReadReg(2) >> 16;
+        if (subclass == 0x80 || pciAddr.ReadBar(2).size > 0)
         {
-            Log("Cannot initialize bochs framebuffer: pci device does not have function 0.", LogSeverity::Error);
-            return;
-        }
-
-        format = { 16, 8, 0, 24, 0xFF, 0xFF, 0xFF, 0 };
-
-        const PciFunction* pciFunc = *maybePciFunction;
-        bool mmioRegsAvailable = false;
-        if (pciFunc->Header()->ids.deviceSubclass == 0x80)
-            mmioRegsAvailable = true; //qemu legacy free variant
-        else if (pciFunc->Header()->bars[2].size > 0)
-            mmioRegsAvailable = true; //bochs standard variant, but BAR2 is populated so mmio regs are available
-
-        linearFramebufferBase.raw = pciFunc->Header()->bars[0].address;
-
-        if (mmioRegsAvailable)
-        {
-            mmioBase.raw = pciFunc->Header()->bars[2].address;
-            const size_t mmioPageCount = pciFunc->Header()->bars[2].size / PAGE_FRAME_SIZE;
-            Memory::PageTableManager::Current()->MapRange(EnsureHigherHalfAddr(mmioBase.raw), mmioBase, mmioPageCount, Memory::MemoryMapFlags::AllowWrites);
+            mmioBase = pciAddr.ReadBar(2).address;
+            Memory::PageTableManager::Current()->MapMemory(EnsureHigherHalfAddr(mmioBase.ptr), mmioBase, MFlags::AllowWrites);
             mmioBase.raw = EnsureHigherHalfAddr(mmioBase.raw);
 
             Log("Bochs framebuffer is legacy free variant, using mmio registers.", LogSeverity::Verbose);
@@ -144,6 +127,9 @@ namespace Kernel::Devices::Pci
         height = ReadDispiReg(BgaDispiReg::YRes);
         bpp = ReadDispiReg(BgaDispiReg::Bpp);
         WriteDispiReg(BgaDispiReg::Enable, BGA_DISPI_ENABLE | BGA_DISPI_LFB_ENABLED | BGA_DISPI_NO_CLEAR_MEM);
+
+        linearFramebufferBase.raw = pciAddr.ReadBar(0).address;
+        format = { 16, 8, 0, 24, 0xFF, 0xFF, 0xFF, 0 };
 
         state = DeviceState::Ready;
     }

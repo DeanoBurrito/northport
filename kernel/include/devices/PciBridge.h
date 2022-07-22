@@ -1,36 +1,49 @@
 #pragma once
 
 #include <devices/pci/PciAddress.h>
-#include <devices/pci/PciEndpoints.h>
 #include <drivers/DriverManifest.h>
-
-#define VENDOR_ID_NONEXISTENT 0xFFFF
+#include <containers/Vector.h>
 
 namespace Kernel::Devices
 {
-    using Pci::PciFunction;
-    using Pci::PciDevice;
-    using Pci::PciBus;
-    using Pci::PciSegmentGroup;
+    using Pci::PciAddress;
+    
+    struct PciFunction;
+    struct PciDevice;
+    struct PciBus;
+    struct PciSegmentGroup;
 
-    /*
-        This class was designed for x86, where both ECAM and a port io ISA bridge exist. However the port io
-        functionality is only enabled if compiling for x86, leaving this as a generic ECAM pci bridge.
-    */
+    struct PciFunction
+    {
+        uint8_t id;
+        uint8_t deviceId;
+        uint8_t busId;
+        PciAddress address;
+    };
+
+    struct PciSegmentGroup
+    {
+        size_t id;
+        sl::NativePtr baseAddress;
+        sl::Vector<PciFunction> functions;
+
+    private:
+        void TryFindDrivers(PciAddress addr);
+    public:
+
+        void Init();
+    };
+
     class PciBridge
     {
-    friend PciFunction;
-    friend PciDevice;
-    friend PciBus;
     friend PciSegmentGroup;
-
     private:
         struct DelayLoadedPciDriver
         {
-            Pci::PciAddress address;
+            PciAddress address;
             const Drivers::DriverManifest* manifest;
 
-            DelayLoadedPciDriver(Pci::PciAddress addr, const Drivers::DriverManifest* mani) : address(addr), manifest(mani)
+            DelayLoadedPciDriver(PciAddress addr, const Drivers::DriverManifest* mani) : address(addr), manifest(mani)
             {}
         };
 
@@ -45,12 +58,6 @@ namespace Kernel::Devices
         FORCE_INLINE bool EcamAvailable() const
         { return ecamAvailable; }
 
-        sl::Opt<const PciSegmentGroup*> GetSegment(size_t id) const;
-        sl::Opt<const PciBus*> GetBus(size_t segment, size_t bus) const;
-        sl::Opt<const PciDevice*> GetDevice(size_t segment, size_t bus, size_t device) const;
-        sl::Opt<const PciFunction*> GetFunction(size_t segment, size_t bus, size_t device, size_t function) const;
-        sl::Opt<const PciFunction*> GetFunction(Pci::PciAddress addr);
-
-        sl::Opt<const PciDevice*> FindDevice(uint16_t vendorId, uint16_t deviceId) const;
+        sl::Vector<PciAddress> FindFunctions(uint16_t vendorId, uint16_t deviceId, bool onlyOne = false);
     };
 }

@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <devices/pci/PciAddress.h>
-#include <devices/PciBridge.h>
 #include <Optional.h>
 
 namespace Kernel::Devices::Pci
@@ -55,7 +54,7 @@ namespace Kernel::Devices::Pci
     struct [[gnu::packed]] PciCapMsiX : public PciCap
     {
     private:
-        sl::NativePtr GetTableEntry(size_t index, PciBar* bars) const;
+        sl::NativePtr GetTableEntry(size_t index, PciAddress addr) const;
 
     public:
         uint16_t messageControl;
@@ -66,11 +65,11 @@ namespace Kernel::Devices::Pci
         void Enable(bool yes);
 
         size_t Vectors() const;
-        void SetVector(size_t index, uint64_t address, uint16_t data, PciBar* bars);
+        void SetVector(size_t index, uint64_t address, uint16_t data, PciAddress addr);
 
-        bool Masked(size_t index, PciBar* bars) const;
-        void Mask(size_t index, bool masked, PciBar* bars);
-        bool Pending(size_t index, PciBar* bars) const;
+        bool Masked(size_t index, PciAddress addr) const;
+        void Mask(size_t index, bool masked, PciAddress addr);
+        bool Pending(size_t index, PciAddress addr) const;
     };
 
     sl::Opt<PciCap*> FindPciCap(PciAddress addr, uint8_t withId, PciCap* start = nullptr);

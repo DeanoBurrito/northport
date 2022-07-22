@@ -133,7 +133,7 @@ namespace Kernel::Devices::Pci
             return sl::MemRead<uint32_t>((uintptr_t)this + 0x10) & (1 << index);
     }
 
-    sl::NativePtr PciCapMsiX::GetTableEntry(size_t index, PciBar* bars) const
+    sl::NativePtr PciCapMsiX::GetTableEntry(size_t index, PciAddress addr) const
     {
         const size_t count = (sl::MemRead<uint32_t>((uintptr_t)this + 2) & 0x3FF) + 1;
         if (index >= count)
@@ -141,7 +141,7 @@ namespace Kernel::Devices::Pci
 
         const size_t bir = sl::MemRead<uint32_t>((uintptr_t)this + 4) & 0b111;
         const uintptr_t tableOffset = sl::MemRead<uint32_t>((uintptr_t)this + 4) & ~0b111;
-        return bars[bir].address + tableOffset + index * 16;
+        return addr.ReadBar(bir).address + tableOffset + index * 16;
     }
 
     bool PciCapMsiX::Enabled() const
@@ -163,9 +163,9 @@ namespace Kernel::Devices::Pci
         return (sl::MemRead<uint32_t>((uintptr_t)this + 2) & 0x3FF) + 1;
     }
 
-    void PciCapMsiX::SetVector(size_t index, uint64_t address, uint16_t data, PciBar* bars)
+    void PciCapMsiX::SetVector(size_t index, uint64_t address, uint16_t data, PciAddress addr)
     {
-        sl::NativePtr entryAddr = GetTableEntry(index, bars);
+        sl::NativePtr entryAddr = GetTableEntry(index, addr);
         if (entryAddr.ptr == nullptr)
             return;
 
@@ -173,18 +173,18 @@ namespace Kernel::Devices::Pci
         sl::MemWrite<uint32_t>(entryAddr.raw + 8, data);
     }
 
-    bool PciCapMsiX::Masked(size_t index, PciBar* bars) const
+    bool PciCapMsiX::Masked(size_t index, PciAddress addr) const
     {
-        sl::NativePtr entryAddr = GetTableEntry(index, bars);
+        sl::NativePtr entryAddr = GetTableEntry(index, addr);
         if (entryAddr.ptr == nullptr)
             return false;
 
         return sl::MemRead<uint16_t>(entryAddr.raw + 12) & 0b1;
     }
 
-    void PciCapMsiX::Mask(size_t index, bool masked, PciBar* bars)
+    void PciCapMsiX::Mask(size_t index, bool masked, PciAddress addr)
     {
-        sl::NativePtr entryAddr = GetTableEntry(index, bars);
+        sl::NativePtr entryAddr = GetTableEntry(index, addr);
         if (entryAddr.ptr == nullptr)
             return;
         
@@ -195,15 +195,15 @@ namespace Kernel::Devices::Pci
         sl::MemWrite(entryAddr.raw + 12, value);
     }
 
-    bool PciCapMsiX::Pending(size_t index, PciBar* bars) const
+    bool PciCapMsiX::Pending(size_t index, PciAddress addr) const
     {
-         const size_t count = (sl::MemRead<uint32_t>((uintptr_t)this + 2) & 0x3FF) + 1;
+        const size_t count = (sl::MemRead<uint32_t>((uintptr_t)this + 2) & 0x3FF) + 1;
         if (index >= count)
             return false;
 
         const size_t bir = sl::MemRead<uint32_t>((uintptr_t)this + 4) & 0b111;
         const uintptr_t arrayOffset = sl::MemRead<uint32_t>((uintptr_t)this + 4) & ~0b111;
-        const sl::NativePtr arrayAddr = bars[bir].address + arrayOffset;
+        const sl::NativePtr arrayAddr = addr.ReadBar(bir).address + arrayOffset;
 
         return (sl::MemRead<uint64_t>(arrayAddr) + index / 64) & (1 << index % 64);
     }
