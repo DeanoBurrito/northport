@@ -62,7 +62,10 @@ namespace WindowServer
         np::Userland::Log("Created window: mon=%u, x=%u, y=%u, w=%u, h=%u, title=%s", LogLevel::Verbose, 
             desc->monitorIndex, desc->position.x, desc->position.y, desc->size.x, desc->size.y, desc->title.C_Str());
 
+        //create a framebuffer for this window, and push a damage rect that covers it so it's immediately redrawn
         compositor.AttachFramebuffer(desc);
+        damageRects.PushBack(desc->Rect());
+
         return id;
     }
 
@@ -118,10 +121,14 @@ namespace WindowServer
                 sl::Vector2i cursorOffset;
                 ConsumeNextEvent({ &cursorOffset, sizeof(cursorOffset) });
 
-                wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
+                wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, 
+                    wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
+                
                 wm.cursorPos.x = sl::clamp<long>(wm.cursorPos.x + cursorOffset.x, 0, (long)wm.compositor.Size().x);
                 wm.cursorPos.y = sl::clamp<long>(wm.cursorPos.y -cursorOffset.y, 0, (long)wm.compositor.Size().y);
-                wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
+
+                wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, 
+                    wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
 
                 break;
             }

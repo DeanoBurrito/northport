@@ -9,8 +9,9 @@ CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude -I$(LIBS_DIR)/np-syscall/include -I$(L
 LD_LIBS = -L$(LIBS_OUTPUT_DIR) -lnp-graphics -lnp-userland -lnp-syscall -lnp-syslib -lnp-userland
 LD_FLAGS = $(LD_LIBS) -nostdlib -zmax-page-size=0x1000 --no-dynamic-linker
 
-CXX_SRCS = Main.cpp Renderer.cpp WindowManager.cpp \
-	protocols/GenericProtocol.cpp protocols/IpcProtocol.cpp
+CXX_SRCS = Main.cpp WindowManager.cpp \
+	protocols/GenericProtocol.cpp protocols/IpcProtocol.cpp \
+	render/Renderer.cpp
 
 include $(USERLAND_COMMON_MK)
 

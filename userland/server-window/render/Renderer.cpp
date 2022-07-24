@@ -1,6 +1,7 @@
-#include <Renderer.h>
+#include <render/Renderer.h>
 #include <formats/Qoi.h>
 #include <SyscallFunctions.h>
+#include <Logging.h>
 
 namespace WindowServer
 {
@@ -11,7 +12,7 @@ namespace WindowServer
         auto maybeFileInfo = GetFileInfo(name);
         auto maybeFileHandle = OpenFile(name);
         if (!maybeFileInfo || !maybeFileHandle)
-            Log("Window renderer could not open requested file.", LogLevel::Error);
+            np::Userland::Log("Renderer could not open file: %u", LogLevel::Error, name.C_Str());
         else
         {
             uint8_t* fileBuffer = new uint8_t[maybeFileInfo->fileSize];
@@ -35,9 +36,12 @@ namespace WindowServer
         }
     }
     
-    void Renderer::DrawWindow(WindowDescriptor* window)
+    void Renderer::DrawWindow(WindowDescriptor* window, const sl::UIntRect& rect)
     {
         using namespace np::Graphics;
+
+        mainFb.DrawRect(window->Rect(), Colours::Cyan, true);
+        return;
         
         //first draw the titlebar + decorations
         mainFb.DrawRect({ window->position.x - windowBorderWidth, window->position.y - windowTitleHeight, window->size.x + (2 * windowBorderWidth), windowTitleHeight}, Colours::DarkGrey, true);
@@ -69,6 +73,7 @@ namespace WindowServer
         LoadFile("/initdisk/icons/window-max.qoi", maxImage);
 
         debugDrawLevel = RenderDebugDrawLevel::TextAndDamageRects;
+        // debugDrawLevel = RenderDebugDrawLevel::None;
     }
 
     void Renderer::Redraw(const sl::Vector<sl::UIntRect>& damageRects, const sl::Vector<WindowDescriptor*>& windows, sl::Vector2u cursor)
@@ -77,8 +82,10 @@ namespace WindowServer
         
         for (size_t rectIndex = 0; rectIndex < damageRects.Size(); rectIndex++)
         {
-            mainFb.DrawRect(damageRects[rectIndex], np::Graphics::Colours::Black, true);
+            //clear the damaged area
+            mainFb.DrawRect(damageRects[rectIndex], np::Graphics::Colours::Grey, true);
 
+            // check if it overlaps any windows: render parts of the decorations if needed, and copy from the framebuffer if needed.
             for (size_t winIndex = 0; winIndex < windows.Size(); winIndex++)
             {
                 if (windows[winIndex] == nullptr)
@@ -89,8 +96,7 @@ namespace WindowServer
                     continue;
                 
                 if (damageRects[rectIndex].Intersects(window->BorderRect()))
-                    DrawWindow(window);
-                mainFb.DrawRect(window->Rect(), np::Graphics::Colours::Blue, true);
+                    DrawWindow(window, damageRects[rectIndex]);
             }
 
             if (damageRects[rectIndex].Intersects(cursorRect))
@@ -99,7 +105,7 @@ namespace WindowServer
             if (debugDrawLevel == RenderDebugDrawLevel::DamageRectsOnly || debugDrawLevel == RenderDebugDrawLevel::TextAndDamageRects)
                 mainFb.DrawRect(damageRects[rectIndex], np::Graphics::Colours::Red, false);
             
-            screenFb->CopyFrom(mainFb, { damageRects[rectIndex].left, damageRects[rectIndex].top }, damageRects[rectIndex] );
+            screenFb->CopyFrom(mainFb, damageRects[rectIndex].TopLeft(), damageRects[rectIndex]);
         }
 
         if (debugDrawLevel == RenderDebugDrawLevel::TextOnly || debugDrawLevel == RenderDebugDrawLevel::TextAndDamageRects)

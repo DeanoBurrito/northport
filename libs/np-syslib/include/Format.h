@@ -36,7 +36,8 @@ C-Style printf format spec:
 
 Northport specific:
         - 'b'/'B' outputs true/TRUE or false/FALSE depending on whether a number is non-zero.
-        - 'U' outputs in binary units (KB/MB/GB/TB) and will scale and add the appropriate prefix. Precision is number of digits after the decimal place.
+        - 'U' outputs in binary units (KiB/MiB/GiB/TiB) and will scale and add the appropriate prefix. Precision is number of digits after the decimal place.
+        - '#s' alternate conversion for string specifier. This is non-standard, but I find it to be useful. It will also consider the ASCII space character a string terminator.
 */
 
 /*

@@ -216,7 +216,7 @@ namespace sl
         return token;
     }
 
-#define OUTPUT_SIMPLE_TOKEN(text, len) { char* str = new char[len]; sl::memcopy(text, str, len); outputBuffers.Append(str); outputPos += len; bufferLengths.PushBack(len); }
+#define OUTPUT_SIMPLE_TOKEN(text, len) { char* str = new char[len]; sl::memcopy(text, str, len); outputBuffers.Append(str); outputPos += (len); bufferLengths.PushBack(len); }
 
     void FormatPrinter::PrintFormatToken(FormatToken token, va_list args)
     {
@@ -265,13 +265,14 @@ namespace sl
         case FormatSpecifier::String:
             {
                 char* source = va_arg(args, char*);
-                size_t sourceLength;
                 if (token.precision == PRECISION_DEFAULT) 
                     break;
-                else if (token.precision != PRECISION_UNSPECIFIED)
-                    sourceLength = token.precision;
-                else 
-                    sourceLength = sl::memfirst(source, 0, 0);
+                
+                size_t sourceLength = token.precision;
+                if (sl::EnumHasFlag(token.flags, FormatFlag::UseAltConversion))
+                    sourceLength = sl::min(sourceLength, sl::memfirst(source, ' ', token.precision));
+                else
+                    sourceLength = sl::min(sourceLength, sl::memfirst(source, 0, token.precision));
 
                 char* str = nullptr;
                 if (sourceLength > 0)
@@ -354,7 +355,7 @@ namespace sl
                 string strValue = ToString(source, formatBase);
                 if (sl::EnumHasFlag(token.flags, FormatFlag::PadWithZeros))
                 {
-                    const size_t padLimit = IntStringLength(sourcePad, formatBase);
+                    const size_t padLimit = UIntStringLength(sourcePad, formatBase);
                     if (padLimit > strValue.Size())
                         ApplyPadding(sl::EnumHasFlag(token.flags, FormatFlag::LeftJustified), '0', padLimit - strValue.Size());
                 }

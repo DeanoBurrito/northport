@@ -38,11 +38,16 @@ namespace sl::Cultures
             if (c >= 'a' && c <= 'z')
                 c -= 0x20; //bring lowercase letters into uppercase range
             
-            if (c >= 'A' && c <= 'Z')
+            if (c >= 'A' && c <= 'Z' && base > 10) //TODO: not this, respect the base when considering what is a digit
                 out += c - 'A' + 10;
             else if (c >= '0' && c <= '9')
                 out += c - '0';
-            //if we dont know what the character was, drop it.
+            else
+            {
+                //not a digit, undo the last multiply and return.
+                out /= base;
+                break; 
+            }
         }
 
         if (negative)

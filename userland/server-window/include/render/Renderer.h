@@ -30,7 +30,7 @@ namespace WindowServer
         GenericImage maxImage;
 
         void LoadFile(const sl::String& name, GenericImage& image);
-        void DrawWindow(WindowDescriptor* window);
+        void DrawWindow(WindowDescriptor* window, const sl::UIntRect& rect);
 
     public:
         RenderDebugDrawLevel debugDrawLevel;
