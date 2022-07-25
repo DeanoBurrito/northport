@@ -268,11 +268,12 @@ namespace sl
                 if (token.precision == PRECISION_DEFAULT) 
                     break;
                 
-                size_t sourceLength = token.precision;
+                size_t sourceLength = sl::min(token.precision, sl::memfirst(source, 0, token.precision));
                 if (sl::EnumHasFlag(token.flags, FormatFlag::UseAltConversion))
-                    sourceLength = sl::min(sourceLength, sl::memfirst(source, ' ', token.precision));
-                else
-                    sourceLength = sl::min(sourceLength, sl::memfirst(source, 0, token.precision));
+                {
+                    while (source[sourceLength - 1] == ' ' && sourceLength - 1 > 0)
+                        sourceLength--;
+                }
 
                 char* str = nullptr;
                 if (sourceLength > 0)

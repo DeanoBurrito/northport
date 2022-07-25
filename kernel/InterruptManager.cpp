@@ -17,15 +17,17 @@ namespace Kernel
     {
         allocOffset = ALLOC_INT_VECTOR_BASE;
         allocBitmap.Resize(ALLOC_INT_VECTOR_COUNT);
+        allocBitmap.Reset();
         
         while (callbacks.Size() < ALLOC_INT_VECTOR_COUNT)
-            callbacks.EmplaceBack(nullptr);
+            callbacks.EmplaceBack();
         
         sl::SpinlockRelease(&lock);
     }
 
     void InterruptManager::Dispatch(size_t vector)
     {
+        Logf("Got int dispatch %u", LogSeverity::Debug, vector);
         if (vector < ALLOC_INT_VECTOR_BASE || vector - ALLOC_INT_VECTOR_BASE >= ALLOC_INT_VECTOR_COUNT)
             return;
         
@@ -33,8 +35,8 @@ namespace Kernel
         if (callbacks.Size() < offset)
             return;
 
-        if (callbacks[offset] != nullptr)
-            callbacks[offset](vector);
+        if (callbacks[offset].callback != nullptr)
+            callbacks[offset].callback(vector, callbacks[offset].arg);
         else
             Logf("No callback for allocated interrupt: vector=0x%x", LogSeverity::Error, vector);
     }
@@ -48,11 +50,19 @@ namespace Kernel
             if (allocBitmap.Get(i))
                 continue;
             
+            bool success = true;
             for (size_t j = 0; j < count; j++)
             {
                 if (allocBitmap.Get(i + j))
+                {
+                    success = false;
+                    i += j;
                     break;
+                }
+            }
 
+            if (success)
+            {
                 for (size_t k = 0; k < count; k++)
                     allocBitmap.Set(i + k);
                 
@@ -74,15 +84,39 @@ namespace Kernel
             allocBitmap.Clear(i);
     }
 
-    void InterruptManager::AttachCallback(size_t vectorNumber, InterruptCallback func)
+    void InterruptManager::AttachCallback(size_t vectorNumber, InterruptCallback func, void* arg)
     {
         sl::ScopedSpinlock scopeLock(&lock);
-        callbacks[vectorNumber - allocOffset] = func;
+        callbacks[vectorNumber - allocOffset].callback = func;
+        callbacks[vectorNumber - allocOffset].arg = arg;
     }
 
     void InterruptManager::DetachCallback(size_t vectorNumber)
     {
         sl::ScopedSpinlock scopeLock(&lock);
-        callbacks[vectorNumber - allocOffset] = nullptr;
+        callbacks[vectorNumber - allocOffset].callback = nullptr;
+        callbacks[vectorNumber - allocOffset].arg = nullptr;
+    }
+
+    sl::NativePtr InterruptManager::GetMsiAddr(size_t processor)
+    {
+#ifdef __x86_64__
+        //All other fields are fine as the default.
+        //TODO: would be nice to use the redirection hint.
+        return 0x0FEE'0000 | ((uint8_t)processor << 12);
+#else
+    #error "Unknown cpu architecture, cannot compile kernel/InterruptManager.cpp"
+#endif
+    }
+
+    NativeUInt InterruptManager::GetMsiData(size_t vector)
+    {
+#ifdef __x86_64__
+        //PCI defines MSIs are acting like they're edge-triggered.
+        //All the other fields are fine as the default.
+        return (uint16_t)vector;
+#else
+    #error "Unknown cpu architecture, cannot compile kernel/InterruptManager.cpp"
+#endif
     }
 }

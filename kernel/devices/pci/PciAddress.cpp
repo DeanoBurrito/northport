@@ -51,6 +51,9 @@ namespace Kernel::Devices::Pci
             bar.isPrefetchable = original & 0b1000;
             bar.address = original & ~(uint32_t)0b1111;
 
+            //TODO: do we need to read the size of a BAR everytime? We never actually use the size
+            //unless we're allocating the address space ourselves (which we dont). Would be nice
+            //to move this to on-demand.
             if (bar.is64BitWide)
             {
                 bar.address |= (uint64_t)ReadReg(PciRegBar1 + index) << 32;

@@ -54,7 +54,7 @@ extern "C"
         using namespace Kernel;
         StoredRegisters* returnRegs = regs;
 
-        if ((uint8_t)regs->vectorNumber > ALLOC_INT_VECTOR_BASE && 
+        if ((uint8_t)regs->vectorNumber >= ALLOC_INT_VECTOR_BASE && 
             (uint8_t)regs->vectorNumber - ALLOC_INT_VECTOR_BASE <= ALLOC_INT_VECTOR_COUNT)
         {
             InterruptManager::Global()->Dispatch((uint8_t)regs->vectorNumber);

@@ -135,13 +135,13 @@ namespace Kernel::Devices::Pci
 
     sl::NativePtr PciCapMsiX::GetTableEntry(size_t index, PciAddress addr) const
     {
-        const size_t count = (sl::MemRead<uint32_t>((uintptr_t)this + 2) & 0x3FF) + 1;
+        const size_t count = ((sl::MemRead<uint32_t>((uintptr_t)this) >> 16) & 0x3FF) + 1;
         if (index >= count)
             return nullptr;
 
-        const size_t bir = sl::MemRead<uint32_t>((uintptr_t)this + 4) & 0b111;
-        const uintptr_t tableOffset = sl::MemRead<uint32_t>((uintptr_t)this + 4) & ~0b111;
-        return addr.ReadBar(bir).address + tableOffset + index * 16;
+        const uint32_t table = sl::MemRead<uint32_t>((uintptr_t)this + 4);
+        const uintptr_t tableBase = addr.ReadBar(table & 0b111).address + (table & ~0b111);
+        return EnsureHigherHalfAddr(tableBase + (index * 16));
     }
 
     bool PciCapMsiX::Enabled() const
@@ -152,9 +152,23 @@ namespace Kernel::Devices::Pci
     void PciCapMsiX::Enable(bool yes)
     {
         uint16_t control = sl::MemRead<uint16_t>((uintptr_t)this + 2);
-        control &= 0x7F;
+        control &= 0x7FFF;
         if (yes)
             control |= 1 << 15;
+        sl::MemWrite((uintptr_t)this + 2, control);
+    }
+
+    bool PciCapMsiX::FunctionsMasked() const
+    {
+        return sl::MemRead<uint32_t>((uintptr_t)this + 2) & (1 << 14);
+    }
+
+    void PciCapMsiX::MaskFunctions(bool yes)
+    {
+        uint16_t control = sl::MemRead<uint16_t>((uintptr_t)this + 2);
+        control &= 0xBFFF;
+        if (yes)
+            control |= 1 << 14;
         sl::MemWrite((uintptr_t)this + 2, control);
     }
 
@@ -169,8 +183,11 @@ namespace Kernel::Devices::Pci
         if (entryAddr.ptr == nullptr)
             return;
 
-        sl::MemWrite<uint64_t>(entryAddr, address);
-        sl::MemWrite<uint32_t>(entryAddr.raw + 8, data);
+        volatile uint32_t* entry = entryAddr.As<volatile uint32_t>();
+        entry[0] = address & ~0b11;
+        entry[1] = address >> 32;
+        entry[2] = data;
+        entry[3] = 1;
     }
 
     bool PciCapMsiX::Masked(size_t index, PciAddress addr) const
@@ -188,11 +205,11 @@ namespace Kernel::Devices::Pci
         if (entryAddr.ptr == nullptr)
             return;
         
-        uint16_t value = sl::MemRead<uint16_t>(entryAddr.raw + 12);
-        value &= 0b1;
+        uint32_t value = sl::MemRead<uint32_t>(entryAddr.raw + 12);
+        value &= ~0b1;
         if (masked)
             value |= 0b1;
-        sl::MemWrite(entryAddr.raw + 12, value);
+        sl::MemWrite<uint32_t>(entryAddr.raw + 12, value);
     }
 
     bool PciCapMsiX::Pending(size_t index, PciAddress addr) const

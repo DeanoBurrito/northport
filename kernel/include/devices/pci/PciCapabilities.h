@@ -63,6 +63,8 @@ namespace Kernel::Devices::Pci
 
         bool Enabled() const;
         void Enable(bool yes);
+        bool FunctionsMasked() const;
+        void MaskFunctions(bool yes);
 
         size_t Vectors() const;
         void SetVector(size_t index, uint64_t address, uint16_t data, PciAddress addr);
