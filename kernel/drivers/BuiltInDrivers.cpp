@@ -72,6 +72,17 @@ namespace Kernel::Drivers
             RegisterDriver(manifest);
         }
 
+        { //NVMe controller driver
+            DriverManifest manifest;
+            manifest.name = "NVMe IO Controller";
+            manifest.machineName.length = 4;
+            manifest.machineName.name = machineName_nvmeController;
+            manifest.subsystem = DriverSubsystem::PCI;
+            manifest.loadFrom = nullptr;
+            manifest.status = sl::EnumSetFlag(DriverStatusFlags::Loaded, DriverStatusFlags::BuiltIn);
+            manifest.CreateNew = Devices::Pci::CreateNewNvmeDriver;
 
+            RegisterDriver(manifest);
+        }
     }
 }
