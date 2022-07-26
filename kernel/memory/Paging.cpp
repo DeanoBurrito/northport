@@ -124,9 +124,6 @@ namespace Kernel::Memory
         indices[1] = (virtAddr.raw >> 12) & 0x1FF;
     }
 
-    size_t PageTableManager::hhdmLowerBound;
-    size_t PageTableManager::hhdmUpperBound;
-
     FORCE_INLINE
     void PageTableManager::InvalidatePage(sl::NativePtr virtualAddress) const
     {
@@ -142,7 +139,7 @@ namespace Kernel::Memory
             return &Scheduling::Thread::Current()->Parent()->VMM()->pageTables; //ah oops... its starting to look like LINQ
     }
 
-    bool PageTableManager::usingExtendedPaging;
+    size_t PageTableManager::pagingLevels;
     void PageTableManager::Setup()
     {
         Log("Beginning system paging setup for pre-scheduler kernel.", LogSeverity::Info);
@@ -165,21 +162,16 @@ namespace Kernel::Memory
         uint64_t cr4 = ReadCR4();
         if ((cr4 & (1 << 12)) != 0)
         {
-            usingExtendedPaging = true;
+            pagingLevels = 5;
             Log("System is setup for 5-level paging.", LogSeverity::Verbose);
         }
         else
         {
-            usingExtendedPaging = false;
+            pagingLevels = 4;
             Log("System is setup for 4-level paging.", LogSeverity::Verbose);
         }
 
         Log("Paging setup successful.", LogSeverity::Info);
-    }
-
-    sl::BufferView PageTableManager::GetHhdm()
-    {
-        return { hhdmLowerBound, hhdmUpperBound - hhdmLowerBound };
     }
     
     void PageTableManager::InitKernelFromLimine(bool reuseBootloaderMaps)
@@ -191,7 +183,6 @@ namespace Kernel::Memory
             topLevelAddress = PMM::Global()->AllocPage();
             sl::memset(topLevelAddress.ptr, 0, sizeof(PageTable));
 
-            hhdmLowerBound = vmaHighAddr;
             const uint64_t kernelBaseVirt = Boot::kernelAddrRequest.response->virtual_base;
             const uint64_t kernelBasePhys = Boot::kernelAddrRequest.response->physical_base;
             const auto memmap = Boot::memmapRequest.response;
@@ -223,8 +214,8 @@ namespace Kernel::Memory
 
             //second pass: map the first 4gb of memory unconditionally.
             for (size_t i = 0; i < 4 * GB; i += (size_t)PagingSize::_2MB)
-                MapMemory(hhdmLowerBound + i, i, PagingSize::_2MB, MemoryMapFlags::AllowWrites);
-            hhdmUpperBound += 4 * GB;
+                MapMemory(hhdmBase + i, i, PagingSize::_2MB, MemoryMapFlags::AllowWrites);
+            hhdmLength = 4 * GB;
 
             //third pass: map any usable regions above 4gb
             for (size_t i = 0; i < memmap->entry_count; i++)
@@ -239,13 +230,13 @@ namespace Kernel::Memory
                 const uint64_t base = (region->base < 4 * GB) ? 4 * GB : region->base;
                 const size_t regionTop = sl::min(region->length, HHDM_LIMIT - region->base);
                 for (size_t j = 0; j < regionTop; j += PAGE_FRAME_SIZE)
-                    MapMemory(hhdmLowerBound + base + j, base + j, MemoryMapFlags::AllowWrites);
+                    MapMemory(hhdmBase + base + j, base + j, MemoryMapFlags::AllowWrites);
 
-                hhdmUpperBound = hhdmLowerBound + region->base + region->length;
-                if (hhdmUpperBound >= HHDM_LIMIT + hhdmLowerBound)
+                hhdmLength = region->base + region->length;
+                if (hhdmLength >= HHDM_LIMIT)
                 {
                     Log("HHDM Limit (" MACRO_STR(HHDM_LIMIT) " bytes) has been hit, the upper reaches of physical memory may be unavailable.", LogSeverity::Warning);
-                    hhdmUpperBound = hhdmLowerBound + HHDM_LIMIT;
+                    hhdmLength = HHDM_LIMIT;
                     break;
                 }
             }
@@ -297,7 +288,7 @@ namespace Kernel::Memory
 
     void PageTableManager::Teardown(bool includeHigherHalf)
     {
-        FreePageTable(EnsureHigherHalfAddr(topLevelAddress.As<PageTable>()), usingExtendedPaging ? 5 : 4, includeHigherHalf);
+        FreePageTable(EnsureHigherHalfAddr(topLevelAddress.As<PageTable>()), pagingLevels, includeHigherHalf);
     }
 
     sl::Opt<sl::NativePtr> PageTableManager::GetPhysicalAddress(sl::NativePtr virtAddr)
@@ -310,7 +301,7 @@ namespace Kernel::Memory
         size_t tableIndices[6];
         GetPageTableIndices(virtAddr, tableIndices);
 
-        for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
+        for (size_t level = pagingLevels; level > 0; level--)
         {
             entry = &pageTable->entries[tableIndices[level]];
             
@@ -427,7 +418,7 @@ namespace Kernel::Memory
 
         PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
         PageTableEntry* entry;
-        for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
+        for (size_t level = pagingLevels; level > 0; level--)
         {
             entry = &pageTable->entries[tableIndices[level]];
             
@@ -486,7 +477,7 @@ namespace Kernel::Memory
         PageTable* pageTable = EnsureHigherHalfAddr(topLevelAddress.As<PageTable>());
         PageTableEntry* entry;
         PagingSize freedSize = PagingSize::Physical;
-        for (size_t level = usingExtendedPaging ? 5 : 4; level > 0; level--)
+        for (size_t level = pagingLevels; level > 0; level--)
         {
             entry = &pageTable->entries[tableIndices[level]];
             if (!entry->HasFlag(PageEntryFlag::Present))

@@ -1,7 +1,6 @@
 #include <boot/Limine.h>
 #include <memory/PhysicalMemory.h>
 #include <memory/KernelHeap.h>
-#include <memory/Paging.h>
 #include <Log.h>
 
 namespace Kernel::Boot
@@ -224,7 +223,7 @@ namespace Kernel::Boot
                 heapStats.slabStats[i].segments);
         }
 
-        sl::BufferView hhdm = Memory::PageTableManager::Current()->GetHhdm();
+        sl::BufferView hhdm = GetHhdm();
         Logf("HHDM: base=0x%lx, length=0x%lx (%lU), limit=0x%lx (%lU)", LogSeverity::Info, hhdm.base.raw, hhdm.length, hhdm.length, HHDM_LIMIT, HHDM_LIMIT);
 
         Log("End of memory info.", LogSeverity::Verbose);

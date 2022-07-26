@@ -1,7 +1,14 @@
 #include <arch/x86_64/ArchPlatform.h>
+#include <BufferView.h>
 
 namespace Kernel
 {
+    NativeUInt hhdmBase;
+    NativeUInt hhdmLength;
+    
+    sl::BufferView GetHhdm()
+    { return { hhdmBase, hhdmLength }; }
+    
     void PortWrite8(uint16_t port, uint8_t data)
     {
         asm volatile("outb %0, %1" :: "a"(data), "Nd"(port));

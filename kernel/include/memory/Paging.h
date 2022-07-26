@@ -28,9 +28,7 @@ namespace Kernel::Memory
     class PageTableManager
     {
     private:
-        static bool usingExtendedPaging;
-        static size_t hhdmLowerBound;
-        static size_t hhdmUpperBound;
+        static size_t pagingLevels;
 
         sl::NativePtr topLevelAddress;
         char lock;
@@ -41,7 +39,6 @@ namespace Kernel::Memory
     public:
         static PageTableManager* Current();
         static void Setup();
-        static sl::BufferView GetHhdm();
 
         void InitKernelFromLimine(bool reuseBootloaderMaps = false);
         void InitClone();

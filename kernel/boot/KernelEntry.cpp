@@ -15,7 +15,6 @@
 
 //this is used for demangling stack traces
 sl::NativePtr currentProgramElf;
-uint64_t Kernel::vmaHighAddr;
 
 extern void QueueInitTasks();
 
@@ -86,8 +85,8 @@ namespace Kernel::Boot
         PageTableManager::Setup();
         PageTableManager::Current()->InitKernelFromLimine();
 
-        const sl::BufferView hhdm = PageTableManager::GetHhdm();
-        KernelHeap::Global()->Init(hhdm.base.raw + hhdm.length + GB, false);
+        // const sl::BufferView hhdm = PageTableManager::GetHhdm();
+        KernelHeap::Global()->Init(hhdmBase + hhdmLength + GB, false);
         Log("Memory init complete.", LogSeverity::Info);
     }
 
@@ -214,7 +213,7 @@ extern "C"
         using namespace Kernel;
 
         //NOTE: we dont check if the response is valid here. If it's not valid, we're pretty fucked.
-        vmaHighAddr = hhdmRequest.response->offset;
+        hhdmBase = hhdmRequest.response->offset;
 
         CPU::DisableInterrupts();
         CPU::DoCpuId();

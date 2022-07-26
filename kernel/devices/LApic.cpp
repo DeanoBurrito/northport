@@ -92,7 +92,7 @@ namespace Kernel::Devices
         if (!CPU::FeatureSupported(CpuFeature::APIC))
             Log("CPUID says APIC is not unavailable, cannot initialize local apic.", LogSeverity::Fatal);
 
-        baseAddress = (ReadMsr(MSR_APIC_BASE) & ~(0xFFF)) + vmaHighAddr;
+        baseAddress = EnsureHigherHalfAddr(ReadMsr(MSR_APIC_BASE) & ~(0xFFF));
         timerTicksPerMs = 0;
 
         const uint64_t apicBaseMsr = ReadMsr(MSR_APIC_BASE);
@@ -114,7 +114,7 @@ namespace Kernel::Devices
         } 
         else 
         {
-            Memory::PageTableManager::Current()->MapMemory(baseAddress, baseAddress - vmaHighAddr, Memory::MemoryMapFlags::AllowWrites);
+            Memory::PageTableManager::Current()->MapMemory(baseAddress, EnsureLowerHalfAddr(baseAddress), Memory::MemoryMapFlags::AllowWrites);
             if(IsBsp())
                 Log("Local Apic is running in XAPIC Mode", LogSeverity::Verbose);
         }

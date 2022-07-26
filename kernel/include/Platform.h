@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arch/Cpu.h>
+#include <BufferView.h>
 
 #ifdef __x86_64__
     #include <arch/x86_64/ArchPlatform.h>
@@ -22,7 +23,9 @@ namespace Kernel
 
     struct StoredRegisters;
 
-    extern uint64_t vmaHighAddr;
+    extern NativeUInt hhdmBase;
+    extern NativeUInt hhdmLength;
+    sl::BufferView GetHhdm();
 
     /*
         The following are utility functions for converting between lower/higher halves
@@ -33,30 +36,30 @@ namespace Kernel
     template<typename T>
     FORCE_INLINE T* EnsureHigherHalfAddr(T* existing)
     {
-        if ((NativeUInt)existing < vmaHighAddr)
-            return reinterpret_cast<T*>((NativeUInt)existing + vmaHighAddr);
+        if ((NativeUInt)existing < hhdmBase)
+            return reinterpret_cast<T*>((NativeUInt)existing + hhdmBase);
         return existing;
     }
 
     FORCE_INLINE NativeUInt EnsureHigherHalfAddr(NativeUInt addr)
     {
-        if (addr < vmaHighAddr)
-            return addr + vmaHighAddr;
+        if (addr < hhdmBase)
+            return addr + hhdmBase;
         return addr;
     }
 
     template<typename T>
     FORCE_INLINE T* EnsureLowerHalfAddr(T* existing)
     {
-        if ((NativeUInt)existing >= vmaHighAddr)
-            return reinterpret_cast<T*>((NativeUInt)existing - vmaHighAddr);
+        if ((NativeUInt)existing >= hhdmBase)
+            return reinterpret_cast<T*>((NativeUInt)existing - hhdmBase);
         return existing;
     }
 
     FORCE_INLINE NativeUInt EnsureLowerHalfAddr(NativeUInt addr)
     {
-        if (addr >= vmaHighAddr)
-            return addr - vmaHighAddr;
+        if (addr >= hhdmBase)
+            return addr - hhdmBase;
         return addr;
     }
 
