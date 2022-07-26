@@ -23,8 +23,8 @@ namespace Kernel::Devices::Pci
 
     struct PciBar
     {
+        size_t index;
         uint64_t address;
-        size_t size;
         bool isMemory;
         bool isPrefetchable;
         bool is64BitWide;
@@ -58,12 +58,17 @@ namespace Kernel::Devices::Pci
         PciAddress(NativeUInt address) : addr(address)
         {}
 
-        uint32_t ReadReg(size_t index) const;
-        void WriteReg(size_t index, uint32_t data) const;
-
         FORCE_INLINE bool IsLegacy() const
         { return (addr >> 32) == 0xFFFF'FFFF; }
 
+        uint32_t ReadReg(size_t index) const;
+        void WriteReg(size_t index, uint32_t data) const;
+
         PciBar ReadBar(size_t index) const;
+        size_t GetBarSize(size_t index) const;
+
+        void EnableMemoryAddressing(bool yes = true) const;
+        void EnableBusMastering(bool yes = true) const;
+        void EnablePinInterrupts(bool yes = true) const;
     };
 }

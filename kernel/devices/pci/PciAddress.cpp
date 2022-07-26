@@ -36,11 +36,6 @@ namespace Kernel::Devices::Pci
             //io bar
             bar.isMemory = bar.is64BitWide = bar.isPrefetchable = false;
             bar.address = original & (uint32_t)~0b11;
-
-            WriteReg(PciRegBar0 + index, 0xFFFF'FFFF);
-            const uint32_t readback = ReadReg(PciRegBar0 + index);
-            bar.size = ~(readback & ~0b11) + 1;
-            WriteReg(PciRegBar0 + index, original);
         }
         else
         {
@@ -50,24 +45,66 @@ namespace Kernel::Devices::Pci
             bar.is64BitWide = original & 0b100;
             bar.isPrefetchable = original & 0b1000;
             bar.address = original & ~(uint32_t)0b1111;
+        }
 
-            //TODO: do we need to read the size of a BAR everytime? We never actually use the size
-            //unless we're allocating the address space ourselves (which we dont). Would be nice
-            //to move this to on-demand.
-            if (bar.is64BitWide)
+        bar.index = index;
+        return bar;
+    }
+
+    size_t PciAddress::GetBarSize(size_t index) const
+    {
+        size_t size;
+        const uint32_t original = ReadReg(PciRegBar0 + index);
+        if (original & 0b1)
+        {
+            WriteReg(PciRegBar0 + index, 0xFFFF'FFFF);
+            const uint32_t readback = ReadReg(PciRegBar0 + index);
+            size = ~(readback & ~0b11) + 1;
+            WriteReg(PciRegBar0 + index, original);
+
+            return size;
+        }
+        else
+        {
+            //memory bar
+            uint64_t upperSize = 0xFFFF'FFFF;
+            if (original & 0b100)
             {
-                bar.address |= (uint64_t)ReadReg(PciRegBar1 + index) << 32;
+                uint32_t originalUpper = ReadReg(PciRegBar1 + index);
                 WriteReg(PciRegBar1 + index, 0xFFFF'FFFF);
                 upperSize = ReadReg(PciRegBar1 + index);
-                WriteReg(PciRegBar1 + index, bar.address >> 32);
+                WriteReg(PciRegBar1 + index, originalUpper);
             }
             
             WriteReg(PciRegBar0 + index, 0xFFFF'FFFF);
-            bar.size = (upperSize << 32) | (ReadReg(PciRegBar0) & ~0b1111);
+            size = upperSize << 32 | ReadReg(PciRegBar0 + index) & ~0b1111;
             WriteReg(PciRegBar0 + index, original);
-            bar.size = ~bar.size + 1;
-        }
 
-        return bar;
+            return ~size + 1;
+        }
+    }
+
+    void PciAddress::EnableMemoryAddressing(bool yes) const
+    {
+        uint32_t reg = ReadReg(PciRegCmdStatus) & ~(1 << 1);
+        if (yes)
+            reg |= 1 << 1;
+        WriteReg(PciRegCmdStatus, reg);
+    }
+
+    void PciAddress::EnableBusMastering(bool yes) const
+    {
+        uint32_t reg = ReadReg(PciRegCmdStatus) & ~(1 << 2);
+        if (yes)
+            reg |= 1 << 2;
+        WriteReg(PciRegCmdStatus, reg);
+    }
+
+    void PciAddress::EnablePinInterrupts(bool yes) const
+    {
+        uint32_t reg = ReadReg(PciRegCmdStatus) & ~(1 << 10);
+        if (yes)
+            reg |= 1 << 10;
+        WriteReg(PciRegCmdStatus, reg);
     }
 }

@@ -108,7 +108,7 @@ namespace Kernel::Devices::Pci
 
         PciAddress pciAddr = foundDevices[0];
         const uint8_t subclass = pciAddr.ReadReg(2) >> 16;
-        if (subclass == 0x80 || pciAddr.ReadBar(2).size > 0)
+        if (subclass == 0x80 || pciAddr.GetBarSize(2) > 0)
         {
             mmioBase = pciAddr.ReadBar(2).address;
             Memory::PageTableManager::Current()->MapMemory(EnsureHigherHalfAddr(mmioBase.ptr), mmioBase, MFlags::AllowWrites);
