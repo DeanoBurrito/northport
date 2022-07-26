@@ -1,6 +1,7 @@
 #pragma once
 
 #include <NativePtr.h>
+#include <containers/Vector.h>
 
 namespace Kernel::Devices::Pci
 {
@@ -10,7 +11,7 @@ namespace Kernel::Devices::Pci
         uint64_t capabilities;
         uint32_t version; //31:16 = major, 15:8 = minor, 7:0 tertiary (revision)
         uint32_t interruptMaskSet;
-        uint32_t interruptMaskClear;
+        uint32_t interruptMaskClear; //IMC & IMS are disallowed if we're using msi-x
         uint32_t controllerConfig;
         uint8_t reserved0[4];
         uint32_t controllerStatus;
@@ -31,17 +32,28 @@ namespace Kernel::Devices::Pci
         uint32_t controllerReadyTimeouts;
     };
 
+    //Not the PRP list from the spec, this holds a prplist we have created and need to free later on.
+    struct NvmeQueuePrpl
+    {
+        uint16_t commandId;
+        sl::NativePtr buffer;
+
+        NvmeQueuePrpl(uint16_t cmdId, sl::NativePtr buff) : commandId(cmdId), buffer(buff)
+        {}
+    };
+
     struct NvmeQueue
     {
         sl::NativePtr submission;
         sl::NativePtr completion;
-        volatile uint32_t* submissionTail;
-        volatile uint32_t* completionHead;
+        volatile uint32_t* sqDoorbell;
+        volatile uint32_t* cqDoorbell;
         size_t entries;
         uint32_t cqHead;
         uint32_t cqPhase;
         uint32_t sqTail;
         uint16_t nextCommandId;
+        sl::Vector<NvmeQueuePrpl> prplists;
     };
 
     union SubmissionQueueEntry
@@ -84,16 +96,36 @@ namespace Kernel::Devices::Pci
             uint16_t commandId;
             uint16_t status; //bit 0 is the phase bit
         } fields;
+
+        CompletionQueueEntry& operator=(const volatile CompletionQueueEntry& other);
     };
 
     using NvmeCmdResult = uint32_t;
     
     enum IdentifyCns : uint8_t
     {
-        Nsid = 0,
+        Namespace = 0,
         Controller = 1,
-        ActiveNamespaces = 2,
+        ActiveNamespacesList = 2,
         NsidDescriptors = 3,
+    };
+
+    enum FeatureId : uint8_t
+    {
+        Arbitration = 1,
+        PowerManagement = 2,
+        TemperatureThreshold = 4,
+        VolatileWriteCache = 6,
+        NumberOfQueues = 7,
+        InterruptVectorConfig = 9,
+    };
+
+    enum FeatureAttrib : uint8_t
+    {
+        Current = 0b000,
+        Default = 0b001,
+        Saved = 0b010,
+        Supported = 0b011,
     };
 
     struct NvmeNamespace

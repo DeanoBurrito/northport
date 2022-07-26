@@ -31,17 +31,23 @@ namespace Kernel::Devices::Pci
         If a command needs to return data, it will take pointers to physical pages (called prp = physical
         range/region pages). PRPs are the basic unit of data transfer between the driver and the controller.
 
-        At the time of writing the osdev wiki page on NVMe looks useful, but it totally useless for an actual
+        At the time of writing the osdev wiki page on NVMe looks useful, but it's totally useless for an actual
         implementation. Resources I found useful:
-        - Old version of Lyre (this is GPLv3 licensed)
-          https://github.com/lyre-os/lyre/blob/old-lyre/kernel/dev/storage/nvme/nvme.c
-        - NVM Express Base Specification
-          Mainly chapters 3 (architecture) and 5 (admin command set). Chapter 2 is worth reading a few times to 
-          understand the concepts behind NVMe.
-        - NVM Command Set Specification
-          Details the NVM command set, which is the one you'll want to use. Very short, useful as a reference.
-        - NVM Express PCIe Transport Specification
-          NVMe operates over a bunch of transports, this talks about the PCIe specific stuff. Also very short.
+        -   Old version of Lyre (this is GPLv3 licensed)
+            https://github.com/lyre-os/lyre/blob/old-lyre/kernel/dev/storage/nvme/nvme.c
+
+        -   SerenityOS (BSD2 license)
+            https://github.com/SerenityOS/serenity/tree/master/Kernel/Storage/NVMe
+            
+        -   NVM Express Base Specification
+            Mainly chapters 3 (architecture) and 5 (admin command set). Chapter 2 is worth reading a few times to 
+            understand the concepts behind NVMe.
+
+        -   NVM Command Set Specification
+            Details the NVM command set, which is the one you'll want to use. Very short, useful as a reference.
+            
+        -   NVM Express PCIe Transport Specification
+            NVMe operates over a bunch of transports, this talks about the PCIe specific stuff. Also very short.
     */
     class NvmeController : public Drivers::GenericDriver
     {
@@ -56,18 +62,23 @@ namespace Kernel::Devices::Pci
         sl::Vector<NvmeNamespace> namespaces;
         sl::Vector<NvmeQueue> queues;
 
+        void Disable();
+        bool Enable();
         void InitInterrupts(sl::Opt<PciCap*>& msi, sl::Opt<PciCap*>& msix);
 
         void CreateAdminQueue(size_t queueEntries);
         void DestroyAdminQueue();
-
         void CreateIoQueue(size_t index);
         void DestroyIoQueue(size_t index);
 
-        //wait for a command to complete by spinning
-        NvmeCmdResult DoCommand(size_t queueIndex, SubmissionQueueEntry* cmd);
+        bool BuildPrps(NvmeQueue& queue, SubmissionQueueEntry& cmd, sl::BufferView buffer);
+
+        //we run admin commands synchronously, as they're commonly only used during startup/shutdown. This
+        NvmeCmdResult DoAdminCommand(SubmissionQueueEntry* cmd, CompletionQueueEntry* completion = nullptr);
+
         [[nodiscard]]
         sl::BufferView Identify(IdentifyCns cns, uint32_t namespaceId, sl::BufferView buffer);
+        size_t GetMaxIoQueueCount();
 
         void HandleInterrupt(size_t vector);
 
@@ -75,6 +86,14 @@ namespace Kernel::Devices::Pci
         void Init(Drivers::DriverInitInfo* initInfo) override;
         void Deinit() override;
         void HandleEvent(Drivers::DriverEventType type, void* args) override;
+
+        //start a read operation from a namespace, returns an operation id that can be used to end it (the read op).
+        //dest.base MUST be page-aligned, and length must be lba aligned or read will fail.
+        size_t BeginRead(size_t nsid, size_t lbaStart, sl::BufferView dest);
+        //returns an empty Opt<> if the operation is ongoing, otherwise returns the result.
+        sl::Opt<NvmeCmdResult> EndRead(size_t operationId);
+        // size_t BeginWrite(size_t nsid, size_t lbaStart, sl::BufferView source);
+        // NvmeCmdResult EndWrite(size_t operationId);
     };
 
     Drivers::GenericDriver* CreateNewNvmeDriver();

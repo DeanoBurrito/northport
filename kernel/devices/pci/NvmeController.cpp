@@ -6,20 +6,32 @@
 
 namespace Kernel::Devices::Pci
 {
+    //These are taken from the NVMe base specification + NVM command set spec.
     namespace Ops
     {
-        //These are taken from the NVMe base specification + NVM command set spec.
-        constexpr uint8_t DeleteIoSQ = 0x0;
-        constexpr uint8_t CreateIoSQ = 0x1;
-        constexpr uint8_t GetLogPage = 0x2;
-        constexpr uint8_t DeleteIoCQ = 0x4;
-        constexpr uint8_t CreateIoCQ = 0x5;
-        constexpr uint8_t Identify = 0x6;
-        constexpr uint8_t Abort = 0x8;
-        constexpr uint8_t SetFeatures = 0x9;
-        constexpr uint8_t GetFeatures = 0xA;
-        constexpr uint8_t FirmwareDownload = 0x11;
-        constexpr uint8_t SelfTest = 0x14;
+        namespace Admin
+        {
+            constexpr uint8_t DeleteIoSQ = 0x0;
+            constexpr uint8_t CreateIoSQ = 0x1;
+            constexpr uint8_t GetLogPage = 0x2;
+            constexpr uint8_t DeleteIoCQ = 0x4;
+            constexpr uint8_t CreateIoCQ = 0x5;
+            constexpr uint8_t Identify = 0x6;
+            constexpr uint8_t Abort = 0x8;
+            constexpr uint8_t SetFeatures = 0x9;
+            constexpr uint8_t GetFeatures = 0xA;
+            constexpr uint8_t FirmwareDownload = 0x11;
+            constexpr uint8_t SelfTest = 0x14;
+        }
+
+        namespace IO
+        {
+            constexpr uint8_t Flush = 0x0;
+            constexpr uint8_t Write = 0x1;
+            constexpr uint8_t Read = 0x2;
+            constexpr uint8_t WriteZeroes = 0x8;
+            constexpr uint8_t Copy = 0x19;
+        }
     }
 
     SubmissionQueueEntry::SubmissionQueueEntry()
@@ -38,10 +50,47 @@ namespace Kernel::Devices::Pci
         return *this;
     }
 
+    CompletionQueueEntry& CompletionQueueEntry::operator=(const volatile CompletionQueueEntry& other)
+    {
+        if (this == &other)
+            return *this;
+        
+        for (size_t i = 0; i < 4; i++)
+            this->dwords[i] = other.dwords[i];
+        return *this;
+    }
+
     void NvmeInterruptStub(size_t vector, void* arg)
     {
         NvmeController* driver = static_cast<NvmeController*>(arg);
         driver->HandleEvent(Drivers::DriverEventType::Interrupt, (void*)vector);
+    }
+
+    void NvmeController::Disable()
+    {
+        //clear the enable bit and wait for the ready bit to cleared (indicating its disabled)
+        properties->controllerConfig &= ~(uint32_t)1;
+        while ((properties->controllerStatus & 1) != 0);
+    }
+
+    bool NvmeController::Enable()
+    {
+        //The controller doesn't need to maintain the previous state once we set the enable bit,
+        //so we have to write our settings in a single write.
+
+        //There are number of fields we initialize to zero as well:
+        //AMS: abitration scheme. 0 = round robin.
+        //MPS: page size to use, encoded as (12 + n) ^ 2. So 0 means 12 ^ 2 = 4096 bytes.
+        //CSS: current command set: 0 = NVM command set. There are others, but this is what we care about.
+
+        uint32_t cc = 1; //enable bit
+        cc |= 6 << 16; //IOSQES: submission queue entry size, as a power of 2. 6 ^ 2 = 64 bytes.
+        cc |= 4 << 20; //IOCSES: completion queue entry size, as apower of 2. 4 ^ 2 = 16 bytes.
+        properties->controllerConfig = cc;
+
+        while ((properties->controllerStatus & 0b11) == 0); //bit 0 is enable bit
+
+        return properties->controllerStatus & 0b10; //bit 1 is fatal error status
     }
 
     void NvmeController::InitInterrupts(sl::Opt<PciCap*>& maybeMsi, sl::Opt<PciCap*>& maybeMsiX)
@@ -88,26 +137,28 @@ namespace Kernel::Devices::Pci
     void NvmeController::CreateAdminQueue(size_t queueEntries)
     {
         queues.EnsureCapacity(1);
+        while (queues.Size() < 1)
+            queues.EmplaceBack();
         
         queueEntries = sl::min(queueEntries, maxQueueEntries);
         sl::NativePtr doorbellBase = (uintptr_t)properties + 0x1000;
-        const size_t dbShift = 4 << doorbellStride;
         
         NvmeQueue& q = queues[0]; //peak variable naming
         q.entries = queueEntries;
         q.cqHead = 0;
         q.sqTail = 0;
         q.cqPhase = 1;
+        q.nextCommandId = 1;
 
         const size_t sqSizeBytes = queueEntries * sizeof(SubmissionQueueEntry);
         q.submission = Memory::PMM::Global()->AllocPages(sqSizeBytes / PAGE_FRAME_SIZE + 1);
         q.submission = EnsureHigherHalfAddr(q.submission.ptr);
-        q.submissionTail = doorbellBase.As<volatile uint32_t>();
+        q.sqDoorbell = doorbellBase.As<volatile uint32_t>();
 
         const size_t cqSizeBytes = queueEntries * sizeof(CompletionQueueEntry);
         q.completion = Memory::PMM::Global()->AllocPages(cqSizeBytes / PAGE_FRAME_SIZE + 1);
         q.completion = EnsureHigherHalfAddr(q.completion.ptr);
-        q.completionHead = doorbellBase.As<volatile uint32_t>(4);
+        q.cqDoorbell = doorbellBase.As<volatile uint32_t>(doorbellStride);
     }
 
     void NvmeController::DestroyAdminQueue()
@@ -115,15 +166,86 @@ namespace Kernel::Devices::Pci
 
     void NvmeController::CreateIoQueue(size_t index)
     {
+        queues.EnsureCapacity(index + 1);
+        while (queues.Size() <= index)
+            queues.EmplaceBack();
+        
+        const size_t sqPages = maxQueueEntries * sizeof(SubmissionQueueEntry) / PAGE_FRAME_SIZE + 1;
+        const size_t cqPages = maxQueueEntries * sizeof(CompletionQueueEntry) / PAGE_FRAME_SIZE + 1;
+        NvmeQueue& queue = queues[index];
+        queue.entries = maxQueueEntries;
+        queue.cqHead = queue.sqTail = 0;
+        queue.cqPhase = 1;
+        queue.nextCommandId = 1;
 
+        sl::NativePtr doorbellBase = (uintptr_t)properties + 0x1000 + (2 * index) * doorbellStride;
+
+        queue.submission = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPages(sqPages));
+        queue.sqDoorbell = doorbellBase.As<volatile uint32_t>();
+        
+        queue.completion = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPages(cqPages));
+        queue.cqDoorbell = doorbellBase.As<volatile uint32_t>(doorbellStride);
+
+        //now we need to tell the controller about the buffer we've created for the queues.
+        SubmissionQueueEntry createCqCmd;
+        createCqCmd.fields.opcode = Ops::Admin::CreateIoCQ;
+        createCqCmd.fields.prp1 = EnsureLowerHalfAddr(queue.completion.raw);
+        createCqCmd.fields.cdw10 = (maxQueueEntries - 1) << 16 | index;
+        createCqCmd.fields.cdw11 = 0 << 16 | 0b11; //use msix vector 0, enable interrupts and PC bit.
+        NvmeCmdResult createCqResult = DoAdminCommand(&createCqCmd);
+
+        SubmissionQueueEntry createSqCmd;
+        createSqCmd.fields.opcode = Ops::Admin::CreateIoSQ;
+        createSqCmd.fields.prp1 = EnsureLowerHalfAddr(queue.submission.raw);
+        createSqCmd.fields.cdw10 = (maxQueueEntries - 1) << 16 | index;
+        //bit 0 (PC - Physical contiguous) is set, the other options being a scatter-gather setup.
+        createSqCmd.fields.cdw11 = index << 16 | 1; 
+        NvmeCmdResult createSqResult = DoAdminCommand(&createSqCmd);
+
+        Logf("NVMe IO queue pair created: id=%u, entries=%u, sqBase=0x%lx, cqBase=0x%lx", LogSeverity::Verbose, 
+            index, maxQueueEntries, EnsureLowerHalfAddr(queue.submission.raw), EnsureLowerHalfAddr(queue.completion.raw));
     }
 
     void NvmeController::DestroyIoQueue(size_t index)
     { /* TODO: */ }
 
-    NvmeCmdResult NvmeController::DoCommand(size_t queueIndex, SubmissionQueueEntry* cmd)
+    bool NvmeController::BuildPrps(NvmeQueue& queue, SubmissionQueueEntry& cmd, sl::BufferView buffer)
     {
-        NvmeQueue& queue = queues[queueIndex];
+        //create a prplist and populate prp1 & 2 appropriately
+        const size_t prps = buffer.length / PAGE_FRAME_SIZE;
+        if (prps > 0x1000)
+            return false;
+
+        if (prps == 1)
+        {
+            cmd.fields.prp1 = EnsureLowerHalfAddr(buffer.base.raw);
+            return true;
+        }
+        else if (prps == 2)
+        {
+            cmd.fields.prp1 = EnsureLowerHalfAddr(buffer.base.raw);
+            cmd.fields.prp2 = EnsureLowerHalfAddr(buffer.base.raw + PAGE_FRAME_SIZE);
+            return true;
+        }
+
+        //the buffer is too big to fit into 2 pointers, we'll need to create a prp list.
+        //we alloc a new phys page for prp2 to hold all the overflow pages.
+        sl::NativePtr prplPage = EnsureHigherHalfAddr(Memory::PMM::Global()->AllocPage());
+        queue.prplists.PushBack({ cmd.fields.commandId, EnsureLowerHalfAddr(prplPage.ptr) });
+        volatile uint64_t* prplAccess = prplPage.As<volatile uint64_t>();
+
+        NativeUInt prp = EnsureLowerHalfAddr(buffer.base.raw);
+        cmd.fields.prp1 = prp;
+        cmd.fields.prp2 = EnsureLowerHalfAddr(prplPage.raw);
+
+        for (size_t i = 1; i < prps; i++)
+            prplAccess[i - 1] = prp + i * PAGE_FRAME_SIZE;
+        return true;
+    }
+
+    NvmeCmdResult NvmeController::DoAdminCommand(SubmissionQueueEntry* cmd, CompletionQueueEntry* completion)
+    {
+        NvmeQueue& queue = queues[0];
         cmd->fields.commandId = queue.nextCommandId++;
 
         volatile SubmissionQueueEntry* sqTail = queue.submission.As<SubmissionQueueEntry>();
@@ -131,7 +253,7 @@ namespace Kernel::Devices::Pci
         queue.sqTail++;
         if (queue.sqTail == queue.entries)
             queue.sqTail = 0;
-        *queue.submissionTail = queue.sqTail;
+        *queue.sqDoorbell = queue.sqTail;
 
         volatile CompletionQueueEntry* cqHead = queue.completion.As<volatile CompletionQueueEntry>();
         cqHead += queue.cqHead;
@@ -141,7 +263,10 @@ namespace Kernel::Devices::Pci
         //bit 0 is the phase bit, which is irrelevent to checking the completion status
         const uint32_t result = cqHead->fields.status >> 1;
         if (result != 0)
-            Logf("NVMe synchronous command failed: opcode=0x%x, error=0x%x", LogSeverity::Error, cmd->fields.opcode, result);
+            Logf("NVMe synchronous command failed: opcode=0x%x, status=0x%x", LogSeverity::Error, cmd->fields.opcode, result);
+
+        if (completion != nullptr)
+            *completion = *cqHead;
         
         if (queue.cqHead + 1 == queue.entries)
         {
@@ -151,7 +276,7 @@ namespace Kernel::Devices::Pci
         else
             queue.cqHead++;
         
-        *queue.completionHead = queue.cqHead;
+        *queue.cqDoorbell = queue.cqHead;
         return result;
     }
 
@@ -160,18 +285,30 @@ namespace Kernel::Devices::Pci
         if (buffer.base.ptr == nullptr || buffer.length != PAGE_FRAME_SIZE)
             return {};
         
-        SubmissionQueueEntry submission;
-        submission.fields.opcode = Ops::Identify;
-        submission.fields.prp1 = EnsureLowerHalfAddr(buffer.base.raw);
-        submission.fields.prp2 = 0;
-        submission.fields.namespaceId = namespaceId;
-        submission.fields.cdw10 = (uint8_t)cns;
+        SubmissionQueueEntry cmd;
+        cmd.fields.opcode = Ops::Admin::Identify;
+        cmd.fields.prp1 = EnsureLowerHalfAddr(buffer.base.raw);
+        cmd.fields.namespaceId = namespaceId;
+        cmd.fields.cdw10 = (uint8_t)cns;
 
-        NvmeCmdResult result = DoCommand(0, &submission);
+        NvmeCmdResult result = DoAdminCommand(&cmd);
         if (result != 0)
             return {};
 
-        return { EnsureHigherHalfAddr(submission.fields.prp1), 0x1000 };
+        return { EnsureHigherHalfAddr(cmd.fields.prp1), 0x1000 };
+    }
+
+    size_t NvmeController::GetMaxIoQueueCount()
+    {
+        SubmissionQueueEntry cmd;
+        cmd.fields.opcode = Ops::Admin::GetFeatures;
+        cmd.fields.cdw10 = (uint8_t)FeatureId::NumberOfQueues | ((uint8_t)FeatureAttrib::Supported << 8);
+
+        CompletionQueueEntry completion;
+        NvmeCmdResult result = DoAdminCommand(&cmd, &completion);
+        if (result != 0)
+            return 0;
+        return completion.dwords[0] & 0xFFFF;
     }
 
     void NvmeController::HandleInterrupt(size_t vector)
@@ -191,11 +328,9 @@ namespace Kernel::Devices::Pci
         auto maybeAddrTag = initInfo->FindTag(Drivers::DriverInitTagType::PciFunction);
         address = reinterpret_cast<Drivers::DriverInitTagPci*>(*maybeAddrTag)->address;
 
-        uint32_t command = address.ReadReg(PciRegCmdStatus);
-        command |= 1 << 1; //memory space access
-        command |= 1 << 2; //bus mastering
-        command |= 1 << 10; //disable the pin interrupts
-        address.WriteReg(PciRegCmdStatus, command);
+        address.EnableMemoryAddressing();
+        address.EnableBusMastering();
+        address.EnablePinInterrupts(false);
         
         //ensure mmio described by BAR0 is mapped properly
         const PciBar bar0 = address.ReadBar(0);
@@ -205,11 +340,10 @@ namespace Kernel::Devices::Pci
         properties = reinterpret_cast<volatile NvmePropertyMap*>(bar0.address);
         properties = EnsureHigherHalfAddr(properties);
         
-        //disable the controller while we mess with it's settings.
-        properties->controllerConfig &= ~(uint32_t)1; //clear the enable bit
-        while ((properties->controllerStatus & 1) != 0); //wait until driver clears the ready bit
+        //controller must be disabled while we set up the admin queues.
+        Disable();
 
-        doorbellStride = (properties->capabilities >> 32) & 0b1111;
+        doorbellStride = 4 << ((properties->capabilities >> 32) & 0b1111);
         maxQueueEntries = (properties->capabilities & 0xFFFF) + 1;
 
         //check the device supports the NVM command set, which we require.
@@ -231,19 +365,11 @@ namespace Kernel::Devices::Pci
         properties->adminCompletionQueue = EnsureLowerHalfAddr(queues[0].completion.raw & ~0xFFFul);
         properties->adminSubmissionQueue = EnsureLowerHalfAddr(queues[0].submission.raw & ~0xFFFul);
 
-        //controllers are not expected to maintain the previous state of this register when bit 0 (enable)
-        //is set, so we have to write all the values we want at once.
-        uint32_t cc = 1; //enable bit
-        cc |= 0 << 4;  //SHN: use the NVM command set
-        cc |= 0 << 11; //AMS: round-robin queue arbitration
-        cc |= 6 << 16; //IOSQES: submission queue entry size, as a power of 2. 6^2 = 64 bytes.
-        cc |= 4 << 20; //IOCSES: completion queue entry size, like above. 4^2 = 16 bytes
-        cc |= 0 << 7;  //MPS: (this + 12) ^ 2 is the base page size we supported. 4K is always supported, so we stick with that.
-        //CSS (current selected [command] set) is also set to zero here, meaning use the NVM command set.
-        properties->controllerConfig = cc;
-
-        //wait for controller to come online
-        while ((properties->controllerStatus & 1) == 0); //TODO: we should also check for an error state here
+        if (Enable())
+        {
+            Log("NVMe failed to reinitialize, reporting a fatal error.", LogSeverity::Error);
+            return;
+        }
         
         const size_t minPageShift = (12 + ((properties->capabilities >> 48) & 0xF));
         if ((1 << minPageShift) != PAGE_FRAME_SIZE)
@@ -263,7 +389,7 @@ namespace Kernel::Devices::Pci
             maxTransferSize, controllerData.base.As<void>(4), controllerData.base.As<void>(24));
 
         //get the active namespace list
-        sl::BufferView namespaceList = Identify(IdentifyCns::ActiveNamespaces, 0, identifyBuffer);
+        sl::BufferView namespaceList = Identify(IdentifyCns::ActiveNamespacesList, 0, identifyBuffer);
         const uint32_t* list = namespaceList.base.As<uint32_t>();
         //max of 1024 ids per identify list, id=0 means an id is invalid.
         for (size_t i = 0; list[i] != 0 && i < 1024; i++)
@@ -271,14 +397,16 @@ namespace Kernel::Devices::Pci
         
         for (size_t i = 0; i < namespaces.Size(); i++)
         {
-            sl::BufferView nsInfo = Identify(IdentifyCns::Nsid, namespaces[i].nsid, identifyBuffer);
+            sl::BufferView nsInfo = Identify(IdentifyCns::Namespace, namespaces[i].nsid, identifyBuffer);
             //LBA formats (lbaf) begin at byte 128. Bits 23:16 of an LBAF are the lba size as a power of 2.
-            //we're only going to use format 1, as the other formats are optionally and we dont need them right now.
+            //we're only going to use format 1, as the other formats are optional and we dont need them right now.
             namespaces[i].blockCount = *nsInfo.base.As<uint8_t>(0);
             namespaces[i].blockSize = 1 << *nsInfo.base.As<uint8_t>(130);
             Logf("NVMe namspace found: id=%u, blocks=%u, blockSize=%U", LogSeverity::Verbose, 
-                i, namespaces[i].blockCount, namespaces[i].blockSize);
+                namespaces[i].nsid, namespaces[i].blockCount, namespaces[i].blockSize);
         }
+        Memory::PMM::Global()->FreePage(identifyBuffer.base.ptr);
+        identifyBuffer.base = nullptr;
 
         //I'm refusing to use the interrupt pins, so check that we have an MSI or MSI-X cap.
         auto maybeMsi = FindPciCap(address, CapIdMsi);
@@ -291,9 +419,8 @@ namespace Kernel::Devices::Pci
         }
         InitInterrupts(maybeMsi, maybeMsiX);
 
-        //create IO queues, at least one queue is always supported.
-        //To do this properly we would use GetFeatures to check the maximum number of io queues,
-        //and then allocate as many as we wanted up to that limit.
+        //ideally you would create more than a single queue, but its all we need for now.
+        const size_t maxQueueCount = GetMaxIoQueueCount();
         CreateIoQueue(1);
     }
 
@@ -302,6 +429,107 @@ namespace Kernel::Devices::Pci
 
     void NvmeController::HandleEvent(Drivers::DriverEventType type, void* args)
     {}
+
+    size_t NvmeController::BeginRead(size_t nsid, size_t lbaStart, sl::BufferView dest)
+    {
+        if (!GetHhdm().Contains(dest))
+        {
+            Log("NVMe driver could not start read operation, provided buffer not in hhdm.", LogSeverity::Error);
+            return (size_t)-1;
+        }
+
+        const NvmeNamespace* ns = nullptr;
+        for (size_t i = 0; i < namespaces.Size(); i++)
+        {
+            if (namespaces[i].nsid == nsid)
+            {
+                ns = &namespaces[i];
+                break;
+            }
+        }
+        if (ns == nullptr)
+        {
+            Log("NVMe driver could not start read operation, no namespace with that id.", LogSeverity::Error);
+            return (size_t)-1;
+        }
+
+        if (dest.length % ns->blockSize != 0)
+        {
+            Log("NVMe driver could not start read operation, data length not LBA-aligned.", LogSeverity::Error);
+            return (size_t)-1;
+        }
+
+        //TODO: we should check buffer falls within namespace lba bounds.
+
+        NvmeQueue& ioQueue = queues[1]; //TODO: avoid hardcoding of queues like this
+        
+        SubmissionQueueEntry cmd;
+        cmd.fields.opcode = Ops::IO::Read;
+        cmd.fields.cdw10 = lbaStart;
+        cmd.fields.cdw11 = lbaStart >> 32;
+        cmd.fields.cdw12 = dest.length / ns->blockSize;
+        cmd.fields.namespaceId = nsid;
+
+        if (!BuildPrps(ioQueue, cmd, dest))
+        {
+            Log("NVMe drier could not start read operation, failed to build PRP list.", LogSeverity::Error);
+            return (size_t)-1;
+        }
+
+        const size_t opId = cmd.fields.commandId = ioQueue.nextCommandId;
+        ioQueue.nextCommandId++;
+
+        volatile SubmissionQueueEntry* subQueue = ioQueue.submission.As<volatile SubmissionQueueEntry>();
+        subQueue[ioQueue.sqTail] = cmd;
+        ioQueue.sqTail++;
+        if (ioQueue.sqTail == ioQueue.entries)
+            ioQueue.sqTail = 0;
+        *ioQueue.sqDoorbell = ioQueue.sqTail;
+        
+        //not sure how I feel about exposing the inner ids of the driver outside, but it should be fine.
+        return opId;
+    }
+
+    sl::Opt<NvmeCmdResult> NvmeController::EndRead(size_t operationId)
+    {
+        NvmeQueue& ioQueue = queues[1];
+
+        volatile CompletionQueueEntry* comQueue = ioQueue.completion.As<volatile CompletionQueueEntry>();
+        
+        //search backwards from the last-known completion, if we reach older command ids we've gone too far.
+        size_t scanHead = ioQueue.cqHead;
+        while (comQueue[scanHead].fields.commandId > operationId)
+            scanHead--;
+        if (comQueue[scanHead].fields.commandId != operationId)
+            return {};
+        
+        const NvmeCmdResult result = comQueue[scanHead].fields.status >> 1;
+        if (result != 0)
+        {
+            Logf("NVMe async read failed: commandId=0x%x, type=0x%x, statusCode=0x%x, dnr=%b", LogSeverity::Error, 
+                operationId, (result >> 8) & 0b111, result & 0xFF, result & (1 << 14));
+        }
+
+        //if we allocated an extra page for a prplist, we can free it now.
+        for (size_t i = 0; i < ioQueue.prplists.Size(); i++)
+        {
+            if (ioQueue.prplists[i].commandId != operationId)
+                continue;
+            
+            Memory::PMM::Global()->FreePage(ioQueue.prplists[i].buffer.ptr);
+            ioQueue.prplists.Erase(i);
+            break;
+        }
+        
+        return result;
+        
+    }
+
+    // size_t NvmeController::BeginWrite(size_t nsid, size_t lbaStart, sl::BufferView source)
+    // {}
+
+    // NvmeCmdResult NvmeController::EndWrite(size_t operationId)
+    // {}
 
     Drivers::GenericDriver* CreateNewNvmeDriver()
     { 
