@@ -38,7 +38,7 @@ namespace Kernel::Devices::Pci
         void HandleEvent(Drivers::DriverEventType type, void* eventArgs) override;
     };
 
-    class VirtioGpu : public Interfaces::GenericGraphicsAdaptor
+    class VirtioGpu : public GenericGraphicsAdaptor
     {
     friend VirtioFramebuffer;
     private:
@@ -58,10 +58,10 @@ namespace Kernel::Devices::Pci
         void Reset() override;
         sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
         size_t GetFramebuffersCount() const override;
-        Interfaces::GenericFramebuffer* GetFramebuffer(size_t index) const override;
+        GenericFramebuffer* GetFramebuffer(size_t index) const override;
     };
 
-    class VirtioFramebuffer : public Interfaces::GenericFramebuffer
+    class VirtioFramebuffer : public GenericFramebuffer
     {
     friend VirtioGpu;
     private:
@@ -76,8 +76,8 @@ namespace Kernel::Devices::Pci
         sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
         
         bool CanModeset() const override;
-        void SetMode(Interfaces::FramebufferModeset& modeset) override;
-        Interfaces::FramebufferModeset GetCurrentMode() const override;
+        void SetMode(FramebufferModeset& modeset) override;
+        FramebufferModeset GetCurrentMode() const override;
         sl::Opt<sl::NativePtr> GetAddress() const override;
     };
 

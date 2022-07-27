@@ -24,6 +24,7 @@ namespace Kernel::Devices
         GraphicsFramebuffer,
         Keyboard,
         Mouse,
+        Block,
 
         EnumCount,
     };

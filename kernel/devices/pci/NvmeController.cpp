@@ -1,7 +1,9 @@
 #include <devices/pci/NvmeController.h>
-#include <memory/PhysicalMemory.h>
 #include <devices/PciBridge.h>
+#include <devices/DeviceManager.h>
+#include <memory/PhysicalMemory.h>
 #include <InterruptManager.h>
+#include <Locks.h>
 #include <Log.h>
 
 namespace Kernel::Devices::Pci
@@ -484,6 +486,9 @@ namespace Kernel::Devices::Pci
             namespaces[i].blockSize = 1 << *nsInfo.base.As<uint8_t>(130);
             Logf("NVMe namspace found: id=%u, blocks=%u, blockSize=%U", LogSeverity::Verbose, 
                 namespaces[i].nsid, namespaces[i].blockCount, namespaces[i].blockSize);
+
+            namespaces[i].blockDevice = new NvmeBlockDevice(this, namespaces[i].nsid);
+            DeviceManager::Global()->RegisterDevice(namespaces[i].blockDevice);
         }
         Memory::PMM::Global()->FreePage(identifyBuffer.base.ptr);
         identifyBuffer.base = nullptr;
@@ -548,5 +553,48 @@ namespace Kernel::Devices::Pci
     Drivers::GenericDriver* CreateNewNvmeDriver()
     { 
         return new NvmeController();
+    }
+
+    void NvmeBlockDevice::Init()
+    {
+        sl::SpinlockRelease(&lock);
+        type = DeviceType::Block;
+        state = DeviceState::Ready;
+    }
+
+    void NvmeBlockDevice::Deinit()
+    {
+        state = DeviceState::Shutdown;
+    }
+
+    void NvmeBlockDevice::Reset()
+    {
+        Deinit();
+        Init();
+    }
+
+    sl::Opt<Drivers::GenericDriver*> NvmeBlockDevice::GetDriverInstance()
+    { 
+        return driver;
+    }
+
+    size_t NvmeBlockDevice::BeginRead(size_t startLba, sl::BufferView dest)
+    {
+        return driver->BeginRead(nsid, startLba, dest);
+    }
+
+    sl::Opt<BlockCmdResult> NvmeBlockDevice::EndRead(size_t token)
+    {
+        return driver->EndRead(token);
+    }
+
+    size_t NvmeBlockDevice::BeginWrite(size_t startLba, sl::BufferView source)
+    {
+        return driver->BeginWrite(nsid, startLba, source);
+    }
+
+    sl::Opt<BlockCmdResult> NvmeBlockDevice::EndWrite(size_t token)
+    {
+        return driver->EndWrite(token);
     }
 }

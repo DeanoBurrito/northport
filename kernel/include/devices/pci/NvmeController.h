@@ -3,6 +3,7 @@
 #include <devices/pci/NvmeDefs.h>
 #include <devices/pci/PciAddress.h>
 #include <devices/pci/PciCapabilities.h>
+#include <devices/interfaces/GenericBlock.h>
 #include <drivers/GenericDriver.h>
 #include <containers/Vector.h>
 #include <BufferView.h>
@@ -93,6 +94,31 @@ namespace Kernel::Devices::Pci
         sl::Opt<NvmeCmdResult> EndRead(size_t operationId);
         size_t BeginWrite(size_t nsid, size_t lbaStart, sl::BufferView source);
         sl::Opt<NvmeCmdResult> EndWrite(size_t operationId);
+    };
+
+    class NvmeBlockDevice : public GenericBlock
+    {
+    friend NvmeController;
+    private:
+        NvmeController* driver;
+        uint32_t nsid;
+
+        NvmeBlockDevice(NvmeController* controller, uint32_t nsid)
+        : driver(controller), nsid(nsid)
+        {}
+    
+    protected:
+        void Init() override;
+        void Deinit() override;
+
+    public:
+        void Reset() override;
+        sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
+
+        size_t BeginRead(size_t startLba, sl::BufferView dest) override;
+        sl::Opt<BlockCmdResult> EndRead(size_t token) override;
+        size_t BeginWrite(size_t startLba, sl::BufferView source) override;
+        sl::Opt<BlockCmdResult> EndWrite(size_t token) override;
     };
 
     Drivers::GenericDriver* CreateNewNvmeDriver();

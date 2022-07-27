@@ -115,7 +115,7 @@ namespace Kernel::Devices::Pci
     size_t VirtioGpu::GetFramebuffersCount() const
     {}
 
-    Interfaces::GenericFramebuffer* VirtioGpu::GetFramebuffer(size_t index) const
+    GenericFramebuffer* VirtioGpu::GetFramebuffer(size_t index) const
     {}
 
     void VirtioFramebuffer::Init()
@@ -146,10 +146,10 @@ namespace Kernel::Devices::Pci
     bool VirtioFramebuffer::CanModeset() const
     { return true; }
 
-    void VirtioFramebuffer::SetMode(Interfaces::FramebufferModeset& modeset)
+    void VirtioFramebuffer::SetMode(FramebufferModeset& modeset)
     {}
 
-    Interfaces::FramebufferModeset VirtioFramebuffer::GetCurrentMode() const
+    FramebufferModeset VirtioFramebuffer::GetCurrentMode() const
     {}
 
     sl::Opt<sl::NativePtr> VirtioFramebuffer::GetAddress() const

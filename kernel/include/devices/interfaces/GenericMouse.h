@@ -2,7 +2,7 @@
 
 #include <devices/GenericDevice.h>
 
-namespace Kernel::Devices::Interfaces
+namespace Kernel::Devices
 {
     class GenericMouse : public GenericDevice
     {

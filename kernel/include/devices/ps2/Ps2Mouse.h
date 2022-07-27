@@ -6,7 +6,7 @@ namespace Kernel::Devices::Ps2
 {
     class Ps2Driver;
     
-    class Ps2Mouse : public Interfaces::GenericMouse
+    class Ps2Mouse : public GenericMouse
     {
     friend Ps2Driver;
     protected:

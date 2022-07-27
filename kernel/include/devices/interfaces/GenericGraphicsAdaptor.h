@@ -3,7 +3,7 @@
 #include <devices/GenericDevice.h>
 #include <devices/interfaces/GenericFramebuffer.h>
 
-namespace Kernel::Devices::Interfaces
+namespace Kernel::Devices
 {   
     class GenericGraphicsAdaptor : public GenericDevice
     {

@@ -19,7 +19,7 @@ namespace Kernel::Devices::Pci
         void HandleEvent(Drivers::DriverEventType type, void* arg) override;
     };
     
-    class BochsFramebuffer : public Interfaces::GenericFramebuffer
+    class BochsFramebuffer : public GenericFramebuffer
     {
     private:
         char lock;
@@ -29,7 +29,7 @@ namespace Kernel::Devices::Pci
         size_t width;
         size_t height;
         size_t bpp;
-        Interfaces::ColourFormat format;
+        ColourFormat format;
 
         void WriteVgaReg(uint16_t reg, uint16_t data) const;
         uint16_t ReadVgaReg(uint16_t reg) const;
@@ -43,13 +43,13 @@ namespace Kernel::Devices::Pci
         sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
 
         bool CanModeset() const override;
-        void SetMode(Interfaces::FramebufferModeset& modeset) override;
-        Interfaces::FramebufferModeset GetCurrentMode() const override;
+        void SetMode(FramebufferModeset& modeset) override;
+        FramebufferModeset GetCurrentMode() const override;
 
         sl::Opt<sl::NativePtr> GetAddress() const override;
     };
 
-    class BochsGraphicsAdaptor : public Interfaces::GenericGraphicsAdaptor
+    class BochsGraphicsAdaptor : public GenericGraphicsAdaptor
     {
     private:
         BochsFramebuffer* framebuffer;
@@ -62,6 +62,6 @@ namespace Kernel::Devices::Pci
         sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
 
         size_t GetFramebuffersCount() const override;
-        Interfaces::GenericFramebuffer* GetFramebuffer(size_t index) const override;
+        GenericFramebuffer* GetFramebuffer(size_t index) const override;
     };
 }

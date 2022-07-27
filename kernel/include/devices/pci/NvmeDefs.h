@@ -128,11 +128,14 @@ namespace Kernel::Devices::Pci
         Supported = 0b011,
     };
 
+    class NvmeBlockDevice;
+
     struct NvmeNamespace
     {
         uint32_t nsid;
         size_t blockCount;
-        size_t blockSize; 
+        size_t blockSize;
+        NvmeBlockDevice* blockDevice;
 
         NvmeNamespace(uint32_t id) : nsid(id)
         {}

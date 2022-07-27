@@ -30,7 +30,7 @@ namespace Kernel::Syscalls
     {
         CHECK_DEVICE(GraphicsFramebuffer)
 
-        const auto* fb = static_cast<Interfaces::GenericFramebuffer*>(maybeDevice.Value());
+        const auto* fb = static_cast<GenericFramebuffer*>(maybeDevice.Value());
         const auto modeset = fb->GetCurrentMode();
         regs.arg0 = fb->GetId();
 

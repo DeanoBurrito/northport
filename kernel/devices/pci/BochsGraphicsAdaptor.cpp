@@ -15,8 +15,6 @@ namespace Kernel::Devices::Pci
     Drivers::GenericDriver* CreateNewBgaDriver()
     { return new BochsGraphicsDriver(); }
 
-    using namespace Interfaces;
-
     void BochsGraphicsDriver::Init(Drivers::DriverInitInfo* info)
     {
         (void)info;

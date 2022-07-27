@@ -6,7 +6,7 @@
 
 namespace Kernel::Devices
 {
-    class Mouse : public Interfaces::GenericMouse
+    class Mouse : public GenericMouse
     {
     private:
         char lock;

@@ -13,7 +13,8 @@ namespace Kernel::Devices
         "graphics adaptor",
         "framebuffer",
         "keyboard",
-        "mouse"
+        "mouse",
+        "block",
     };
     
     DeviceManager deviceManagerGlobal;
@@ -190,8 +191,8 @@ namespace Kernel::Devices
 
         if (type == DeviceType::GraphicsFramebuffer)
         {
-            const Interfaces::GenericFramebuffer* fb = static_cast<const Interfaces::GenericFramebuffer*>(*maybeDevice);
-            const Interfaces::FramebufferModeset mode = fb->GetCurrentMode();
+            const GenericFramebuffer* fb = static_cast<const GenericFramebuffer*>(*maybeDevice);
+            const FramebufferModeset mode = fb->GetCurrentMode();
             LogFramebuffer logfb;
 
             logfb.base.ptr = EnsureHigherHalfAddr(fb->GetAddress().Value().ptr);

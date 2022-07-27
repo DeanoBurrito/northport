@@ -4,7 +4,7 @@
 
 namespace Kernel::Devices
 {
-    class BootFramebuffer : public Interfaces::GenericFramebuffer
+    class BootFramebuffer : public GenericFramebuffer
     {
     private:
         size_t framebufferIndex;
@@ -13,7 +13,7 @@ namespace Kernel::Devices
         size_t width;
         size_t height;
         size_t bpp;
-        Interfaces::ColourFormat format;
+        ColourFormat format;
 
         void Init() override;
         void Deinit() override;
@@ -26,8 +26,8 @@ namespace Kernel::Devices
         sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
 
         bool CanModeset() const override;
-        void SetMode(Interfaces::FramebufferModeset& modeset) override;
-        Interfaces::FramebufferModeset GetCurrentMode() const override;
+        void SetMode(FramebufferModeset& modeset) override;
+        FramebufferModeset GetCurrentMode() const override;
 
         sl::Opt<sl::NativePtr> GetAddress() const override;
     };

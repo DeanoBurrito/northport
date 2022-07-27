@@ -56,10 +56,10 @@ namespace Kernel::Devices
     bool BootFramebuffer::CanModeset() const
     { return false; }
 
-    void BootFramebuffer::SetMode(Interfaces::FramebufferModeset&)
+    void BootFramebuffer::SetMode(FramebufferModeset&)
     { return; }
 
-    Interfaces::FramebufferModeset BootFramebuffer::GetCurrentMode() const
+    FramebufferModeset BootFramebuffer::GetCurrentMode() const
     { return { width, height, bpp, format}; }
 
     sl::Opt<sl::NativePtr> BootFramebuffer::GetAddress() const

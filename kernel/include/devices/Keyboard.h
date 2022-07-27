@@ -8,7 +8,7 @@ namespace Kernel::Devices
 {
     sl::Optional<int> GetPrintableChar(KeyEvent keyEvent);
 
-    class Keyboard : public Interfaces::GenericKeyboard
+    class Keyboard : public GenericKeyboard
     {
     private:
         char lock;

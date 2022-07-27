@@ -14,7 +14,7 @@ namespace Kernel::Devices::Ps2
         Set3,
     };
     
-    class Ps2Keyboard : public Interfaces::GenericKeyboard
+    class Ps2Keyboard : public GenericKeyboard
     {
     friend Ps2Driver;
     protected:

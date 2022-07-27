@@ -5,7 +5,7 @@
 #include <devices/GenericDevice.h>
 #include <Colour.h>
 
-namespace Kernel::Devices::Interfaces
+namespace Kernel::Devices
 {
     using ColourFormat = np::Graphics::ColourFormat;
     
