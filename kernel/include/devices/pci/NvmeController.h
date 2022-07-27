@@ -71,16 +71,15 @@ namespace Kernel::Devices::Pci
         void CreateIoQueue(size_t index);
         void DestroyIoQueue(size_t index);
 
-        bool BuildPrps(NvmeQueue& queue, SubmissionQueueEntry& cmd, sl::BufferView buffer);
-
         //we run admin commands synchronously, as they're commonly only used during startup/shutdown. This
         NvmeCmdResult DoAdminCommand(SubmissionQueueEntry* cmd, CompletionQueueEntry* completion = nullptr);
+        bool BuildPrps(NvmeQueue& queue, SubmissionQueueEntry& cmd, sl::BufferView buffer);
+        size_t BeginIoCmd(size_t nsid, size_t lbaStart, sl::BufferView buffer, uint8_t opcode);
+        sl::Opt<NvmeCmdResult> EndIoCmd(size_t operationId);
 
         [[nodiscard]]
         sl::BufferView Identify(IdentifyCns cns, uint32_t namespaceId, sl::BufferView buffer);
         size_t GetMaxIoQueueCount();
-
-        void HandleInterrupt(size_t vector);
 
     public:
         void Init(Drivers::DriverInitInfo* initInfo) override;
@@ -92,8 +91,8 @@ namespace Kernel::Devices::Pci
         size_t BeginRead(size_t nsid, size_t lbaStart, sl::BufferView dest);
         //returns an empty Opt<> if the operation is ongoing, otherwise returns the result.
         sl::Opt<NvmeCmdResult> EndRead(size_t operationId);
-        // size_t BeginWrite(size_t nsid, size_t lbaStart, sl::BufferView source);
-        // NvmeCmdResult EndWrite(size_t operationId);
+        size_t BeginWrite(size_t nsid, size_t lbaStart, sl::BufferView source);
+        sl::Opt<NvmeCmdResult> EndWrite(size_t operationId);
     };
 
     Drivers::GenericDriver* CreateNewNvmeDriver();

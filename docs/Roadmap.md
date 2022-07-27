@@ -9,6 +9,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [x] Centralized logging.
         - [x] Framebuffer backend.
         - [ ] File backend.
+        - [ ] System call logging (current implementation stalls quickly).
     - [x] Central kernel config.
     - [x] ACPI tables.
         - [ ] Loadable ACPI driver: either ACPICA or LAI.
@@ -81,7 +82,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [ ] VirtIO Graphics.
     - [ ] Intel AC97 audio.
     - [ ] Intel HD audio.
-    - [ ] NVME controllers.
+    - [x] NVMe.
     - [ ] AHCI (SATA).
     - [ ] EHCI (usb 2).
         - [ ] UHCI.

@@ -11,26 +11,18 @@ namespace Kernel::Devices::Pci
     {
         namespace Admin
         {
-            constexpr uint8_t DeleteIoSQ = 0x0;
             constexpr uint8_t CreateIoSQ = 0x1;
-            constexpr uint8_t GetLogPage = 0x2;
-            constexpr uint8_t DeleteIoCQ = 0x4;
             constexpr uint8_t CreateIoCQ = 0x5;
             constexpr uint8_t Identify = 0x6;
-            constexpr uint8_t Abort = 0x8;
-            constexpr uint8_t SetFeatures = 0x9;
             constexpr uint8_t GetFeatures = 0xA;
-            constexpr uint8_t FirmwareDownload = 0x11;
-            constexpr uint8_t SelfTest = 0x14;
         }
 
         namespace IO
         {
-            constexpr uint8_t Flush = 0x0;
+            // constexpr uint8_t Flush = 0x0;
             constexpr uint8_t Write = 0x1;
             constexpr uint8_t Read = 0x2;
-            constexpr uint8_t WriteZeroes = 0x8;
-            constexpr uint8_t Copy = 0x19;
+            // constexpr uint8_t WriteZeroes = 0x8;
         }
     }
 
@@ -90,7 +82,7 @@ namespace Kernel::Devices::Pci
 
         while ((properties->controllerStatus & 0b11) == 0); //bit 0 is enable bit
 
-        return properties->controllerStatus & 0b10; //bit 1 is fatal error status
+        return (properties->controllerStatus & 0b10) == 0; //bit 1 is fatal error status
     }
 
     void NvmeController::InitInterrupts(sl::Opt<PciCap*>& maybeMsi, sl::Opt<PciCap*>& maybeMsiX)
@@ -124,11 +116,9 @@ namespace Kernel::Devices::Pci
             
             msix->Enable(true);
             msix->MaskFunctions(false);
+            //leave msix vector 0 masked (admin queue, we poll that), and unmask all others (ioqueues).
             for (size_t i = 0; i < msix->Vectors(); i++)
-            {
-                msix->SetVector(i, msiAddr.raw, msiMessage, address);
-                msix->Mask(i, false, address);
-            }
+                msix->SetVector(i, msiAddr.raw, msiMessage, i == 0, address);
         }
 
         InterruptManager::Global()->AttachCallback(*maybeIntVector, NvmeInterruptStub, this);
@@ -191,8 +181,8 @@ namespace Kernel::Devices::Pci
         createCqCmd.fields.opcode = Ops::Admin::CreateIoCQ;
         createCqCmd.fields.prp1 = EnsureLowerHalfAddr(queue.completion.raw);
         createCqCmd.fields.cdw10 = (maxQueueEntries - 1) << 16 | index;
-        createCqCmd.fields.cdw11 = 0 << 16 | 0b11; //use msix vector 0, enable interrupts and PC bit.
-        NvmeCmdResult createCqResult = DoAdminCommand(&createCqCmd);
+        createCqCmd.fields.cdw11 = 1 << 16 | 0b11; //use msix vector 0, enable interrupts and PC bit.
+        (void)DoAdminCommand(&createCqCmd);
 
         SubmissionQueueEntry createSqCmd;
         createSqCmd.fields.opcode = Ops::Admin::CreateIoSQ;
@@ -200,7 +190,7 @@ namespace Kernel::Devices::Pci
         createSqCmd.fields.cdw10 = (maxQueueEntries - 1) << 16 | index;
         //bit 0 (PC - Physical contiguous) is set, the other options being a scatter-gather setup.
         createSqCmd.fields.cdw11 = index << 16 | 1; 
-        NvmeCmdResult createSqResult = DoAdminCommand(&createSqCmd);
+        (void)DoAdminCommand(&createSqCmd);
 
         Logf("NVMe IO queue pair created: id=%u, entries=%u, sqBase=0x%lx, cqBase=0x%lx", LogSeverity::Verbose, 
             index, maxQueueEntries, EnsureLowerHalfAddr(queue.submission.raw), EnsureLowerHalfAddr(queue.completion.raw));
@@ -208,6 +198,46 @@ namespace Kernel::Devices::Pci
 
     void NvmeController::DestroyIoQueue(size_t index)
     { /* TODO: */ }
+
+    NvmeCmdResult NvmeController::DoAdminCommand(SubmissionQueueEntry* cmd, CompletionQueueEntry* completion)
+    {
+        NvmeQueue& queue = queues[0];
+        cmd->fields.commandId = queue.nextCommandId++;
+
+        volatile SubmissionQueueEntry* sqTail = queue.submission.As<SubmissionQueueEntry>();
+        sqTail[queue.sqTail] = *cmd;
+        queue.sqTail++;
+        if (queue.sqTail == queue.entries)
+            queue.sqTail = 0;
+        *queue.sqDoorbell = queue.sqTail;
+
+        volatile CompletionQueueEntry* cqHead = queue.completion.As<volatile CompletionQueueEntry>();
+        cqHead += queue.cqHead;
+        
+        while ((cqHead->fields.status & 1) != queue.cqPhase);
+
+        //bit 0 is the phase bit, which is irrelevent to checking the completion status
+        const uint32_t result = cqHead->fields.status >> 1;
+        if (result != 0)
+        {
+            Logf("NVMe synchronous command failed: opcode=0x%x, type=0x%x, statusCode=0x%x, dnr=%b", LogSeverity::Error, 
+                cmd->fields.opcode, (result >> 8) & 0b111, result & 0xFF, result & (1 << 14));
+        }
+
+        if (completion != nullptr)
+            *completion = *cqHead;
+        
+        if (queue.cqHead + 1 == queue.entries)
+        {
+            queue.cqPhase = !queue.cqPhase;
+            queue.cqHead = 0;
+        }
+        else
+            queue.cqHead++;
+        
+        *queue.cqDoorbell = queue.cqHead;
+        return result;
+    }
 
     bool NvmeController::BuildPrps(NvmeQueue& queue, SubmissionQueueEntry& cmd, sl::BufferView buffer)
     {
@@ -243,40 +273,99 @@ namespace Kernel::Devices::Pci
         return true;
     }
 
-    NvmeCmdResult NvmeController::DoAdminCommand(SubmissionQueueEntry* cmd, CompletionQueueEntry* completion)
+    size_t NvmeController::BeginIoCmd(size_t nsid, size_t lbaStart, sl::BufferView buffer, uint8_t opcode)
     {
-        NvmeQueue& queue = queues[0];
-        cmd->fields.commandId = queue.nextCommandId++;
-
-        volatile SubmissionQueueEntry* sqTail = queue.submission.As<SubmissionQueueEntry>();
-        sqTail[queue.sqTail] = *cmd;
-        queue.sqTail++;
-        if (queue.sqTail == queue.entries)
-            queue.sqTail = 0;
-        *queue.sqDoorbell = queue.sqTail;
-
-        volatile CompletionQueueEntry* cqHead = queue.completion.As<volatile CompletionQueueEntry>();
-        cqHead += queue.cqHead;
-        
-        while ((cqHead->fields.status & 1) != queue.cqPhase);
-
-        //bit 0 is the phase bit, which is irrelevent to checking the completion status
-        const uint32_t result = cqHead->fields.status >> 1;
-        if (result != 0)
-            Logf("NVMe synchronous command failed: opcode=0x%x, status=0x%x", LogSeverity::Error, cmd->fields.opcode, result);
-
-        if (completion != nullptr)
-            *completion = *cqHead;
-        
-        if (queue.cqHead + 1 == queue.entries)
+        if (!GetHhdm().Contains(buffer))
         {
-            queue.cqPhase = !queue.cqPhase;
-            queue.cqHead = 0;
+            Log("NVMe driver failed to start IO operation: provided buffer not in hhdm.", LogSeverity::Error);
+            return (size_t)-1;
         }
-        else
-            queue.cqHead++;
+
+        const NvmeNamespace* ns = nullptr;
+        for (size_t i = 0; i < namespaces.Size(); i++)
+        {
+            if (namespaces[i].nsid == nsid)
+            {
+                ns = &namespaces[i];
+                break;
+            }
+        }
+        if (ns == nullptr)
+        {
+            Log("NVMe driver failed to start IO operation: invalid namespace id.", LogSeverity::Error);
+            return (size_t)-1;
+        }
+
+        if (buffer.length % ns->blockSize != 0)
+        {
+            Log("NVMe driver failed to start IO operation: data length not LBA-aligned.", LogSeverity::Error);
+            return (size_t)-1;
+        }
+
+        //TODO: check we're not reading/writing past the end of the namespace
+
+        NvmeQueue& ioQueue = queues[1]; //TODO: avoid hardcoding of queues like this
+
+        SubmissionQueueEntry cmd;
+        cmd.fields.opcode = opcode;
+        cmd.fields.cdw10 = lbaStart;
+        cmd.fields.cdw11 = lbaStart >> 32;
+        cmd.fields.cdw12 = buffer.length / ns->blockSize - 1;
+        cmd.fields.namespaceId = nsid;
+
+        if (!BuildPrps(ioQueue, cmd, buffer))
+        {
+            Log("NVMe driver failed to start IO operation: Could not build PRP list.", LogSeverity::Error);
+            return (size_t)-1;
+        }
+
+        const size_t opId = cmd.fields.commandId = ioQueue.nextCommandId;
+        ioQueue.nextCommandId++;
+
+        volatile SubmissionQueueEntry* subQueue = ioQueue.submission.As<volatile SubmissionQueueEntry>();
+        subQueue[ioQueue.sqTail] = cmd;
+        ioQueue.sqTail++;
+        if (ioQueue.sqTail == ioQueue.entries)
+            ioQueue.sqTail = 0;
+        *ioQueue.sqDoorbell = ioQueue.sqTail;
         
-        *queue.cqDoorbell = queue.cqHead;
+        return opId;
+    }
+
+    sl::Opt<NvmeCmdResult> NvmeController::EndIoCmd(size_t operationId)
+    {
+        NvmeQueue& ioQueue = queues[1];
+
+        volatile CompletionQueueEntry* comQueue = ioQueue.completion.As<volatile CompletionQueueEntry>();
+        
+        //search backwards from the last-known completion, if we reach older command ids we've gone too far.
+        //TODO: better way to detect pending commands, this is really naive.
+        size_t scanHead = ioQueue.cqHead;
+        while (comQueue[scanHead].fields.commandId > operationId)
+            scanHead--;
+        if (comQueue[scanHead].fields.commandId != operationId)
+            return {};
+        
+        const NvmeCmdResult result = comQueue[scanHead].fields.status >> 1;
+        if (result != 0)
+        {
+            Logf("NVMe async operation failed: commandId=0x%x, type=0x%x, statusCode=0x%x, dnr=%b", LogSeverity::Error, 
+                operationId, (result >> 8) & 0b111, result & 0xFF, result & (1 << 14));
+        }
+        
+        //TODO: tell controller we've processed CQ entries by writing the new head to the doorbell.
+
+        //if we allocated an extra page for a prplist, we can free it now.
+        for (size_t i = 0; i < ioQueue.prplists.Size(); i++)
+        {
+            if (ioQueue.prplists[i].commandId != operationId)
+                continue;
+            
+            Memory::PMM::Global()->FreePage(ioQueue.prplists[i].buffer.ptr);
+            ioQueue.prplists.Erase(i);
+            break;
+        }
+        
         return result;
     }
 
@@ -311,11 +400,6 @@ namespace Kernel::Devices::Pci
         return completion.dwords[0] & 0xFFFF;
     }
 
-    void NvmeController::HandleInterrupt(size_t vector)
-    {
-        Log("NVMe controller got interrupt!", LogSeverity::Debug);
-    }
-
     void NvmeController::Init(Drivers::DriverInitInfo* initInfo)
     {
         if (!PciBridge::Global()->EcamAvailable())
@@ -332,12 +416,8 @@ namespace Kernel::Devices::Pci
         address.EnableBusMastering();
         address.EnablePinInterrupts(false);
         
-        //ensure mmio described by BAR0 is mapped properly
-        const PciBar bar0 = address.ReadBar(0);
-        //TODO: check if mmio area is mapped within hhdm. Maybe some kind of MapMmio() function?
-        //We could also do something like PciAddress.EnsureMapped() and have it allocate a virtual range to access the bar that way.
-
-        properties = reinterpret_cast<volatile NvmePropertyMap*>(bar0.address);
+        //for NVMe over PCI, BAR0 is the address of the properties table.
+        properties = reinterpret_cast<volatile NvmePropertyMap*>(address.ReadBar(0).address);
         properties = EnsureHigherHalfAddr(properties);
         
         //controller must be disabled while we set up the admin queues.
@@ -360,12 +440,12 @@ namespace Kernel::Devices::Pci
             maxQueueEntries, doorbellStride, majorVer, minorVer, tertiaryVer);
         
         //create admin queue, and tell controller about it.
-        CreateAdminQueue(16); //admin queue is always 0.
+        CreateAdminQueue(16);
         properties->adminQueueAttribs = (maxQueueEntries << 16) | maxQueueEntries;
         properties->adminCompletionQueue = EnsureLowerHalfAddr(queues[0].completion.raw & ~0xFFFul);
         properties->adminSubmissionQueue = EnsureLowerHalfAddr(queues[0].submission.raw & ~0xFFFul);
 
-        if (Enable())
+        if (!Enable())
         {
             Log("NVMe failed to reinitialize, reporting a fatal error.", LogSeverity::Error);
             return;
@@ -427,109 +507,43 @@ namespace Kernel::Devices::Pci
     void NvmeController::Deinit()
     { /* TODO: */ }
 
-    void NvmeController::HandleEvent(Drivers::DriverEventType type, void* args)
-    {}
+    void NvmeController::HandleEvent(Drivers::DriverEventType type, void*)
+    {
+        if (type != Drivers::DriverEventType::Interrupt)
+        {
+            Log("NVMe driver received unexpected event type.", LogSeverity::Error);
+            return;
+        }
+
+        NvmeQueue& queue = queues[1];
+        if (queue.cqHead + 1 == queue.entries)
+        {
+            queue.cqPhase = !queue.cqPhase;
+            queue.cqHead = 0;
+        }
+        else
+            queue.cqHead++;
+    }
 
     size_t NvmeController::BeginRead(size_t nsid, size_t lbaStart, sl::BufferView dest)
     {
-        if (!GetHhdm().Contains(dest))
-        {
-            Log("NVMe driver could not start read operation, provided buffer not in hhdm.", LogSeverity::Error);
-            return (size_t)-1;
-        }
-
-        const NvmeNamespace* ns = nullptr;
-        for (size_t i = 0; i < namespaces.Size(); i++)
-        {
-            if (namespaces[i].nsid == nsid)
-            {
-                ns = &namespaces[i];
-                break;
-            }
-        }
-        if (ns == nullptr)
-        {
-            Log("NVMe driver could not start read operation, no namespace with that id.", LogSeverity::Error);
-            return (size_t)-1;
-        }
-
-        if (dest.length % ns->blockSize != 0)
-        {
-            Log("NVMe driver could not start read operation, data length not LBA-aligned.", LogSeverity::Error);
-            return (size_t)-1;
-        }
-
-        //TODO: we should check buffer falls within namespace lba bounds.
-
-        NvmeQueue& ioQueue = queues[1]; //TODO: avoid hardcoding of queues like this
-        
-        SubmissionQueueEntry cmd;
-        cmd.fields.opcode = Ops::IO::Read;
-        cmd.fields.cdw10 = lbaStart;
-        cmd.fields.cdw11 = lbaStart >> 32;
-        cmd.fields.cdw12 = dest.length / ns->blockSize;
-        cmd.fields.namespaceId = nsid;
-
-        if (!BuildPrps(ioQueue, cmd, dest))
-        {
-            Log("NVMe drier could not start read operation, failed to build PRP list.", LogSeverity::Error);
-            return (size_t)-1;
-        }
-
-        const size_t opId = cmd.fields.commandId = ioQueue.nextCommandId;
-        ioQueue.nextCommandId++;
-
-        volatile SubmissionQueueEntry* subQueue = ioQueue.submission.As<volatile SubmissionQueueEntry>();
-        subQueue[ioQueue.sqTail] = cmd;
-        ioQueue.sqTail++;
-        if (ioQueue.sqTail == ioQueue.entries)
-            ioQueue.sqTail = 0;
-        *ioQueue.sqDoorbell = ioQueue.sqTail;
-        
-        //not sure how I feel about exposing the inner ids of the driver outside, but it should be fine.
-        return opId;
+        return BeginIoCmd(nsid, lbaStart, dest, Ops::IO::Read);
     }
 
     sl::Opt<NvmeCmdResult> NvmeController::EndRead(size_t operationId)
     {
-        NvmeQueue& ioQueue = queues[1];
-
-        volatile CompletionQueueEntry* comQueue = ioQueue.completion.As<volatile CompletionQueueEntry>();
-        
-        //search backwards from the last-known completion, if we reach older command ids we've gone too far.
-        size_t scanHead = ioQueue.cqHead;
-        while (comQueue[scanHead].fields.commandId > operationId)
-            scanHead--;
-        if (comQueue[scanHead].fields.commandId != operationId)
-            return {};
-        
-        const NvmeCmdResult result = comQueue[scanHead].fields.status >> 1;
-        if (result != 0)
-        {
-            Logf("NVMe async read failed: commandId=0x%x, type=0x%x, statusCode=0x%x, dnr=%b", LogSeverity::Error, 
-                operationId, (result >> 8) & 0b111, result & 0xFF, result & (1 << 14));
-        }
-
-        //if we allocated an extra page for a prplist, we can free it now.
-        for (size_t i = 0; i < ioQueue.prplists.Size(); i++)
-        {
-            if (ioQueue.prplists[i].commandId != operationId)
-                continue;
-            
-            Memory::PMM::Global()->FreePage(ioQueue.prplists[i].buffer.ptr);
-            ioQueue.prplists.Erase(i);
-            break;
-        }
-        
-        return result;
-        
+        return EndIoCmd(operationId);
     }
 
-    // size_t NvmeController::BeginWrite(size_t nsid, size_t lbaStart, sl::BufferView source)
-    // {}
+    size_t NvmeController::BeginWrite(size_t nsid, size_t lbaStart, sl::BufferView source)
+    {
+        return BeginIoCmd(nsid, lbaStart, source, Ops::IO::Write);
+    }
 
-    // NvmeCmdResult NvmeController::EndWrite(size_t operationId)
-    // {}
+    sl::Opt<NvmeCmdResult> NvmeController::EndWrite(size_t operationId)
+    {
+        return EndIoCmd(operationId);
+    }
 
     Drivers::GenericDriver* CreateNewNvmeDriver()
     { 
