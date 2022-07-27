@@ -67,7 +67,7 @@ namespace Kernel::Devices::Pci
         void MaskFunctions(bool yes);
 
         size_t Vectors() const;
-        void SetVector(size_t index, uint64_t address, uint16_t data, PciAddress addr);
+        void SetVector(size_t index, uint64_t address, uint16_t data, bool masked, PciAddress addr);
 
         bool Masked(size_t index, PciAddress addr) const;
         void Mask(size_t index, bool masked, PciAddress addr);

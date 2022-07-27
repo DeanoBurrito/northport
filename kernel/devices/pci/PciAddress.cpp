@@ -40,7 +40,6 @@ namespace Kernel::Devices::Pci
         else
         {
             //memory bar
-            uint64_t upperSize = 0xFFFF'FFFF;
             bar.isMemory = true;
             bar.is64BitWide = original & 0b100;
             bar.isPrefetchable = original & 0b1000;
@@ -77,7 +76,7 @@ namespace Kernel::Devices::Pci
             }
             
             WriteReg(PciRegBar0 + index, 0xFFFF'FFFF);
-            size = upperSize << 32 | ReadReg(PciRegBar0 + index) & ~0b1111;
+            size = upperSize << 32 | (ReadReg(PciRegBar0 + index) & ~0b1111);
             WriteReg(PciRegBar0 + index, original);
 
             return ~size + 1;

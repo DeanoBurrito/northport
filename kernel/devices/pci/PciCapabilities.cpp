@@ -177,7 +177,7 @@ namespace Kernel::Devices::Pci
         return (sl::MemRead<uint32_t>((uintptr_t)this + 2) & 0x3FF) + 1;
     }
 
-    void PciCapMsiX::SetVector(size_t index, uint64_t address, uint16_t data, PciAddress addr)
+    void PciCapMsiX::SetVector(size_t index, uint64_t address, uint16_t data, bool masked, PciAddress addr)
     {
         sl::NativePtr entryAddr = GetTableEntry(index, addr);
         if (entryAddr.ptr == nullptr)
@@ -187,7 +187,7 @@ namespace Kernel::Devices::Pci
         entry[0] = address & ~0b11;
         entry[1] = address >> 32;
         entry[2] = data;
-        entry[3] = 1;
+        entry[3] = masked ? 1 : 0;
     }
 
     bool PciCapMsiX::Masked(size_t index, PciAddress addr) const
@@ -205,11 +205,11 @@ namespace Kernel::Devices::Pci
         if (entryAddr.ptr == nullptr)
             return;
         
-        uint32_t value = sl::MemRead<uint32_t>(entryAddr.raw + 12);
-        value &= ~0b1;
+        volatile uint32_t* value = entryAddr.As<volatile uint32_t>(12);
         if (masked)
-            value |= 0b1;
-        sl::MemWrite<uint32_t>(entryAddr.raw + 12, value);
+            *value |= 1;
+        else
+            *value &= ~(uint32_t)1;
     }
 
     bool PciCapMsiX::Pending(size_t index, PciAddress addr) const
