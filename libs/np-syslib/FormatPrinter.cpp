@@ -237,7 +237,6 @@ namespace sl
         if (token.precision == PRECISION_READ_FROM_INPUT)
             token.precision = (uint64_t)va_arg(args, int);
 
-        //TODO: handle format flags, precision, width and length mods.
         //TODO: actually respect the length remaining in the output buffer
 
         size_t formatBase = 0;

@@ -101,7 +101,6 @@ namespace Kernel
     {
 #ifdef __x86_64__
         //All other fields are fine as the default.
-        //TODO: would be nice to use the redirection hint.
         uint64_t addr = 0xFEE0'0000;
         addr |= (processor & 0xFF) << 12;
         return addr;

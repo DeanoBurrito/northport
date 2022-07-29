@@ -29,8 +29,8 @@ CXX_SRCS = InitTasks.cpp Log.cpp Logf.cpp LogFont.cpp Panic.cpp Loader.cpp Inter
 	devices/pci/VirtioQueue.cpp devices/pci/VirtioCommon.cpp devices/pci/PciCapabilities.cpp devices/pci/NvmeController.cpp \
 	scheduling/Thread.cpp scheduling/ThreadGroup.cpp scheduling/Scheduler.cpp scheduling/BuiltinThreads.cpp \
 	sanitizers/UBSanitizer.cpp sanitizers/StackProtector.cpp \
-	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp syscalls/Filesystem.cpp syscalls/Ipc.cpp \
-	syscalls/Utilities.cpp syscalls/ProgramEvents.cpp syscalls/LocalThreadControl.cpp \
+	syscalls/Dispatch.cpp syscalls/Devices.cpp syscalls/Memory.cpp syscalls/Filesystem.cpp \
+	syscalls/Ipc.cpp syscalls/Utilities.cpp syscalls/ProgramEvents.cpp syscalls/LocalThreadControl.cpp \
 	filesystem/Vfs.cpp filesystem/VfsNode.cpp filesystem/FilesystemDriver.cpp filesystem/InitDiskFSDriver.cpp \
 	filesystem/FilePath.cpp
 	

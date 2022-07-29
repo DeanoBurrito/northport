@@ -170,6 +170,11 @@ namespace np::Syscall
         MouseEvent = 5,
     };
 
+    enum class ProgramEventError : NativeUInt
+    {
+        NoEvent = 0x100,
+    };
+
     enum class GetIdType : NativeUInt
     {
         Thread = 0,

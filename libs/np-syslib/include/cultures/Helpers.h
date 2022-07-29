@@ -30,6 +30,8 @@ namespace sl::Cultures
             start++;
         }
 
+        const char maxConvertedChar = (char)base - 10 + 'A';
+
         for (size_t i = start; i < str.Size(); i++)
         {
             out *= base;
@@ -38,7 +40,7 @@ namespace sl::Cultures
             if (c >= 'a' && c <= 'z')
                 c -= 0x20; //bring lowercase letters into uppercase range
             
-            if (c >= 'A' && c <= 'Z' && base > 10) //TODO: not this, respect the base when considering what is a digit
+            if (c >= 'A' && c <= maxConvertedChar)
                 out += c - 'A' + 10;
             else if (c >= '0' && c <= '9')
                 out += c - '0';

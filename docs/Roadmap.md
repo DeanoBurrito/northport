@@ -34,7 +34,9 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [x] System call spec.
     - [x] Timekeeping: uptime and wall clock time.
         - [x] RTC real-time read.
-    - [x] Undefined behaviour sanitizer.
+    - [ ] Sanitizers.
+        - [x] UB.
+        - [ } Address.
     - [x] Panic().
     - [ ] Networking stack.
         - [ ] Ethernet layer.
@@ -48,6 +50,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [ ] In-Kernel GDB remote server.
         - [ ] Debugging active kernel.
         - [ ] Controlling and debugging userspace programs.
+    - [ ] System call jail + bitmap.
 
 - [x] x86_64
     - [x] IDT, GDT, TSS.

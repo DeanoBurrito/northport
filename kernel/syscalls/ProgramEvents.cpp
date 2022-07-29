@@ -9,13 +9,14 @@
 namespace Kernel::Syscalls
 {
     using np::Syscall::GeneralError;
+    using np::Syscall::ProgramEventError;
     
     void PeekNextEvent(SyscallRegisters& regs)
     {
         auto maybeEvent = Scheduling::ThreadGroup::Current()->PeekEvent();
         if (!maybeEvent)
         {
-            regs.id = 1;
+            regs.id = (uint64_t)ProgramEventError::NoEvent;
             regs.arg0 = 0;
             return;
         }
@@ -44,7 +45,7 @@ namespace Kernel::Syscalls
         auto maybeEvent = Scheduling::ThreadGroup::Current()->ConsumeEvent();
         if (!maybeEvent)
         {
-            regs.id = 1;
+            regs.id = (uint64_t)ProgramEventError::NoEvent;
             regs.arg0 = 0;
             return;
         }
@@ -78,7 +79,7 @@ namespace Kernel::Syscalls
             else
             {
                 regs.arg2 = regs.arg1 = 0;
-                regs.id = 1; //TODO: actual error code,
+                regs.id = (uint64_t)GeneralError::BadHandleId;
                 return;
             }
             break;

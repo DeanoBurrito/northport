@@ -8,7 +8,6 @@
 /*
     Located in a separate file as this may include from lots of different areas,
     in order to avoid polluting the DriverManager implementation, these are done here.
-    TODO: some of these really belong in separate binaries.
 */
 namespace Kernel::Drivers
 {

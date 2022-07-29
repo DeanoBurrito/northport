@@ -239,7 +239,9 @@ access_allowed:
         if (Scheduling::ThreadGroup::Current()->Id() == streamDetails->ownerId)
             return false; //no lookback support for now.
 
-        //TODO: we're forcing use of shared memory, but not when the mailbox is created.
+        if (!sl::EnumHasFlag(streamDetails->flags, IpcStreamFlags::UseSharedMemory))
+            return false; //ensure shared memory is used.
+        
         //TODO: what happens if stream closes while we're posting mail? We'd need some kind of cancellation token. Or just a lock?
         auto maybeMailbox = OpenStream(destMailbox, sl::EnumSetFlag(IpcStreamFlags::UseSharedMemory, IpcStreamFlags::SuppressUserAccess), nullptr);
         if (!maybeMailbox)
