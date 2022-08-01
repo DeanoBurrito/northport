@@ -78,8 +78,7 @@ namespace Kernel::Boot
         PageTableManager::Setup();
         PageTableManager::Current()->InitKernelFromLimine();
 
-        // const sl::BufferView hhdm = PageTableManager::GetHhdm();
-        KernelHeap::Global()->Init(hhdmBase + hhdmLength + GB, false);
+        KernelHeap::Global()->Init(hhdmBase + HHDM_LIMIT + GB, false);
         Log("Memory init complete.", LogSeverity::Info);
     }
 

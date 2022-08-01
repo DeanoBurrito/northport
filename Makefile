@@ -3,6 +3,9 @@
 #toolchain selection (valid options are gcc or clang)
 TOOLCHAIN_DEFAULT = clang
 
+#run options
+BOOT_WITH_UEFI = true
+
 #build options
 INCLUDE_DEBUG_INFO = true
 OPTIMIZATION_FLAGS = -O0

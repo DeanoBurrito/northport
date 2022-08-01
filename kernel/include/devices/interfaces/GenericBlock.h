@@ -1,6 +1,7 @@
 #pragma once
 
 #include <devices/GenericDevice.h>
+#include <devices/IoBlockBuffer.h>
 
 namespace Kernel::Devices
 {
@@ -17,9 +18,9 @@ namespace Kernel::Devices
         virtual void Reset() = 0;
         virtual sl::Opt<Drivers::GenericDriver*> GetDriverInstance() = 0;
 
-        virtual size_t BeginRead(size_t startLba, sl::BufferView dest) = 0;
+        virtual size_t BeginRead(size_t startLba, IoBlockBuffer dest) = 0;
         virtual sl::Opt<BlockCmdResult> EndRead(size_t token) = 0;
-        virtual size_t BeginWrite(size_t startLba, sl::BufferView source) = 0;
+        virtual size_t BeginWrite(size_t startLba, IoBlockBuffer source) = 0;
         virtual sl::Opt<BlockCmdResult> EndWrite(size_t token) = 0;
     };
 }

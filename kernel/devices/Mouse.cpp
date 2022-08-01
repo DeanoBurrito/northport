@@ -73,6 +73,7 @@ namespace Kernel::Devices
     void Mouse::Init()
     {
         state = DeviceState::Ready;
+        type = DeviceType::Mouse;
         if (initialized)
             return;
 

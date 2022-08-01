@@ -90,7 +90,7 @@ namespace Kernel::Devices::Pci
 
     void BochsFramebuffer::Init()
     {
-        sl::ScopedSpinlock scopeLock(&lock);
+        sl::SpinlockAcquire(&lock);
     
         if (state == DeviceState::Ready)
             return;
@@ -130,6 +130,10 @@ namespace Kernel::Devices::Pci
         format = { 16, 8, 0, 24, 0xFF, 0xFF, 0xFF, 0 };
 
         state = DeviceState::Ready;
+
+        sl::SpinlockRelease(&lock);
+        FramebufferModeset mode(-1, -1, 32, format);
+        SetMode(mode);
     }
 
     void BochsFramebuffer::Deinit()
@@ -157,11 +161,15 @@ namespace Kernel::Devices::Pci
 
         sl::ScopedSpinlock scopeLock(&lock);
 
+        width = sl::clamp<uint16_t>((uint16_t)modeset.width, 1, 1024);
+        height = sl::clamp<uint16_t>((uint16_t)modeset.height, 1, 768);
+        bpp = sl::clamp<uint16_t>(modeset.bitsPerPixel, 4, 32);
+
         WriteDispiReg(BgaDispiReg::Enable, BGA_DISPI_DISABLE);
 
-        WriteDispiReg(BgaDispiReg::XRes, sl::clamp<uint16_t>((uint16_t)modeset.width, 1, 1024));
-        WriteDispiReg(BgaDispiReg::YRes, sl::clamp<uint16_t>((uint16_t)modeset.height, 1, 768));
-        WriteDispiReg(BgaDispiReg::Bpp, sl::clamp<uint16_t>(modeset.bitsPerPixel, 4, 32));
+        WriteDispiReg(BgaDispiReg::XRes, width);
+        WriteDispiReg(BgaDispiReg::YRes, height);
+        WriteDispiReg(BgaDispiReg::Bpp, bpp);
 
         WriteDispiReg(BgaDispiReg::Enable, BGA_DISPI_ENABLE | BGA_DISPI_LFB_ENABLED | BGA_DISPI_NO_CLEAR_MEM);
     }

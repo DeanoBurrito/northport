@@ -1,4 +1,5 @@
 #include <devices/pci/PciAddress.h>
+#include <memory/Paging.h>
 #include <Memory.h>
 
 namespace Kernel::Devices::Pci
@@ -44,6 +45,9 @@ namespace Kernel::Devices::Pci
             bar.is64BitWide = original & 0b100;
             bar.isPrefetchable = original & 0b1000;
             bar.address = original & ~(uint32_t)0b1111;
+
+            if (bar.is64BitWide)
+                bar.address = (uint64_t)ReadReg(PciRegBar1 + index) << 32;
         }
 
         bar.index = index;
@@ -81,6 +85,17 @@ namespace Kernel::Devices::Pci
 
             return ~size + 1;
         }
+    }
+
+    void PciAddress::EnsureBarMapped(size_t index) const
+    {
+        const PciBar bar = ReadBar(index);
+        const size_t barSize = GetBarSize(index);
+        if (GetHhdm().Contains({ bar.address, barSize }))
+            return;
+        
+        const size_t pages = barSize / PAGE_FRAME_SIZE + 1;
+        Memory::PageTableManager::Current()->MapRange(EnsureHigherHalfAddr(bar.address), bar.address, pages, MFlags::AllowWrites);
     }
 
     void PciAddress::EnableMemoryAddressing(bool yes) const

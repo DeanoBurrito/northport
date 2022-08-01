@@ -66,6 +66,7 @@ namespace Kernel::Devices::Pci
 
         PciBar ReadBar(size_t index) const;
         size_t GetBarSize(size_t index) const;
+        void EnsureBarMapped(size_t index) const;
 
         void EnableMemoryAddressing(bool yes = true) const;
         void EnableBusMastering(bool yes = true) const;

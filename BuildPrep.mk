@@ -15,3 +15,7 @@ endif
 ifeq ($(ENABLE_KERNEL_UBSAN), true)
 	CXX_KERNEL_FLAGS += -fsanitize=undefined
 endif
+
+ifeq ($(BOOT_WITH_UEFI), true)
+	QEMU_EXTRA_FLAGS += -bios /usr/share/ovmf/OVMF.fd
+endif

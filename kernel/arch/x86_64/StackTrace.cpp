@@ -38,7 +38,7 @@ namespace Kernel
         {
             NativeUInt stackItem = vec.PopBack();
             string symbolName = currentProgramElf.ptr == nullptr ? "<no symbol store>" : symbolStore.GetSymbolName(stackItem);
-            Logf("Frame %d: ip=%lx, symbolName=%s", severity, i, stackItem, symbolName.C_Str());
+            Logf("Frame %d: ip=0x%lx %s", severity, i, stackItem, symbolName.C_Str());
         }
     }
 }

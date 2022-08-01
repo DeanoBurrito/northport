@@ -415,6 +415,7 @@ namespace Kernel::Devices::Pci
         address.EnableMemoryAddressing();
         address.EnableBusMastering();
         address.EnablePinInterrupts(false);
+        address.EnsureBarMapped(0);
         
         //for NVMe over PCI, BAR0 is the address of the properties table.
         properties = reinterpret_cast<volatile NvmePropertyMap*>(address.ReadBar(0).address);
@@ -581,9 +582,9 @@ namespace Kernel::Devices::Pci
         return driver;
     }
 
-    size_t NvmeBlockDevice::BeginRead(size_t startLba, sl::BufferView dest)
+    size_t NvmeBlockDevice::BeginRead(size_t startLba, IoBlockBuffer dest)
     {
-        return driver->BeginRead(nsid, startLba, dest);
+        return driver->BeginRead(nsid, startLba, dest.memory);
     }
 
     sl::Opt<BlockCmdResult> NvmeBlockDevice::EndRead(size_t token)
@@ -591,9 +592,9 @@ namespace Kernel::Devices::Pci
         return driver->EndRead(token);
     }
 
-    size_t NvmeBlockDevice::BeginWrite(size_t startLba, sl::BufferView source)
+    size_t NvmeBlockDevice::BeginWrite(size_t startLba, IoBlockBuffer source)
     {
-        return driver->BeginWrite(nsid, startLba, source);
+        return driver->BeginWrite(nsid, startLba, source.memory);
     }
 
     sl::Opt<BlockCmdResult> NvmeBlockDevice::EndWrite(size_t token)

@@ -6,8 +6,6 @@
 
 namespace Kernel::Devices
 {
-    sl::Optional<int> GetPrintableChar(KeyEvent keyEvent);
-
     class Keyboard : public GenericKeyboard
     {
     private:

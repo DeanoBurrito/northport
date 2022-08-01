@@ -1,7 +1,14 @@
 #stuff for running and debugging the os - not needed to just build an image
 
 QEMU_BIN = qemu-system-$(CPU_ARCH)
-QEMU_FLAGS = -machine q35 -smp cores=4 -monitor stdio -m 256M -cdrom $(ISO_TARGET) -debugcon /dev/stdout
+QEMU_FLAGS = $(QEMU_EXTRA_FLAGS) \
+	-machine q35 \
+	-smp cores=4 \
+	-m 256M \
+	-cdrom $(ISO_TARGET) \
+	-monitor stdio \
+	-debugcon /dev/stdout
+
 QEMU_RUN_FLAGS = --enable-kvm -cpu host
 QEMU_DEBUG_FLAGS = -s -S -cpu qemu64,+smap,+smep
 
