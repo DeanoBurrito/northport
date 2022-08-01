@@ -35,7 +35,7 @@ C-Style printf format spec:
         - 'p' is defined as implementation specified, and is ignored in this parser.
 
 Northport specific:
-        - 'b'/'B' outputs true/TRUE or false/FALSE depending on whether a number is non-zero.
+        - 'b'/'B' outputs true/yes or false/no depending on whether a number is non-zero.
         - 'U' outputs in binary units (KiB/MiB/GiB/TiB) and will scale and add the appropriate prefix. Precision is number of digits after the decimal place.
         - '#s' alternate conversion for string specifier. This is non-standard, but I find it to be useful. It trims tailing whitespace from the string before printing.
 */

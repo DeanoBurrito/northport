@@ -355,8 +355,6 @@ namespace Kernel::Devices::Pci
                 operationId, (result >> 8) & 0b111, result & 0xFF, result & (1 << 14));
         }
         
-        //TODO: tell controller we've processed CQ entries by writing the new head to the doorbell.
-
         //if we allocated an extra page for a prplist, we can free it now.
         for (size_t i = 0; i < ioQueue.prplists.Size(); i++)
         {
@@ -528,6 +526,11 @@ namespace Kernel::Devices::Pci
         }
         else
             queue.cqHead++;
+        
+        //update completion queue doorbell
+        //This is probably the wrong place to update the doorbell, as the controller may overwrite
+        //previous commands if we submit enough, resulting in dropped completion entries.
+        *queue.cqDoorbell = queue.cqHead;
     }
 
     size_t NvmeController::BeginRead(size_t nsid, size_t lbaStart, sl::BufferView dest)

@@ -2,8 +2,7 @@
 #include <acpi/AcpiTables.h>
 #include <devices/LApic.h>
 #include <memory/Paging.h>
-#include <Platform.h>
-#include <Memory.h>
+#include <memory/PhysicalMemory.h>
 #include <Log.h>
 
 #define SMP_FLAG_XD (1 << 0)
@@ -33,7 +32,7 @@ namespace Kernel
         Memory::PageTableManager::Current()->MapMemory(lapicBase, lapicBase, Memory::MemoryMapFlags::AllowWrites);
         
         //zero space for code, data and config block
-        sl::memset((void*)AP_BOOTSTRAP_BASE, 0, PAGE_FRAME_SIZE * 0);
+        sl::memset((void*)AP_BOOTSTRAP_BASE, 0, PAGE_FRAME_SIZE * AP_BOOTSTRAP_PAGES);
 
         //set up temporary gdt
         sl::NativePtr gdtBase = sl::NativePtr(AP_BOOTSTRAP_BASE + PAGE_FRAME_SIZE);
@@ -123,6 +122,6 @@ namespace Kernel
 
     void ApBootCleanup()
     {
-        //TODO: free the physical pages used for the AP bootstrap, and the low memory pages we mapped above (data + code + lapic regs)
+        Memory::PMM::Global()->FreePages(AP_BOOTSTRAP_BASE, AP_BOOTSTRAP_PAGES);
     }
 }

@@ -59,10 +59,19 @@ namespace Kernel::Devices
     {
         const bool ecamAvail = PciBridge::Global()->EcamAvailable();
         
-        //brute-force scan, could be better. 
-        //TODO: only scan busses we know exist
-        for (size_t bus = 0; bus < 256; bus++)
+        /*
+            Recursive scan: we scan all devices on known busses.
+            We assume bus 0 exists (otherwise wtf are we doing here), and then
+            add the secondary bus from any pci-pci bridges we encounter.
+        */
+
+        sl::Vector<uint8_t> bussesRemaining;
+        bussesRemaining.PushBack(0);
+
+        while (!bussesRemaining.Empty())
         {
+            const uint8_t bus = bussesRemaining.PopBack();
+
             for (size_t dev = 0; dev < 32; dev++)
             {
                 PciAddress addr = ecamAvail ? PciAddress::CreateEcam(baseAddress.raw, bus, dev, 0, 0) : PciAddress::CreateLegacy(bus, dev, 0, 0);
@@ -91,6 +100,13 @@ namespace Kernel::Devices
                     const uint32_t funcClass = funcAddr.ReadReg(2);
                     Logf("Discovered PCI function %x::%0hhx:%0hhx.%x: id=%0hx:%0hx, class=0x%x, subclass=0x%x, progIf=0x%x", LogSeverity::Verbose, 
                         id, bus, dev, func, functionId & 0xFFFF, functionId >> 16, funcClass >> 24, (funcClass >> 16) & 0xFF, (funcClass >> 8) & 0xFF);
+
+                    if ((funcClass >> 24) == 0x6 && (uint8_t)(funcClass >> 16) == 0x4)
+                    {
+                        //function is PCI-to-PCI bridge, scan it's secondary bus.
+                        const uint32_t secondaryBus = funcAddr.ReadReg(6);
+                        bussesRemaining.PushBack((secondaryBus >> 16) & 0xFF);
+                    }
 
                     TryFindDrivers(funcAddr);
                 }

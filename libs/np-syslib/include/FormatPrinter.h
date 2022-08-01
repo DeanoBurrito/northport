@@ -94,13 +94,13 @@ namespace sl
     private:
         constexpr static const char* Literals[] =
         {
-            "false", "true", "FALSE", "TRUE",
+            "false", "true", "no", "yes",
             "UnsupportedFormat", "%", ".",
             "B", "KiB", "MiB", "GiB", "TiB", "PiT",
         };
         constexpr static size_t LiteralSizes[] =
         {
-            5, 4, 5, 4,
+            5, 4, 2, 3,
             17, 1, 1,
             1, 3, 3, 3, 3, 3,
         };

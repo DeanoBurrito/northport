@@ -19,6 +19,7 @@ namespace Kernel::Syscalls
         : id(id), arg0(arg0), arg1(arg1), arg2(arg2), arg3(arg3)
         {}
 
+#ifdef __x86_64__
         SyscallRegisters(StoredRegisters* nativeRegs)
         : id(nativeRegs->rax), arg0(nativeRegs->rdi), arg1(nativeRegs->rsi), arg2(nativeRegs->rdx), arg3(nativeRegs->rcx)
         {}
@@ -32,6 +33,7 @@ namespace Kernel::Syscalls
             nativeRegs->rdx = arg2;
             nativeRegs->rcx = arg3;
         }
+#endif
     };
     
     StoredRegisters* EnterSyscall(StoredRegisters* regs);

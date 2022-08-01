@@ -1,3 +1,4 @@
+#include <arch/ArchEntry.h>
 #include <Log.h>
 #include <devices/LApic.h>
 #include <devices/IoApic.h>

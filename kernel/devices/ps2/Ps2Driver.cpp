@@ -105,7 +105,8 @@ namespace Kernel::Devices::Ps2
         config &= 0b1011'1100; //preserve reserved bits, disable interrupts for both ports/
         WriteCmd(Cmds::WriteConfig, config);
 
-        //TODO: check which ports have devices attached, and what they are (we should support all configs).
+        //we make a fairly safe assumption that port 0 is kb, port 1 is mouse and the controller has 2 ports.
+        //this has the potential to backfire if somehow the wrong device ends up plugged into the wrong port.
         bool keyboardSupported = true;
         bool mouseSupported = true;
 
@@ -113,7 +114,7 @@ namespace Kernel::Devices::Ps2
         WriteCmd(Cmds::EnableMousePort);
 
         config = ReadCmd(Cmds::ReadConfig);
-        config |= 0b11; //bits for ports 1 & 2
+        config |= 0b11; //enable interrupts for port 1 (bit 0) and port 2 (bit 1).
         WriteCmd(Cmds::WriteConfig, config);
 
         Log("PS/2 controller initialized, registering devices on active ports.", LogSeverity::Info);

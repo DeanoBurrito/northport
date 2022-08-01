@@ -2,7 +2,6 @@
 #include <Locks.h>
 #include <Log.h>
 #include <devices/LApic.h>
-#include <devices/DeviceManager.h>
 #include <scheduling/Scheduler.h>
 #include <StackTrace.h>
 
@@ -101,9 +100,11 @@ namespace Kernel
         Logf("processId: %u, processName: %s", LogSeverity::Info, currentThread->Parent()->Id(), currentThread->Parent()->Name().C_Str());
 
         RenderPanicImage();
+        
+        //This works fine for the kernel, if we panic with a userspace rip this will return nonsense.
+        Log("---- Stack Trace ----", LogSeverity::Info);
+        PrintStackTrace(GetStackTrace(), LogSeverity::Info);
 
-        //TODO: would be nice to print details about current thread (id, name, sibling processes. Basic code/data locations)
-        //and a stack trace of course!
     final_loop:
         Log("Panic complete. All cores halted indefinitely until manual system reset.", LogSeverity::Info);
     final_loop_no_log:

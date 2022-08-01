@@ -119,7 +119,7 @@ namespace Kernel::Memory
         }
 
         //we'll want to reserve the pages at 0x44000 + 0x45000 for AP trampoline code + data
-        LockPages(AP_BOOTSTRAP_BASE, 2);
+        LockPages(AP_BOOTSTRAP_BASE, AP_BOOTSTRAP_PAGES);
 
         Log("PMM finishing creating bitmap.", LogSeverity::Info);
     }

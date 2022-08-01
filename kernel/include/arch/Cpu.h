@@ -31,15 +31,6 @@ namespace Kernel
 
         EnumCount
     };
-
-    //if any values are pinned at (uint32_t)-1, they're invalid
-    struct CpuFrequencies
-    {
-        uint32_t coreClockBaseHertz;
-        uint32_t coreMaxBaseHertz;
-        uint32_t coreTimerHertz; //TSC freq on x86
-        uint32_t busClockHertz;
-    };
     
     class CPU
     {
@@ -61,9 +52,7 @@ namespace Kernel
 
         static bool FeatureSupported(CpuFeature feature);
         static const char* GetFeatureStr(CpuFeature feature, bool getFullname = false);
-
-        static const char* GetVendorString();
-        static const CpuFrequencies GetFrequencies();
+        static void PrintInfo();
 
         //SMA/Supervisor memory access (to user mapped pages) functions. Either SMAP (x86) or SUM (riscv).
         static void AllowSumac(bool allowed);

@@ -2,8 +2,8 @@
 #include <Panic.h>
 #include <boot/Limine.h>
 #include <arch/ApBoot.h>
+#include <arch/ArchEntry.h>
 #include <memory/PhysicalMemory.h>
-#include <memory/Paging.h>
 #include <memory/KernelHeap.h>
 #include <memory/IpcManager.h>
 #include <devices/SystemClock.h>
@@ -16,18 +16,11 @@
 //this is used for demangling stack traces
 sl::NativePtr currentProgramElf;
 
+//defined in InitTasks.cpp
 extern void QueueInitTasks();
 
 namespace Kernel::Boot
 {
-    //these are defined in arch/xyz/ArchInit.cpp
-    //does arch specific, system-wide init. Returns boot core id.
-    extern size_t InitPlatformArch();
-    //initializes the local core, using the given id.
-    void InitCore(size_t id, size_t acpiId);
-    [[noreturn]]
-    extern void ExitInitArch();
-
     //forward decl, used in SetupAllCores()
     [[noreturn]]
     void _ApEntry(Kernel::SmpCoreInfo* smpInfo);
@@ -224,7 +217,7 @@ extern "C"
 
         LoggingInitFull();
         PrintBootInfo();
-        //TODO: would be nice to have PrintCpuInfo() as well
+        CPU::PrintInfo();
 
         InitPlatform();
         SetupAllCores();

@@ -2,25 +2,14 @@
 #include <cpuid.h>
 #include <Platform.h>
 #include <Log.h>
+#include <Memory.h>
 
 namespace Kernel
 {
-    char cpuidVendorString[13];
-    
     uint32_t leaf1Edx;
     uint32_t leaf1Ecx;
-
     uint32_t leaf7_0Ebx;
     uint32_t leaf7_0Ecx;
-
-    //tsc, core crystal in Hz. Bus, core max, core base in MHz
-    uint32_t leaf15Eax;
-    uint32_t leaf15Ebx;
-    uint32_t leaf15Ecx;
-    uint32_t leaf16Eax;
-    uint32_t leaf16Ebx;
-    uint32_t leaf16Ecx;
-
     uint32_t extLeaf1Edx;
     uint32_t extLeaf1Ecx;
 
@@ -56,57 +45,26 @@ namespace Kernel
     void CPU::DoCpuId()
     {
         extendedState.setup = false;
-        
-        uint64_t highestExtLeafAvailable = __get_cpuid_max(0x8000'0000, (unsigned int*)cpuidVendorString);
-        uint64_t highestBaseLeafAvailable = __get_cpuid_max(0, (unsigned int*)cpuidVendorString);
+        uint32_t scratch = 0;
+        const unsigned maxBaseLeaf = __get_cpuid_max(0, nullptr);
+        const unsigned maxExtLeaf = __get_cpuid_max(0x8000'0000, nullptr);
 
-        if (highestExtLeafAvailable == 0 || highestBaseLeafAvailable == 0)
-        {
-            cpuidVendorString[0] = 0;
-            return;
-        }
-
-        //dummy regs for values we dont care about saving (or getting cpuid string)
-        uint32_t eax, edx, ecx, ebx;
-        
-        //get vendor name
-        __get_cpuid(0, &eax, &ebx, &ecx, &edx);
-        cpuidVendorString[0] = ebx & 0x00'00'00'FF;
-        cpuidVendorString[1] = (ebx & 0x00'00'FF'00) >> 8;
-        cpuidVendorString[2] = (ebx & 0x00'FF'00'00) >> 16;
-        cpuidVendorString[3] = (ebx & 0xFF'00'00'00) >> 24;
-        cpuidVendorString[4] = edx & 0x00'00'00'FF;
-        cpuidVendorString[5] = (edx & 0x00'00'FF'00) >> 8;
-        cpuidVendorString[6] = (edx & 0x00'FF'00'00) >> 16;
-        cpuidVendorString[7] = (edx & 0xFF'00'00'00) >> 24;
-        cpuidVendorString[8] = ecx & 0x00'00'00'FF;
-        cpuidVendorString[9] = (ecx & 0x00'00'FF'00) >> 8;
-        cpuidVendorString[10] = (ecx & 0x00'FF'00'00) >> 16;
-        cpuidVendorString[11] = (ecx & 0xFF'00'00'00) >> 24;
-        cpuidVendorString[12] = 0; //the all important, null terminator.
-
-        //general purpose leaves
-        __get_cpuid(0x8000'0001, &eax, &ebx, &extLeaf1Ecx, &extLeaf1Edx);
-        __get_cpuid(1, &eax, &ebx, &leaf1Ecx, &leaf1Edx);
-
-        if (highestBaseLeafAvailable >= 7)
-            __get_cpuid_count(7, 0, &eax, &leaf7_0Ebx, &leaf7_0Ecx, &edx);
+        //cache these values for later, so we dont have to emit cpuid instructions (they're serializing).
+        if (maxBaseLeaf >= 1)
+            __get_cpuid(1, &scratch, &scratch, &leaf1Ecx, &leaf1Edx);
         else
-            leaf7_0Ebx = 0;
-
-        //tsc frequency (= ecx * ebx/eax) and core crystal clock frequency in hertz (ecx)
-        if (highestBaseLeafAvailable >= 0x15)
-            __get_cpuid(0x15, &leaf15Eax, &leaf15Ebx, &leaf15Ecx, &edx);
-        else
-            leaf15Eax = leaf15Ebx = leaf15Ecx = (uint32_t)-1;
-        if (leaf15Eax == 0)
-            leaf15Eax = 1; //virtualbox can sometimes return 0 for some reason. Can lead to a div by zero if we're not careful.
+            leaf1Ecx = leaf1Edx = 0;
         
-        //all in MHz: core base = eax, core max = ebx, bus reference = ecx
-        if (highestBaseLeafAvailable >= 0x16)
-            __get_cpuid(0x15, &leaf16Eax, &leaf16Ebx, &leaf16Ecx, &edx);
+        if (maxExtLeaf >= 1)
+            __get_cpuid(0x8000'0001, &scratch, &scratch, &extLeaf1Ecx, &extLeaf1Edx);
         else
-            leaf16Eax = leaf16Ebx = leaf16Ecx = (uint32_t)-1;
+            extLeaf1Ecx = extLeaf1Edx = 0;
+
+        if (maxBaseLeaf >= 7)
+            __get_cpuid_count(7, 0, &scratch, &leaf7_0Ebx, &leaf7_0Ecx, &scratch);
+        else
+            leaf7_0Ebx = leaf7_0Ecx = 0;
+
     }
 
     void CPU::Halt()
@@ -307,25 +265,76 @@ namespace Kernel
         return getFullname ? cpuFeatureNamesLong[(unsigned)feature] : cpuFeatureNamesShort[(unsigned)feature];
     }
 
-    const char* CPU::GetVendorString()
+    void CPU::PrintInfo()
     {
-        return cpuidVendorString;
-    }
+        uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
+        const uint32_t maxBasicLeaf = __get_cpuid_max(0, nullptr);
+        const uint32_t maxExtendedLeaf = __get_cpuid_max(0x8000'0000, nullptr);
 
-    const CpuFrequencies CPU::GetFrequencies()
-    {
-        CpuFrequencies freqs;
-        freqs.coreClockBaseHertz = leaf16Eax;
-        freqs.coreMaxBaseHertz = leaf16Ebx;
-        freqs.busClockHertz = leaf16Ecx;
+        __get_cpuid(0, &eax, &ebx, &ecx, &edx);
+        char vendorStr[13];
+        for (size_t i = 0; i < 4; i++)
+        {
+            const size_t shiftor = i * 8;
+            vendorStr[0 + i] = (ebx >> shiftor) & 0xFF;
+            vendorStr[4 + i] = (edx >> shiftor) & 0xFF;
+            vendorStr[8 + i] = (ecx >> shiftor) & 0xFF;
+        }
+        vendorStr[12] = 0;
 
-        if (leaf15Eax == (uint32_t)-1 || leaf15Ebx == (uint32_t)-1 || leaf15Ecx == (uint32_t)-1)
-            freqs.coreTimerHertz = -1;
-        else //no need to do expensive divide work here if we dont have to
-            freqs.coreTimerHertz = leaf15Ecx * leaf15Ebx / leaf15Eax;
+        Logf("CPUID: %u basic leaves, %u extended leaves, vendor string=%s", LogSeverity::Verbose, 
+            maxBasicLeaf, maxExtendedLeaf - 0x8000'0000, vendorStr);
 
-        //RVO should make this fine
-        return freqs;
+        if (maxExtendedLeaf >= 0x8000'0004)
+        {
+            char brandStr[48];
+            sl::memset(brandStr, 0, 48);
+            for (size_t reg = 0; reg < 3; reg++)
+            {
+                __get_cpuid(0x8000'0002 + reg, &eax, &ebx, &ecx, &edx);
+                const size_t offset = reg * 16;
+
+                for (size_t i = 0; i < 4; i++)
+                {
+                    const size_t shiftor = i * 8;
+                    brandStr[offset + 0 + i] = (eax >> shiftor) & 0xFF;
+                    brandStr[offset + 4 + i] = (ebx >> shiftor) & 0xFF;
+                    brandStr[offset + 8 + i] = (ecx >> shiftor) & 0xFF;
+                    brandStr[offset + 12 + i] = (edx >> shiftor) & 0xFF;
+                }
+            }
+            Logf("CPUID: brand string=%s", LogSeverity::Verbose, brandStr);
+        }
+
+        for (size_t i = 0; i <= maxBasicLeaf; i++)
+        {
+            //serializing instruction inside a loop for extra performance.
+            const int valid = __get_cpuid(i, &eax, &ebx, &ecx, &edx);
+            if (!valid)
+                Logf("CPUID leaf %u: invalid.", LogSeverity::Verbose, i);
+            else
+                Logf("CPUID leaf %u: eax=0x%0x, ebx=0x%0x, ecx=0x%0x, edx=0x%0x", LogSeverity::Verbose, i, eax, ebx, ecx, edx);
+        }
+
+        for (size_t i = 0x8000'0000; i <= maxExtendedLeaf; i++)
+        {
+            const int valid = __get_cpuid(i, &eax, &ebx, &ecx, &edx);
+            if (!valid)
+                Logf("CPUID extended leaf %u: invalid.", LogSeverity::Verbose, i - 0x8000'0000);
+            else
+                Logf("CPUID extended leaf %u: eax=0x%0x, ebx=0x%0x, ecx=0x%0x, edx=0x%0x", LogSeverity::Verbose, i - 0x8000'0000, eax, ebx, ecx, edx);
+        }
+
+        for (size_t i = 0; i < (size_t)CpuFeature::EnumCount; i += 4)
+        {
+            Logf("CPU features: %s supported=%B, %s supported=%B, %s supported=%B, %s supported=%B", LogSeverity::Verbose,
+                GetFeatureStr((CpuFeature)i), FeatureSupported((CpuFeature)i), 
+                GetFeatureStr((CpuFeature)(i + 1)), FeatureSupported((CpuFeature)(i + 1)),
+                GetFeatureStr((CpuFeature)(i + 2)), FeatureSupported((CpuFeature)(i + 2)),
+                GetFeatureStr((CpuFeature)(i + 3)), FeatureSupported((CpuFeature)(i + 3)));
+        }
+
+        Log("End of CPU info.", LogSeverity::Verbose);
     }
 
     void CPU::AllowSumac(bool allowed)
