@@ -67,6 +67,7 @@ namespace Kernel::Devices
         sl::SpinlockRelease(&allDevicesLock);
 
         device->Init();
+        device->PostInit();
         const bool initError = device->state != DeviceState::Ready;
         Logf("New device registered: id=%u, initError=%b, type=%u (%s)", LogSeverity::Verbose, 
             device->deviceId, initError, device->type, DeviceTypeStrs[(size_t)device->type]);

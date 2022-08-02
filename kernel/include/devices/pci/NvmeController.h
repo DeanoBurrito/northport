@@ -59,6 +59,7 @@ namespace Kernel::Devices::Pci
         size_t doorbellStride;
         size_t maxQueueEntries;
         size_t maxTransferSize;
+        size_t interruptVector;
 
         sl::Vector<NvmeNamespace> namespaces;
         sl::Vector<NvmeQueue> queues;
@@ -115,9 +116,9 @@ namespace Kernel::Devices::Pci
         void Reset() override;
         sl::Opt<Drivers::GenericDriver*> GetDriverInstance() override;
 
-        size_t BeginRead(size_t startLba, IoBlockBuffer dest) override;
+        size_t BeginRead(size_t startLba, IoBlockBuffer& dest) override;
         sl::Opt<BlockCmdResult> EndRead(size_t token) override;
-        size_t BeginWrite(size_t startLba, IoBlockBuffer source) override;
+        size_t BeginWrite(size_t startLba, IoBlockBuffer& source) override;
         sl::Opt<BlockCmdResult> EndWrite(size_t token) override;
     };
 

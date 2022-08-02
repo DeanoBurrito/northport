@@ -53,6 +53,7 @@ namespace Kernel::Devices::Pci
         uint32_t cqPhase;
         uint32_t sqTail;
         uint16_t nextCommandId;
+        char lock;
         sl::Vector<NvmeQueuePrpl> prplists;
     };
 

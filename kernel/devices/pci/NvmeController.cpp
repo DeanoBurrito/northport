@@ -97,6 +97,8 @@ namespace Kernel::Devices::Pci
             return;
         }
 
+        interruptVector = *maybeIntVector;
+
         const sl::NativePtr msiAddr = InterruptManager::GetMsiAddr(0);
         const uint64_t msiMessage = InterruptManager::GetMsiData(*maybeIntVector);
         if (maybeMsi)
@@ -136,6 +138,8 @@ namespace Kernel::Devices::Pci
         sl::NativePtr doorbellBase = (uintptr_t)properties + 0x1000;
         
         NvmeQueue& q = queues[0]; //peak variable naming
+        sl::ScopedSpinlock qLock(&q.lock);
+
         q.entries = queueEntries;
         q.cqHead = 0;
         q.sqTail = 0;
@@ -154,7 +158,26 @@ namespace Kernel::Devices::Pci
     }
 
     void NvmeController::DestroyAdminQueue()
-    { /* TODO: */ }
+    { 
+        if (queues.Size() != 1)
+        {
+            Log("Cannot clenaup NVMe admin queue: IO queues still exist.", LogSeverity::Error);
+            return;
+        }
+
+        Disable();
+        Log("NVMe controller disabled, cleaning up admin queues.", LogSeverity::Verbose);
+
+        NvmeQueue aq = queues.PopBack();
+        const size_t sqPages = aq.entries * sizeof(SubmissionQueueEntry) / PAGE_FRAME_SIZE + 1;
+        const size_t cqPages = aq.entries * sizeof(CompletionQueueEntry) / PAGE_FRAME_SIZE + 1;
+        Memory::PMM::Global()->FreePages(EnsureLowerHalfAddr(aq.submission.ptr), sqPages);
+        Memory::PMM::Global()->FreePages(EnsureLowerHalfAddr(aq.completion.ptr), cqPages);
+
+        properties->adminCompletionQueue = 0;
+        properties->adminSubmissionQueue = 0;
+        properties->adminQueueAttribs = 0;
+    }
 
     void NvmeController::CreateIoQueue(size_t index)
     {
@@ -165,6 +188,8 @@ namespace Kernel::Devices::Pci
         const size_t sqPages = maxQueueEntries * sizeof(SubmissionQueueEntry) / PAGE_FRAME_SIZE + 1;
         const size_t cqPages = maxQueueEntries * sizeof(CompletionQueueEntry) / PAGE_FRAME_SIZE + 1;
         NvmeQueue& queue = queues[index];
+        sl::ScopedSpinlock scopeLock(&queue.lock);
+
         queue.entries = maxQueueEntries;
         queue.cqHead = queue.sqTail = 0;
         queue.cqPhase = 1;
@@ -204,6 +229,7 @@ namespace Kernel::Devices::Pci
     NvmeCmdResult NvmeController::DoAdminCommand(SubmissionQueueEntry* cmd, CompletionQueueEntry* completion)
     {
         NvmeQueue& queue = queues[0];
+        sl::ScopedSpinlock qLock(&queue.lock);
         cmd->fields.commandId = queue.nextCommandId++;
 
         volatile SubmissionQueueEntry* sqTail = queue.submission.As<SubmissionQueueEntry>();
@@ -307,6 +333,7 @@ namespace Kernel::Devices::Pci
         //TODO: check we're not reading/writing past the end of the namespace
 
         NvmeQueue& ioQueue = queues[1]; //TODO: avoid hardcoding of queues like this
+        sl::ScopedSpinlock queueLock(&ioQueue.lock);
 
         SubmissionQueueEntry cmd;
         cmd.fields.opcode = opcode;
@@ -337,6 +364,7 @@ namespace Kernel::Devices::Pci
     sl::Opt<NvmeCmdResult> NvmeController::EndIoCmd(size_t operationId)
     {
         NvmeQueue& ioQueue = queues[1];
+        sl::ScopedSpinlock queueLock(&ioQueue.lock);
 
         volatile CompletionQueueEntry* comQueue = ioQueue.completion.As<volatile CompletionQueueEntry>();
         
@@ -487,7 +515,6 @@ namespace Kernel::Devices::Pci
                 namespaces[i].nsid, namespaces[i].blockCount, namespaces[i].blockSize);
 
             namespaces[i].blockDevice = new NvmeBlockDevice(this, namespaces[i].nsid);
-            DeviceManager::Global()->RegisterDevice(namespaces[i].blockDevice);
         }
         Memory::PMM::Global()->FreePage(identifyBuffer.base.ptr);
         identifyBuffer.base = nullptr;
@@ -506,10 +533,36 @@ namespace Kernel::Devices::Pci
         //ideally you would create more than a single queue, but its all we need for now.
         const size_t maxQueueCount = GetMaxIoQueueCount();
         CreateIoQueue(1);
+
+        //register the namespaces as block devices
+        for (size_t i = 0; i < namespaces.Size(); i++)
+            DeviceManager::Global()->RegisterDevice(namespaces[i].blockDevice);
     }
 
     void NvmeController::Deinit()
-    { /* TODO: */ }
+    { 
+        //remove any block devices we created
+        for (size_t i = 0; i < namespaces.Size(); i++)
+        {
+            delete DeviceManager::Global()->UnregisterDevice(namespaces[i].blockDevice->GetId());
+            namespaces[i].blockCount = namespaces[i].blockSize = namespaces[i].nsid = 0;
+        }
+        namespaces.Clear();
+        
+        //destroy io queues, and then admin queue
+        while (queues.Size() > 1)
+            DestroyIoQueue(queues.Size() - 1);
+        DestroyAdminQueue();
+        
+        //cleanup MSI, free vector
+        size_t intVector = 0;
+        if (msi->capabilityId == CapIdMsi)
+            static_cast<PciCapMsi*>(msi)->Enable(false);
+        else
+            static_cast<PciCapMsiX*>(msi)->Enable(false);
+        InterruptManager::Global()->DetachCallback(interruptVector);
+        InterruptManager::Global()->FreeVectors(interruptVector, 1);
+    }
 
     void NvmeController::HandleEvent(Drivers::DriverEventType type, void*)
     {
@@ -582,7 +635,7 @@ namespace Kernel::Devices::Pci
         return driver;
     }
 
-    size_t NvmeBlockDevice::BeginRead(size_t startLba, IoBlockBuffer dest)
+    size_t NvmeBlockDevice::BeginRead(size_t startLba, IoBlockBuffer& dest)
     {
         return driver->BeginRead(nsid, startLba, dest.memory);
     }
@@ -592,7 +645,7 @@ namespace Kernel::Devices::Pci
         return driver->EndRead(token);
     }
 
-    size_t NvmeBlockDevice::BeginWrite(size_t startLba, IoBlockBuffer source)
+    size_t NvmeBlockDevice::BeginWrite(size_t startLba, IoBlockBuffer& source)
     {
         return driver->BeginWrite(nsid, startLba, source.memory);
     }

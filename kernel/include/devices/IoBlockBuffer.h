@@ -12,5 +12,8 @@ namespace Kernel::Devices
 
         IoBlockBuffer(size_t pages);
         ~IoBlockBuffer();
+
+        IoBlockBuffer(const IoBlockBuffer&) = delete;
+        IoBlockBuffer& operator=(const IoBlockBuffer&) = delete;
     };
 }
