@@ -8,12 +8,3 @@ CXX_SRCS = BakedData.cpp LinearFramebuffer.cpp Colour.cpp TerminalFramebuffer.cp
 	formats/GenericImage.cpp formats/Qoi.cpp
 
 include $(LIB_COMMON_MK)
-
-.PHONY: all
-
-all: $(OBJS)
-	@echo "[$(TARGET)] Creating static library ..."
-	@mkdir -p $(LIBS_OUTPUT_DIR)
-	@$(AR) -rcs $(LIBS_OUTPUT_DIR)/lib$(TARGET).a $(OBJS)
-	@echo "[$(TARGET)] Done."
-

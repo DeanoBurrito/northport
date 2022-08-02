@@ -7,15 +7,6 @@ CXX_FLAGS = $(CXX_GLOBAL_FLAGS) -Iinclude \
 CXX_SRCS = Memory.cpp String.cpp StringCulture.cpp FormatPrinter.cpp Format.cpp Bitmap.cpp BufferView.cpp \
 	cultures/AustralianCulture.cpp \
 	elf/HeaderParser.cpp elf/Demangle.cpp \
-	 formats/Tar.cpp
+	formats/Tar.cpp
 
 include $(LIB_COMMON_MK)
-
-.PHONY: all
-
-all: $(OBJS)
-	@echo "[$(TARGET)] Creating static library ..."
-	@mkdir -p $(LIBS_OUTPUT_DIR)
-	@$(AR) -rcs $(LIBS_OUTPUT_DIR)/lib$(TARGET).a $(OBJS)
-	@echo "[$(TARGET)] Done."
-

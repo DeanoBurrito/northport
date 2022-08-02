@@ -5,13 +5,22 @@
 # TARGET = library name
 
 OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
+TARGET_STATIC = $(LIBS_OUTPUT_DIR)/lib$(TARGET).a
 
-.PHONY: clean
+.PHONY: clean all
+
+all: $(TARGET_STATIC)
+
+$(TARGET_STATIC): $(OBJS)
+	@echo "[$(TARGET)] Creating static library ..."
+	@mkdir -p $(shell dirname $(TARGET_STATIC))
+	@$(AR) -rcs $(TARGET_STATIC) $(OBJS)
+	@echo "[$(TARGET)] Static library created."
 
 clean:
 	@echo "[$(TARGET)] Cleaning build dir ..."
 	@-rm -r $(BUILD_DIR)
-	@-rm -r $(LIBS_OUTPUT_DIR)/lib$(TARGET).a
+	@-rm -r $(TARGET_STATIC)
 	@echo "[$(TARGET)] Done."
 
 $(BUILD_DIR)/%.cpp.o: %.cpp

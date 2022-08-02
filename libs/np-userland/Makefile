@@ -8,11 +8,3 @@ CXX_SRCS = New.cpp Userland.cpp Logging.cpp \
 	heap/UserHeap.cpp heap/UserSlab.cpp heap/UserPool.cpp 
 
 include $(LIB_COMMON_MK)
-
-.PHONY: all
-
-all: $(OBJS)
-	@echo "[$(TARGET)] Creating static library ..."
-	@mkdir -p $(LIBS_OUTPUT_DIR)
-	@$(AR) -rcs $(LIBS_OUTPUT_DIR)/lib$(TARGET).a $(OBJS)
-	@echo "[$(TARGET)] Done."
