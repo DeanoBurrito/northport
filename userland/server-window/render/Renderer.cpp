@@ -39,25 +39,55 @@ namespace WindowServer
     void Renderer::DrawWindow(WindowDescriptor* window, const sl::UIntRect& rect)
     {
         using namespace np::Graphics;
-
-        mainFb.DrawRect(window->Rect(), Colours::Cyan, true);
-        return;
+        const DecorationConfig& decor = GetDecorConfig();
         
-        //first draw the titlebar + decorations
-        mainFb.DrawRect({ window->position.x - windowBorderWidth, window->position.y - windowTitleHeight, window->size.x + (2 * windowBorderWidth), windowTitleHeight}, Colours::DarkGrey, true);
-        const size_t titleTop = window->position.y - windowTitleHeight;
-        const size_t titleLeft = window->position.x + window->size.x + windowBorderWidth;
-        mainFb.DrawImage(closeImage, { titleLeft - closeImage.Size().x, titleTop });
-        mainFb.DrawImage(maxImage, { titleLeft - closeImage.Size().x - maxImage.Size().x, titleTop });
-        mainFb.DrawImage(minImage, { titleLeft - closeImage.Size().x - maxImage.Size().x - minImage.Size().x, titleTop });
+        if (sl::EnumHasFlag(window->controlFlags, WindowControlFlags::ShowTitlebar))
+        {
+            mainFb.DrawRect({ window->position.x - decor.borderWidth, window->position.y - decor.titleHeight, window->size.x + (2 * decor.borderWidth), decor.titleHeight}, Colours::DarkGrey, true);
+            const size_t titleTop = window->position.y - decor.titleHeight;
+            const size_t titleLeft = window->position.x + window->size.x + decor.borderWidth;
+            mainFb.DrawImage(decor.closeImage, { titleLeft - decor.closeImage.Size().x, titleTop });
+            mainFb.DrawImage(decor.maxImage, { titleLeft - decor.closeImage.Size().x - decor.maxImage.Size().x, titleTop });
+            mainFb.DrawImage(decor.minImage, { titleLeft - decor.closeImage.Size().x - decor.maxImage.Size().x - decor.minImage.Size().x, titleTop });
+        }
 
-        //next draw the window frame
-        mainFb.DrawRect({ window->position.x - windowBorderWidth, window->position.y, windowBorderWidth, window->size.y}, Colours::DarkGrey, true);
-        mainFb.DrawRect({ window->position.x + window->size.x, window->position.y, windowBorderWidth, window->size.y}, Colours::DarkGrey, true);
-        mainFb.DrawRect({ window->position.x - windowBorderWidth, window->position.y + window->size.y, window->size.x + (2 * windowBorderWidth), windowBorderWidth}, Colours::DarkGrey, true);
+        if (!sl::EnumHasFlag(window->controlFlags, WindowControlFlags::Borderless))
+        {
+            mainFb.DrawRect({ window->position.x - decor.borderWidth, window->position.y, decor.borderWidth, window->size.y}, Colours::DarkGrey, true);
+            mainFb.DrawRect({ window->position.x + window->size.x, window->position.y, decor.borderWidth, window->size.y}, Colours::DarkGrey, true);
+            mainFb.DrawRect({ window->position.x - decor.borderWidth, window->position.y + window->size.y, window->size.x + (2 * decor.borderWidth), decor.borderWidth}, Colours::DarkGrey, true);
+        }
 
         //then the background colour
         mainFb.DrawRect({ window->position.x, window->position.y, window->size.x, window->size.y }, Colours::DarkCyan, true);
+    }
+
+    sl::UIntRect Renderer::WindowBorderRect(const WindowDescriptor& window, const DecorationConfig& config)
+    {
+        sl::UIntRect border;
+        border.left = window.position.x;
+        border.top = window.position.y;
+        border.width = window.size.x;
+        border.height = window.size.y;
+        
+        if (!sl::EnumHasFlag(window.controlFlags, WindowControlFlags::Borderless))
+        {
+            border.left -= config.borderWidth;
+            border.width += 2 * config.borderWidth;
+            border.height += config.borderWidth;
+            if (!sl::EnumHasFlag(window.controlFlags, WindowControlFlags::ShowTitlebar))
+            {
+                border.height += config.borderWidth;
+                border.top -= config.borderWidth;
+            }
+        }
+        if (sl::EnumHasFlag(window.controlFlags, WindowControlFlags::ShowTitlebar))
+        {
+            border.top -= config.titleHeight;
+            border.height += config.titleHeight;
+        }
+
+        return border;
     }
     
     Renderer::Renderer()
@@ -66,14 +96,15 @@ namespace WindowServer
         mainFb = np::Graphics::LinearFramebuffer::Create(screenFb->Size().x, screenFb->Size().y, 32, screenFb->GetBufferFormat());
         mainFb.Clear(np::Graphics::Colours::Black);
         screenFb->Clear(np::Graphics::Colours::Black);
+        decorConfig.borderWidth = 1;
+        decorConfig.titleHeight = 32;
 
         LoadFile("/initdisk/icons/window-close.qoi", cursorImage);
-        LoadFile("/initdisk/icons/window-close.qoi", closeImage);
-        LoadFile("/initdisk/icons/window-min.qoi", minImage);
-        LoadFile("/initdisk/icons/window-max.qoi", maxImage);
+        LoadFile("/initdisk/icons/window-close.qoi", decorConfig.closeImage);
+        LoadFile("/initdisk/icons/window-min.qoi", decorConfig.minImage);
+        LoadFile("/initdisk/icons/window-max.qoi", decorConfig.maxImage);
 
         debugDrawLevel = RenderDebugDrawLevel::TextAndDamageRects;
-        // debugDrawLevel = RenderDebugDrawLevel::None;
     }
 
     void Renderer::Redraw(const sl::Vector<sl::UIntRect>& damageRects, const sl::Vector<WindowDescriptor*>& windows, sl::Vector2u cursor)
@@ -85,7 +116,7 @@ namespace WindowServer
             //clear the damaged area
             mainFb.DrawRect(damageRects[rectIndex], np::Graphics::Colours::Grey, true);
 
-            // check if it overlaps any windows: render parts of the decorations if needed, and copy from the framebuffer if needed.
+            //check if it overlaps any windows: render parts of the decorations if needed, and copy from the framebuffer if needed.
             for (size_t winIndex = 0; winIndex < windows.Size(); winIndex++)
             {
                 if (windows[winIndex] == nullptr)
@@ -95,7 +126,7 @@ namespace WindowServer
                 if (sl::EnumHasFlag(window->statusFlags, WindowStatusFlags::Minimized))
                     continue;
                 
-                if (damageRects[rectIndex].Intersects(window->BorderRect()))
+                if (damageRects[rectIndex].Intersects(WindowBorderRect(*window, GetDecorConfig())))
                     DrawWindow(window, damageRects[rectIndex]);
             }
 
@@ -119,6 +150,9 @@ namespace WindowServer
 
     sl::Vector2u Renderer::CursorSize() const
     { return cursorImage.Size(); }
+
+    const DecorationConfig& Renderer::GetDecorConfig() const
+    { return decorConfig; }
 
     void Renderer::AttachFramebuffer(WindowDescriptor*)
     {}

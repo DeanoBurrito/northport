@@ -15,8 +15,17 @@ namespace WindowServer
         DamageRectsOnly,
         TextAndDamageRects,
     };
-    
+
     using np::Graphics::GenericImage;
+    struct DecorationConfig
+    {
+        size_t titleHeight;
+        size_t borderWidth;
+
+        GenericImage closeImage;
+        GenericImage minImage;
+        GenericImage maxImage;
+    };
     
     class Renderer
     {
@@ -24,15 +33,15 @@ namespace WindowServer
         np::Graphics::LinearFramebuffer* screenFb;
         np::Graphics::LinearFramebuffer mainFb;
 
+        DecorationConfig decorConfig;
         GenericImage cursorImage;
-        GenericImage closeImage;
-        GenericImage minImage;
-        GenericImage maxImage;
 
         void LoadFile(const sl::String& name, GenericImage& image);
         void DrawWindow(WindowDescriptor* window, const sl::UIntRect& rect);
 
     public:
+        static sl::UIntRect WindowBorderRect(const WindowDescriptor& window, const DecorationConfig& config);
+
         RenderDebugDrawLevel debugDrawLevel;
 
         Renderer();
@@ -40,6 +49,7 @@ namespace WindowServer
         void Redraw(const sl::Vector<sl::UIntRect>& damageRects, const sl::Vector<WindowDescriptor*>& windows, sl::Vector2u cursor);
         sl::Vector2u Size() const;
         sl::Vector2u CursorSize() const;
+        const DecorationConfig& GetDecorConfig() const;
 
         void AttachFramebuffer(WindowDescriptor* window);
         void DeteachFramebuffer(WindowDescriptor* window);

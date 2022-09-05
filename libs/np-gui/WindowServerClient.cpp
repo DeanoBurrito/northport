@@ -33,7 +33,7 @@ namespace np::Gui
         case ResponseType::GeneralError:
         {
             const GeneralErrorResponse* error = static_cast<const GeneralErrorResponse*>(respBase);
-            Userland::Log("WindowServerClient failed operation of type %u, error code %u.", LogLevel::Error, request.type, error->value);
+            Userland::Log("WindowServerClient failed operation of type %u, error code %u.", LogLevel::Error, request.type, error->code);
             pendingRequests.Erase(0);
             break;
         }

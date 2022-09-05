@@ -84,8 +84,10 @@ namespace WindowServer
 
                     IpcClient ipcClient;
                     ipcClient.processId = event.sender;
-                    //TODO: we assume the string is null-terminated, we should only read until the end of the buffer
-                    ipcClient.returnMailbox = sl::String(reinterpret_cast<const char*>(request->responseAddr));
+                    const size_t mailboxNameLength = sl::min(sl::memfirst(request->responseAddr, 0, np::Gui::NameLengthLimit), np::Gui::NameLengthLimit);
+                    char* returnMailbox = new char[mailboxNameLength + 1];
+                    sl::memcopy(reinterpret_cast<const char*>(request->responseAddr), returnMailbox, mailboxNameLength);
+                    ipcClient.returnMailbox = sl::String(returnMailbox, true);
                     clients.PushBack(ipcClient);
                     
                     WM()->ProcessPacket({ Type(), ipcClient.processId}, { packetBuffer, event.dataLength });

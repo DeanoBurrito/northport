@@ -62,6 +62,7 @@ namespace Kernel::Memory
     
     struct PageTableEntry
     {
+        static uint64_t physAddrMask;
         uint64_t raw;
 
         PageTableEntry(uint64_t data) : raw(data)
@@ -69,31 +70,33 @@ namespace Kernel::Memory
 
         void SetFlag(PageEntryFlag flagMask)
         {
-            raw |= flagMask & 0xFFF0'0000'0000'0FFF; //TODO: this does not support 57-bit address!
+            raw |= flagMask & ~physAddrMask;
         }
 
         void ClearFlag(PageEntryFlag flagMask)
         {
-            raw &= ~flagMask & 0xFFF0'0000'0000'0FFF;
+            raw &= ~flagMask & ~physAddrMask;
         }
 
         bool HasFlag(PageEntryFlag flag)
         {
-            return (raw & (flag & 0xFFF0'0000'0000'0FFF)) != 0;
+            return (raw & (flag & ~physAddrMask)) != 0;
         }
 
         void SetAddr(sl::NativePtr address)
         {
             //zero address bits in raw entry, then move address to offset, and preserve control bits.
-            raw &= 0xFFF0'0000'0000'0FFF;
-            raw |= address.raw & ~(0xFFF0'0000'0000'0FFF);
+            raw &= ~physAddrMask;
+            raw |= address.raw & physAddrMask;
         }
 
         sl::NativePtr GetAddr()
         {
-            return raw & ~(0xFFF0'0000'0000'0FFF);
+            return raw & physAddrMask;
         }
     };
+
+    uint64_t PageTableEntry::physAddrMask;
 
     struct PageTable
     {
@@ -170,6 +173,10 @@ namespace Kernel::Memory
             pagingLevels = 4;
             Log("System is setup for 4-level paging.", LogSeverity::Verbose);
         }
+
+        PageTableEntry::physAddrMask = 1ul << (9 * pagingLevels + 12);
+        PageTableEntry::physAddrMask--;
+        PageTableEntry::physAddrMask &= ~0xFFFul;
 
         Log("Paging setup successful.", LogSeverity::Info);
     }

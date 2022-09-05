@@ -101,8 +101,9 @@ namespace Kernel
 
         RenderPanicImage();
         
-        //This works fine for the kernel, if we panic with a userspace rip this will return nonsense.
+        //Only handles kernel symbols for now, userspace programs will return junk symbols.
         Log("---- Stack Trace ----", LogSeverity::Info);
+        CPU::AllowSumac(true);
         PrintStackTrace(GetStackTrace(), LogSeverity::Info);
 
     final_loop:

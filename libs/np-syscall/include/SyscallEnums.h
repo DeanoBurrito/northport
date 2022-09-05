@@ -142,7 +142,6 @@ namespace np::Syscall
         AddAccessId = 1,
         RemoveAccessId = 2,
         ChangeAccessFlags = 3,
-        TransferOwnership = 4,
     };
 
     enum class LogLevel : NativeUInt

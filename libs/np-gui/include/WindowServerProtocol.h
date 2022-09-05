@@ -91,9 +91,14 @@ namespace np::Gui
         {}
     };
 
+    enum class GeneralError : uint64_t
+    {
+        UnknownRequest = 0,
+    };
+
     struct GeneralErrorResponse : public ResponseBase
     {
-        uint64_t value; //TODO: looks a nice place for an enum :^)
+        GeneralError code;
 
         GeneralErrorResponse() : ResponseBase(ResponseType::GeneralError)
         {}

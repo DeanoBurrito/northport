@@ -191,6 +191,9 @@ namespace np::Graphics
 
     void LinearFramebuffer::DrawHLine(sl::Vector2u begin, int length, Colour colour, FramebufferNoLockType)
     {
+        if (begin.y >= height)
+            return;
+        
         size_t start = sl::clamp<size_t>(begin.x, 0, width);
         size_t end = (size_t)sl::clamp<int>((int)begin.x + length, 0, (int)width);
         if (end < start)
@@ -208,6 +211,9 @@ namespace np::Graphics
 
     void LinearFramebuffer::DrawVLine(sl::Vector2u begin, int length, Colour colour, FramebufferNoLockType)
     {
+        if (begin.x >= width)
+            return;
+        
         size_t start = sl::clamp<size_t>(begin.y, 0, height);
         size_t end = (size_t)sl::clamp<int>((int)begin.y + length, 0, (int)height);
         if (end < start)

@@ -269,11 +269,6 @@ namespace Kernel::Syscalls
             stream->accessFlags = (IpcAccessFlags)(regs.arg2 >> 60);
             return;
 
-        case IpcConfigOperation::TransferOwnership:
-            //TODO: we probably want to check this new process exists, and if not assume the stream to be abandoned and clean it up.
-            stream->ownerId = regs.arg2;
-            return;
-
         default:
             return;
         }

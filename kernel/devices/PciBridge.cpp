@@ -95,7 +95,6 @@ namespace Kernel::Devices
                     function.busId = bus;
                     function.address = funcAddr;
 
-                    //TODO: would be nice to parse pci-ids or something here, for prettier output
                     const uint32_t functionId = funcAddr.ReadReg(0);
                     const uint32_t funcClass = funcAddr.ReadReg(2);
                     Logf("Discovered PCI function %x::%0hhx:%0hhx.%x: id=%0hx:%0hx, class=0x%x, subclass=0x%x, progIf=0x%x", LogSeverity::Verbose, 

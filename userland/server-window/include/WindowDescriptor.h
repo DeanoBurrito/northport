@@ -8,14 +8,12 @@
 
 namespace WindowServer
 {
-    constexpr size_t windowTitleHeight = 32;
-    constexpr size_t windowBorderWidth = 4;
-
     enum class WindowControlFlags : size_t
     {
         None = 0,
         Resizable = (1 << 0),
         ShowTitlebar = (1 << 2),
+        Borderless = (1 << 3)
     };
 
     enum class WindowStatusFlags : size_t
@@ -48,12 +46,5 @@ namespace WindowServer
         [[gnu::always_inline]] inline
         sl::UIntRect Rect() const
         { return { position.x, position.y, size.x, size.y }; }
-
-        [[gnu::always_inline]] inline
-        sl::UIntRect BorderRect() const
-        { 
-            return { position.x - windowBorderWidth, position.y - windowTitleHeight,
-                size.x + (windowBorderWidth * 2), size.y + windowBorderWidth + windowTitleHeight};
-        }
     };
 }

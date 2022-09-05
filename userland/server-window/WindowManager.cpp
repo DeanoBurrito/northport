@@ -45,14 +45,12 @@ namespace WindowServer
         desc->windowId = id;
 
         if (req->width == -1ul || req->height == -1ul)
-            desc->size = { np::Gui::WindowMinWidth, np::Gui::WindowMinHeight }; //TODO: smarter default sizing and placement
+            desc->size = { np::Gui::WindowMinWidth, np::Gui::WindowMinHeight };
         else
             desc->size = { sl::max(req->width, np::Gui::WindowMinWidth), sl::max(req->height, np::Gui::WindowMinHeight) };
         
-        if (req->posX == -1ul || req->posY == -1ul)
-            desc->position = { 20, 20 };
-        else
-            desc->position = { req->posX, req->posY }; //TODO: make sure we can't spawn windows *outside* of the screen.
+        desc->position.x = sl::clamp(req->posX, np::Gui::WindowMinWidth, compositor.Size().x - np::Gui::WindowMinWidth);
+        desc->position.y = sl::clamp(req->posY, np::Gui::WindowMinHeight, compositor.Size().y - np::Gui::WindowMinHeight);
 
         const size_t titleLength = sl::memfirst(req->title, 0, np::Gui::NameLengthLimit);
         char* titleBuffer = new char[titleLength == (size_t)-1 ? np::Gui::NameLengthLimit + 1 : titleLength + 1];
@@ -75,6 +73,22 @@ namespace WindowServer
         WindowManager wm;
         globalWindowManager = &wm;
 
+        np::Gui::CreateWindowRequest create0;
+        create0.height = 100;
+        create0.width = 100;
+        create0.monitorIndex = 0;
+        create0.posX = 200;
+        create0.posY = 200;
+        sl::memcopy("Hello window", create0.title, 12);
+        ProtocolClient dummyClient(ProtocolType::Ipc, -1);
+        wm.CreateWindow(&create0, dummyClient);
+
+        create0.height = 50;
+        create0.width = 200;
+        create0.posX = 230;
+        create0.posY = 100;
+        wm.CreateWindow(&create0, dummyClient);
+        
         //redraw the entire screen by creating a giant damage rect all of it.
         wm.damageRects.PushBack({ 0, 0, wm.compositor.Size().x, wm.compositor.Size().y });
         wm.compositor.Redraw(wm.damageRects, wm.windows, { 0, 0 });
@@ -176,6 +190,7 @@ namespace WindowServer
         default:
         {
             GeneralErrorResponse error;
+            error.code = GeneralError::UnknownRequest;
             GenericProtocol::Send(from, { &error, sizeof(GeneralErrorResponse) });
             np::Userland::Log("Unknown request type %lu, from client %lu:%lu", LogLevel::Debug, baseReq->type, from.protocol, from.clientId);
             break;
