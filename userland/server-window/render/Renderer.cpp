@@ -104,7 +104,7 @@ namespace WindowServer
         LoadFile("/initdisk/icons/window-min.qoi", decorConfig.minImage);
         LoadFile("/initdisk/icons/window-max.qoi", decorConfig.maxImage);
 
-        debugDrawLevel = RenderDebugDrawLevel::TextAndDamageRects;
+        // debugDrawLevel = RenderDebugDrawLevel::TextAndDamageRects;
     }
 
     void Renderer::Redraw(const sl::Vector<sl::UIntRect>& damageRects, const sl::Vector<WindowDescriptor*>& windows, sl::Vector2u cursor)
@@ -114,7 +114,7 @@ namespace WindowServer
         for (size_t rectIndex = 0; rectIndex < damageRects.Size(); rectIndex++)
         {
             //clear the damaged area
-            mainFb.DrawRect(damageRects[rectIndex], np::Graphics::Colours::Grey, true);
+            mainFb.DrawRect(damageRects[rectIndex], 0x222222FF, true);
 
             //check if it overlaps any windows: render parts of the decorations if needed, and copy from the framebuffer if needed.
             for (size_t winIndex = 0; winIndex < windows.Size(); winIndex++)
@@ -153,6 +153,19 @@ namespace WindowServer
 
     const DecorationConfig& Renderer::GetDecorConfig() const
     { return decorConfig; }
+
+    ClickResult Renderer::TestWindowClick(const WindowDescriptor& window, sl::Vector2i cursor)
+    {
+        const sl::UIntRect border = WindowBorderRect(window, decorConfig);
+        if (!border.Contains((sl::Vector2u)cursor))
+            return ClickResult::Miss;
+        
+        if (window.Rect().Contains((sl::Vector2u)cursor))
+            return ClickResult::Content;
+        //TODO: test for controls (min/max/close)
+
+        return ClickResult::Border;
+    }
 
     void Renderer::AttachFramebuffer(WindowDescriptor*)
     {}

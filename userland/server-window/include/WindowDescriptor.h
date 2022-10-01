@@ -19,8 +19,7 @@ namespace WindowServer
     enum class WindowStatusFlags : size_t
     {
         None = 0,
-        NeedsRedraw = (1 << 0),
-        Minimized = (1 << 1),
+        Minimized = (1 << 0),
     };
 
     struct WindowDescriptor

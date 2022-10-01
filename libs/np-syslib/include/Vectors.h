@@ -56,6 +56,10 @@ namespace sl
                 default: return 0;
             }
         }
+
+        template<typename U>
+        constexpr explicit operator Vector2<U>()
+        { return { (U)x, (U)y }; }
     };
 
     template<typename T>
@@ -154,6 +158,10 @@ namespace sl
                 default: return 0;
             }
         }
+
+        template<typename U>
+        constexpr explicit operator Vector3<U>()
+        { return { (U)x, (U)y, (U)z }; }
     };
 
     template<typename T>
@@ -259,6 +267,10 @@ namespace sl
                 default: return 0;
             }
         }
+
+        template<typename U>
+        constexpr explicit operator Vector4<U>()
+        { return { (U)x, (U)y, (U)z, (U)w }; }
     };
 
     using Vector4i = Vector4<long>;

@@ -75,6 +75,7 @@ namespace np::Gui
         GeneralAcknowledge = 0,
         GeneralError = 1,
         AcknowledgeValue = 2,
+        KeyEvent = 3,
     };
 
     struct ResponseBase
@@ -109,6 +110,14 @@ namespace np::Gui
         uint64_t value;
 
         AcknowledgeValueResponse() : ResponseBase(ResponseType::AcknowledgeValue)
+        {}
+    };
+
+    struct KeyEventResponse : public ResponseBase
+    {
+        uint64_t keyEvent;
+
+        KeyEventResponse() : ResponseBase(ResponseType::KeyEvent)
         {}
     };
 }

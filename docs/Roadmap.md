@@ -22,7 +22,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
         - [x] Process resource handles.
         - [ ] Work borrowing/stealing.
         - [ ] DPC.
-        - [ ] Tickless and timer chains.
+        - [ ] Tickless.
     - [x] Virtual file system.
         - [x] Loadable filesystem drivers.
         - [x] Init-time FS (ustar based).
@@ -34,6 +34,7 @@ Listed below is the tentative list of supported platforms and devices, as well a
     - [x] System call spec.
     - [x] Timekeeping: uptime and wall clock time.
         - [x] RTC real-time read.
+        - [ ] Rewrite: arch-abstracted timers.
     - [ ] Sanitizers.
         - [x] UB.
         - [ } Address.

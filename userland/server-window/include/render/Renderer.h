@@ -26,6 +26,13 @@ namespace WindowServer
         GenericImage minImage;
         GenericImage maxImage;
     };
+
+    enum class ClickResult
+    {
+        Miss,
+        Content,
+        Border,
+    };
     
     class Renderer
     {
@@ -50,6 +57,7 @@ namespace WindowServer
         sl::Vector2u Size() const;
         sl::Vector2u CursorSize() const;
         const DecorationConfig& GetDecorConfig() const;
+        ClickResult TestWindowClick(const WindowDescriptor& window, sl::Vector2i cursor);
 
         void AttachFramebuffer(WindowDescriptor* window);
         void DeteachFramebuffer(WindowDescriptor* window);

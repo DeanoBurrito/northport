@@ -30,6 +30,54 @@ namespace WindowServer
         np::Userland::Log("Window server started, %u protocols in use.", LogLevel::Info, 1);
     }
 
+    void WindowManager::HandleKeyEvent(KeyEvent event)
+    {
+        constexpr KeyIdentity mousePrimary = KeyIdentity::MouseLeft;
+        constexpr KeyIdentity mouseSecondary = KeyIdentity::MouseRight;
+
+        //anything + gui/super/windows key :( is reserved for the shell process.
+        if ((uint16_t)event.mods & (uint16_t)KeyModFlags::BothGuisMask)
+        {
+            Log("Got shell keys", LogLevel::Debug);
+            return;
+        }
+        
+        if (event.id == mousePrimary || event.id == mouseSecondary)
+        {
+            HandleMouse(sl::EnumHasFlag(event.tags, KeyTags::Pressed), event.id == mousePrimary);
+            return;
+        }
+        //not a mouse click or shell command, pass it through to the active window
+
+        //if its a 'mouse' click, is it inside the active window(passthrough), within the control area (drag + control), into another window (refocus), or somewhere else entirely.
+        //is this the start of a reserved key combination (super + x), otherwise pass key event through to window.
+
+    }
+
+    void WindowManager::HandleMouse(bool pressed, bool primary)
+    {
+        const DecorationConfig& decor = compositor.GetDecorConfig();
+
+        //TODO: accelerate this with a quadtree
+        for (size_t i = 0; i < windows.Size(); i++)
+        {
+            if (windows[i] == nullptr)
+                continue;
+
+            const ClickResult result = compositor.TestWindowClick(*windows[i], cursorPos);
+            if (result == ClickResult::Miss)
+                continue;
+            
+            else if (result == ClickResult::Border && primary)
+            {
+                dragWindow = pressed ? windows[i] : nullptr;
+                np::Userland::Log("Drag: %s", LogLevel::Debug, dragWindow ? "began" : "ended");
+                damageRects.PushBack(Renderer::WindowBorderRect(*windows[i], decor));
+                return;
+            }
+        }
+    }
+
     uint64_t WindowManager::CreateWindow(const np::Gui::CreateWindowRequest* req, const ProtocolClient client)
     {
         const uint64_t id = windowIdAllocator.Alloc();
@@ -41,7 +89,7 @@ namespace WindowServer
 
         desc->monitorIndex = 0;
         desc->controlFlags = WindowControlFlags::ShowTitlebar;
-        desc->statusFlags = WindowStatusFlags::NeedsRedraw;
+        desc->statusFlags = WindowStatusFlags::None;
         desc->windowId = id;
 
         if (req->width == -1ul || req->height == -1ul)
@@ -62,7 +110,7 @@ namespace WindowServer
 
         //create a framebuffer for this window, and push a damage rect that covers it so it's immediately redrawn
         compositor.AttachFramebuffer(desc);
-        damageRects.PushBack(desc->Rect());
+        damageRects.PushBack(Renderer::WindowBorderRect(*desc, compositor.GetDecorConfig()));
 
         return id;
     }
@@ -79,7 +127,7 @@ namespace WindowServer
         create0.monitorIndex = 0;
         create0.posX = 200;
         create0.posY = 200;
-        sl::memcopy("Hello window", create0.title, 12);
+        sl::memcopy("Hello window", create0.title, 13);
         ProtocolClient dummyClient(ProtocolType::Ipc, -1);
         wm.CreateWindow(&create0, dummyClient);
 
@@ -90,7 +138,7 @@ namespace WindowServer
         wm.CreateWindow(&create0, dummyClient);
         
         //redraw the entire screen by creating a giant damage rect all of it.
-        wm.damageRects.PushBack({ 0, 0, wm.compositor.Size().x, wm.compositor.Size().y });
+        // wm.damageRects.PushBack({ 0, 0, wm.compositor.Size().x, wm.compositor.Size().y });
         wm.compositor.Redraw(wm.damageRects, wm.windows, { 0, 0 });
         wm.damageRects.Clear();
 
@@ -126,9 +174,12 @@ namespace WindowServer
                 }
 
             case ProgramEventType::KeyboardEvent:
-                Log("Got keyboard input", LogLevel::Info);
-                ConsumeNextEvent({});
+            {
+                KeyEvent event;
+                ConsumeNextEvent({ &event, sizeof(KeyEvent) });
+                wm.HandleKeyEvent(event);
                 break;
+            }
 
             case ProgramEventType::MouseEvent:
             {
@@ -144,6 +195,13 @@ namespace WindowServer
                 wm.damageRects.PushBack({ (unsigned long)wm.cursorPos.x, (unsigned long)wm.cursorPos.y, 
                     wm.compositor.CursorSize().x, wm.compositor.CursorSize().y });
 
+                if (wm.dragWindow != nullptr)
+                {
+                    wm.damageRects.PushBack(Renderer::WindowBorderRect(*wm.dragWindow, wm.compositor.GetDecorConfig()));
+                    wm.dragWindow->position.x = sl::clamp<long>(wm.dragWindow->position.x + cursorOffset.x, 0, (long)wm.compositor.Size().x);
+                    wm.dragWindow->position.y = sl::clamp<long>(wm.dragWindow->position.y -cursorOffset.y, 0, (long)wm.compositor.Size().y);
+                    wm.damageRects.PushBack(Renderer::WindowBorderRect(*wm.dragWindow, wm.compositor.GetDecorConfig()));
+                }
                 break;
             }
 

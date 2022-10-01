@@ -96,19 +96,19 @@ namespace Kernel::Devices::Ps2
         if ((inputBuffer[0] & 0b001) != 0 && !leftMousePrevDown)
             Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseLeft, true));
         if ((inputBuffer[0] & 0b001) == 0 && leftMousePrevDown)
-            Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseLeft, true));
+            Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseLeft, false));
         leftMousePrevDown = (inputBuffer[0] & 0b001) != 0;
 
         if ((inputBuffer[0] & 0b010) != 0 && !rightMousePrevDown)
             Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseRight, true));
         if ((inputBuffer[0] & 0b010) == 0 && rightMousePrevDown)
-            Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseRight, true));
+            Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseRight, false));
         rightMousePrevDown = (inputBuffer[0] & 0b010) != 0;
 
         if ((inputBuffer[0] & 0b100) != 0 && !middleMousePrevDown)
             Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseMiddle, true));
         if ((inputBuffer[0] & 0b100) == 0 && middleMousePrevDown)
-            Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseMiddle, true));
+            Keyboard::Global()->PushKeyEvent(CreateKeyEvent(KeyIdentity::MouseMiddle, false));
         middleMousePrevDown = (inputBuffer[0] & 0b100) != 0;
         
         inputLength = 0;

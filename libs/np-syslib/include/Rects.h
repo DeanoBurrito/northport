@@ -41,6 +41,11 @@ namespace sl
             return true;
         }
 
+        bool Contains(Vector2<T> point) const
+        {
+            return Intersects({ point, { 0, 0 }});
+        }
+
         Vector2<T> TopLeft() const
         { return { left, top }; }
 

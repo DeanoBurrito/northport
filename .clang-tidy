@@ -1,0 +1,1 @@
+Checks: '-*, bugprone-*, clang-diagnostic-*, clang-analyzer-*, performance-*, -bugprone-easily-swappable-parameters, -performance-noexcept-move-constructor'

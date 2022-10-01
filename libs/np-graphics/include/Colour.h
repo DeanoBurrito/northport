@@ -24,6 +24,7 @@ namespace np::Graphics
     };
 
     constexpr static inline ColourFormat RGBA32(0, 8, 16, 24, 0xFF, 0xFF, 0xFF, 0xFF);
+    constexpr static inline ColourFormat ABGR32(24, 16, 8, 0, 0xFF, 0xFF, 0xFF, 0xFF);
     
     struct Colour
     {
@@ -41,7 +42,11 @@ namespace np::Graphics
         constexpr Colour(uint8_t r, uint8_t g, uint8_t b, uint8_t a) : r(r), g(g), b(b), a(a)
         {}
 
-        constexpr Colour(uint32_t rgba) : r(rgba >> 24), g((rgba >> 16) & 0xFF), b((rgba >> 8) & 0xFF), a(rgba & 0xFF)
+        constexpr Colour(uint32_t rgba, ColourFormat format = ABGR32) : 
+        r((rgba >> format.redOffset) & format.redMask), 
+        g((rgba >> format.greenOffset) & format.greenMask), 
+        b((rgba >> format.blueOffset) & format.blueMask), 
+        a((rgba >> format.alphaOffset) & format.alphaMask)
         {}
 
         uint32_t Pack(size_t redOffset, size_t greenOffset, size_t blueOffset, size_t alphaOffset, uint8_t redMask, uint8_t greenMask, uint8_t blueMask, uint8_t alphaMask) const;

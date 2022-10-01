@@ -7,7 +7,9 @@ QEMU_FLAGS = $(QEMU_EXTRA_FLAGS) \
 	-m 256M \
 	-cdrom $(ISO_TARGET) \
 	-monitor stdio \
-	-debugcon /dev/stdout
+	-debugcon /dev/stdout \
+	-drive file=test,if=none,id=nvm \
+	-device nvme,serial=qemu-ssd,drive=nvm
 
 QEMU_RUN_FLAGS = --enable-kvm -cpu host
 QEMU_DEBUG_FLAGS = -s -S -cpu qemu64,+smap,+smep

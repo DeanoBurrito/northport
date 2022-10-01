@@ -317,15 +317,16 @@ namespace np::Graphics
             
             for (size_t x = 0; x < image.Size().x; x++)
             {
-                if ((image.Data()[y * image.Size().x + x] >> 24) < 0xFF)
-                    continue; //pixel is transparent, we dont support that for now TODO:
+                const Colour pixel = { image.Data()[y * image.Size().x + x], RGBA32 };
+                if (pixel.a < 0xFF)
+                    continue; //we dont handle transparent pixels :(
                 
                 const size_t fbX = where.x + x;
                 if (fbX >= width)
                     break;
 
                 const size_t offset = (fbY * stride) + (fbX * bitsPerPixel / 8);
-                sl::MemWrite<uint32_t>(buffer.raw + offset, image.Data()[y * image.Size().x + x]);
+                sl::MemWrite<uint32_t>(buffer.raw + offset, pixel.Pack(bufferFormat));
             }
         }
     }
