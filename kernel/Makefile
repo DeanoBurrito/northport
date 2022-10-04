@@ -3,7 +3,7 @@ KERNEL_CXX_FLAGS += -I../libs/np-syslib/include
 CXX_SRCS = \
 	acpi/Tables.cpp \
 	boot/CommonInit.cpp boot/LimineTags.cpp \
-	cpp/Stubs.cpp cpp/New.cpp \
+	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/LogBackends.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp \
 	debug/Terminal.cpp \
 	interrupts/InterruptManager.cpp \

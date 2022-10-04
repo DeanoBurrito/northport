@@ -214,7 +214,8 @@ namespace Npk
     [[gnu::always_inline]]
     inline CoreLocalInfo& CoreLocal()
     {
-        //TODO: readmsr seems like it'd be slower compared to gs-relative read, should look into this.
-        return *reinterpret_cast<CoreLocalInfo*>(ReadMsr(MsrKernelGsBase));
+        uint64_t value;
+        asm volatile("mov %%gs:32, %0" : "=r"(value) :: "memory");
+        return *reinterpret_cast<CoreLocalInfo*>(value);
     }
 }
