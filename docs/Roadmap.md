@@ -1,0 +1,62 @@
+- Kernel:
+    - x86_64:
+        - [ ] Core (paging, interrupts).
+        - [ ] FPU, SSE, AVX.
+        - [ ] Timers (lapic, tsc, PIT, HPET).
+    - riscv64:
+        - [ ] LBP boot shim.
+        - [ ] Core (paging, interrupts).
+        - [ ] Timer (SBI).
+    - Logging
+        - [ ] Ns16650 serial backend (mmio + portio variants).
+        - [ ] PL011 serial backend.
+        - [x] Terminal backend.
+        - [ ] VFS file backend.
+    - [ ] Central kernel config.
+    - [ ] ACPI tables parser.
+    - [ ] Driver manager.
+        - [ ] Loadable drivers.
+    - [ ] Device manager.
+        - [ ] Queued IO.
+    - [ ] System calls.
+        - [ ] POSIX compliant set.
+    - [ ] Reclaim bootloader memory.
+    - [ ] IPC.
+        - [ ] Shared memory.
+        - [ ] Pipes.
+    - Device drivers:
+        - [ ] PS/2 keyboard + mouse.
+        - [ ] PCI(e) support.
+            - [ ] MSI(-X).
+        - Virtio:
+            - [ ] VirtQueue helpers.
+            - [ ] GPU.
+            - [ ] Block.
+            - [ ] Network.
+            - [ ] Input (kb + mouse).
+        - [ ] Bochs VGA.
+        - [ ] AHCI.
+        - [ ] NVMe.
+        - [ ] EHCI (USB 2).
+        - [ ] E1000 NIC.
+        - [ ] AC97 audio.
+    - [ ] Graphics manager.
+    - [ ] Audio manager.
+    - Networking stack:
+        - [ ] Ethernet.
+        - [ ] IP(4 + 6), ARP, ICMP.
+        - [ ] UDP.
+        - [ ] TCP.
+        - [ ] Socket manager.
+
+- np-syslib:
+    - Containers:
+        - [x] Vector.
+        - [ ] Linked list.
+        - [ ] Map.
+    - [x] Optional.
+    - Strings:
+        - [x] Basic string.
+        - [ ] String builder.
+        - [ ] String formatter.
+    - [x] Basic locks.
