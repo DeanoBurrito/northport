@@ -1,10 +1,13 @@
 KERNEL_CXX_FLAGS += -I../libs/np-syslib/include
 
-CXX_SRCS = boot/CommonInit.cpp boot/LimineTags.cpp \
+CXX_SRCS = \
+	acpi/Tables.cpp \
+	boot/CommonInit.cpp boot/LimineTags.cpp \
 	cpp/Stubs.cpp cpp/New.cpp \
 	debug/Log.cpp debug/LogBackends.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp \
 	debug/Terminal.cpp \
-	memory/Pmm.cpp memory/Vmm.cpp memory/Heap.cpp 
+	interrupts/InterruptManager.cpp \
+	memory/Pmm.cpp memory/Vmm.cpp memory/Heap.cpp memory/Slab.cpp memory/Pool.cpp
 
 AS_SRCS =
 
@@ -14,7 +17,7 @@ include $(ARCH_DIR)/Arch.mk
 LD_SCRIPT = $(ARCH_DIR)/Linker.lds
 CXX_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 AS_OBJS = $(patsubst %.S, $(BUILD_DIR)/%.S.o, $(AS_SRCS))
-OBJS = $(AS_SRCS) $(CXX_OBJS)
+OBJS = $(AS_OBJS) $(CXX_OBJS)
 
 .PHONY: all
 all: $(KERNEL_FULL_FILEPATH)

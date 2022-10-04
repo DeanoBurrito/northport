@@ -1,12 +1,12 @@
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
+#include <acpi/Tables.h>
 #include <arch/Cpu.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <debug/LogBackends.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
-#include <Maths.h>
 
 namespace Npk
 {
@@ -39,6 +39,9 @@ namespace Npk
         
         ScanCpuFeatures();
         LogCpuFeatures();
+
+        if (CpuHasFeature(CpuFeature::VGuest))
+            Log("Kernel is running as virtualized guest.", LogLevel::Info);
         if (Boot::bootloaderInfoRequest.response != nullptr)
             Log("Loaded by: %s v%s", LogLevel::Info, Boot::bootloaderInfoRequest.response->name, Boot::bootloaderInfoRequest.response->version);
     }
@@ -51,13 +54,13 @@ namespace Npk
 
     void InitPlatform()
     {
-        if (Boot::framebufferRequest.response != nullptr)
-            Debug::EnableLogBackend(Debug::LogBackend::Terminal, true);
-        else
-            Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
+        // if (Boot::framebufferRequest.response != nullptr)
+        //     Debug::EnableLogBackend(Debug::LogBackend::Terminal, true);
+        // else
+        //     Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
         
         if (Boot::rsdpRequest.response != nullptr)
-            {} //TODO: ACPI tables
+            Acpi::SetRsdp(Boot::rsdpRequest.response->address);
         else
             Log("Bootloader did not provide RSDP.", LogLevel::Warning);
         
