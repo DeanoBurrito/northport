@@ -1,3 +1,4 @@
-CXX_SRCS += $(ARCH_DIR)/Init.cpp $(ARCH_DIR)/Cpu.cpp $(ARCH_DIR)/Paging.cpp
+CXX_SRCS += $(ARCH_DIR)/Init.cpp $(ARCH_DIR)/Cpu.cpp $(ARCH_DIR)/Paging.cpp $(ARCH_DIR)/Gdt.cpp \
+	$(ARCH_DIR)/Idt.cpp $(ARCH_DIR)/Apic.cpp $(ARCH_DIR)/Timers.cpp
 
-AS_SRCS += 
+AS_SRCS += $(ARCH_DIR)/Trap.S
