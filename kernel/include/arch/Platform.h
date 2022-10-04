@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 namespace Npk
 {
@@ -42,12 +43,18 @@ namespace Npk
     void AllowSumac();
     void BlockSumac();
 
+    void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t));
+
     bool IsBsp();
     CoreLocalInfo& CoreLocal();
 
-    [[gnu::always_inline]]
+    [[gnu::always_inline, noreturn]]
     inline void Halt()
-    { while (true) Wfi(); }
+    { 
+        while (true) 
+            Wfi(); 
+        __builtin_unreachable();
+    }
 
     struct InterruptGuard
     {

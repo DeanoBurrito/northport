@@ -68,9 +68,8 @@ extern "C"
         PopulateIdt();
         InitTimers();
 
-        InitCore(0);
+        InitCore(0); //BSP is always id=0 on x86_64
 
-        Log("Kernel done for now.", LogLevel::Info);
-        Halt();
+        ExitBspInit();
     }
 }

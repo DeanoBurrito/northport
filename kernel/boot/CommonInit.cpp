@@ -8,6 +8,7 @@
 #include <interrupts/InterruptManager.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
+#include <tasking/Clock.h>
 
 namespace Npk
 {
@@ -71,5 +72,21 @@ namespace Npk
             {} //TODO: DTB parser
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
+    }
+
+    [[noreturn]]
+    void ExitBspInit()
+    {
+        Log("BSP (id=%lu) has finished init.", LogLevel::Info, CoreLocal().id);
+        EnableInterrupts();
+        Tasking::StartSystemClock();
+        Halt();
+    }
+
+    [[noreturn]]
+    void ExitApInit()
+    {
+        Log("AP %lu has finished init.", LogLevel::Info, CoreLocal().id);
+        Halt();
     }
 }

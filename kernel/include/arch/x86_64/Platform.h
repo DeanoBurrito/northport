@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <Maths.h>
+#include <arch/x86_64/Apic.h>
 
 namespace Npk
 {
@@ -95,6 +96,12 @@ namespace Npk
     inline void BlockSumac()
     {
         asm("clac" ::: "cc");
+    }
+
+    [[gnu::always_inline]]
+    inline void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t))
+    {
+        LocalApic::Local().SetTimer(nanoseconds, callback);
     }
 
     [[gnu::always_inline]]
