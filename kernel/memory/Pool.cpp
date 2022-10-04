@@ -131,7 +131,7 @@ namespace Npk::Memory
     {
         const size_t pagesNeeded = sl::AlignUp(minSize, PageSize) / PageSize;
         for (size_t i = 0; i < pagesNeeded; i++)
-            MapMemory(kernelMasterTables, regionTop + i * PageSize, (uintptr_t)PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
+            MapMemory(kernelMasterTables, regionTop + i * PageSize, PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
         kernelTablesGen++;
 
         if ((uintptr_t)tail->Data() + tail->size == regionTop)
@@ -158,7 +158,7 @@ namespace Npk::Memory
 
         //TODO: use VMM for heap mappings instead of accessing it directly like this
         for (size_t i = 0; i < PoolStartPages; i++)
-            MapMemory(kernelMasterTables, regionBase + i * PageSize, (uintptr_t)PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
+            MapMemory(kernelMasterTables, regionBase + i * PageSize, PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
         kernelTablesGen++;
         
         start = sl::AlignUp(start, sizeof(PoolNode));

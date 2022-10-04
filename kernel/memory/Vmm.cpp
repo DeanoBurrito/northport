@@ -80,7 +80,7 @@ namespace Npk::Memory
 
         PagingSetup(); //platform specific paging setup
 
-        kernelMasterTables = ptRoot = PMM::Global().Alloc();
+        kernelMasterTables = ptRoot = (void*)PMM::Global().Alloc();
         sl::memset(kernelMasterTables, 0, PageSize);
 
         //map the HHDM, dont use pages bigger than 1GiB in size.
@@ -124,7 +124,7 @@ namespace Npk::Memory
         
         //TODO: demand paging
         for (uintptr_t scan = 0; scan < range.length; scan += PageSize)
-            MapMemory(ptRoot, range.base + scan, (uintptr_t)PMM::Global().Alloc(), ConvertFlags(range.flags), PageSizes::_4K, false);
+            MapMemory(ptRoot, range.base + scan, PMM::Global().Alloc(), ConvertFlags(range.flags), PageSizes::_4K, false);
         
         if (ptRoot == kernelMasterTables)
             kernelTablesGen++;
@@ -156,7 +156,7 @@ namespace Npk::Memory
 
             if (UnmapMemory(ptRoot, freePage, physAddr, sizeUsed, true))
             {
-                PMM::Global().Free((void*)physAddr, GetPageSize(sizeUsed) / PageSize);
+                PMM::Global().Free(physAddr, GetPageSize(sizeUsed) / PageSize);
                 freePage += GetPageSize(sizeUsed);
             }
             else
@@ -216,7 +216,7 @@ namespace Npk::Memory
         for (size_t i = 0; i < length; i += PageSize)
         {
             if (physBase == 0)
-                MapMemory(ptRoot, range.base + i, (uintptr_t)PMM::Global().Alloc(), pFlags, PageSizes::_4K, false);
+                MapMemory(ptRoot, range.base + i, PMM::Global().Alloc(), pFlags, PageSizes::_4K, false);
             else
                 MapMemory(ptRoot, range.base + i, physBase + i, pFlags, PageSizes::_4K, false);
         }

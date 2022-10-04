@@ -8,10 +8,13 @@
         - [ ] Core (paging, interrupts).
         - [ ] Timer (SBI).
     - [x] Memory Management:
-        - [x] PMM.
+        - [x] PMM, with 32bit/64bit zones.
         - [x] VMM, separate kernel copy.
+            - [ ] driver based implementation.
         - [x] Slab/free-list style heap.
             - [x] Basic debug helpers.
+    - [x] Core clock, software timers.
+    - [ ] Panic.
     - [x] Logging
         - [ ] Ns16650 serial backend (mmio + portio variants).
         - [ ] PL011 serial backend.
@@ -24,7 +27,6 @@
     - [ ] Device manager.
         - [ ] Queued IO.
     - [ ] System calls.
-        - [ ] POSIX compliant set.
     - [ ] Reclaim bootloader memory.
     - [ ] IPC.
         - [ ] Shared memory.

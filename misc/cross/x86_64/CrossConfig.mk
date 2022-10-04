@@ -6,7 +6,7 @@ KERNEL_LD_FLAGS += -ztext
 ARCH_DEFAULT_TARGET = iso
 
 QEMU_BASE = qemu-system-x86_64 -machine q35 \
-	-smp cores=4 -m 512M -cdrom $(ISO_FULL_FILEPATH) \
+	-smp cores=4 -m 256M -cdrom $(ISO_FULL_FILEPATH) \
 	-debugcon /dev/stdout -monitor stdio
 QEMU_KVM = --enable-kvm -cpu host
 QEMU_NO_KVM = -cpu qemu64,+smap,+smep

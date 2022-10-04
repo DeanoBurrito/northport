@@ -68,10 +68,10 @@ namespace Npk
             
             if (!(*entry & PresentFlag))
             {
-                void* addr = PMM::Global().Alloc();
-                *entry = physAddrMask & (uintptr_t)addr;
+                const uintptr_t addr = PMM::Global().Alloc();
+                *entry = physAddrMask & addr;
                 *entry |= PresentFlag | PageFlags::Write;
-                sl::memset(AddHhdm(addr), 0, PageSize);
+                sl::memset((void*)AddHhdm(addr), 0, PageSize);
             }
 
             pt = reinterpret_cast<PageTable*>((*entry & physAddrMask) + hhdmBase);

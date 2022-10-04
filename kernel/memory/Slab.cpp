@@ -17,7 +17,7 @@ namespace Npk::Memory
         const size_t slabCount = slabsPerSeg - metaSize / slabSize;
 
         for (size_t i = 0; i < totalSize; i += PageSize)
-            MapMemory(kernelMasterTables, base + i, (uintptr_t)PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
+            MapMemory(kernelMasterTables, base + i, PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
         
         uint8_t* bitmapBase = reinterpret_cast<uint8_t*>(base + sizeof(SlabSegment));
         SlabSegment* segment = new((void*)base) SlabSegment(base + metaSize, bitmapBase, slabCount);

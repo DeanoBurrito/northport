@@ -22,11 +22,11 @@ namespace Npk::Memory
     {
     private:
         uint8_t* metaBuffer;
-        PMRegion* head;
-        PMRegion* tail;
+        PMRegion* zoneLow;
+        PMRegion* zoneHigh;
 
-
-        void AppendRegion(uintptr_t baseAddr, size_t sizeBytes);
+        PMRegion* AppendRegion(PMRegion* zoneTail, uintptr_t baseAddr, size_t sizeBytes);
+        uintptr_t RegionAlloc(PMRegion& region, size_t count);
 
     public:
         static PhysicalMemoryManager& Global();
@@ -38,8 +38,11 @@ namespace Npk::Memory
         PhysicalMemoryManager(PhysicalMemoryManager&&) = delete;
         PhysicalMemoryManager& operator=(PhysicalMemoryManager&&) = delete;
 
-        void* Alloc(size_t count = 1);
-        void Free(void* base, size_t count = 1);
+        //allocates ONLY within the 32-bit physical address space (low zone).
+        uintptr_t AllocLow(size_t count = 1);
+        //prefers to allocate above 32-bit address space, but will allocate below if needed.
+        uintptr_t Alloc(size_t count = 1);
+        void Free(uintptr_t base, size_t count = 1);
     };
 }
 
