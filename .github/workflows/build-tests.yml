@@ -16,32 +16,47 @@ jobs:
 
     - name: Download GCC for x86_64
       run: >
-        wget https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--bleeding-edge-2021.11-5.tar.bz2 -O ../gcc-x86_64;
-        cd ..;
-        tar -vxf gcc-x86_64; mv x86-64--glibc--bleeding-edge-2021.11-5 gcc-x86_64-cross
+        mkdir toolchains;
+        wget https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--stable-2022.08-1.tar.bz2 -O toolchains/gcc-x86_64;
+        cd toolchains;
+        tar -vxf gcc-x86_64; mv x86-64--glibc--stable-2022.08-1 gcc-x86_64-cross;
     
     - name: Download GCC for risc-v 64
       run: >
-        wget https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/riscv64--glibc--bleeding-edge-2021.11-5.tar.bz2 -O ../gcc-riscv64;
-        cd ..;
-        tar -vxf gcc-riscv64; mv riscv64--glibc--bleeding-edge-2021.11-5 gcc-riscv64-cross
+        wget https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--glibc--stable-2022.08-1.tar.bz2 -O toolchains/gcc-riscv64;
+        cd toolchains;
+        tar -vxf gcc-riscv64; mv riscv64-lp64d--glibc--stable-2022.08-1 gcc-riscv64-cross
     
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+      with:
+        path: 'repo'
+    
+    - name: fun times
+      run: >
+        echo "ls .";
+        ls;
+        echo "ls repo";
+        ls repo;
+        echo "ls toolchains";
+        ls toolchains;
+        echo "ls WORKSPACE/toolchains";
+        ls $GITHUB_WORKSPACE/toolchains
 
     - name: Compile with Clang for x86_64
       run: >
+        cd repo;
         make clean;
         make binaries CPU_ARCH=x86_64 TOOLCHAIN=clang
     
     - name: Compile with GCC for x86_64
       run: >
+        cd repo;
         make clean;
         make binaries 
         CPU_ARCH=x86_64
         TOOLCHAIN=gcc 
-        TOOLCHAIN_PREFIX=../gcc-x86_64-cross
-        X_CXX_BIN=x86_64-buildroot-linux-gnu-g++
-        X_AS_BIN=x86_64-buildroot-linux-gnu-as
-        X_LD_BIN=x86_64-buildroot-linux-gnu-ld
-        X_AR_BIN=x86_64-buildroot-linux-gnu-ar
-
+        X_CXX_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-g++
+        X_AS_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-as
+        X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-ld
+        X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-ar
+    
