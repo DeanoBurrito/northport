@@ -1,19 +1,24 @@
 - Kernel:
-    - x86_64:
-        - [ ] Core (paging, interrupts).
+    - [x] x86_64:
+        - [x] Core (paging, interrupts).
         - [ ] FPU, SSE, AVX.
-        - [ ] Timers (lapic, tsc, PIT, HPET).
-    - riscv64:
+        - [x] Timers (LAPIC, TSC, PIT, HPET).
+    - [ ] riscv64:
         - [ ] LBP boot shim.
         - [ ] Core (paging, interrupts).
         - [ ] Timer (SBI).
-    - Logging
+    - [x] Memory Management:
+        - [x] PMM.
+        - [x] VMM, separate kernel copy.
+        - [x] Slab/free-list style heap.
+            - [x] Basic debug helpers.
+    - [x] Logging
         - [ ] Ns16650 serial backend (mmio + portio variants).
         - [ ] PL011 serial backend.
         - [x] Terminal backend.
         - [ ] VFS file backend.
     - [ ] Central kernel config.
-    - [ ] ACPI tables parser.
+    - [x] ACPI tables parser.
     - [ ] Driver manager.
         - [ ] Loadable drivers.
     - [ ] Device manager.
@@ -24,11 +29,11 @@
     - [ ] IPC.
         - [ ] Shared memory.
         - [ ] Pipes.
-    - Device drivers:
+    - [ ] Device drivers:
         - [ ] PS/2 keyboard + mouse.
         - [ ] PCI(e) support.
             - [ ] MSI(-X).
-        - Virtio:
+        - [ ] Virtio:
             - [ ] VirtQueue helpers.
             - [ ] GPU.
             - [ ] Block.
@@ -42,7 +47,7 @@
         - [ ] AC97 audio.
     - [ ] Graphics manager.
     - [ ] Audio manager.
-    - Networking stack:
+    - [ ] Networking stack:
         - [ ] Ethernet.
         - [ ] IP(4 + 6), ARP, ICMP.
         - [ ] UDP.
@@ -50,12 +55,12 @@
         - [ ] Socket manager.
 
 - np-syslib:
-    - Containers:
+    - [ ] Containers:
         - [x] Vector.
         - [ ] Linked list.
         - [ ] Map.
     - [x] Optional.
-    - Strings:
+    - [ ] Strings:
         - [x] Basic string.
         - [ ] String builder.
         - [ ] String formatter.

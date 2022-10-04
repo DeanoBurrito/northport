@@ -13,8 +13,7 @@ namespace Npk::Memory
     constexpr PageFlags ConvertFlags(VMFlags flags)
     {
         /*  VMFlags are stable across platforms, while PageFlags have different meanings
-            depending on the ISA. This provides source-level translation between the two.
-        */
+            depending on the ISA. This provides source-level translation between the two. */
         PageFlags value = PageFlags::None;
         if (flags & VMFlags::Writable)
             value |= PageFlags::Write;
@@ -32,7 +31,7 @@ namespace Npk::Memory
             return false;
 
         size_t index = 0;
-        while (index < ranges.Size() && ranges[index].base > range.base)
+        while (index < ranges.Size() && ranges[index].base < range.base)
             index++;
 
         if (index == ranges.Size())
@@ -55,8 +54,7 @@ namespace Npk::Memory
     void VirtualMemoryManager::SetupKernel()
     {
         new (kernelVmm) VirtualMemoryManager(VmmKey{});
-        VMRange heapRanges[SlabCount + 1];
-        //TODO: kernel heap init
+        Heap::Global().Init();
     }
     
     VirtualMemoryManager& VirtualMemoryManager::Kernel()
@@ -172,10 +170,10 @@ namespace Npk::Memory
 
     sl::Opt<VMRange> VirtualMemoryManager::AllocRange(size_t length, VMFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
     {
-        return AllocRange(length, flags, 0, lowerBound, upperBound);
+        return AllocRange(length, 0, flags, lowerBound, upperBound);
     }
 
-    sl::Opt<VMRange> VirtualMemoryManager::AllocRange(size_t length, VMFlags flags, uintptr_t physBase, uintptr_t lowerBound, uintptr_t upperBound)
+    sl::Opt<VMRange> VirtualMemoryManager::AllocRange(size_t length, uintptr_t physBase, VMFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
     {
         lowerBound = sl::Max(lowerBound, allocLowerLimit);
         upperBound = sl::Min(upperBound, allocUpperLimit);

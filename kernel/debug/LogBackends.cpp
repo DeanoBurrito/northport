@@ -8,11 +8,12 @@ namespace Npk::Debug
 {
 #ifdef NP_INCLUDE_TERMINAL_BG
     asm("\
-    .section rodata \n\
+    .section .rodata \n\
     .balign 0x10 \n\
     BackgroundBegin: \n\
         .incbin \"../misc/TerminalBg.qoi\" \n\
     BackgroundEnd: \n \
+    .previous \n \
     ");
 
     extern uint8_t BackgroundBegin[] asm("BackgroundBegin");

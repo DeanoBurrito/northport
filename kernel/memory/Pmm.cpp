@@ -5,6 +5,14 @@
 #include <Bitmap.h>
 #include <Maths.h>
 #include <debug/Log.h>
+#include <UnitConverter.h>
+
+/*
+    Improvements:
+    - Memory zones: some areas of memory are precious, and should be allocated last (< 1MB, < 4GB).
+    - Smarted allocations: allocate from smaller physical regions. Don't fragment a big block of
+        physical pages to allocate 1 or 2 pages. Pull those from areas that can only allocate smaller blocks.
+*/
 
 namespace Npk::Memory
 {
@@ -77,8 +85,10 @@ namespace Npk::Memory
 
         if (metaRegionIndex == (size_t)-1 || mmapEntries[metaRegionIndex]->length < metaBufferSize)
             Log("PMM init failed: no region big enough for bitmap + management structures.", LogLevel::Fatal);
-        Log("PMM requires %lu bytes for management data. Allocating at %#lx", LogLevel::Info, 
-            metaBufferSize, mmapEntries[metaRegionIndex]->base);
+        
+        auto converted = sl::ConvertUnits(metaBufferSize, sl::UnitBase::Binary);
+        Log("PMM requires %lu.%lu%sB for management data. Allocating at %#lx", LogLevel::Info, 
+            converted.major, converted.minor, converted.prefix, mmapEntries[metaRegionIndex]->base);
 
         //take the space we need from the biggest region, aligning to page boundaries
         metaBufferSize = sl::AlignUp(metaBufferSize, PageSize);
@@ -86,14 +96,18 @@ namespace Npk::Memory
         mmapEntries[metaRegionIndex]->base += metaBufferSize;
         mmapEntries[metaRegionIndex]->length -= metaBufferSize;
 
+        size_t usableMemory = 0;
         for (size_t i = 0; i < mmapEntryCount; i++)
         {
             if (mmapEntries[i]->type != LIMINE_MEMMAP_USABLE)
                 continue;
+            usableMemory += mmapEntries[i]->length;
             AppendRegion(mmapEntries[i]->base, mmapEntries[i]->length);
         }
 
-        Log("PMM init finished.", LogLevel::Info);
+        converted = sl::ConvertUnits(usableMemory, sl::UnitBase::Binary);
+        Log("PMM init finished: %lu.%lu%sB of usable physical memory.", LogLevel::Info,
+            converted.major, converted.minor, converted.prefix);
     }
 
     void* PhysicalMemoryManager::Alloc(size_t count)

@@ -39,7 +39,7 @@ namespace Npk
             id,
             cr4 & (1 << 21) ? ", smap" : "",
             cr4 & (1 << 20) ? ", smep" : "",
-            cr4 & (1 << 11) ? "umip" : "",
+            cr4 & (1 << 11) ? ", umip" : "",
             cr4 & (1 << 7) ? ", global-pages" : "",
             CpuHasFeature(CpuFeature::NoExecute) ? ", nx" : "");
 
@@ -71,6 +71,6 @@ extern "C"
         InitCore(0);
 
         Log("Kernel done for now.", LogLevel::Info);
-        while (true);
+        Halt();
     }
 }

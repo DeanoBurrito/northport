@@ -16,7 +16,7 @@ A brief summary of the current and planned features are available below, but for
 
 ## Project Features
 Kernel:
-- Memory management: PMM (bitmap based), VMM and kernel heap (slabs and buckets).
+- Memory management: PMM (bitmap based), VMM and kernel heap (slabs with linked list for larger allocations).
 - Logging with support for various backends: serial/debugcon and built-in terminal (requires a framebuffer).
     - The terminal is based on gterm from the Limine Bootloader (license attached).
 - Optional UB sanitizer, helpful for detecting bugs or increasing code size!

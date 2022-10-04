@@ -5,6 +5,7 @@
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <debug/LogBackends.h>
+#include <interrupts/InterruptManager.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 
@@ -54,10 +55,12 @@ namespace Npk
 
     void InitPlatform()
     {
-        // if (Boot::framebufferRequest.response != nullptr)
-        //     Debug::EnableLogBackend(Debug::LogBackend::Terminal, true);
-        // else
-        //     Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
+        Interrupts::InterruptManager::Global().Init();
+
+        if (Boot::framebufferRequest.response != nullptr)
+            Debug::EnableLogBackend(Debug::LogBackend::Terminal, true);
+        else
+            Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
         
         if (Boot::rsdpRequest.response != nullptr)
             Acpi::SetRsdp(Boot::rsdpRequest.response->address);

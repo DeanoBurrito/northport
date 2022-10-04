@@ -94,7 +94,7 @@ namespace Npk::Memory
         bool AddRange(const VMRange& range);
         bool RemoveRange(const VMRange& range);
         sl::Opt<VMRange> AllocRange(size_t length, VMFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
-        sl::Opt<VMRange> AllocRange(size_t length, VMFlags flags, uintptr_t physBase, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
+        sl::Opt<VMRange> AllocRange(size_t length, uintptr_t physBase, VMFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
 
         bool RangeExists(const VMRange& range, bool checkFlags) const;
     };

@@ -8,13 +8,13 @@ LIMINE_DIR = ../cross-tools/limine
 BOOT_WITH_UEFI = yes
 
 # ---- Build System Options ----
-QUIET_BUILD = no
+QUIET_BUILD = yes
 
 # ---- Compiler Options ----
 # Arch to compile for: 'x86_64' or 'riscv64'
 export CPU_ARCH = x86_64
 # KERNEL_CXX_FLAGS += -fsanitize=undefined
-KERNEL_CXX_FLAGS += -O0 -g
+KERNEL_CXX_FLAGS += -O2
 INCLUDE_TERMINAL_BG = yes
 
 # ---- X86_64 Options ----
