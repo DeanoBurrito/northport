@@ -8,6 +8,7 @@ CXX_SRCS = \
 	debug/Terminal.cpp \
 	interrupts/InterruptManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/Heap.cpp memory/Slab.cpp memory/Pool.cpp \
+	memory/virtual/VmDriver.cpp memory/virtual/KernelVmDriver.cpp \
 	tasking/Clock.cpp
 
 AS_SRCS =

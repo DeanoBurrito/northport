@@ -1,84 +1,74 @@
 #pragma once
 
-#include <containers/Vector.h>
-#include <Optional.h>
-#include <Locks.h>
-#include <stddef.h>
 #include <stdint.h>
+#include <stddef.h>
+#include <Locks.h>
+#include <Optional.h>
+#include <containers/LinkedList.h>
 
 namespace Npk::Memory
 {
-    enum VMFlags : size_t
+    enum VmFlags : size_t
     {
         None = 0,
 
-        Writable = 1 << 0,
-        Executable = 1 << 1,
+        //access flags
+        Write = 1 << 0,
+        Execute = 1 << 1,
         User = 1 << 2,
-        Guarded = 1 << 3,
+
+        //bits 48-63 are the type of memory to be requested
+        Anon = 1ul << 48,
+        Mmio = 2ul << 48,
     };
 
-    constexpr VMFlags operator|(const VMFlags& a, const VMFlags& b)
-    { return (VMFlags)((uintptr_t)a | (uintptr_t)b); }
+    constexpr VmFlags operator|(const VmFlags& a, const VmFlags& b)
+    { return (VmFlags)((uintptr_t)a | (uintptr_t)b); }
 
-    constexpr VMFlags operator&(const VMFlags& a, const VMFlags& b)
-    { return (VMFlags)((uintptr_t)a & (uintptr_t)b); }
+    constexpr VmFlags operator&(const VmFlags& a, const VmFlags& b)
+    { return (VmFlags)((uintptr_t)a & (uintptr_t)b); }
 
-    constexpr VMFlags operator|=(VMFlags& src, const VMFlags& other)
-    { return src = (VMFlags)((uintptr_t)src | (uintptr_t)other); }
+    constexpr VmFlags operator|=(VmFlags& src, const VmFlags& other)
+    { return src = (VmFlags)((uintptr_t)src | (uintptr_t)other); }
 
-    constexpr VMFlags operator&=(VMFlags& src, const VMFlags& other)
-    { return src = (VMFlags)((uintptr_t)src & (uintptr_t)other); }
+    constexpr VmFlags operator&=(VmFlags& src, const VmFlags& other)
+    { return src = (VmFlags)((uintptr_t)src & (uintptr_t)other); }
 
-    constexpr VMFlags operator~(const VMFlags& src)
-    { return (VMFlags)(~(uintptr_t)src); }
+    constexpr VmFlags operator~(const VmFlags& src)
+    { return (VmFlags)(~(uintptr_t)src); }
 
-    struct VMRange
+    struct VmRange
     {
         uintptr_t base;
         size_t length;
-        VMFlags flags;
-        void* link;
-
-        VMRange() : base(0), length(0), flags(VMFlags::None), link(nullptr)
-        {}
-
-        VMRange(uintptr_t base, size_t length) 
-        : base(base), length(length), flags(VMFlags::None), link(nullptr)
-        {}
-
-        VMRange(uintptr_t base, size_t length, VMFlags flags) :
-        base(base), length(length), flags(flags), link(nullptr)
-        {}
+        VmFlags flags;
+        size_t token;
 
         constexpr inline uintptr_t Top() const
         { return base + length; }
     };
 
-    class VirtualMemoryManager;
-
     //badge pattern
-    struct VmmKey
+    class VirtualMemoryManager;
+    class VmmKey
     {
     friend VirtualMemoryManager;
-    private:
         VmmKey() = default;
     };
 
     class VirtualMemoryManager
     {
     private:
-        sl::Vector<VMRange> ranges;
+        sl::LinkedList<VmRange> ranges;
+        sl::TicketLock rangesLock;
+        sl::TicketLock ptLock;
         void* ptRoot;
-        sl::TicketLock lock;
 
-        uintptr_t allocLowerLimit;
-        uintptr_t allocUpperLimit;
+        uintptr_t globalLowerBound;
+        uintptr_t globalUpperBound;
 
-        bool InsertRange(const VMRange& range);
-    
     public:
-        static void SetupKernel();
+        static void InitKernel();
         static VirtualMemoryManager& Kernel();
         static VirtualMemoryManager& Current();
 
@@ -91,14 +81,15 @@ namespace Npk::Memory
         VirtualMemoryManager(VirtualMemoryManager&&) = delete;
         VirtualMemoryManager& operator=(VirtualMemoryManager&&) = delete;
 
-        bool AddRange(const VMRange& range);
-        bool RemoveRange(const VMRange& range);
-        sl::Opt<VMRange> AllocRange(size_t length, VMFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
-        sl::Opt<VMRange> AllocRange(size_t length, uintptr_t physBase, VMFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
+        sl::Opt<VmRange> Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
+        bool Free(uintptr_t base, size_t length);
 
-        bool RangeExists(const VMRange& range, bool checkFlags) const;
+        bool RangeExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags);
+
+        //CopyIn()
+        //CopyOut()
     };
 }
 
 using VMM = Npk::Memory::VirtualMemoryManager;
-using Npk::Memory::VMFlags;
+using Npk::Memory::VmFlags;

@@ -46,7 +46,9 @@ namespace Npk
             return;
         
         const Acpi::Hpet* hpetTable = static_cast<Acpi::Hpet*>(*maybeHpet);
-        hpetMmio = VMM::Kernel().AllocRange(0x1000, hpetTable->baseAddress.address, VMFlags::Writable)->base;
+        auto mmioRange = VMM::Kernel().Alloc(0x1000, hpetTable->baseAddress.address, VmFlags::Write | VmFlags::Mmio);
+        ASSERT(mmioRange.HasValue(), "Failed to allocate hpet mmio.");
+        hpetMmio = mmioRange->base;
 
         //reset main counter and leave it enabled
         hpetMmio.Offset(HpetRegConfig).VolatileWrite<uint64_t>(0b0);

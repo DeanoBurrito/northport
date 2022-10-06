@@ -1,237 +1,200 @@
 #include <memory/Vmm.h>
-#include <memory/Pmm.h>
+#include <memory/virtual/VmDriver.h>
 #include <memory/Heap.h>
-#include <arch/Platform.h>
 #include <arch/Paging.h>
+#include <arch/Platform.h>
 #include <boot/LinkerSyms.h>
-#include <boot/LimineTags.h>
 #include <debug/Log.h>
-#include <Memory.h>
 
 namespace Npk::Memory
 {
-    constexpr PageFlags ConvertFlags(VMFlags flags)
+    constexpr PageFlags ConvertFlags(VmFlags flags)
     {
         /*  VMFlags are stable across platforms, while PageFlags have different meanings
             depending on the ISA. This provides source-level translation between the two. */
         PageFlags value = PageFlags::None;
-        if (flags & VMFlags::Writable)
+        if (flags & VmFlags::Write)
             value |= PageFlags::Write;
-        if (flags & VMFlags::Executable)
+        if (flags & VmFlags::Execute)
             value |= PageFlags::Execute;
-        if (flags & VMFlags::User)
+        if (flags & VmFlags::User)
             value |= PageFlags::User;
         
         return value;
     }
-    
-    bool VirtualMemoryManager::InsertRange(const VMRange& range)
+
+    alignas(VMM) uint8_t kernelVmm[sizeof(VMM)];
+    void VMM::InitKernel()
     {
-        if (range.length < PageSize)
-            return false;
+        //arch-specific paging setup (enable NX, etc)
+        PagingSetup();
+        //bring up basic VM drivers, including kernel driver.
+        Virtual::VmDriver::InitEarly();
 
-        size_t index = 0;
-        while (index < ranges.Size() && ranges[index].base < range.base)
-            index++;
-
-        if (index == ranges.Size())
-        {
-            if (ranges.Size() > 0 && ranges.Back().Top() > range.base)
-                return false;
-            ranges.EmplaceBack(range);
-            return true;
-        }
-        
-        if (range.Top() > ranges[index].base)
-            return false;
-        
-        ranges.Emplace(index, range);
-        return true;
-    }
-
-    //kernel vmm is lazy-initialized, this horror just reserves enough memory for it.
-    alignas(VirtualMemoryManager) uint8_t kernelVmm[sizeof(VirtualMemoryManager)];
-    void VirtualMemoryManager::SetupKernel()
-    {
-        new (kernelVmm) VirtualMemoryManager(VmmKey{});
+        new (kernelVmm) VMM(VmmKey{});
         Heap::Global().Init();
     }
-    
-    VirtualMemoryManager& VirtualMemoryManager::Kernel()
-    { return *reinterpret_cast<VirtualMemoryManager*>(kernelVmm); }
 
-    VirtualMemoryManager& VirtualMemoryManager::Current()
-    { return *static_cast<VirtualMemoryManager*>(CoreLocal().vmm); }
+    VMM& VMM::Kernel()
+    { return *reinterpret_cast<VMM*>(kernelVmm); }
 
-    VirtualMemoryManager::VirtualMemoryManager()
+    VMM& VMM::Current()
+    { return *static_cast<VMM*>(CoreLocal().vmm); }
+
+    VMM::VirtualMemoryManager()
     {
-        allocLowerLimit = PageSize; //dont alloc within first (null) page.
-        allocUpperLimit = ~hhdmBase;
-        Log("User VMM initialized: ptRoot=0x%lx", LogLevel::Info, (uintptr_t)ptRoot);
+        globalLowerBound = PageSize; //dont allocate in page 0.
+        globalUpperBound = ~hhdmBase;
+        Log("User VMM initialized.", LogLevel::Info);
     }
 
-    VirtualMemoryManager::VirtualMemoryManager(VmmKey)
+    VMM::VirtualMemoryManager(VmmKey)
     {
-        sl::ScopedLock scopeLock(lock);
+        sl::ScopedLock scopeLock(rangesLock);
 
-        //protect the hhdm and an area reserved for the heap from allocations
-        allocLowerLimit = hhdmBase + HeapLimit + HhdmLimit;
-        allocUpperLimit = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GiB);
-
-        PagingSetup(); //platform specific paging setup
-
-        kernelMasterTables = ptRoot = (void*)PMM::Global().Alloc();
-        sl::memset(kernelMasterTables, 0, PageSize);
-
-        //map the HHDM, dont use pages bigger than 1GiB in size.
-        const PageSizes hhdmSize = MaxSupportedPagingSize() > PageSizes::_1G ? PageSizes::_1G : MaxSupportedPagingSize();
-        const uintptr_t hhdmPageSize = GetPageSize(hhdmSize);
-
-        //map hhdm
-        for (uintptr_t i = 0; i < hhdmLength; i += hhdmPageSize)
-            MapMemory(ptRoot, i + hhdmBase, i, PageFlags::Write, hhdmSize, false);
-        
-        auto MapSection = [&](uintptr_t addr, size_t length, PageFlags flags)
-        {
-            const auto* resp = Boot::kernelAddrRequest.response;
-            length = sl::AlignUp(addr + length, PageSize) - addr;
-            addr = sl::AlignDown(addr, PageSize);
-            
-            for (uintptr_t i = addr; i < addr + length; i += PageSize)
-                MapMemory(ptRoot, i, i - resp->virtual_base + resp->physical_base, flags, PageSizes::_4K, false);
-        };
-
-        //map kernel
-        MapSection((uintptr_t)KERNEL_TEXT_BEGIN, (size_t)KERNEL_TEXT_SIZE, PageFlags::Execute);
-        MapSection((uintptr_t)KERNEL_RODATA_BEGIN, (size_t)KERNEL_RODATA_SIZE, PageFlags::None);
-        MapSection((uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_SIZE, PageFlags::Write);
+        //protect the hhdm, heap and kernel binary from allocations.
+        //TODO: change the heap to use the anon vm driver.
+        globalLowerBound = hhdmBase + HhdmLimit + HeapLimit;
+        globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GiB);
+        ptRoot = kernelMasterTables;
 
         LoadTables(ptRoot);
-
         Log("Kernel VMM initiailized: ptRoot=0x%lx, allocSpace=0x%lx - 0x%lx", LogLevel::Info, 
-            (uintptr_t)ptRoot, allocLowerLimit, allocUpperLimit);
+            (uintptr_t)ptRoot, globalLowerBound, globalUpperBound);
     }
 
-    bool VirtualMemoryManager::AddRange(const VMRange& range)
+    VMM::~VirtualMemoryManager()
+    {} //TODO: VMM teardown
+
+    sl::Opt<VmRange> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
     {
-        if (range.Top() > allocUpperLimit || range.base < allocLowerLimit)
-            return false;
-        
-        sl::ScopedLock scopeLock(lock);
+        using namespace Virtual;
 
-        if (!InsertRange(range))
-            return false;
-        
-        //TODO: demand paging
-        for (uintptr_t scan = 0; scan < range.length; scan += PageSize)
-            MapMemory(ptRoot, range.base + scan, PMM::Global().Alloc(), ConvertFlags(range.flags), PageSizes::_4K, false);
-        
-        if (ptRoot == kernelMasterTables)
-            kernelTablesGen++;
-        return true;
-    }
-
-    bool VirtualMemoryManager::RemoveRange(const VMRange& range)
-    {
-        sl::ScopedLock scopeLock(lock);
-
-        size_t found = ranges.Size();
-        for (size_t i = 0; i < ranges.Size(); i++)
+        //check we have a driver for this allocation type
+        //the top 16 bits of the flags contain the allocaction type (anon, kernel-special, shared, etc...)
+        VmDriver* driver = VmDriver::GetDriver((VmDriverType)(flags >> 48));
+        if (driver == nullptr)
         {
-            if (ranges[i].base != range.base || ranges[i].length != range.length)
-                continue; //TODO: better search criteria, what about removing part of a range?
-            
-            found = i;
-            break;
+            Log("VMM failed to allocate 0x%lu bytes, no driver (requested type %lu).", LogLevel::Error, length, flags >> 48);
+            return {};
         }
 
-        if (found == ranges.Size())
-            return false;
-        
-        uintptr_t freePage = ranges[found].base;
-        while (freePage < ranges[found].Top())
-        {
-            PageSizes sizeUsed;
-            uintptr_t physAddr;
-
-            if (UnmapMemory(ptRoot, freePage, physAddr, sizeUsed, true))
-            {
-                PMM::Global().Free(physAddr, GetPageSize(sizeUsed) / PageSize);
-                freePage += GetPageSize(sizeUsed);
-            }
-            else
-                freePage += PageSize;
-        }
-
-        if (ptRoot == kernelMasterTables)
-            kernelTablesGen++;
-        return true;
-    }
-
-    sl::Opt<VMRange> VirtualMemoryManager::AllocRange(size_t length, VMFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
-    {
-        return AllocRange(length, 0, flags, lowerBound, upperBound);
-    }
-
-    sl::Opt<VMRange> VirtualMemoryManager::AllocRange(size_t length, uintptr_t physBase, VMFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
-    {
-        lowerBound = sl::Max(lowerBound, allocLowerLimit);
-        upperBound = sl::Min(upperBound, allocUpperLimit);
+        //make sure things are valid
         length = sl::AlignUp(length, PageSize);
+        lowerBound = sl::Max(globalLowerBound, sl::AlignUp(lowerBound, PageSize));
+        upperBound = sl::Min(globalUpperBound, sl::AlignDown(upperBound, PageSize));
+        if (lowerBound + length >= upperBound)
+            return {};
         
-        sl::ScopedLock scopeLock(lock);
+        rangesLock.Lock();
+        auto insertBefore = ranges.Begin();
+        uintptr_t allocAt = lowerBound;
 
-        uintptr_t check = lowerBound;
-        if (ranges.Size() == 0 || check + length <= ranges[0].base)
-            goto alloc_range_success;
-        
-        for (size_t i = 0; i < ranges.Size(); i++)
+        //find a virtual range big enough
+        //first try: no existing ranges, or there's space before the first range
+        if (ranges.Size() == 0 || lowerBound + length < insertBefore->base)
         {
-            if (ranges[i].Top() < lowerBound)
+            if (lowerBound + length < upperBound)
+                goto alloc_range_claim;
+        }
+        
+        //second try: search the gaps between adjacent ranges.
+        //the list of ranges is always sorted, so this is easy.
+        while (insertBefore != ranges.End())
+        {
+            auto lowIt = insertBefore;
+            ++insertBefore;
+            if (insertBefore == ranges.End())
+                break;
+
+            if (insertBefore->base - lowIt->Top() < length)
                 continue;
             
-            check = ranges[i].Top();
-            if (i + 1 == ranges.Size())
-                break;
-            
-            if (check + length > upperBound)
-                return {};
-            if (check + length <= ranges[i + 1].base)
-                goto alloc_range_success;
+            allocAt = lowIt->Top();
+            goto alloc_range_claim;
         }
-
-        check = sl::Max(ranges.Back().Top(), lowerBound);
-        if (check + length > upperBound)
-            return {};
-        else
-            goto alloc_range_success;
         
-    alloc_range_success:
-        VMRange range { check, length, flags };
-        if (!InsertRange(range))
-            return {};
-        
-        //TODO: demand paging, also do we need to use 4K pages for everything?
-        const PageFlags pFlags = ConvertFlags(range.flags);
-        for (size_t i = 0; i < length; i += PageSize)
+        //third try: check for enough after the last range.
+        if (sl::Max(ranges.Back().Top(), lowerBound) + length < upperBound)
         {
-            if (physBase == 0)
-                MapMemory(ptRoot, range.base + i, PMM::Global().Alloc(), pFlags, PageSizes::_4K, false);
-            else
-                MapMemory(ptRoot, range.base + i, physBase + i, pFlags, PageSizes::_4K, false);
+            allocAt = sl::Max(ranges.Back().Top(), lowerBound);
+            goto alloc_range_claim;
         }
+        
+        //couldn't find space anywhere
+        return {};
+        
+    alloc_range_claim:
+        VmRange range;
+        if (insertBefore == ranges.End())
+            range = ranges.EmplaceBack( allocAt, length, flags, 0ul );
+        else
+            range = *ranges.Insert(insertBefore, { allocAt, length, flags, 0ul });
+        rangesLock.Unlock();
 
+        VmDriverContext context{ ptRoot, ptLock, range.base, length, 0ul, flags };
+        auto maybeToken = driver->AttachRange(context, initArg);
+        if (!maybeToken)
+        {
+            //driver was unable to satisfy our request
+            ASSERT_UNREACHABLE(); //yeah, error handled.
+        }
+        
+        range.token = *maybeToken;
         return range;
     }
 
-    bool VirtualMemoryManager::RangeExists(const VMRange& range, bool checkFlags) const
+    bool VMM::Free(uintptr_t base, size_t length)
     {
-        for (size_t i = 0; i < ranges.Size(); i++)
+        rangesLock.Lock();
+
+        //find the range, remove it from list
+        VmRange range {};
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
         {
-            if (ranges[i].base > range.Top())
+            if (it->base == base && it->length == length)
+            {
+                range = sl::Move(*it);
+                ranges.Erase(it);
+                break;
+            }
+        }
+        rangesLock.Unlock();
+
+        //detach range from driver
+        using namespace Virtual;
+        const uint16_t driverIndex = range.flags >> 48;
+        VmDriver* driver = VmDriver::GetDriver((VmDriverType)driverIndex);
+        ASSERT(driver != nullptr, "Attempted to free range with no associated driver");
+        
+        constexpr size_t DetachTryCount = 3;
+        VmDriverContext context { ptRoot, ptLock, range.base, range.length, range.token, range.flags };
+        bool success = driver->DetachRange(context);
+        for (size_t i = 0; i < DetachTryCount && !success; i++)
+        {
+            Log("Attempt %lu: VMDriver (index %u, %s) failed to detach from range at 0x%lx.", LogLevel::Warning, 
+                i + 1ul, driverIndex, VmDriverTypeStrs[driverIndex], i);
+            success = driver->DetachRange(context);
+        }
+        if (!success)
+        {
+            Log("VM driver (index %u, %s) failed %lu to detach from VM range at 0x%lx.", LogLevel::Error, 
+                driverIndex, VmDriverTypeStrs[driverIndex], DetachTryCount, range.base);
+            //TODO: if we failed to remove it, it should probably go back in the list to block
+            //further allocations in that particular address space.
+        }
+
+        return true;
+    }
+
+    bool VMM::RangeExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags)
+    {
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
+        {
+            if (it->base > base + length)
                 return false;
-            if (range.base >= ranges[i].base && range.Top() <= ranges[i].Top())
-                return checkFlags ? (range.flags & ranges[i].flags) == range.flags : true;
+            if (base >= it->base && base + length <= it->Top())
+                return flags ? (it->flags & *flags) == *flags : true;
         }
 
         return false;

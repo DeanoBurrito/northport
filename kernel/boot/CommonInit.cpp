@@ -51,7 +51,7 @@ namespace Npk
     void InitMemory()
     {
         PMM::Global().Init();
-        VMM::SetupKernel();
+        VMM::InitKernel();
     }
 
     void InitPlatform()
@@ -77,6 +77,7 @@ namespace Npk
     [[noreturn]]
     void ExitBspInit()
     {
+        //TODO: reclaim bootloader memory here?
         Log("BSP (id=%lu) has finished init.", LogLevel::Info, CoreLocal().id);
         EnableInterrupts();
         Tasking::StartSystemClock();

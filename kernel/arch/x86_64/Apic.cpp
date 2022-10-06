@@ -72,7 +72,9 @@ namespace Npk
         else
         {
             inX2mode = false;
-            mmio = VMM::Kernel().AllocRange(0x1000, msrBase & ~0xFFFul, VMFlags::Writable)->base;
+            auto mmioRange = VMM::Kernel().Alloc(0x1000, msrBase & ~0xFFFul, VmFlags::Write | VmFlags::Mmio);
+            ASSERT(mmioRange.HasValue(), "Failed to allocate range for APIC mmio.");
+            mmio = mmioRange->base;
             Log("Local apic setup by kernel, regs=0x%lx (0x%lx)", LogLevel::Verbose, mmio.raw, msrBase & ~0xFFFul);
             id = ReadReg(LApicReg::Id) >> 24;
         }
@@ -281,7 +283,9 @@ namespace Npk
                 const Acpi::MadtSources::IoApic* source = scan.As<Acpi::MadtSources::IoApic>();
                 IoApic& apic = ioapics.EmplaceBack();
 
-                apic.mmio = VMM::Kernel().AllocRange(PageSize, source->mmioAddr, VMFlags::Writable)->base;
+                auto mmioRange = VMM::Kernel().Alloc(PageSize, source->mmioAddr, VmFlags::Write | VmFlags::Mmio);
+                ASSERT(mmioRange.HasValue(), "Failed to allocate range for IOAPIC MMIO.")
+                apic.mmio = mmioRange->base;
                 apic.gsiBase = source->gsibase;
 
                 //determine the number of inputs the ioapic has
