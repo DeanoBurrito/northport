@@ -9,14 +9,16 @@
         - [ ] Timer (SBI).
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
-        - [x] VMM, separate kernel copy.
-            - [ ] driver based implementation.
+            - [ ] Reclaim bootloader memory.
+        - [x] VMM, split kernel/user instances.
+            - [x] Move region-backing into specific VM drivers.
+            - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
             - [x] Basic debug helpers.
     - [x] Core clock, software timers.
     - [ ] Panic.
     - [x] Logging
-        - [ ] Ns16650 serial backend (mmio + portio variants).
+        - [ ] Ns16650 serial backend (mmio + port io variants).
         - [ ] PL011 serial backend.
         - [x] Terminal backend.
         - [ ] VFS file backend.
@@ -59,7 +61,7 @@
 - np-syslib:
     - [ ] Containers:
         - [x] Vector.
-        - [ ] Linked list.
+        - [x] Linked list.
         - [ ] Map.
     - [x] Optional.
     - [ ] Strings:

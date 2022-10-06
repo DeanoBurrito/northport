@@ -1,11 +1,9 @@
 #include <memory/virtual/VmDriver.h>
-#include <memory/virtual/AnonVmDriver.h>
 #include <memory/virtual/KernelVmDriver.h>
 #include <debug/Log.h>
 
 namespace Npk::Memory::Virtual
 {
-    alignas(AnonVmDriver) uint8_t anonDriver[sizeof(AnonVmDriver)];
     alignas(KernelVmDriver) uint8_t kernelDriver[sizeof(KernelVmDriver)];
     VmDriver* vmDrivers[(size_t)VmDriverType::EnumCount];
 
@@ -19,7 +17,6 @@ namespace Npk::Memory::Virtual
 
     void VmDriver::InitEarly()
     {
-        vmDrivers[(size_t)VmDriverType::Anon] = new (anonDriver) AnonVmDriver();
         vmDrivers[(size_t)VmDriverType::Kernel] = new (kernelDriver) KernelVmDriver();
 
         for (size_t i = 1; i < (size_t)VmDriverType::EnumCount; i++)
