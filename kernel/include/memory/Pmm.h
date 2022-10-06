@@ -6,12 +6,12 @@
 
 namespace Npk::Memory
 {
-    struct PMRegion
+    struct PmRegion
     {
         uintptr_t base;
         size_t totalPages;
         size_t freePages;
-        PMRegion* next;
+        PmRegion* next;
 
         size_t bitmapHint;
         uint8_t* bitmap;
@@ -22,21 +22,34 @@ namespace Npk::Memory
     {
     private:
         uint8_t* metaBuffer;
-        PMRegion* zoneLow;
-        PMRegion* zoneHigh;
+        size_t metaBufferSize;
+        PmRegion* zoneLow;
+        PmRegion* zoneHigh;
+        PmRegion* lowTail;
+        PmRegion* highTail;
 
-        PMRegion* AppendRegion(PMRegion* zoneTail, uintptr_t baseAddr, size_t sizeBytes);
-        uintptr_t RegionAlloc(PMRegion& region, size_t count);
+        struct 
+        {
+            uint32_t totalLow;
+            uint32_t totalHigh;
+            uint32_t usedLow;
+            uint32_t usedHigh;
+        } counts; //these are in pages, not bytes.
+
+        PmRegion* AppendRegion(PmRegion* zoneTail, uintptr_t baseAddr, size_t sizeBytes);
+        uintptr_t RegionAlloc(PmRegion& region, size_t count);
 
     public:
         static PhysicalMemoryManager& Global();
 
-        void Init();
         PhysicalMemoryManager() = default;
         PhysicalMemoryManager(const PhysicalMemoryManager&) = delete;
         PhysicalMemoryManager& operator=(const PhysicalMemoryManager&) = delete;
         PhysicalMemoryManager(PhysicalMemoryManager&&) = delete;
         PhysicalMemoryManager& operator=(PhysicalMemoryManager&&) = delete;
+
+        void Init();
+        void IngestMemory(uintptr_t base, size_t length);
 
         //allocates ONLY within the 32-bit physical address space (low zone).
         uintptr_t AllocLow(size_t count = 1);
