@@ -32,6 +32,12 @@ namespace Npk::Memory
         SlabSegment* InitSegment(uintptr_t base);
 
     public:
+        SlabAlloc() = default;
+        SlabAlloc(const SlabAlloc&) = delete;
+        SlabAlloc& operator=(const SlabAlloc&) = delete;
+        SlabAlloc(SlabAlloc&&) = delete;
+        SlabAlloc& operator=(SlabAlloc&&) = delete;
+
         void Init(uintptr_t firstSegment, size_t sizeSize, size_t slabCount);
 
         void* Alloc(uintptr_t& expansionBase);

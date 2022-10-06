@@ -32,9 +32,15 @@ namespace Npk
         maxTranslationLevel = (size_t)MaxSupportedPagingSize();
         nxSupported = CpuHasFeature(CpuFeature::NoExecute);
 
+        //determine bits needed ot extract a physical address from a PTE.
         physAddrMask = 1ul << (9 * pagingLevels + 12);
         physAddrMask--;
         physAddrMask &= ~(0xFFFul);
+
+        //create the master set of pages used for the higher half.
+        kernelMasterTables = (void*)PMM::Global().Alloc();
+        sl::memset(AddHhdm(kernelMasterTables), 0, PageSize);
+        kernelTablesGen = 0;
 
         Log("Paging constraints: levels=%lu, maxTranslationLevel=%lu, nxSupport=%s", LogLevel::Info,
             pagingLevels, maxTranslationLevel, nxSupported ? "yes" : "no");

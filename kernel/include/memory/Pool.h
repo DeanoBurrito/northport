@@ -37,6 +37,12 @@ namespace Npk::Memory
         void Expand(size_t minSize);
 
     public:
+        PoolAlloc() = default;
+        PoolAlloc(const PoolAlloc&) = delete;
+        PoolAlloc& operator=(const PoolAlloc&) = delete;
+        PoolAlloc(PoolAlloc&&) = delete;
+        PoolAlloc& operator=(PoolAlloc&&) = delete;
+
         void Init(uintptr_t start, size_t minAllocAmount);
 
         void* Alloc(size_t bytes);

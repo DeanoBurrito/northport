@@ -25,6 +25,12 @@ namespace Npk::Memory
     public:
         static Heap& Global();
 
+        Heap() = default;
+        Heap(const Heap&) = delete;
+        Heap& operator=(const Heap&) = delete;
+        Heap(Heap&&) = delete;
+        Heap& operator=(Heap&&) = delete;
+
         void* Alloc(size_t);
         void Free(void* ptr);
     };

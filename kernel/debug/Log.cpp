@@ -118,7 +118,7 @@ namespace Npk::Debug
 
         backends[(size_t)backend] = enabled;
         backendsAvailable = enabled ? backendsAvailable + 1 : backendsAvailable - 1;
-        Log("%s log backend %s.", LogLevel::Info, enabled ? "Enabled" : "Disabled", BackendStrings[(size_t)backend]);
+        Log("%s log backend: %s.", LogLevel::Info, enabled ? "Enabled" : "Disabled", BackendStrings[(size_t)backend]);
     }
     
     void Log(const char* message, LogLevel level, ...)
