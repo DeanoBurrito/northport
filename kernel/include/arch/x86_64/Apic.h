@@ -52,8 +52,8 @@ namespace Npk
 
         uint32_t ReadReg(LApicReg reg) const;
         void WriteReg(LApicReg reg, uint32_t value) const;
+        bool ApplyTimerCalibration(long* runs, size_t runCount, size_t failThreshold);
         void CalibrateTimer();
-        void CalibrateTsc();
 
         uint64_t ReadTsc() const;
 

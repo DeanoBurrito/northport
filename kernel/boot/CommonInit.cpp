@@ -63,10 +63,10 @@ namespace Npk
         else
             Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
         
-        if (Boot::rsdpRequest.response != nullptr)
+        if (Boot::rsdpRequest.response != nullptr && Boot::rsdpRequest.response != nullptr)
             Acpi::SetRsdp(Boot::rsdpRequest.response->address);
         else
-            Log("Bootloader did not provide RSDP.", LogLevel::Warning);
+            Log("Bootloader did not provide RSDP (or it was null).", LogLevel::Warning);
         
         if (Boot::dtbRequest.response != nullptr && Boot::dtbRequest.response->dtb_ptr != nullptr)
             {} //TODO: DTB parser

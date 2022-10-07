@@ -7,6 +7,7 @@
 #include <interrupts/InterruptManager.h>
 #include <containers/Vector.h>
 #include <UnitConverter.h>
+#include <Maths.h>
 
 namespace Npk
 {
@@ -117,76 +118,114 @@ namespace Npk
 
         WriteReg(LApicReg::SpuriousVector, 0xFF | (1 << 8));
 
-        //select our timer source and calibrate it
-        if (CpuHasFeature(CpuFeature::Tsc) && CpuHasFeature(CpuFeature::TscDeadline))
+        CalibrateTimer();
+    }
+
+    bool LocalApic::ApplyTimerCalibration(long* runs, size_t runCount, size_t failThreshold)
+    {
+        /*  This function gets the mean + standard deviation of the calibration runs,
+            and removes any outliers. Not too necessary on real hardware, but for 
+            virtual machines where clocks can stutter quite a bit, it's nice to get
+            accurate times.
+            If too many calibration runs fail, we abandon the current set and try again. */
+        long mean = 0;
+        for (size_t i = 0; i < runCount; i++)
+            mean += runs[i];
+        mean /= runCount;
+        
+        ticksPerMs = 0;
+        size_t validRuns = 0;
+        const long deviation = sl::StandardDeviation(runs, runCount);
+        for (size_t i = 0; i < runCount; i++)
         {
-            tscForTimer = true;
-            CalibrateTsc();
+            if ((runs[i] < mean - deviation) || runs[i] > mean + deviation)
+            {
+                Log("Dropping lapic timer calibration run: %li ticks/ms", LogLevel::Verbose, runs[i]);
+                continue;
+            }
+
+            Log("Keeping lapic timer calibration run: %li ticks/ms", LogLevel::Verbose, runs[i]);
+            ticksPerMs += (size_t)runs[i];
+            validRuns++;
         }
-        else
-        {
-            tscForTimer = false;
-            CalibrateTimer();
-        }
+        ticksPerMs /= validRuns;
+
+        return validRuns > failThreshold;
     }
 
     void LocalApic::CalibrateTimer()
     {
-        if (!CpuHasFeature(CpuFeature::AlwaysRunningApic))
-            Log("Always running apic timer not supported on this cpu.", LogLevel::Warning);
+        //feature detection
+        tscForTimer = CpuHasFeature(CpuFeature::Tsc) && CpuHasFeature(CpuFeature::TscDeadline);
         
-        //ensure timer isnt running while being calibrated
-        WriteReg(LApicReg::LvtTimer, 1 << 16);
-        WriteReg(LApicReg::TimerInitCount, 0);
-        WriteReg(LApicReg::TimerDivisor, TimerDivisor);
-
-        ticksPerMs = 0;
-        constexpr size_t calibrateCycles = 4;
-        constexpr size_t calibrateMillis = 10;
-
-        for (size_t i = 0; i < calibrateCycles; i++)
+        //additional feature detection + reset lapic timer
+        if (tscForTimer)
         {
-            WriteReg(LApicReg::LvtTimer, 1 << 16);
-            WriteReg(LApicReg::TimerInitCount, (uint32_t)-1);
-            PolledSleep(calibrateMillis * 1'000'000);
-            
-            const size_t result = ((uint32_t)-1 - ReadReg(LApicReg::TimerCount)) / calibrateMillis;
-            ticksPerMs += result;
-            Log("Local apic timer calibration run: %lu ticks/ms.", LogLevel::Verbose, result);
-        }
-        WriteReg(LApicReg::LvtTimer, 1 << 16);
-        WriteReg(LApicReg::TimerInitCount, 0);
-
-        ticksPerMs /= calibrateCycles;
-        const sl::UnitConversion freqs = sl::ConvertUnits(ticksPerMs * 1000);
-        Log("Local apic timer calibrated using %s for %lu ticks/ms (%lu.%lu%shz).", LogLevel::Info, ActiveTimerName(), 
-            ticksPerMs, freqs.major, freqs.minor, freqs.prefix);
-    }
-
-    void LocalApic::CalibrateTsc()
-    {
-        if (!CpuHasFeature(CpuFeature::InvariantTsc))
+            if (!CpuHasFeature(CpuFeature::InvariantTsc))
             Log("Invariant TSC not supported.", LogLevel::Warning);
-
-        ticksPerMs = 0;
-        constexpr size_t calibrateCycles = 4;
-        constexpr size_t calibrateMillis = 10;
-
-        for (size_t i = 0; i < calibrateCycles; i++)
-        {
-            const size_t start = ReadTsc();
-            PolledSleep(calibrateMillis * 1'000'000);
-            const size_t end = ReadTsc();
-
-            const size_t result = (end - start) / calibrateMillis;
-            ticksPerMs += result;
-            Log("Tsc calibration run: %lu ticks/ms.", LogLevel::Verbose, result);
         }
-        ticksPerMs /= calibrateCycles;
+        else
+        {
+            if (!CpuHasFeature(CpuFeature::AlwaysRunningApic))
+                Log("Always running apic timer not supported on this cpu.", LogLevel::Warning);
+            
+            WriteReg(LApicReg::LvtTimer, 1 << 16);
+            WriteReg(LApicReg::TimerInitCount, 0);
+            WriteReg(LApicReg::TimerDivisor, TimerDivisor);
+        }
+        
+        //runs per attempt to gather calibration data.
+        constexpr size_t CalibrationRuns = 6;
+        //milliseconds to calibrate for.
+        constexpr size_t CalibrationMillis = 10;
+        //number of full attempts to calibrate the timer.
+        constexpr size_t MaxCalibrateAttempts = 3;
+        //the calibration times themselves.
+        long calibTimes[CalibrationRuns];
+
+        for (size_t attempt = 0; attempt < MaxCalibrateAttempts; attempt++)
+        {
+            //gather calibration data
+            for (size_t i = 0; i < CalibrationRuns; i++)
+            {
+                if (tscForTimer)
+                {
+                    const size_t start = ReadTsc();
+                    PolledSleep(CalibrationMillis * 1'000'000);
+                    const size_t end = ReadTsc();
+
+                    calibTimes[i] = (long)((end - start) / CalibrationMillis);
+                }
+                else
+                {
+                    WriteReg(LApicReg::LvtTimer, 1 << 16);
+                    WriteReg(LApicReg::TimerInitCount, (uint32_t)-1);
+                    PolledSleep(CalibrationMillis * 1'000'000);
+                    
+                    const uint32_t invertedReg = (uint32_t)-1 - ReadReg(LApicReg::TimerCount);
+                    calibTimes[i] = (long)(invertedReg / CalibrationMillis);
+                }
+            }
+
+            if (!tscForTimer)
+            {   //ensure timer is stopped.
+                WriteReg(LApicReg::LvtTimer, 1 << 16);
+                WriteReg(LApicReg::TimerInitCount, 0);
+            }
+            
+            //filter it and see if we've got enough good data.
+            if (ApplyTimerCalibration(calibTimes, CalibrationRuns, CalibrationRuns / 2))
+                break;
+            ticksPerMs = 0;
+        }
+
+        if (ticksPerMs == 0)
+            Log("Completely and utterly failed to calibrate the apic timer.", LogLevel::Fatal);
+        //TODO: it would be nice to use a failover timer here, like the hpet or PIT in this case.
 
         const sl::UnitConversion freqs = sl::ConvertUnits(ticksPerMs * 1000);
-        Log("Local apic timer will use TSC deadline, calibrated using %s for %lu ticks/ms (%lu.%lu%shz).", LogLevel::Info,
-        ActiveTimerName(), ticksPerMs, freqs.major, freqs.minor, freqs.prefix);
+        Log("Local apic timer %s calibrated by %s for %lu ticks/ms (%lu.%lu%shz).", LogLevel::Info, 
+            tscForTimer ? "(in TSC-D mode)" : "", ActiveTimerName(), ticksPerMs, freqs.major, freqs.minor, freqs.prefix);
     }
 
     void LocalApic::SetTimer(size_t nanoseconds, void (*callback)(size_t))

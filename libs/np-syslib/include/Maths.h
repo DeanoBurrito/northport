@@ -47,15 +47,15 @@ namespace sl
         return ((a > b) ? a : b);
     }
 
-    constexpr uint8_t ByteSwap(uint8_t value)
+    constexpr inline uint8_t ByteSwap(uint8_t value)
     { return value; }
 
-    constexpr uint16_t ByteSwap(uint16_t value)
+    constexpr inline uint16_t ByteSwap(uint16_t value)
     { 
         return (value << 8) | (value >> 8);
     }
 
-    constexpr uint32_t ByteSwap(uint32_t value)
+    constexpr inline uint32_t ByteSwap(uint32_t value)
     { 
         uint32_t result = 0;
         result |= (value & 0x0000'00FF) << 24;
@@ -65,7 +65,7 @@ namespace sl
         return result;
     }
 
-    constexpr uint64_t ByteSwap(uint64_t value)
+    constexpr inline uint64_t ByteSwap(uint64_t value)
     { 
         uint64_t result = 0;
         result |= (value & 0x0000'0000'0000'00FF) << 56;
@@ -77,5 +77,46 @@ namespace sl
         result |= (value & 0x00FF'0000'0000'0000) >> 40;
         result |= (value & 0xFF00'0000'0000'0000) >> 56;
         return result;
+    }
+
+    template<typename T>
+    constexpr inline T SquareRoot(T value)
+    {
+        if (value == 0)
+            return 0;
+        T left = 1;
+        T right = value / 2 + 1;
+        T res = 0;
+
+        while (left <= right)
+        {
+            T mid = left + ((right - left) / 2);
+            if (mid <= value / mid)
+            {
+                left = mid + 1;
+                res = mid;
+            }
+            else
+                right = mid - 1;
+        }
+
+        return res;
+    }
+    
+    template<typename T> //mm yes, very safe.
+    constexpr inline T StandardDeviation(T* data, size_t dataCount)
+    {
+        T mean = 0;
+        for (size_t i = 0; i < dataCount; i++)
+            mean += data[i];
+        mean = mean / dataCount;
+        
+        T variance = 0;
+        for (size_t i = 0; i < dataCount; i++)
+        {
+            variance += ((data[i] - mean) * (data[i] - mean) / (dataCount - 1));
+        }
+
+        return SquareRoot(variance);
     }
 }
