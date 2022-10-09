@@ -5,12 +5,28 @@
 #include <Optional.h>
 #include <Locks.h>
 #include <memory/Vmm.h>
+#include <arch/Paging.h>
 
 namespace Npk::Memory
 { class VirtualMemoryManager; }
 
 namespace Npk::Memory::Virtual
 {
+    constexpr PageFlags ConvertFlags(VmFlags flags)
+    {
+        /*  VMFlags are stable across platforms, while PageFlags have different meanings
+            depending on the ISA. This provides source-level translation between the two. */
+        PageFlags value = PageFlags::None;
+        if (flags & VmFlags::Write)
+            value |= PageFlags::Write;
+        if (flags & VmFlags::Execute)
+            value |= PageFlags::Execute;
+        if (flags & VmFlags::User)
+            value |= PageFlags::User;
+        
+        return value;
+    }
+
     enum class EventResult
     {
         Continue,   //thread is allowed to continue.
@@ -61,7 +77,7 @@ namespace Npk::Memory::Virtual
         virtual VmDriverType Type() = 0;
         
         //driver needs to handle an event.
-        virtual EventResult HandleEvent(VmDriverContext& context, EventType type, uintptr_t eventArg) = 0;
+        virtual EventResult HandleEvent(VmDriverContext& context, EventType type, uintptr_t addr, uintptr_t eventArg) = 0;
         //driver should attach itself to a range, and prepare to back it accordingly.
         virtual sl::Opt<size_t> AttachRange(VmDriverContext& context, uintptr_t attachArg) = 0;
         //driver should release resources backing a range.

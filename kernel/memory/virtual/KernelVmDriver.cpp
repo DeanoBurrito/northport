@@ -1,5 +1,4 @@
 #include <memory/virtual/KernelVmDriver.h>
-#include <arch/Paging.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <boot/LinkerSyms.h>
@@ -14,6 +13,7 @@ namespace Npk::Memory::Virtual
         const PageSizes hhdmSize = MaxSupportedPagingSize() > PageSizes::_1G ? PageSizes::_1G: MaxSupportedPagingSize();
         const uintptr_t hhdmPageSize = GetPageSize(hhdmSize);
 
+        //map the hhdm.
         for (uintptr_t i = 0; i < hhdmLength; i += hhdmPageSize)
             MapMemory(kernelMasterTables, hhdmBase + i, i, PageFlags::Write, hhdmSize, false);
         
@@ -40,13 +40,15 @@ namespace Npk::Memory::Virtual
     VmDriverType KernelVmDriver::Type()
     { return VmDriverType::Kernel; }
 
-    EventResult KernelVmDriver::HandleEvent(VmDriverContext& context, EventType type, uintptr_t eventArg)
+    EventResult KernelVmDriver::HandleEvent(VmDriverContext& context, EventType type, uintptr_t addr, uintptr_t eventArg)
     {
+        (void)context; (void)type; (void)addr; (void)eventArg;
         ASSERT_UNREACHABLE();
     }
     
     sl::Opt<size_t> KernelVmDriver::AttachRange(VmDriverContext& context, uintptr_t attachArg)
     {
+        InterruptGuard guard;
         sl::ScopedLock ptLock(context.lock);
         
         //attachArg is the physical address to map.
@@ -61,6 +63,7 @@ namespace Npk::Memory::Virtual
     
     bool KernelVmDriver::DetachRange(VmDriverContext& context)
     {
+        InterruptGuard guard;
         sl::ScopedLock ptLock(context.lock);
 
         for (uintptr_t base = context.vaddr; base < context.vaddr + context.length;)
@@ -69,6 +72,9 @@ namespace Npk::Memory::Virtual
             PageSizes ignored2;
             UnmapMemory(context.ptRoot, base, ignored, ignored2, true);
         }
+        
+        if (context.ptRoot == kernelMasterTables)
+            __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
 
         return true;
     }

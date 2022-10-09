@@ -1,28 +1,12 @@
 #include <memory/Vmm.h>
 #include <memory/virtual/VmDriver.h>
 #include <memory/Heap.h>
-#include <arch/Paging.h>
 #include <arch/Platform.h>
 #include <boot/LinkerSyms.h>
 #include <debug/Log.h>
 
 namespace Npk::Memory
 {
-    constexpr PageFlags ConvertFlags(VmFlags flags)
-    {
-        /*  VMFlags are stable across platforms, while PageFlags have different meanings
-            depending on the ISA. This provides source-level translation between the two. */
-        PageFlags value = PageFlags::None;
-        if (flags & VmFlags::Write)
-            value |= PageFlags::Write;
-        if (flags & VmFlags::Execute)
-            value |= PageFlags::Execute;
-        if (flags & VmFlags::User)
-            value |= PageFlags::User;
-        
-        return value;
-    }
-
     alignas(VMM) uint8_t kernelVmm[sizeof(VMM)];
     void VMM::InitKernel()
     {
@@ -53,7 +37,6 @@ namespace Npk::Memory
         sl::ScopedLock scopeLock(rangesLock);
 
         //protect the hhdm, heap and kernel binary from allocations.
-        //TODO: change the heap to use the anon vm driver.
         globalLowerBound = hhdmBase + HhdmLimit + HeapLimit;
         globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GiB);
         ptRoot = kernelMasterTables;

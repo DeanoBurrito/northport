@@ -42,5 +42,9 @@ namespace Npk::Memory
 
         void* Alloc(uintptr_t& expansionBase);
         bool Free(void* ptr);
+
+        [[gnu::always_inline]]
+        inline size_t Size()
+        { return slabSize; }
     };
 }

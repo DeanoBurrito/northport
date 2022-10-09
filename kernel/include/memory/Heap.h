@@ -7,7 +7,7 @@
 
 namespace Npk::Memory
 {
-    constexpr size_t SlabCount = 6;
+    constexpr size_t SlabCount = 5;
     constexpr size_t SlabBaseSize = 32;
 
     class VirtualMemoryManager;

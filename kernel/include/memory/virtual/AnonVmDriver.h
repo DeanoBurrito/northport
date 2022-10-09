@@ -4,7 +4,7 @@
 
 namespace Npk::Memory::Virtual
 {
-    class KernelVmDriver : public VmDriver
+    class AnonVmDriver : public VmDriver
     {
     public:
         void Init() override;

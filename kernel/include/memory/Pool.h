@@ -6,35 +6,45 @@
 
 namespace Npk::Memory
 {
-    constexpr size_t PoolStartPages = 16;
-    constexpr size_t PoolExpandFactor = 2;
+    constexpr size_t PoolMinExpansionScale = 16;
+    
+    struct PoolRegion;
 
     struct PoolNode
     {
         PoolNode* prev;
         PoolNode* next;
-        size_t size;
-        uintptr_t checksum;
+        PoolRegion* parent;
+        size_t length;
 
         [[gnu::always_inline]]
         inline void* Data()
         { return reinterpret_cast<void*>(this + 1); }
     };
-    
+
+    struct PoolRegion
+    {
+        uintptr_t base;
+        size_t length;
+        PoolNode* first;
+        PoolNode* last;
+        PoolRegion* prev;
+        PoolRegion* next;
+        sl::TicketLock lock;
+    };
+
     class PoolAlloc
     {
     private:
-        uintptr_t regionBase;
-        uintptr_t regionTop;
-        PoolNode* head;
-        PoolNode* tail;
-        sl::TicketLock lock;
+        PoolRegion* head;
+        PoolRegion* tail;
         size_t minAllocSize;
+        sl::TicketLock listLock;
 
         void MergePrev(PoolNode* node);
         void MergeNext(PoolNode* node);
         void Split(PoolNode* node, size_t spaceNeeded);
-        void Expand(size_t minSize);
+        void Expand(size_t minSize, bool takeLock);
 
     public:
         PoolAlloc() = default;
@@ -43,7 +53,7 @@ namespace Npk::Memory
         PoolAlloc(PoolAlloc&&) = delete;
         PoolAlloc& operator=(PoolAlloc&&) = delete;
 
-        void Init(uintptr_t start, size_t minAllocAmount);
+        void Init(size_t minAllocBytes);
 
         void* Alloc(size_t bytes);
         bool Free(void* ptr);

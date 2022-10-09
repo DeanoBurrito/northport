@@ -26,9 +26,9 @@ namespace Npk::Memory
             }
         }
 
-        pool.Init(hhdmBase + HhdmLimit + (HeapLimit / 2), nextSlabSize / 2);
+        pool.Init(slabs[SlabCount - 1].Size());
     }
-    
+
     Heap globalHeap;
     Heap& Heap::Global()
     { return globalHeap; }
@@ -64,6 +64,6 @@ namespace Npk::Memory
         }
 
         if (!pool.Free(ptr))
-            Log("Kernel heap free() fail: 0x%lx", LogLevel::Debug, (uintptr_t)ptr);
+            Log("Kernel heap failed to free at 0x%lx", LogLevel::Debug, (uintptr_t)ptr);
     }
 }
