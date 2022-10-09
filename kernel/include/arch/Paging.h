@@ -3,10 +3,11 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Optional.h>
+#include <CppUtils.h>
 
 namespace Npk
 {
-#ifdef __x86_64__
+#if __x86_64__
     enum PageFlags : uint64_t
     {
         None = 0,
@@ -34,6 +35,22 @@ namespace Npk
     constexpr PageFlags operator|=(PageFlags& src, const PageFlags& other)
     { return src = (PageFlags)((uintptr_t)src | (uintptr_t)other); }
 
+    enum class PageFaultFlags : uintptr_t
+    {
+        None = 0,
+
+        Read = 1 << 0,
+        Write = 1 << 1,
+        Execute = 1 << 2,
+        User = 1 << 3,
+    };
+
+    constexpr PageFaultFlags operator|(const PageFaultFlags& a, const PageFaultFlags& b)
+    { return (PageFaultFlags)((uintptr_t)a | (uintptr_t)b); }
+
+    constexpr PageFaultFlags operator&(const PageFaultFlags& a, const PageFaultFlags& b)
+    { return (PageFaultFlags)((uintptr_t)a & (uintptr_t)b); }
+
     extern void* kernelMasterTables;
     extern uint32_t kernelTablesGen;
 
@@ -45,4 +62,5 @@ namespace Npk
     void SyncKernelTables(void* dest);
     void LoadTables(void* root);
     PageSizes MaxSupportedPagingSize();
+    PageFaultFlags GetFaultFlags(uintptr_t nativeEc);
 }

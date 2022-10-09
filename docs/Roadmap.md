@@ -3,19 +3,27 @@
         - [x] Core (paging, interrupts).
         - [ ] FPU, SSE, AVX.
         - [x] Timers (LAPIC, TSC, PIT, HPET).
+            - [ ] Failover timer.
     - [ ] riscv64:
         - [ ] LBP boot shim.
         - [ ] Core (paging, interrupts).
         - [ ] Timer (SBI).
+        - [ ] F/D/Q and V extension support.
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
             - [ ] Reclaim bootloader memory.
+            - [ ] Memory pressure feedback.
         - [x] VMM, split kernel/user instances.
             - [x] Move region-backing into specific VM drivers.
+            - [x] Demand paging.
+            - [ ] Swapping.
             - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
-            - [x] Basic debug helpers.
+            - [ ] Debugging helpers.
     - [x] Core clock, software timers.
+    - [ ] Scheduler.
+        - [ ] SMP-support.
+        - [ ] Heterogenous cpu support.
     - [ ] Panic.
     - [x] Logging
         - [ ] Ns16650 serial backend (mmio + port io variants).

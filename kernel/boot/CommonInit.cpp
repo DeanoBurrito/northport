@@ -79,7 +79,6 @@ namespace Npk
     {
         //TODO: reclaim bootloader memory here?
         Log("BSP (id=%lu) has finished init.", LogLevel::Info, CoreLocal().id);
-        EnableInterrupts();
         Tasking::StartSystemClock();
         Halt();
     }

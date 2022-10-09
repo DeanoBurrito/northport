@@ -50,6 +50,7 @@ namespace Npk
         WriteMsr(MsrGsBase, (uint64_t)clb);
 
         LocalApic::Local().Init();
+        EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }
 }
@@ -62,13 +63,12 @@ extern "C"
 
         InitEarlyPlatform();
         InitMemory();
+        PopulateIdt();
         InitPlatform();
 
-        IoApic::InitAll();
-        PopulateIdt();
-        InitTimers();
-
         InitCore(0); //BSP is always id=0 on x86_64
+        IoApic::InitAll();
+        InitTimers();
 
         ExitBspInit();
     }

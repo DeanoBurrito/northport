@@ -9,9 +9,9 @@ For instructions on building, [check here](docs/Building.md). Documentation is W
 A brief summary of the current and planned features are available below, but for a more in-depth roadmap can be found [here](docs/Roadmap.md).
 
 ## Project Goals
-1) Modern and relatively complete kernel: driver infrastructure, graphics/audio/network stacks, VFS, and smp-aware scheduler.
-2) Cross-platform. My plan is to develop for risc-v first, with the x86_64 port being used as a sanity check.
-3) To be self-hosting. The system should be able to perform a cross-platform build of itself.
+1) To build a modern and relatively complete kernel: driver infrastructure, graphics/audio/network stacks, VFS, and smp-aware scheduler.
+2) Support for multiple platforms. My plan is to develop for risc-v first, and use the x86_64 port as a sanity check. With limine now supporting aarch64, support for that may come later.
+3) To be self-hosting. The system should be able to cross-compile itself.
 4) Clean code and useful documentation.
 
 ## Project Features
@@ -21,7 +21,7 @@ Kernel:
     - VMM, inspired by the old SunOS design. VM ranges are managed by drivers which provide functionality specific to each region (mmio, working (anon) memory, file-backed).
     - Kernel heap uses slabs for smaller allocations (32 - 1024 bytes), with a linked-list style allocator anything larger.
 - Logging with support for various backends: serial/debugcon and built-in terminal (requires a framebuffer).
-    - The terminal is based on gterm from the Limine Bootloader (license attached).
+    - The terminal is based on gterm from the Limine Bootloader (see the individual files for the license).
 - Optional UB sanitizer, helpful for detecting bugs or increasing code size!
 - Support for platform-specific timers (PIT, HPET, APIC, TSC deadline, SBI), with a soft-timer interface on top.
 
