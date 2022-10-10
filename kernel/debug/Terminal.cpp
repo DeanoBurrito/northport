@@ -792,12 +792,9 @@ def:
         fontSize.y = font.size.y;
 
         constexpr size_t vgaFontGlyphs = 256;
-        const size_t fontBytes = (fontSize.x * fontSize.y * vgaFontGlyphs) / 8;
+        vgaFontBits = reinterpret_cast<const uint8_t*>(font.address);
 
-        vgaFontBits = new uint8_t[fontBytes];
-        sl::memcopy((void*)font.address, vgaFontBits, fontBytes); //TODO: can we just use the original source here?
-
-        //fontSize.x += font.spacing; //TODO: pull this from style instead, since we dont import the font anymore.
+        fontSize.x += style.fontSpacing;
         vgaFontBoolSize = vgaFontGlyphs * fontSize.y * fontSize.x * sizeof(bool);
         vgaFontBool = new bool[vgaFontBoolSize / sizeof(bool)];
 
@@ -859,7 +856,7 @@ def:
         if (!initialized)
             return;
         
-        delete[] vgaFontBits;
+        vgaFontBits = nullptr;
         delete[] vgaFontBool;
         delete[] grid;
         delete[] queue;

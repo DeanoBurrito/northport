@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <Maths.h>
 #include <arch/x86_64/Apic.h>
+#include <arch/x86_64/Timers.h>
 
 namespace Npk
 {
@@ -98,10 +99,14 @@ namespace Npk
         asm("clac" ::: "cc");
     }
 
+    extern bool lapicTimerAvailable;
     [[gnu::always_inline]]
     inline void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t))
     {
-        LocalApic::Local().SetTimer(nanoseconds, callback);
+        if (lapicTimerAvailable)
+            LocalApic::Local().SetTimer(nanoseconds, callback);
+        else
+            InterruptSleep(nanoseconds, callback);
     }
 
     [[gnu::always_inline]]

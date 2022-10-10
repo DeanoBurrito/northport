@@ -62,6 +62,11 @@ namespace Npk
             hpetPeriod / FemtosPerNano, hpetMmio.raw, hpetTable->baseAddress.address);
     }
 
+    void InitInterruptTimers()
+    {
+        ASSERT_UNREACHABLE(); //TODO: setup HPET comparitors, setup ioapic for hpet or pit.
+    }
+
     void HpetSleep(size_t nanos)
     {
         ASSERT(hpetMmio.ptr != nullptr, "No HPET sleep: device is not available.");
@@ -84,6 +89,11 @@ namespace Npk
             PitSleep(nanos);
         else
             HpetSleep(nanos);
+    }
+
+    void InterruptSleep(size_t nanos, void (*callback)(size_t))
+    {
+        ASSERT_UNREACHABLE(); //use HPET or PIT to generate interrupts
     }
 
     size_t GetTimerNanos()

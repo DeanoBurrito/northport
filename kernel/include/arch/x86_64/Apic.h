@@ -53,7 +53,6 @@ namespace Npk
         uint32_t ReadReg(LApicReg reg) const;
         void WriteReg(LApicReg reg, uint32_t value) const;
         bool ApplyTimerCalibration(long* runs, size_t runCount, size_t failThreshold);
-        void CalibrateTimer();
 
         uint64_t ReadTsc() const;
 
@@ -61,6 +60,7 @@ namespace Npk
         static LocalApic& Local();
 
         void Init();
+        bool CalibrateTimer();
 
         void SetTimer(size_t nanoseconds, void (*callback)(size_t));
         void SendEoi() const;

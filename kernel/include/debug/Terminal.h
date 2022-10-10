@@ -67,6 +67,7 @@ namespace Npk::Debug
         uint32_t background;
         uint32_t foreground;
         uint16_t margin;
+        uint16_t fontSpacing;
     };
 
     struct GTBackground
@@ -128,7 +129,7 @@ namespace Npk::Debug
         size_t queueSize;
         size_t mapSize;
 
-        uint8_t* vgaFontBits;
+        const uint8_t* vgaFontBits;
         size_t vgaFontBoolSize;
         bool* vgaFontBool;
 

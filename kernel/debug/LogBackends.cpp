@@ -26,11 +26,11 @@ namespace Npk::Debug
     void InitTerminal()
     {
 #ifdef NP_INCLUDE_TERMINAL_BG
-        GTStyle style { DEFAULT_ANSI_COLOURS, DEFAULT_ANSI_BRIGHT_COLOURS, 0x68000000, 0xDDDDDD, 12 };
+        GTStyle style { DEFAULT_ANSI_COLOURS, DEFAULT_ANSI_BRIGHT_COLOURS, 0x68000000, 0xDDDDDD, 12, 0 };
         OpenImage(termBg, (uintptr_t)BackgroundBegin, (uintptr_t)BackgroundEnd - (uintptr_t)BackgroundBegin);
         GTBackground bg { &termBg, 0 };
 #else
-        GTStyle style { DEFAULT_ANSI_COLOURS, DEFAULT_ANSI_BRIGHT_COLOURS, 0x0F0404, 0xDDDDDD, 12 };
+        GTStyle style { DEFAULT_ANSI_COLOURS, DEFAULT_ANSI_BRIGHT_COLOURS, 0x0F0404, 0xDDDDDD, 12, 0 };
         GTBackground bg { NULL,  0 };
 #endif
         term.Init(style, bg);

@@ -37,6 +37,38 @@ namespace Npk
             mmio.Offset((size_t)reg).VolatileWrite(value);
     }
 
+    bool LocalApic::ApplyTimerCalibration(long* runs, size_t runCount, size_t failThreshold)
+    {
+        /*  This function gets the mean + standard deviation of the calibration runs,
+            and removes any outliers. Not too necessary on real hardware, but for 
+            virtual machines where clocks can stutter quite a bit, it's nice to get
+            accurate times.
+            If too many calibration runs fail, we abandon the current set and try again. */
+        long mean = 0;
+        for (size_t i = 0; i < runCount; i++)
+            mean += runs[i];
+        mean /= runCount;
+        
+        ticksPerMs = 0;
+        size_t validRuns = 0;
+        const long deviation = sl::StandardDeviation(runs, runCount);
+        for (size_t i = 0; i < runCount; i++)
+        {
+            if ((runs[i] < mean - deviation) || runs[i] > mean + deviation)
+            {
+                Log("Dropping lapic timer calibration run: %li ticks/ms", LogLevel::Verbose, runs[i]);
+                continue;
+            }
+
+            Log("Keeping lapic timer calibration run: %li ticks/ms", LogLevel::Verbose, runs[i]);
+            ticksPerMs += (size_t)runs[i];
+            validRuns++;
+        }
+        ticksPerMs /= validRuns;
+
+        return validRuns > failThreshold;
+    }    
+
     inline uint64_t LocalApic::ReadTsc() const
     {
         uint64_t lo, hi;
@@ -117,43 +149,9 @@ namespace Npk
         }
 
         WriteReg(LApicReg::SpuriousVector, 0xFF | (1 << 8));
-
-        CalibrateTimer();
     }
 
-    bool LocalApic::ApplyTimerCalibration(long* runs, size_t runCount, size_t failThreshold)
-    {
-        /*  This function gets the mean + standard deviation of the calibration runs,
-            and removes any outliers. Not too necessary on real hardware, but for 
-            virtual machines where clocks can stutter quite a bit, it's nice to get
-            accurate times.
-            If too many calibration runs fail, we abandon the current set and try again. */
-        long mean = 0;
-        for (size_t i = 0; i < runCount; i++)
-            mean += runs[i];
-        mean /= runCount;
-        
-        ticksPerMs = 0;
-        size_t validRuns = 0;
-        const long deviation = sl::StandardDeviation(runs, runCount);
-        for (size_t i = 0; i < runCount; i++)
-        {
-            if ((runs[i] < mean - deviation) || runs[i] > mean + deviation)
-            {
-                Log("Dropping lapic timer calibration run: %li ticks/ms", LogLevel::Verbose, runs[i]);
-                continue;
-            }
-
-            Log("Keeping lapic timer calibration run: %li ticks/ms", LogLevel::Verbose, runs[i]);
-            ticksPerMs += (size_t)runs[i];
-            validRuns++;
-        }
-        ticksPerMs /= validRuns;
-
-        return validRuns > failThreshold;
-    }
-
-    void LocalApic::CalibrateTimer()
+    bool LocalApic::CalibrateTimer()
     {
         //feature detection
         tscForTimer = CpuHasFeature(CpuFeature::Tsc) && CpuHasFeature(CpuFeature::TscDeadline);
@@ -220,12 +218,12 @@ namespace Npk
         }
 
         if (ticksPerMs == 0)
-            Log("Completely and utterly failed to calibrate the apic timer.", LogLevel::Fatal);
-        //TODO: it would be nice to use a failover timer here, like the hpet or PIT in this case.
+            return false; //failed to calibrate timer
 
         const sl::UnitConversion freqs = sl::ConvertUnits(ticksPerMs * 1000);
         Log("Local apic timer %s calibrated by %s for %lu ticks/ms (%lu.%lu%shz).", LogLevel::Info, 
             tscForTimer ? "(in TSC-D mode)" : "", ActiveTimerName(), ticksPerMs, freqs.major, freqs.minor, freqs.prefix);
+        return true;
     }
 
     void LocalApic::SetTimer(size_t nanoseconds, void (*callback)(size_t))

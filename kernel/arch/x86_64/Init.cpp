@@ -12,6 +12,8 @@
 
 namespace Npk
 {
+    bool lapicTimerAvailable;
+    
     void InitCore(size_t id)
     {
         //ensure we're using the kernel's pagemap.
@@ -55,6 +57,14 @@ namespace Npk
         WriteMsr(MsrGsBase, (uint64_t)clb);
 
         LocalApic::Local().Init();
+        if (IsBsp())
+        {
+            lapicTimerAvailable = LocalApic::Local().CalibrateTimer();
+            if (!lapicTimerAvailable)
+                InitInterruptTimers();
+        }
+        //if we fail to calibrate the lapic timer, SetSystemTimer() will use the HPET (or even the PIT if necessary).
+
         EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }
