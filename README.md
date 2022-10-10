@@ -4,7 +4,7 @@
 Northport is a monolithic kernel, with some supporting libraries and utilities.
 It's booted via the limine protocol, and supports riscv64 and x86_64. 
 
-For instructions on building, [check here](docs/Building.md). Documentation is WIP and available in the `docs/manual` directory.
+For instructions on building, [check here](docs/Building.md). Documentation is WIP and will be available in the `docs/manual` directory.
 
 A brief summary of the current and planned features are available below, but for a more in-depth roadmap can be found [here](docs/Roadmap.md).
 
@@ -19,7 +19,7 @@ Kernel:
 - Memory management: 
     - PMM (bitmap based) supporting multiple zones. 
     - VMM, inspired by the old SunOS design. VM ranges are managed by drivers which provide functionality specific to each region (mmio, working (anon) memory, file-backed).
-    - Kernel heap uses slabs for smaller allocations (32 - 1024 bytes), with a linked-list style allocator anything larger.
+    - Kernel heap uses slabs for smaller allocations (32 - 512 bytes), with a linked-list style allocator anything larger.
 - Logging with support for various backends: serial/debugcon and built-in terminal (requires a framebuffer).
     - The terminal is based on gterm from the Limine Bootloader (see the individual files for the license).
 - Optional UB sanitizer, helpful for detecting bugs or increasing code size!
