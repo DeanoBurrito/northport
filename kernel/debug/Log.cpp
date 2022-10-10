@@ -2,8 +2,8 @@
 #include <debug/LogBackends.h>
 #include <debug/NanoPrintf.h>
 #include <arch/Platform.h>
+#include <tasking/Clock.h>
 #include <Memory.h>
-#include <Maths.h>
 #include <Locks.h>
 
 namespace Npk::Debug
@@ -133,10 +133,11 @@ namespace Npk::Debug
         npf_vsnprintf(str, strLen, message, argsList);
         va_end(argsList);
         
-        const size_t uptime = 0; //TODO: clock
-        const size_t timestampSize = npf_snprintf(nullptr, 0, "%lu.%lu ", uptime / 1000, uptime % 1000) + 1;
+        const size_t uptime = Tasking::GetUptime();
+        const size_t coreId = CoreLocalAvailable() ? CoreLocal().id : 0;
+        const size_t timestampSize = npf_snprintf(nullptr, 0, "%lu.%03lu p%lut0 ", uptime / 1000, uptime % 1000, coreId) + 1;
         char timestampStr[timestampSize];
-        npf_snprintf(timestampStr, timestampSize, "%lu.%lu ", uptime / 1000, uptime % 1000);
+        npf_snprintf(timestampStr, timestampSize, "%lu.%03lu p%lut0 ", uptime / 1000, uptime % 1000, coreId);
 
         if (backendsAvailable > 0 && !suppressLogOutput)
         {

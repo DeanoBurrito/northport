@@ -47,6 +47,7 @@ namespace Npk
 
     bool IsBsp();
     CoreLocalInfo& CoreLocal();
+    bool CoreLocalAvailable();
 
     [[gnu::always_inline, noreturn]]
     inline void Halt()

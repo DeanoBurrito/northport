@@ -18,7 +18,7 @@ QUIET_BUILD = yes
 # ---- Compiler Options ----
 # ISA to compile for: 'x86_64' or 'riscv64'
 export CPU_ARCH = x86_64
-KERNEL_CXX_FLAGS += -fsanitize=undefined
+# KERNEL_CXX_FLAGS += -fsanitize=undefined
 KERNEL_CXX_FLAGS += -O2
 # Include a nice background for the terminal or not.
 INCLUDE_TERMINAL_BG = no

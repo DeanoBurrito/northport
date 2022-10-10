@@ -78,7 +78,6 @@ namespace Npk
     void ExitBspInit()
     {
         //TODO: reclaim bootloader memory here?
-        Log("BSP (id=%lu) has finished init.", LogLevel::Info, CoreLocal().id);
         Tasking::StartSystemClock();
         Halt();
     }
@@ -86,7 +85,6 @@ namespace Npk
     [[noreturn]]
     void ExitApInit()
     {
-        Log("AP %lu has finished init.", LogLevel::Info, CoreLocal().id);
         Halt();
     }
 }

@@ -81,6 +81,8 @@ namespace Npk::Memory
         VirtualMemoryManager(VirtualMemoryManager&&) = delete;
         VirtualMemoryManager& operator=(VirtualMemoryManager&&) = delete;
 
+        void MakeActive();
+        
         sl::Opt<VmRange> Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
         bool Free(uintptr_t base, size_t length);
 

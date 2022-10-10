@@ -225,4 +225,10 @@ namespace Npk
         asm volatile("mov %%gs:32, %0" : "=r"(value) :: "memory");
         return *reinterpret_cast<CoreLocalInfo*>(value);
     }
+
+    [[gnu::always_inline]]
+    inline bool CoreLocalAvailable()
+    {
+        return ReadMsr(MsrGsBase) != 0;
+    }
 }

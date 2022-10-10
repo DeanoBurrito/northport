@@ -4,14 +4,19 @@
 #include <arch/x86_64/Timers.h>
 #include <arch/Platform.h>
 #include <arch/Cpu.h>
+#include <arch/Smp.h>
 #include <boot/LimineTags.h>
 #include <boot/CommonInit.h>
 #include <debug/Log.h>
+#include <memory/Vmm.h>
 
 namespace Npk
 {
     void InitCore(size_t id)
     {
+        //ensure we're using the kernel's pagemap.
+        VMM::Kernel().MakeActive();
+
         BlockSumac();
         FlushGdt();
         LoadIdt();
@@ -53,6 +58,12 @@ namespace Npk
         EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }
+
+    void ApEntry(limine_smp_info* info)
+    {
+        InitCore(info->lapic_id);
+        ExitApInit();
+    }
 }
 
 extern "C"
@@ -61,14 +72,18 @@ extern "C"
     {
         using namespace Npk;
 
+        WriteMsr(MsrGsBase, 0);
         InitEarlyPlatform();
         InitMemory();
         PopulateIdt();
         InitPlatform();
 
-        InitCore(0); //BSP is always id=0 on x86_64
         IoApic::InitAll();
         InitTimers();
+        InitCore(0); //BSP is always id=0 on x86_64
+
+        InitSmp();
+        BootAllProcessors((uintptr_t)ApEntry);
 
         ExitBspInit();
     }

@@ -49,6 +49,11 @@ namespace Npk::Memory
     VMM::~VirtualMemoryManager()
     {} //TODO: VMM teardown
 
+    void VMM::MakeActive()
+    {
+        LoadTables(ptRoot);
+    }
+
     sl::Opt<VmRange> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
     {
         using namespace Virtual;

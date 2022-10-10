@@ -87,6 +87,14 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    limine_smp_request smpRequest
+    {
+        .id = LIMINE_SMP_REQUEST,
+        .revision = 0,
+        .response = nullptr,
+        .flags = 0
+    };
+
     [[gnu::used, gnu::section(".limine_reqs")]]
     void* requests[] = 
     {
@@ -102,6 +110,7 @@ namespace Npk::Boot
         &bootTimeRequest,
         &kernelAddrRequest,
         &dtbRequest,
+        &smpRequest,
         nullptr
     };
 }
