@@ -6,6 +6,7 @@ CXX_SRCS = \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/LogBackends.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp \
 	debug/Terminal.cpp \
+	devices/DeviceTree.cpp \
 	interrupts/InterruptManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/Heap.cpp memory/Slab.cpp memory/Pool.cpp \
 	memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp memory/virtual/KernelVmDriver.cpp \
