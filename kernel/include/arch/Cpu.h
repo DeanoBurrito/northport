@@ -4,6 +4,7 @@ namespace Npk
 {
     enum class CpuFeature
     {
+        VGuest,
 #ifdef __x86_64__
         NoExecute,
         Pml3Translation,
@@ -18,7 +19,6 @@ namespace Npk
         FPU,
         SSE,
         SSE2,
-        VGuest,
         AlwaysRunningApic,
         Tsc,
         TscDeadline,

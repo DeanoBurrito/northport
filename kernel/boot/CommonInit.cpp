@@ -5,6 +5,7 @@
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <debug/LogBackends.h>
+#include <devices/DeviceTree.h>
 #include <interrupts/InterruptManager.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
@@ -69,7 +70,7 @@ namespace Npk
             Log("Bootloader did not provide RSDP (or it was null).", LogLevel::Warning);
         
         if (Boot::dtbRequest.response != nullptr && Boot::dtbRequest.response->dtb_ptr != nullptr)
-            {} //TODO: DTB parser
+            Devices::DeviceTree::Global().Init((uintptr_t)Boot::dtbRequest.response->dtb_ptr);
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
     }

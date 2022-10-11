@@ -8,7 +8,7 @@
 namespace Npk
 {
 #if __x86_64__
-    enum PageFlags : uint64_t
+    enum class PageFlags : uint64_t
     {
         None = 0,
         Write = 1 << 1,
@@ -27,6 +27,25 @@ namespace Npk
     constexpr inline size_t GetPageSize(PageSizes size)
     { return 1ul << (12 + 9 * ((size_t)size - 1)); }
 #elif __riscv_xlen == 64
+    enum class PageFlags : uint64_t
+    {
+        None = 0,
+        Write = 1 << 2,
+        Execute = 1 << 3,
+        User = 1 << 4,
+        Global = 1 << 5
+    };
+
+    enum PageSizes
+    {
+        _4K = 1,
+        _2M = 2,
+        _1G = 3,
+        _512G = 4,
+    };
+
+    constexpr inline size_t GetPageSize(PageSizes size)
+    { return 1ul << (12 + 9 * ((size_t)size - 1)); }
 #endif
 
     constexpr PageFlags operator|(const PageFlags& a, const PageFlags& b)
