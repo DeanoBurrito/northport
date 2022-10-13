@@ -11,10 +11,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Check for Cached Binaries
+      id: cached-compiler-binaries
+      uses: actions/cache@v2
+      with:
+        path: |
+          gcc-x86_64-cross
+          gcc-riscv64-cross
+        key: gcc-binaries-cache-key
+
     - name: Download LLVM + Clang
+      if: steps.cached-compiler-binaries.outputs.cache-hit != 'true'
       run: sudo apt install lld llvm
 
     - name: Download GCC for x86_64
+      if: steps.cached-compiler-binaries.outputs.cache-hit != 'true'
       run: >
         mkdir toolchains;
         wget https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--stable-2022.08-1.tar.bz2 -O toolchains/gcc-x86_64;
@@ -22,6 +33,7 @@ jobs:
         tar -vxf gcc-x86_64; mv x86-64--glibc--stable-2022.08-1 gcc-x86_64-cross;
     
     - name: Download GCC for risc-v 64
+      if: steps.cached-compiler-binaries.outputs.cache-hit != 'true'
       run: >
         wget https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--glibc--stable-2022.08-1.tar.bz2 -O toolchains/gcc-riscv64;
         cd toolchains;
@@ -30,17 +42,6 @@ jobs:
     - uses: actions/checkout@v3
       with:
         path: 'repo'
-    
-    - name: fun times
-      run: >
-        echo "ls .";
-        ls;
-        echo "ls repo";
-        ls repo;
-        echo "ls toolchains";
-        ls toolchains;
-        echo "ls WORKSPACE/toolchains";
-        ls $GITHUB_WORKSPACE/toolchains
 
     - name: Compile with Clang for x86_64
       run: >
@@ -60,3 +61,15 @@ jobs:
         X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-ld
         X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-ar
     
+    - name: Compile with GCC for riscv-64
+      run: >
+        cd repo;
+        make clean;
+        make binaries 
+        CPU_ARCH=riscv64
+        TOOLCHAIN=gcc 
+        TOOLCHAIN_PREFIX=../gcc-riscv64-cross
+        X_CXX_BIN=$GITHUB_WORKSPACE/toolchains/gcc-riscv64-cross/bin/riscv64-buildroot-linux-gnu-g++
+        X_AS_BIN=$GITHUB_WORKSPACE/toolchains/gcc-riscv64-cross/bin/riscv64-buildroot-linux-gnu-as
+        X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-riscv64-cross/bin/riscv64-buildroot-linux-gnu-ld
+        X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-riscv64-cross/bin/riscv64-buildroot-linux-gnu-ar
