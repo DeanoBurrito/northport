@@ -6,7 +6,7 @@ This should cover everything needed to build, run and debug the kernel. If you e
 
 The following tools are required:
 - Core utils, your system should already have these installed: `cp`, `mv`, `rm` and `mkdir`.
-- For non riscv architectures, you'll need `xorriso` and a copy of the [limine bootloader](https://github.com/limine-bootloader/limine). See their install instructions for how getting setup with limine. This is usually just cloning the latest binary branch and running `make` to build a copy of the `limine-deploy` tool for your system.
+- For non riscv architectures, you'll need `xorriso` and a copy of the [limine bootloader](https://github.com/limine-bootloader/limine). See their install instructions for getting setup with limine. This is usually just cloning the latest binary branch and running `make` to build a copy of the `limine-deploy` tool for your system.
 - A compiler: Either a gcc cross compiler or clang is required. Building with clang for riscv is currently not supported. For gcc, your target triplet should be `x86_64-elf` or `riscv64-elf` to use the default setup, but you can override this if yours differs.
 - For testing you will need qemu, and `gdb-multiarch` is required for debugging.
 

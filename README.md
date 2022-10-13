@@ -16,6 +16,7 @@ A brief summary of the current and planned features are available below, but for
 
 ## Project Features
 Kernel:
+- Multiple ISAs supported: x86_64, riscv64.
 - Memory management: 
     - PMM (bitmap based) supporting multiple zones. 
     - VMM, inspired by the old SunOS design. VM ranges are managed by drivers which provide functionality specific to each region (mmio, working (anon) memory, file-backed).

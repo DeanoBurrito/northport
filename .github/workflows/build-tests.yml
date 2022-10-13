@@ -16,12 +16,11 @@ jobs:
       uses: actions/cache@v2
       with:
         path: |
-          gcc-x86_64-cross
-          gcc-riscv64-cross
-        key: gcc-binaries-cache-key
+          **/gcc-x86_64-cross
+          **/gcc-riscv64-cross
+        key: gcc-bins-2022-08-1_oops_i_messed_up
 
     - name: Download LLVM + Clang
-      if: steps.cached-compiler-binaries.outputs.cache-hit != 'true'
       run: sudo apt install lld llvm
 
     - name: Download GCC for x86_64

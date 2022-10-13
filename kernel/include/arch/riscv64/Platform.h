@@ -59,7 +59,7 @@ namespace Npk
     constexpr inline size_t HeapLimit = TiB / 2; //TODO: get rid of heap limit/alloc region, dynamic hhdm limit?
 
     constexpr inline size_t IntVectorAllocBase = 0x10;
-    constexpr inline size_t IntVectorAllocLimit = 0xFF;
+    constexpr inline size_t IntVectorAllocLimit = 0xFF; //we can theoritically have up to SXLEN/2 interrupts.
 
     //TODO: surely there is a nicer way than macros
     #define ReadCsr(csr) \

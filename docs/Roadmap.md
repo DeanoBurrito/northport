@@ -4,11 +4,13 @@
         - [ ] FPU, SSE, AVX.
         - [x] Timers (LAPIC, TSC, PIT, HPET).
             - [ ] Failover timer.
-    - [ ] riscv64:
-        - [ ] LBP boot shim.
-        - [ ] Core (paging, interrupts).
+    - [x] riscv64:
+        - [x] Core (paging, interrupts).
         - [ ] Timer (SBI).
         - [ ] F/D/Q and V extension support.
+    - [x] Limine protocol boot shim (for riscv):
+        - [x] Memory map, hhdm and kernel addrs.
+        - [ ] EFI entry point, ACPI tables.
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
             - [ ] Reclaim bootloader memory.
@@ -26,12 +28,14 @@
         - [ ] Heterogenous cpu support.
     - [ ] Panic.
     - [x] Logging
-        - [ ] Ns16650 serial backend (mmio + port io variants).
+        - [x] Ns16650 serial backend (mmio + port io variants).
         - [ ] PL011 serial backend.
         - [x] Terminal backend.
         - [ ] VFS file backend.
     - [ ] Central kernel config.
-    - [x] ACPI tables parser.
+    - [x] Peripheral discovery:
+        - [x] ACPI tables parser.
+        - [x] Device tree parser.
     - [ ] Driver manager.
         - [ ] Loadable drivers.
     - [ ] Device manager.

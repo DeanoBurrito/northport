@@ -4,11 +4,12 @@
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <devices/DeviceTree.h>
+#include <Memory.h>
 
+#ifdef NP_INCLUDE_LIMINE_BOOTSTRAP
 namespace Npk::Boot
 {
-#ifdef NP_INCLUDE_LIMINE_BOOTSTRAP
-    constexpr size_t LoaderDataReserveSize = 2 * PageSize;
+    constexpr size_t LoaderDataReserveSize = 4 * PageSize;
     uintptr_t loaderDataNext; //next free address
     size_t loaderDataSpace; //bytes remaining for this area
 
@@ -17,6 +18,26 @@ namespace Npk::Boot
         uintptr_t base;
         size_t length;
     };
+
+    uintptr_t DetermineHhdm()
+    {
+#if __riscv_xlen == 64
+        uint64_t satp;
+        asm volatile("csrr %0, satp" : "=r"(satp) :: "memory");
+        satp = (satp >> 60) - 5; //satp now contains the number of page levels
+        satp = 1ul << (9 * satp + 11);
+        return ~(--satp);
+#endif
+    }
+
+    void* BootstrapAlloc(size_t t)
+    {
+        t = sl::AlignUp(t, 16);
+        void* ptr = reinterpret_cast<void*>(loaderDataNext);
+        loaderDataNext += t;
+        loaderDataSpace -= t;
+        return ptr;
+    }
 
     limine_memmap_entry* BuildMemoryMap(MemBlock* freeBlocks, MemBlock* reservedBlocks, size_t freeCount, size_t reservedCount, size_t& mmapCount)
     {
@@ -86,13 +107,11 @@ namespace Npk::Boot
             const size_t claimedBytes = LoaderDataReserveSize + sl::AlignUp(entryCount * sizeof(limine_memmap_entry), PageSize);
             ASSERT(largestLength > claimedBytes, "Not enough space for boot shim memory.");
 
-            loaderDataNext = largestBase;
+            loaderDataNext = largestBase + DetermineHhdm();
             loaderDataSpace = claimedBytes;
             reservedBlocks[reservedCount].base = loaderDataNext;
             reservedBlocks[reservedCount++].length = loaderDataSpace;
-            entries = reinterpret_cast<limine_memmap_entry*>(loaderDataNext);
-            loaderDataSpace -= sizeof(limine_memmap_entry) * entryCount;
-            loaderDataNext += sizeof(limine_memmap_entry) * entryCount;
+            entries = static_cast<limine_memmap_entry*>(BootstrapAlloc(sizeof(limine_memmap_entry) * entryCount));
 
             entryCount = 0;
             testOnly = false;
@@ -196,21 +215,40 @@ namespace Npk::Boot
         }
 
         //populate the memory map request
-        limine_memmap_response* mmapResponse = reinterpret_cast<limine_memmap_response*>(loaderDataNext);
-        loaderDataNext += sizeof(limine_memmap_response);
-        limine_memmap_entry** entryPtrs = reinterpret_cast<limine_memmap_entry**>(loaderDataNext);
-        loaderDataNext += sizeof(void*) * mmapCount;
+        auto* mmapResponse = new(BootstrapAlloc(sizeof(limine_memmap_response))) limine_memmap_response{};
+        limine_memmap_entry** entryPtrs = static_cast<limine_memmap_entry**>(BootstrapAlloc(sizeof(void*) * mmapCount));
 
         mmapResponse->entry_count = mmapCount;
         mmapResponse->entries = entryPtrs;
         for (size_t i = 0; i < mmapCount; i++)
             entryPtrs[i] = &mmapEntries[i];
+        memmapRequest.response = mmapResponse;
     }
     
     void PerformLimineBootstrap(uintptr_t physLoadBase, uintptr_t virtLoadBase, size_t bspId, uintptr_t dtb)
     {
-    Devices::DeviceTree::Global().Init(dtb);
+        Devices::DeviceTree::Global().Init(dtb);
         MemoryMapFromDtb(physLoadBase);
+
+        auto* infoResponse = new(BootstrapAlloc(sizeof(limine_bootloader_info_response))) limine_bootloader_info_response{};
+        infoResponse->version = (char*)"Northport Boot Shim";
+        infoResponse->name = (char*)"1.0.0";
+        bootloaderInfoRequest.response = infoResponse;
+
+        auto* hhdmResponse = new(BootstrapAlloc(sizeof(limine_hhdm_response))) limine_hhdm_response{};
+        hhdmResponse->offset = DetermineHhdm();
+        hhdmRequest.response = hhdmResponse;
+
+        auto* kernelAddrResponse = new(BootstrapAlloc(sizeof(limine_kernel_address_response))) limine_kernel_address_response{};
+        kernelAddrResponse->physical_base = physLoadBase;
+        kernelAddrResponse->virtual_base = virtLoadBase;
+        kernelAddrRequest.response = kernelAddrResponse;
+
+        auto* dtbResponse = new(BootstrapAlloc(sizeof(limine_dtb_response))) limine_dtb_response{};
+        dtbResponse->dtb_ptr = (void*)(dtb + DetermineHhdm());
+        dtbRequest.response = dtbResponse;
+
+        Log("Boot shim finished, reclaim wastage: 0x%lx bytes.", LogLevel::Info, loaderDataSpace);
     }
-#endif
 }
+#endif

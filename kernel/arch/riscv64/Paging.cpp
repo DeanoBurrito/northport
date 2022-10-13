@@ -32,6 +32,10 @@ namespace Npk
         physAddrMask--;
         physAddrMask &= ~0x3FFul;
 
+        kernelMasterTables = (void*)PMM::Global().Alloc();
+        sl::memset(AddHhdm(kernelMasterTables), 0, PageSize);
+        kernelTablesGen = 0;
+
         Log("Paging constraints: levels=%lu, maxTranslationLevel=%lu.", LogLevel::Info,
             pagingLevels, maxTranslationLevel);
     }
