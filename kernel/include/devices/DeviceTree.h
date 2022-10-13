@@ -14,7 +14,7 @@ namespace Npk::Devices
         DtbPtr ptr;
         const char* name;
 
-        const char* ReadStr(size_t index) const;
+        const char* ReadStr(size_t index = 0) const;
         uint32_t ReadNumber() const;
         size_t ReadRegs(const DtNode& parent, uintptr_t* bases, size_t* lengths) const;
         size_t ReadPairs(size_t aCells, size_t bCells, size_t* aStore, size_t* bStore) const;
@@ -38,7 +38,7 @@ namespace Npk::Devices
         sl::Opt<const DtProperty> GetProp(const char* name) const;
     };
 
-    class DeviceTree
+    class DeviceTree //TODO: move this to another namespace, it doesn't really belong in 'devices'
     {
     private:
         const uint32_t* cells;
@@ -63,7 +63,7 @@ namespace Npk::Devices
         sl::Opt<const DtProperty> GetProp(const DtNode& node, const char*) const;
         sl::Opt<const DtProperty> GetProp(const DtNode& node, size_t index) const;
 
-        const char* ReadStr(const DtProperty& prop, size_t index) const;
+        const char* ReadStr(const DtProperty& prop, size_t index = 0) const;
         uint32_t ReadNumber(const DtProperty& prop) const;
         size_t ReadRegs(const DtNode& node, const DtProperty& prop, uintptr_t* bases, size_t* lengths) const;
         size_t ReadPairs(const DtProperty& prop, size_t aCells, size_t bCells, size_t* aStore, size_t* bStore) const;

@@ -33,12 +33,13 @@ namespace Npk
         Log("Hhdm: base=0x%lx, length=0x%lx", LogLevel::Info, hhdmBase, hhdmLength);
 
 #ifdef NP_X86_64_E9_ALLOWED
-        const bool builtInSerial = true;
-#else
-        const bool builtInSerial = false;
+        Debug::EnableLogBackend(Debug::LogBackend::Debugcon, true);
+#elif defined(__x86_64__)
+        Debug::EnableLogBackend(Debug::LogBackend::SerialNs16550, true);
 #endif
-        if (builtInSerial)
-            Debug::EnableLogBackend(Debug::LogBackend::Serial, true);
+        if (Devices::DeviceTree::Global().GetCompatibleNode("ns16550a") 
+            || Devices::DeviceTree::Global().GetCompatibleNode("ns16550"))
+            Debug::EnableLogBackend(Debug::LogBackend::SerialNs16550, true);
         
         ScanCpuFeatures();
         LogCpuFeatures();
@@ -73,6 +74,10 @@ namespace Npk
             Devices::DeviceTree::Global().Init((uintptr_t)Boot::dtbRequest.response->dtb_ptr);
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
+        
+        if (Devices::DeviceTree::Global().GetCompatibleNode("ns16550a")
+            || Devices::DeviceTree::Global().GetCompatibleNode("ns16550"))
+            Debug::EnableLogBackend(Debug::LogBackend::SerialNs16550, true);
     }
 
     [[noreturn]]

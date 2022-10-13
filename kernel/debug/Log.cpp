@@ -26,7 +26,7 @@ namespace Npk::Debug
 
     constexpr inline const char* BackendStrings[] = 
     {
-        "Terminal", "Serial"
+        "Terminal", "Debugcon", "NS16550"
     };
 
     constexpr size_t LogBalloonSize = 0x8000;
@@ -37,10 +37,18 @@ namespace Npk::Debug
     sl::SpinLock balloonLock;
     bool suppressLogOutput asm("suppressLogOutput") = false;
 
-    bool backends[] = 
+    struct LogBackendStatus
     {
-        false,
-        false
+        bool enabled;
+        bool (*Init)();
+        void (*Write)(const char*, size_t);
+    };
+
+    LogBackendStatus backends[] = 
+    {
+        { false, InitTerminal, WriteTerminal },
+        { false, nullptr, WriteDebugcon },
+        { false, InitNs16550, WriteNs16550 },
     };
     size_t backendsAvailable = 0;
 
@@ -48,30 +56,22 @@ namespace Npk::Debug
     {
         for (size_t i = 0; i < (size_t)LogBackend::EnumCount; i++)
         {
-            if (!backends[i])
+            if (!backends[i].enabled)
                 continue;
-            
-            void (*Write)(const char*, size_t);
-            switch ((LogBackend)i)
-            {
-            case LogBackend::Serial: Write = WriteSerial; break;
-            case LogBackend::Terminal: Write = WriteTerminal; break;
-            default: continue;
-            }
 
-            Write(timestamp, timestampLen);
+            backends[i].Write(timestamp, timestampLen);
 
             if ((size_t)level == -1ul)
             {
-                Write(str, strLen);
+                backends[i].Write(str, strLen);
                 continue;
             }
 
-            Write(LogLevelAnsiStrs[(size_t)level], LogLevelAnsiLength);
-            Write(LogLevelStrs[(size_t)level], LogLevelStrLength);
-            Write(LogLevelAnsiReset, LogLevelAnsiLength);
-            Write(str, strLen);
-            Write("\r\n", 2);
+            backends[i].Write(LogLevelAnsiStrs[(size_t)level], LogLevelAnsiLength);
+            backends[i].Write(LogLevelStrs[(size_t)level], LogLevelStrLength);
+            backends[i].Write(LogLevelAnsiReset, LogLevelAnsiLength);
+            backends[i].Write(str, strLen);
+            backends[i].Write("\r\n", 2);
         }
     }
 
@@ -103,20 +103,19 @@ namespace Npk::Debug
     {
         if (backend == LogBackend::EnumCount)
             return;
-        if (backends[(size_t)backend] == enabled)
+        if (backends[(size_t)backend].enabled == enabled)
             return;
 
-        if (enabled)
+        if (enabled && backends[(size_t)backend].Init != nullptr)
         {
-            switch (backend)
+            if (!backends[(size_t)backend].Init())
             {
-            case LogBackend::Terminal: InitTerminal(); break;
-            case LogBackend::Serial: InitSerial(); break;
-            default: break;
+                Log("Failed to init log backend: %s", LogLevel::Error, BackendStrings[(size_t)backend]);
+                return;
             }
         }
 
-        backends[(size_t)backend] = enabled;
+        backends[(size_t)backend].enabled = enabled;
         backendsAvailable = enabled ? backendsAvailable + 1 : backendsAvailable - 1;
         Log("%s log backend: %s.", LogLevel::Info, enabled ? "Enabled" : "Disabled", BackendStrings[(size_t)backend]);
     }
