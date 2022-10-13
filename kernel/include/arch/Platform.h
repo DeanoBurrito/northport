@@ -27,12 +27,20 @@ namespace Npk
     extern uintptr_t hhdmLength;
 
     template<typename T>
-    constexpr T AddHhdm(T value)
+    inline T AddHhdm(T value)
     { return reinterpret_cast<T>((uintptr_t)value + hhdmBase); }
 
+    template<>
+    inline uintptr_t AddHhdm(uintptr_t value)
+    { return value + hhdmBase; }
+
     template<typename T>
-    constexpr T SubHhdm(T value)
+    inline T SubHhdm(T value)
     { return reinterpret_cast<T>((uintptr_t)value - hhdmBase); }
+
+    template<>
+    inline uintptr_t SubHhdm(uintptr_t value)
+    { return value - hhdmBase; }
 
     struct TrapFrame;
 

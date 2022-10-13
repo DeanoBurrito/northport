@@ -1,5 +1,5 @@
 #include <devices/DeviceTree.h>
-#include <boot/Limine.h>
+#include <boot/LimineExtensions.h>
 #include <debug/Log.h>
 #include <Memory.h>
 #include <Maths.h>
@@ -187,9 +187,6 @@ namespace Npk::Devices
 
     void DeviceTree::Init(uintptr_t dtbAddr)
     {
-        if (cellsCount > 0)
-            return;
-        
         const FdtHeader* header = reinterpret_cast<FdtHeader*>(dtbAddr);
         ASSERT(BS(header->magic) == FdtMagic, "DTB header mismatch.");
 
@@ -210,6 +207,9 @@ namespace Npk::Devices
 
     sl::Opt<const DtNode> DeviceTree::GetNode(const char* path) const
     {
+        if (cellsCount == 0)
+            return {};
+
         const size_t pathLen = sl::memfirst(path, 0, 0);
         if (pathLen == 0)
             return {};
@@ -269,6 +269,9 @@ namespace Npk::Devices
 
     sl::Opt<const DtNode> DeviceTree::GetCompatibleNode(const char* compatStr) const
     {
+        if (cellsCount == 0)
+            return {};
+
         const size_t compatStrLen = sl::memfirst(compatStr, 0, 0);
         sl::Opt<const DtNode> node {};
 
@@ -277,7 +280,7 @@ namespace Npk::Devices
 
     sl::Opt<const DtNode> DeviceTree::GetChild(const DtNode& parent, const char* name) const
     {
-        if (parent.childPtr == 0)
+        if (cellsCount == 0 || parent.childPtr == 0)
             return {};
 
         const size_t nameLen = sl::memfirst(name, 0, 0);
@@ -303,7 +306,7 @@ namespace Npk::Devices
     
     sl::Opt<const DtNode> DeviceTree::GetChild(const DtNode& parent, size_t index) const
     {
-        if (parent.childCount <= index || parent.childPtr == 0)
+        if (cellsCount == 0 || parent.childCount <= index || parent.childPtr == 0)
             return {};
 
         ASSERT(BS(cells[parent.ptr]) == FdtBeginNode, "Invalid DtNode pointer")
@@ -343,7 +346,7 @@ namespace Npk::Devices
 
     sl::Opt<const DtProperty> DeviceTree::GetProp(const DtNode& node, const char* name) const
     {
-        if (node.propPtr == 0)
+        if (cellsCount == 0 || node.propPtr == 0)
             return {};
         
         const size_t nameLen = sl::memfirst(name, 0, 0);
@@ -369,7 +372,7 @@ namespace Npk::Devices
 
     sl::Opt<const DtProperty> DeviceTree::GetProp(const DtNode& node, size_t index) const
     {
-        if (node.propCount <= index || node.propPtr == 0)
+        if (cellsCount == 0 || node.propCount <= index || node.propPtr == 0)
             return {};
 
         ASSERT(BS(cells[node.ptr]) == FdtBeginNode, "Invalid DtNode pointer.");
@@ -394,6 +397,9 @@ namespace Npk::Devices
 
     const char* DeviceTree::ReadStr(const DtProperty& prop, size_t index) const
     { 
+        if (cellsCount == 0)
+            return {};
+        
         ASSERT(BS(cells[prop.ptr]) == FdtProp, "Invalid DtProperty pointer.");
         const FdtProperty* property = reinterpret_cast<const FdtProperty*>(cells + prop.ptr + 1);
         const uint8_t* charCells = reinterpret_cast<const uint8_t*>(cells);
@@ -416,6 +422,9 @@ namespace Npk::Devices
 
     uint32_t DeviceTree::ReadNumber(const DtProperty& prop) const
     { 
+        if (cellsCount == 0)
+            return {};
+        
         ASSERT(BS(cells[prop.ptr]) == FdtProp, "Invalid DtProperty pointer.");
         
         return BS(*(cells + prop.ptr + 3));
@@ -423,11 +432,17 @@ namespace Npk::Devices
 
     size_t DeviceTree::ReadRegs(const DtNode& node, const DtProperty& prop, uintptr_t* bases, size_t* lengths) const
     { 
+        if (cellsCount == 0)
+            return {};
+        
         return ReadPairs(prop, node.addrCells, node.sizeCells, bases, lengths);
     }
 
     size_t DeviceTree::ReadPairs(const DtProperty& prop, size_t aCells, size_t bCells, size_t* aStore, size_t* bStore) const
     {
+        if (cellsCount == 0)
+            return {};
+        
         ASSERT(BS(cells[prop.ptr]) == FdtProp, "Invalid DtProperty pointer.");
         
         auto Extract = [&](size_t where, size_t cellCount)

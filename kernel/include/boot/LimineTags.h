@@ -1,6 +1,6 @@
 #pragma once
 
-#include <boot/Limine.h>
+#include <boot/LimineExtensions.h>
 
 namespace Npk::Boot
 {

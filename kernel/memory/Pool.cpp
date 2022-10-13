@@ -114,6 +114,8 @@ namespace Npk::Memory
         sl::ScopedLock scopeLock(listLock);
         head = tail = nullptr;
         minAllocSize = minAllocBytes;
+
+        Log("Kpool initialized: minSize=0x%lx", LogLevel::Verbose, minAllocSize);
     }
 
     void* PoolAlloc::Alloc(size_t bytes)

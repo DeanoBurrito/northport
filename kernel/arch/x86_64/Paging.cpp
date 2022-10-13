@@ -76,7 +76,7 @@ namespace Npk
             {
                 const uintptr_t addr = PMM::Global().Alloc();
                 *entry = physAddrMask & addr;
-                *entry |= PresentFlag | PageFlags::Write;
+                *entry |= PresentFlag | (uintptr_t)PageFlags::Write;
                 sl::memset((void*)AddHhdm(addr), 0, PageSize);
             }
 
@@ -90,7 +90,7 @@ namespace Npk
 
         //execute is backwards on x86:
         //if we dont specify the execute flag, set nx
-        if (nxSupported && ((flags >> 63) & 1) == 0)
+        if (nxSupported && (((uintptr_t)flags >> 63) & 1) == 0)
             actualFlags |= 1ul << 63;
         
         *entry = actualFlags | (phys & physAddrMask);

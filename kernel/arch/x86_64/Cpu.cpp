@@ -180,7 +180,8 @@ namespace Npk
             return "tscd";
         case CpuFeature::InvariantTsc:
             return "itsc";
+        default:
+            return "";
         }
-        return "";
     }
 }
