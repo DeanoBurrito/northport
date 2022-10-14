@@ -4,7 +4,6 @@
 #include <arch/x86_64/Timers.h>
 #include <arch/Platform.h>
 #include <arch/Cpu.h>
-#include <arch/Smp.h>
 #include <boot/LimineTags.h>
 #include <boot/CommonInit.h>
 #include <debug/Log.h>
@@ -92,8 +91,18 @@ extern "C"
         InitTimers();
         InitCore(0); //BSP is always id=0 on x86_64
 
-        InitSmp();
-        BootAllProcessors((uintptr_t)ApEntry);
+        if (Boot::smpRequest.response != nullptr)
+        {
+            for (size_t i = 0; i < Boot::smpRequest.response->cpu_count; i++)
+            {
+                limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
+                if (procInfo->lapic_id == Boot::smpRequest.response.bsp_lapic_id)
+                    continue;
+                
+                procInfo->goto_address = ApEntry;
+                Log("Sending bring-up request to core %u.", LogLevel::Verbose, procInfo->lapic_id);
+            }
+        }
 
         ExitBspInit();
     }
