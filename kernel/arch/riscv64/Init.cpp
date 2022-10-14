@@ -22,7 +22,10 @@ namespace Npk
 
     void ApEntry(limine_smp_info* info)
     {
-        // InitCore(info->hart_id);
+        Log("Core %lu online!", LogLevel::Debug, info->hart_id);
+        Halt();
+
+        InitCore(info->hart_id);
         ExitApInit();
     }
 }
@@ -49,6 +52,19 @@ extern "C"
         InitEarlyPlatform();
         InitMemory();
         InitPlatform();
+
+        if (Boot::smpRequest.response != nullptr)
+        {
+            for (size_t i = 0; i < Boot::smpRequest.response->cpu_count; i++)
+            {
+                limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
+                if (procInfo->hart_id == Boot::smpRequest.response->bsp_hart_id)
+                    continue;
+                
+                procInfo->goto_address = ApEntry;
+                Log("Sending bring-up request to core %lu.", LogLevel::Verbose, procInfo->hart_id);
+            }
+        }
 
         Halt();
     }

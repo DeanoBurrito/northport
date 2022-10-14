@@ -6,31 +6,38 @@
 #include <devices/DeviceTree.h>
 #include <Memory.h>
 
+#if __riscv_xlen == 64
+    #include <arch/riscv64/Sbi.h>
+
+    extern char SmpEntry[] asm("SmpEntry");
+#endif
+
 #ifdef NP_INCLUDE_LIMINE_BOOTSTRAP
 namespace Npk::Boot
 {
     constexpr size_t LoaderDataReserveSize = 4 * PageSize;
     uintptr_t loaderDataNext; //next free address
     size_t loaderDataSpace; //bytes remaining for this area
+    size_t memmapResponseCapacity;
 
     struct MemBlock
     {
         uintptr_t base;
         size_t length;
+        size_t type;
     };
 
     uintptr_t DetermineHhdm()
     {
 #if __riscv_xlen == 64
-        uint64_t satp;
-        asm volatile("csrr %0, satp" : "=r"(satp) :: "memory");
+        uint64_t satp = ReadCsr("satp");
         satp = (satp >> 60) - 5; //satp now contains the number of page levels
         satp = 1ul << (9 * satp + 11);
         return ~(--satp);
 #endif
     }
 
-    void* BootstrapAlloc(size_t t)
+    void* BootAlloc(size_t t)
     {
         t = sl::AlignUp(t, 16);
         void* ptr = reinterpret_cast<void*>(loaderDataNext);
@@ -39,13 +46,45 @@ namespace Npk::Boot
         return ptr;
     }
 
+    void* BootAllocPages(size_t count)
+    {
+        for (size_t i = 0; i < memmapRequest.response->entry_count; i++)
+        {
+            auto* entry = memmapRequest.response->entries[i];
+            if (entry->type != LIMINE_MEMMAP_USABLE)
+                continue;
+            if (entry->length < count * PageSize)
+                continue;
+            
+            const uintptr_t addr = entry->base;
+            entry->base += count * PageSize;
+            entry->length -= count * PageSize;
+
+            if (i > 0 && memmapRequest.response->entries[i - 1]->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
+            {
+                auto* prevEntry = memmapRequest.response->entries[i - 1];
+                prevEntry->length += count * PageSize;
+            }
+            else
+            {
+                limine_memmap_entry* newEntry = new(BootAlloc(sizeof(limine_memmap_entry))) limine_memmap_entry{};
+                newEntry->base = addr;
+                newEntry->length = count * PageSize;
+                newEntry->type = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE;
+                //TODO: insert into memmap entries are current pos (use capacity then resort).
+            }
+            return reinterpret_cast<void*>(addr + DetermineHhdm());
+        }
+        ASSERT_UNREACHABLE();
+    }
+
     limine_memmap_entry* BuildMemoryMap(MemBlock* freeBlocks, MemBlock* reservedBlocks, size_t freeCount, size_t reservedCount, size_t& mmapCount)
     {
         uintptr_t largestBase = 0;
         size_t largestLength = 0;
         size_t entryCount = 0;
         limine_memmap_entry* entries = nullptr;
-        bool testOnly = true;
+        bool dryRun = true;
 
     do_build_map:
         for (size_t i = 0; i < freeCount; i++)
@@ -61,7 +100,7 @@ namespace Npk::Boot
                 
                 if (resBlock.base - base > 0)
                 {
-                    if (!testOnly)
+                    if (!dryRun)
                         new (&entries[entryCount++]) limine_memmap_entry{ base, resBlock.base - base, LIMINE_MEMMAP_USABLE };
                     else
                     {
@@ -74,8 +113,8 @@ namespace Npk::Boot
                     }
                 }
 
-                if (!testOnly)
-                    new (&entries[entryCount++]) limine_memmap_entry{ resBlock.base, resBlock.length, LIMINE_MEMMAP_RESERVED };
+                if (!dryRun)
+                    new (&entries[entryCount++]) limine_memmap_entry{ resBlock.base, resBlock.length, resBlock.type };
                 else
                     entryCount++;
                 base = resBlock.base + resBlock.length;
@@ -84,7 +123,7 @@ namespace Npk::Boot
             const MemBlock& freeBlock = freeBlocks[i];
             if (base < freeBlock.base + freeBlock.length)
             {
-                if (!testOnly)
+                if (!dryRun)
                     new (&entries[entryCount++]) limine_memmap_entry{ base, freeBlock.base + freeBlock.length - base, LIMINE_MEMMAP_USABLE };
                 else
                 {
@@ -98,23 +137,21 @@ namespace Npk::Boot
             }
         }
 
-        if (testOnly)
+        if (dryRun)
         {
-            //we're going to insert an extra reserved entry, which may result in a max of 2 more entries.
-            entryCount += 2;
+            entryCount += 2; //we add one final region below, this can add at max 2 more regions.
+            ASSERT(largestLength > LoaderDataReserveSize, "Not enough space for boot shim memory.");
 
-            //we reserve space for the memory, as well as some extra space for other tags
-            const size_t claimedBytes = LoaderDataReserveSize + sl::AlignUp(entryCount * sizeof(limine_memmap_entry), PageSize);
-            ASSERT(largestLength > claimedBytes, "Not enough space for boot shim memory.");
-
-            loaderDataNext = largestBase + DetermineHhdm();
-            loaderDataSpace = claimedBytes;
+            loaderDataNext = largestBase;
+            loaderDataSpace = LoaderDataReserveSize;
             reservedBlocks[reservedCount].base = loaderDataNext;
-            reservedBlocks[reservedCount++].length = loaderDataSpace;
-            entries = static_cast<limine_memmap_entry*>(BootstrapAlloc(sizeof(limine_memmap_entry) * entryCount));
+            reservedBlocks[reservedCount].length = loaderDataSpace;
+            reservedBlocks[reservedCount++].type = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE;
+            loaderDataNext += DetermineHhdm();
+            entries = static_cast<limine_memmap_entry*>(BootAlloc(sizeof(limine_memmap_entry) * entryCount));
 
             entryCount = 0;
-            testOnly = false;
+            dryRun = false;
             goto do_build_map;
         }
 
@@ -134,12 +171,12 @@ namespace Npk::Boot
 
         reservedBlocks[0].base = 0; //reserve null page
         reservedBlocks[0].length = PageSize;
+        reservedBlocks[0].type = LIMINE_MEMMAP_RESERVED;
 
-        //pprotect the physical memory where the kernel is loaded. Technically
-        //this should be marked as kernel, not reserved, as this breaks spec.
-        //However, we are fine until mint sees this.
-        reservedBlocks[1].base = physBase;
-        reservedBlocks[1].length = (size_t)KERNEL_BLOB_SIZE;
+        //protect the physical memory where the kernel was loaded
+        reservedBlocks[1].base = sl::AlignDown(physBase, PageSize);
+        reservedBlocks[1].length = sl::AlignUp((size_t)KERNEL_BLOB_SIZE, PageSize);
+        reservedBlocks[1].type = LIMINE_MEMMAP_KERNEL_AND_MODULES;
 
         //find all free physical memory
         {
@@ -154,7 +191,7 @@ namespace Npk::Boot
             memoryRegs->ReadRegs(*memoryNode, addrs, lengths);
 
             for (size_t i = 0; i < regsCount; i++)
-                new (&freeBlocks[freeCount++]) MemBlock{ addrs[i], lengths[i] };
+                new (&freeBlocks[freeCount++]) MemBlock{ addrs[i], lengths[i], LIMINE_MEMMAP_USABLE };
         }
 
         //find any reserved regions
@@ -175,7 +212,7 @@ namespace Npk::Boot
                 regsProp->ReadRegs(child, addrs, lengths);
 
                 for (size_t i = 0; i < regsCount; i++)
-                    new (&reservedBlocks[reservedCount++]) MemBlock{ addrs[i], lengths[i] };
+                    new (&reservedBlocks[reservedCount++]) MemBlock{ addrs[i], lengths[i], LIMINE_MEMMAP_RESERVED };
             }
         }
 
@@ -214,9 +251,12 @@ namespace Npk::Boot
             entry.length = sl::AlignDown(top - entry.base, 0x1000);
         }
 
+        //gives us room for future expansion later on
+        memmapResponseCapacity = mmapCount * 2;
+
         //populate the memory map request
-        auto* mmapResponse = new(BootstrapAlloc(sizeof(limine_memmap_response))) limine_memmap_response{};
-        limine_memmap_entry** entryPtrs = static_cast<limine_memmap_entry**>(BootstrapAlloc(sizeof(void*) * mmapCount));
+        auto* mmapResponse = new(BootAlloc(sizeof(limine_memmap_response))) limine_memmap_response{};
+        limine_memmap_entry** entryPtrs = static_cast<limine_memmap_entry**>(BootAlloc(sizeof(void*) * memmapResponseCapacity));
 
         mmapResponse->entry_count = mmapCount;
         mmapResponse->entries = entryPtrs;
@@ -224,29 +264,101 @@ namespace Npk::Boot
             entryPtrs[i] = &mmapEntries[i];
         memmapRequest.response = mmapResponse;
     }
+
+    struct SmpConfig
+    {
+        uintptr_t stack;
+        uintptr_t ptRoot;
+        void* smpInfoStruct;
+    };
+
+    void PopulateSmpResponse(size_t bspId, uintptr_t virtOffset)
+    {
+        using namespace Devices;
+        auto cpusNode = DeviceTree::Global().GetNode("/cpus");
+        if (!cpusNode)
+            return;
+
+        auto* smpResponse = new(BootAlloc(sizeof(limine_smp_response))) limine_smp_response{};
+        smpResponse->bsp_hart_id = bspId;
+        bool dryRun = true;
+
+    do_cpu_search:
+        size_t cpuCount = 0;
+        for (size_t i = 0; i < cpusNode->childCount; i++)
+        {
+            auto child = *DeviceTree::Global().GetChild(*cpusNode, i);
+            auto compatProp = child.GetProp("compatible");
+            if (!compatProp)
+                continue;
+            const char* compatStr = compatProp->ReadStr();
+            const size_t compatStrLen = sl::memfirst(compatStr, 0, 6);
+            if (compatStrLen != 5 || sl::memcmp("riscv", compatStr, compatStrLen) != 0)
+                continue;
+            
+            if (dryRun)
+            {
+                cpuCount++;
+                continue;
+            }
+
+            limine_smp_info* cpu = new(BootAlloc(sizeof(limine_smp_info))) limine_smp_info{};
+            smpResponse->cpus[cpuCount++] = cpu;
+            cpu->goto_address = 0;
+            cpu->extra_argument = 0;
+            cpu->plic_context = 0; //TODO: determine plic context id
+            cpu->reserved = 0;
+
+            auto regProp = child.GetProp("reg");
+            ASSERT(regProp, "/cpus/cpuX has no reg property.")
+            cpu->hart_id = regProp->ReadNumber();
+
+#if __riscv_xlen == 64
+            SmpConfig* config = new(BootAlloc(sizeof(SmpConfig))) SmpConfig{};
+            config->smpInfoStruct = cpu;
+            config->ptRoot = ReadCsr("satp");
+            config->stack = (uintptr_t)BootAllocPages(2) + 2 * PageSize;
+
+            SbiStartHart(cpu->hart_id, (uintptr_t)SmpEntry - virtOffset, (uintptr_t)config - DetermineHhdm());
+#endif
+        }
+
+        if (!dryRun)
+        {
+            smpRequest.response = smpResponse;
+            return;
+        }
+        
+        smpResponse->cpu_count = cpuCount;
+        smpResponse->cpus = static_cast<limine_smp_info**>(BootAlloc(sizeof(void*) * cpuCount));
+        dryRun = false;
+        goto do_cpu_search;
+    }
     
     void PerformLimineBootstrap(uintptr_t physLoadBase, uintptr_t virtLoadBase, size_t bspId, uintptr_t dtb)
     {
         Devices::DeviceTree::Global().Init(dtb);
         MemoryMapFromDtb(physLoadBase);
 
-        auto* infoResponse = new(BootstrapAlloc(sizeof(limine_bootloader_info_response))) limine_bootloader_info_response{};
+        auto* infoResponse = new(BootAlloc(sizeof(limine_bootloader_info_response))) limine_bootloader_info_response{};
         infoResponse->version = (char*)"Northport Boot Shim";
         infoResponse->name = (char*)"1.0.0";
         bootloaderInfoRequest.response = infoResponse;
 
-        auto* hhdmResponse = new(BootstrapAlloc(sizeof(limine_hhdm_response))) limine_hhdm_response{};
+        auto* hhdmResponse = new(BootAlloc(sizeof(limine_hhdm_response))) limine_hhdm_response{};
         hhdmResponse->offset = DetermineHhdm();
         hhdmRequest.response = hhdmResponse;
 
-        auto* kernelAddrResponse = new(BootstrapAlloc(sizeof(limine_kernel_address_response))) limine_kernel_address_response{};
+        auto* kernelAddrResponse = new(BootAlloc(sizeof(limine_kernel_address_response))) limine_kernel_address_response{};
         kernelAddrResponse->physical_base = physLoadBase;
         kernelAddrResponse->virtual_base = virtLoadBase;
         kernelAddrRequest.response = kernelAddrResponse;
 
-        auto* dtbResponse = new(BootstrapAlloc(sizeof(limine_dtb_response))) limine_dtb_response{};
+        auto* dtbResponse = new(BootAlloc(sizeof(limine_dtb_response))) limine_dtb_response{};
         dtbResponse->dtb_ptr = (void*)(dtb + DetermineHhdm());
         dtbRequest.response = dtbResponse;
+
+        PopulateSmpResponse(bspId, virtLoadBase - physLoadBase);
 
         Log("Boot shim finished, reclaim wastage: 0x%lx bytes.", LogLevel::Info, loaderDataSpace);
     }

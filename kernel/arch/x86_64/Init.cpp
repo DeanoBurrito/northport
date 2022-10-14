@@ -96,7 +96,7 @@ extern "C"
             for (size_t i = 0; i < Boot::smpRequest.response->cpu_count; i++)
             {
                 limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
-                if (procInfo->lapic_id == Boot::smpRequest.response.bsp_lapic_id)
+                if (procInfo->lapic_id == Boot::smpRequest.response->bsp_lapic_id)
                     continue;
                 
                 procInfo->goto_address = ApEntry;

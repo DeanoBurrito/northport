@@ -9,7 +9,8 @@
         - [ ] Timer (SBI).
         - [ ] F/D/Q and V extension support.
     - [x] Limine protocol boot shim (for riscv):
-        - [x] Memory map, hhdm and kernel addrs.
+        - [x] Memory map, hhdm and kernel address.
+        - [x] SMP feature.
         - [ ] EFI entry point, ACPI tables.
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
