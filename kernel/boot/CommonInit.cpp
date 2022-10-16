@@ -1,11 +1,11 @@
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
-#include <acpi/Tables.h>
 #include <arch/Cpu.h>
 #include <arch/Platform.h>
+#include <config/DeviceTree.h>
+#include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <debug/LogBackends.h>
-#include <devices/DeviceTree.h>
 #include <interrupts/InterruptManager.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
@@ -37,8 +37,8 @@ namespace Npk
 #elif defined(__x86_64__)
         Debug::EnableLogBackend(Debug::LogBackend::SerialNs16550, true);
 #endif
-        if (Devices::DeviceTree::Global().GetCompatibleNode("ns16550a") 
-            || Devices::DeviceTree::Global().GetCompatibleNode("ns16550"))
+        if (Config::DeviceTree::Global().GetCompatibleNode("ns16550a") 
+            || Config::DeviceTree::Global().GetCompatibleNode("ns16550"))
             Debug::EnableLogBackend(Debug::LogBackend::SerialNs16550, true);
         
         ScanCpuFeatures();
@@ -66,17 +66,17 @@ namespace Npk
             Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
         
         if (Boot::rsdpRequest.response != nullptr && Boot::rsdpRequest.response != nullptr)
-            Acpi::SetRsdp(Boot::rsdpRequest.response->address);
+            Config::SetRsdp(Boot::rsdpRequest.response->address);
         else
             Log("Bootloader did not provide RSDP (or it was null).", LogLevel::Warning);
         
         if (Boot::dtbRequest.response != nullptr && Boot::dtbRequest.response->dtb_ptr != nullptr)
-            Devices::DeviceTree::Global().Init((uintptr_t)Boot::dtbRequest.response->dtb_ptr);
+            Config::DeviceTree::Global().Init((uintptr_t)Boot::dtbRequest.response->dtb_ptr);
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
         
-        if (Devices::DeviceTree::Global().GetCompatibleNode("ns16550a")
-            || Devices::DeviceTree::Global().GetCompatibleNode("ns16550"))
+        if (Config::DeviceTree::Global().GetCompatibleNode("ns16550a")
+            || Config::DeviceTree::Global().GetCompatibleNode("ns16550"))
             Debug::EnableLogBackend(Debug::LogBackend::SerialNs16550, true);
     }
 

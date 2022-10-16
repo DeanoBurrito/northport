@@ -1,7 +1,7 @@
 #include <arch/x86_64/Apic.h>
 #include <arch/x86_64/Timers.h>
 #include <arch/Cpu.h>
-#include <acpi/Tables.h>
+#include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
 #include <interrupts/InterruptManager.h>
@@ -112,9 +112,9 @@ namespace Npk
             id = ReadReg(LApicReg::Id) >> 24;
         }
 
-        auto maybeMadt = Acpi::FindTable(Acpi::SigMadt);
-        Acpi::Madt* madt = static_cast<Acpi::Madt*>(*maybeMadt);
-        const bool picsPresent = maybeMadt.HasValue() ? true : (uint32_t)madt->flags & (uint32_t)Acpi::MadtFlags::PcAtCompat;
+        auto maybeMadt = Config::FindAcpiTable(Config::SigMadt);
+        Config::Madt* madt = static_cast<Config::Madt*>(*maybeMadt);
+        const bool picsPresent = maybeMadt.HasValue() ? true : (uint32_t)madt->flags & (uint32_t)Config::MadtFlags::PcAtCompat;
         if (IsBsp() && picsPresent)
         {
             Log("Disabling legacy 8259 PICs.", LogLevel::Info);
@@ -303,21 +303,21 @@ namespace Npk
 
     void IoApic::InitAll()
     {
-        auto maybeMadt = Acpi::FindTable(Acpi::SigMadt);
+        auto maybeMadt = Config::FindAcpiTable(Config::SigMadt);
         ASSERT(maybeMadt, "MADT not found: cannot initialize IO APIC.");
-        Acpi::Madt* madt = static_cast<Acpi::Madt*>(*maybeMadt);
+        Config::Madt* madt = static_cast<Config::Madt*>(*maybeMadt);
 
         sl::NativePtr scan = madt->sources;
         while (scan.raw < (uintptr_t)madt + madt->length)
         {
-            const Acpi::MadtSource* sourceBase = scan.As<Acpi::MadtSource>();
-            using Acpi::MadtSourceType;
+            const Config::MadtSource* sourceBase = scan.As<Config::MadtSource>();
+            using Config::MadtSourceType;
 
             switch (sourceBase->type)
             {
             case MadtSourceType::IoApic:
             {
-                const Acpi::MadtSources::IoApic* source = scan.As<Acpi::MadtSources::IoApic>();
+                const Config::MadtSources::IoApic* source = scan.As<Config::MadtSources::IoApic>();
                 IoApic& apic = ioapics.EmplaceBack();
 
                 auto mmioRange = VMM::Kernel().Alloc(PageSize, source->mmioAddr, VmFlags::Write | VmFlags::Mmio);
@@ -336,7 +336,7 @@ namespace Npk
 
             case MadtSourceType::SourceOverride:
             {
-                using namespace Acpi::MadtSources;
+                using namespace Config::MadtSources;
                 const SourceOverride* source = scan.As<SourceOverride>();
                 const uint16_t polarity = source->polarityModeFlags & PolarityMask;
                 const uint16_t mode = source->polarityModeFlags & TriggerModeMask;

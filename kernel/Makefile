@@ -1,12 +1,11 @@
 KERNEL_CXX_FLAGS += -I../libs/np-syslib/include
 
 CXX_SRCS = \
-	acpi/Tables.cpp \
 	boot/CommonInit.cpp boot/LimineTags.cpp boot/LimineBootstrap.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/LogBackends.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp \
 	debug/Terminal.cpp \
-	devices/DeviceTree.cpp \
+	config/DeviceTree.cpp config/AcpiTables.cpp \
 	interrupts/InterruptManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/Heap.cpp memory/Slab.cpp memory/Pool.cpp \
 	memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp memory/virtual/KernelVmDriver.cpp \
@@ -16,6 +15,7 @@ AS_SRCS =
 
 ARCH_DIR = arch/$(CPU_ARCH)
 include $(ARCH_DIR)/Arch.mk
+include RegenSettings.mk
 
 LD_SCRIPT = $(ARCH_DIR)/Linker.lds
 CXX_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))

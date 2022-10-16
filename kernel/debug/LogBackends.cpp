@@ -2,7 +2,7 @@
 #include <debug/Terminal.h>
 #include <debug/TerminalImage.h>
 #include <arch/Platform.h>
-#include <devices/DeviceTree.h>
+#include <config/DeviceTree.h>
 #include <stdint.h>
 #include <NativePtr.h>
 
@@ -66,8 +66,8 @@ namespace Npk::Debug
 
         //See if there's a compatible node in the device tree.
         ns16550mmio = nullptr;
-        auto maybeUart = Devices::DeviceTree::Global().GetCompatibleNode("ns16550");
-        auto maybeUarta = Devices::DeviceTree::Global().GetCompatibleNode("ns16550a");
+        auto maybeUart = Config::DeviceTree::Global().GetCompatibleNode("ns16550");
+        auto maybeUarta = Config::DeviceTree::Global().GetCompatibleNode("ns16550a");
         if (!maybeUart && !maybeUarta)
             return false;
         

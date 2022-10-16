@@ -1,10 +1,10 @@
-#include <acpi/Tables.h>
+#include <config/AcpiTables.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <NativePtr.h>
 #include <Memory.h>
 
-namespace Npk::Acpi
+namespace Npk::Config
 {
     Rsdp* rsdp = nullptr;
     sl::NativePtr sdtPointers;
@@ -51,7 +51,7 @@ namespace Npk::Acpi
         
         for (size_t i = 0; i < sdtCount; i++)
         {
-            LogTable(GetSdt(i));
+            LogAcpiTable(GetSdt(i));
             if (VerifyChecksum(GetSdt(i)))
                 Log("Acpi table %.4s failed checksum verification.", LogLevel::Error, GetSdt(i)->signature);
         }
@@ -67,7 +67,7 @@ namespace Npk::Acpi
         return (checksum & 0xFF) != 0;
     }
 
-    sl::Opt<Sdt*> FindTable(const char* signature)
+    sl::Opt<Sdt*> FindAcpiTable(const char* signature)
     {
         for (size_t i = 0; i < sdtCount; i++)
         {
@@ -79,7 +79,7 @@ namespace Npk::Acpi
         return {};
     }
 
-    void LogTable(const Sdt* table)
+    void LogAcpiTable(const Sdt* table)
     {
         char sig[5];
         sl::memcopy(table->signature, sig, 4);

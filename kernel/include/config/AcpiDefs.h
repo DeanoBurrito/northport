@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-namespace Npk::Acpi
+namespace Npk::Config
 {
     enum class GenericAddrId : uint8_t
     {

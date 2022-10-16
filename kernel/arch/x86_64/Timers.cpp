@@ -1,7 +1,7 @@
 #include <arch/x86_64/Timers.h>
 #include <arch/Platform.h>
 #include <memory/Vmm.h>
-#include <acpi/Tables.h>
+#include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <NativePtr.h>
 
@@ -41,11 +41,11 @@ namespace Npk
 
     void InitTimers()
     {
-        auto maybeHpet = Acpi::FindTable(Acpi::SigHpet);
+        auto maybeHpet = Config::FindAcpiTable(Config::SigHpet);
         if (!maybeHpet)
             return;
         
-        const Acpi::Hpet* hpetTable = static_cast<Acpi::Hpet*>(*maybeHpet);
+        const Config::Hpet* hpetTable = static_cast<Config::Hpet*>(*maybeHpet);
         auto mmioRange = VMM::Kernel().Alloc(0x1000, hpetTable->baseAddress.address, VmFlags::Write | VmFlags::Mmio);
         ASSERT(mmioRange.HasValue(), "Failed to allocate hpet mmio.");
         hpetMmio = mmioRange->base;

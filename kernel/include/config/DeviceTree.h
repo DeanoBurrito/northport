@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <Optional.h>
 
-namespace Npk::Devices
+namespace Npk::Config
 {
     using DtbPtr = size_t;
 

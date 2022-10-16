@@ -3,7 +3,7 @@
 #include <boot/LimineTags.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
-#include <devices/DeviceTree.h>
+#include <config/DeviceTree.h>
 #include <Memory.h>
 
 #if __riscv_xlen == 64
@@ -161,7 +161,7 @@ namespace Npk::Boot
 
     void MemoryMapFromDtb(uintptr_t physBase)
     {
-        using namespace Devices;
+        using namespace Config;
 
         constexpr size_t MaxMemoryBlocks = 32;
         MemBlock freeBlocks[MaxMemoryBlocks];
@@ -274,7 +274,7 @@ namespace Npk::Boot
 
     void PopulateSmpResponse(size_t bspId, uintptr_t virtOffset)
     {
-        using namespace Devices;
+        using namespace Config;
         auto cpusNode = DeviceTree::Global().GetNode("/cpus");
         if (!cpusNode)
             return;
@@ -337,12 +337,12 @@ namespace Npk::Boot
     
     void PerformLimineBootstrap(uintptr_t physLoadBase, uintptr_t virtLoadBase, size_t bspId, uintptr_t dtb)
     {
-        Devices::DeviceTree::Global().Init(dtb);
+        Config::DeviceTree::Global().Init(dtb);
         MemoryMapFromDtb(physLoadBase);
 
         auto* infoResponse = new(BootAlloc(sizeof(limine_bootloader_info_response))) limine_bootloader_info_response{};
-        infoResponse->version = (char*)"Northport Boot Shim";
-        infoResponse->name = (char*)"1.0.0";
+        infoResponse->name = (char*)"Northport Boot Shim";
+        infoResponse->version = (char*)"1.0.0";
         bootloaderInfoRequest.response = infoResponse;
 
         auto* hhdmResponse = new(BootAlloc(sizeof(limine_hhdm_response))) limine_hhdm_response{};

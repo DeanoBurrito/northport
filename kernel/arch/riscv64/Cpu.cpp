@@ -1,6 +1,6 @@
 #include <arch/Cpu.h>
 #include <debug/Log.h>
-#include <devices/DeviceTree.h>
+#include <config/DeviceTree.h>
 
 namespace Npk
 {
@@ -9,7 +9,7 @@ namespace Npk
     void ScanCpuFeatures()
     {
         //TODO: we assume homogenous cpu setup here (same with x86_64)
-        auto cpuNode = Devices::DeviceTree::Global().GetNode("/cpus/cpu@0");
+        auto cpuNode = Config::DeviceTree::Global().GetNode("/cpus/cpu@0");
         ASSERT(cpuNode.HasValue(), "");
         isaString = cpuNode->GetProp("riscv,isa")->ReadStr();
     }
@@ -17,7 +17,7 @@ namespace Npk
     void LogCpuFeatures()
     {
         const char* model = "<not found>";
-        auto modelProp = Devices::DeviceTree::Global().GetNode("/")->GetProp("model");
+        auto modelProp = Config::DeviceTree::Global().GetNode("/")->GetProp("model");
         if (modelProp)
             model = modelProp->ReadStr();
         Log("Model: %s", LogLevel::Info, model);

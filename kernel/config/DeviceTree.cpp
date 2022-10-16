@@ -1,4 +1,4 @@
-#include <devices/DeviceTree.h>
+#include <config/DeviceTree.h>
 #include <boot/LimineExtensions.h>
 #include <debug/Log.h>
 #include <Memory.h>
@@ -8,7 +8,7 @@
     As far as FDT (DTB) parsers go, this one is on the long side. However it makes zero
     memory allocations, which allows it to be used extremely early in the boot sequence.
 */
-namespace Npk::Devices
+namespace Npk::Config
 {
     constexpr uint32_t FdtMagic = 0xD00DFEED;
     constexpr uint32_t FdtBeginNode = 0x1;
