@@ -117,10 +117,12 @@ namespace Npk
         {}
     }
 
+    extern uintptr_t bspId;
+    
     [[gnu::always_inline]]
     inline bool IsBsp()
     {
-        return true; //TODO:
+        return CoreLocal().id == bspId;
     }
 
     struct CoreLocalInfo;

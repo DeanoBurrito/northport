@@ -1,4 +1,5 @@
 #include <arch/Platform.h>
+#include <arch/riscv64/Interrupts.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
 #include <boot/LimineBootstrap.h>
@@ -7,25 +8,29 @@
 
 namespace Npk
 {
-    void InitCore(size_t id)
+    uintptr_t bspId;
+
+    void InitCore(size_t id, uint32_t plicContext)
     {
         VMM::Kernel().MakeActive();
         
         BlockSumac();
+        LoadStvec();
 
-        //load stvec
-        //create core local block
-        //calibrate timer for bsp
+        ClearCsrBits("sstatus", 1 << 19); //disable MXR.
+
+        CoreLocalInfo* clb = new CoreLocalInfo();
+        clb->id = id;
+        clb->selfAddr = (uintptr_t)clb;
+        clb->interruptControl = plicContext;
+        WriteCsr("sscratch", (uintptr_t)clb);
 
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }
 
     void ApEntry(limine_smp_info* info)
     {
-        Log("Core %lu online!", LogLevel::Debug, info->hart_id);
-        Halt();
-
-        InitCore(info->hart_id);
+        InitCore(info->hart_id, info->plic_context);
         ExitApInit();
     }
 }
@@ -44,6 +49,7 @@ extern "C"
     {
         using namespace Npk;
         
+        bspId = data->hartId;
         WriteCsr("sscratch", 0);
         Boot::PerformLimineBootstrap(data->physBase, data->virtBase, data->hartId, data->dtb);
         data = nullptr;
@@ -59,7 +65,10 @@ extern "C"
             {
                 limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
                 if (procInfo->hart_id == Boot::smpRequest.response->bsp_hart_id)
+                {
+                    InitCore(procInfo->hart_id, procInfo->plic_context);
                     continue;
+                }
                 
                 procInfo->goto_address = ApEntry;
                 Log("Sending bring-up request to core %lu.", LogLevel::Verbose, procInfo->hart_id);
