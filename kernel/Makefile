@@ -15,7 +15,6 @@ AS_SRCS =
 
 ARCH_DIR = arch/$(CPU_ARCH)
 include $(ARCH_DIR)/Arch.mk
-include RegenSettings.mk
 
 LD_SCRIPT = $(ARCH_DIR)/Linker.lds
 CXX_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))

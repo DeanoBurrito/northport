@@ -140,14 +140,7 @@ namespace Npk
             Out8(PortData0, 0xFF);
             Out8(PortData1, 0xFF);
         }
-        (void)madt; //this pointer may or not be valid. This'll emit a warning if we accidentally use it later.
-
-        if (IsBsp())
-        {
-            timerVector = *Interrupts::InterruptManager::Global().Alloc();
-            Log("Local apics will use int vector 0x%lx for timers.", LogLevel::Verbose, timerVector);
-        }
-
+        
         WriteReg(LApicReg::SpuriousVector, 0xFF | (1 << 8));
     }
 
@@ -220,9 +213,16 @@ namespace Npk
         if (ticksPerMs == 0)
             return false; //failed to calibrate timer
 
+        if (IsBsp())
+        {
+            timerVector = *Interrupts::InterruptManager::Global().Alloc();
+            Log("Local apics will use int vector 0x%lx for timers.", LogLevel::Verbose, timerVector);
+        }
+
         const sl::UnitConversion freqs = sl::ConvertUnits(ticksPerMs * 1000);
         Log("Local apic timer %s calibrated by %s for %lu ticks/ms (%lu.%lu%shz).", LogLevel::Info, 
             tscForTimer ? "(in TSC-D mode)" : "", ActiveTimerName(), ticksPerMs, freqs.major, freqs.minor, freqs.prefix);
+        
         return true;
     }
 
@@ -362,7 +362,7 @@ namespace Npk
         ASSERT(ioapics.Size() > 0, "No IOAPICS found.");
     }
 
-    bool IoApic::Route(uint8_t irqNum, uint8_t destVector, size_t destCpu, TriggerMode mode, PinPolarity pol, bool masked)
+    bool IoApic::Route(uint8_t& irqNum, uint8_t destVector, size_t destCpu, TriggerMode mode, PinPolarity pol, bool masked)
     {
         const ApicSourceOverride* sourceOverride = nullptr;
         for (auto it = sourceOverrides.Begin(); it != sourceOverrides.End(); ++it)
@@ -421,11 +421,11 @@ namespace Npk
             
             sl::ScopedLock scopeLock(it->lock);
             
-            uint64_t current = it->ReadRedirect(irqNum - it->gsiBase) & (1 << 16);
+            uint64_t current = it->ReadRedirect(irqNum - it->gsiBase);
             if (masked)
                 current |= 1 << 16;
             else
-                current &= ~(1 << 16);
+                current &= ~(1ul << 16);
             it->WriteRedirect(irqNum - it->gsiBase, current);
             return;
         }

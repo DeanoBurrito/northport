@@ -89,7 +89,7 @@ namespace Npk
     public:
         static void InitAll();
 
-        static bool Route(uint8_t irqNum, uint8_t destVector, size_t destCpu, TriggerMode mode, PinPolarity pol, bool masked);
+        static bool Route(uint8_t& irqNum, uint8_t destVector, size_t destCpu, TriggerMode mode, PinPolarity pol, bool masked);
         static bool Masked(uint8_t irqNum);
         static void Mask(uint8_t irqNum, bool masked);
     };

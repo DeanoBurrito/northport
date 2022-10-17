@@ -58,11 +58,12 @@ namespace Npk
         LocalApic::Local().Init();
         if (IsBsp())
         {
+            //If we fail to calibrate the lapic timer, we'll use one of the platform
+            //timers. The hpet if its available, and ultimately the pit if we have to.
             lapicTimerAvailable = LocalApic::Local().CalibrateTimer();
             if (!lapicTimerAvailable)
                 InitInterruptTimers();
         }
-        //if we fail to calibrate the lapic timer, SetSystemTimer() will use the HPET (or even the PIT if necessary).
 
         EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);

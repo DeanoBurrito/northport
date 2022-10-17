@@ -2,8 +2,8 @@
     - [x] x86_64:
         - [x] Core (paging, interrupts).
         - [ ] FPU, SSE, AVX.
-        - [x] Timers (LAPIC, TSC, PIT, HPET).
-            - [ ] Failover timer.
+        - [x] Timers (LAPIC, TSC).
+            - [x] Failover timers (HPET, PIT).
     - [x] riscv64:
         - [x] Core (paging, interrupts).
         - [ ] Timer (SBI).
