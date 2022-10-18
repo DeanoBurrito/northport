@@ -36,7 +36,7 @@ namespace Npk::Memory
             uint32_t usedHigh;
         } counts; //these are in pages, not bytes.
 
-        PmRegion* AppendRegion(PmRegion* zoneTail, uintptr_t baseAddr, size_t sizeBytes);
+        void InsertRegion(PmRegion** head, PmRegion** tail, uintptr_t base, size_t length);
         uintptr_t RegionAlloc(PmRegion& region, size_t count);
 
     public:
@@ -50,6 +50,7 @@ namespace Npk::Memory
 
         void Init();
         void IngestMemory(uintptr_t base, size_t length);
+        void DumpState();
 
         //allocates ONLY within the 32-bit physical address space (low zone).
         uintptr_t AllocLow(size_t count = 1);

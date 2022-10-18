@@ -16,6 +16,7 @@ namespace Npk
 {
     uintptr_t hhdmBase;
     uintptr_t hhdmLength;
+    size_t bootDataReferences;
     
     void InitEarlyPlatform()
     {
@@ -49,6 +50,11 @@ namespace Npk
             Log("Kernel is running as virtualized guest.", LogLevel::Info);
         if (Boot::bootloaderInfoRequest.response != nullptr)
             Log("Loaded by: %s v%s", LogLevel::Info, Boot::bootloaderInfoRequest.response->name, Boot::bootloaderInfoRequest.response->version);
+
+        if (Boot::smpRequest.response == nullptr)
+            bootDataReferences = 1;
+        else
+            bootDataReferences = Boot::smpRequest.response->cpu_count;
     }
 
     void InitMemory()
@@ -81,10 +87,33 @@ namespace Npk
             Debug::EnableLogBackend(Debug::LogBackend::SerialNs16550, true);
     }
 
+    void ReclaimBootloaderMemory()
+    {
+        //since the memory map is contained within the memory we're going to reclaim, we'll need our own copy.
+        size_t reclaimCount = 0;
+        limine_memmap_entry reclaimEntries[Boot::memmapRequest.response->entry_count];
+        for (size_t i = 0; i < Boot::memmapRequest.response->entry_count; i++)
+        {
+            if (Boot::memmapRequest.response->entries[i]->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
+                continue;
+            reclaimEntries[reclaimCount++] = *Boot::memmapRequest.response->entries[i];
+        }
+
+        for (size_t i = 0; i < reclaimCount; i++)
+            PMM::Global().IngestMemory(reclaimEntries[i].base, reclaimEntries[i].length);
+        //Feel free to enable this for cool diagnostics, beware the boot-time increase.
+        // PMM::Global().DumpState();
+
+        Log("Bootloader memory no-longer in use, reclaimed %lu entries.", LogLevel::Info, reclaimCount);
+    }
+
     [[noreturn]]
     void ExitBspInit()
     {
-        //TODO: reclaim bootloader memory here?
+        const size_t refsLeft = __atomic_sub_fetch(&bootDataReferences, 1, __ATOMIC_RELAXED);
+        if (refsLeft == 0)
+            ReclaimBootloaderMemory();
+        
         Tasking::StartSystemClock();
         Halt();
     }
@@ -92,6 +121,10 @@ namespace Npk
     [[noreturn]]
     void ExitApInit()
     {
+        const size_t refsLeft = __atomic_sub_fetch(&bootDataReferences, 1, __ATOMIC_RELAXED);
+        if (refsLeft == 0)
+            ReclaimBootloaderMemory();
+        
         Halt();
     }
 }

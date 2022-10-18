@@ -14,7 +14,7 @@
         - [ ] EFI entry point, ACPI tables.
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
-            - [ ] Reclaim bootloader memory.
+            - [x] Reclaim bootloader memory.
             - [ ] Memory pressure feedback.
         - [x] VMM, split kernel/user instances.
             - [x] Move region-backing into specific VM drivers.
@@ -33,7 +33,6 @@
         - [ ] PL011 serial backend.
         - [x] Terminal backend.
         - [ ] VFS file backend.
-    - [ ] Central kernel config.
     - [x] Peripheral discovery:
         - [x] ACPI tables parser.
         - [x] Device tree parser.

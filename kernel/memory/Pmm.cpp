@@ -14,36 +14,68 @@ namespace Npk::Memory
         "usable", "reserved", "acpi reclaim", "acpi nvs",
         "bad", "bootloader reclaim", "kernel/modules", "framebuffer"
     };
-    
-    PmRegion* PhysicalMemoryManager::AppendRegion(PmRegion* tail, uintptr_t baseAddr, size_t sizeBytes)
+
+    void PMM::InsertRegion(PmRegion** head, PmRegion** tail, uintptr_t base, size_t length)
     {
-        const uintptr_t alignedBase = sl::AlignUp(baseAddr, PageSize);
-        const uintptr_t alignedSize = sl::AlignDown(sizeBytes, PageSize);
-        PmRegion* region = new (sl::AlignUp(metaBuffer, sizeof(PmRegion))) PmRegion{};
-        metaBuffer += sizeof(PmRegion) * 2;
+        ASSERT(base % PageSize == 0, "PMRegion base not page-aligned.");
+        ASSERT(length % PageSize == 0, "PMRegion length not page-aligned.");
+        
+        //create the region
+        ASSERT(metaBufferSize >= sizeof(PmRegion) * 2, "PMM metabuffer not big enough for new region, TODO:");
+        PmRegion* latest = new(sl::AlignUp(metaBuffer, sizeof(PmRegion))) PmRegion{};
+        metaBuffer += sizeof(PmRegion) * 2; //TODO: separate alloc buffers, then we can slab PmRegions, and not waste alignment space.
         metaBufferSize -= sizeof(PmRegion) * 2;
 
-        region->base = alignedBase;
-        region->totalPages = region->freePages = alignedSize / PageSize;
-        region->next = nullptr;
-        region->bitmapHint = 0;
+        sl::ScopedLock latestLock(latest->lock);
+        latest->base = base;
+        latest->freePages = latest->totalPages = length / PageSize;
+        latest->bitmapHint = 0;
 
-        const size_t bitmapBytes = region->totalPages / 8 + 1;
-        region->bitmap = metaBuffer;
+        //init the bitmap
+        const size_t bitmapBytes = latest->totalPages / 8 + 1;
+        ASSERT(metaBufferSize >= bitmapBytes, "PMM metabuffer not big enough for new region bitmap, TODO:");
+        latest->bitmap = metaBuffer;
         metaBuffer += bitmapBytes;
         metaBufferSize -= bitmapBytes;
-        sl::memset(region->bitmap, 0, bitmapBytes);
+        sl::memset(latest->bitmap, 0, bitmapBytes);
 
-        if (tail != nullptr)
-            tail->next = region;
+        //find it's place in the list
+        PmRegion* next = *head;
+        PmRegion* prev = nullptr;
+        while (next != nullptr && next->base < base)
+        {
+            prev = next;
+            next = next->next;
+        }
 
-        auto conversion = sl::ConvertUnits(region->totalPages * PageSize, sl::UnitBase::Binary);
-        Log("PMRegion added: base=0x%08lx, pages=%lu (%lu.%lu%sB).", LogLevel::Info, region->base, region->totalPages,
+        if (next == nullptr)
+        {
+            if ((*tail) != nullptr)
+            {
+                sl::ScopedLock scopeLock((*tail)->lock);
+                (*tail)->next = latest;
+            }
+            *tail = latest;
+            if (*head == nullptr)
+                *head = latest;
+        }
+        else if (prev == nullptr)
+        {
+            latest->next = *head;
+            *head = latest;
+        }
+        else
+        {
+            latest->next = next;
+            prev->next = latest;
+        }
+
+        auto conversion = sl::ConvertUnits(latest->totalPages * PageSize, sl::UnitBase::Binary);
+        Log("PMRegion inserted: base=0x%08lx, pages=%lu (%lu.%lu%sB).", LogLevel::Info, latest->base, latest->totalPages,
             conversion.major, conversion.minor, conversion.prefix);
-        return region;
     }
 
-    uintptr_t PhysicalMemoryManager::RegionAlloc(PmRegion& region, size_t count)
+    uintptr_t PMM::RegionAlloc(PmRegion& region, size_t count)
     {
         if (region.freePages < count)
             return 0;
@@ -89,11 +121,11 @@ namespace Npk::Memory
         return 0;
     }
     
-    PhysicalMemoryManager globalPmm;
-    PhysicalMemoryManager& PhysicalMemoryManager::Global()
+    PMM globalPmm;
+    PMM& PMM::Global()
     { return globalPmm; }
     
-    void PhysicalMemoryManager::Init()
+    void PMM::Init()
     {
         zoneLow = zoneHigh = lowTail = highTail = nullptr;
         counts.totalHigh = counts.totalLow = counts.usedHigh = counts.usedLow = 0;
@@ -152,11 +184,8 @@ namespace Npk::Memory
             convHigh.major, convHigh.minor, convHigh.prefix, conv.major, conv.minor, conv.prefix);
     }
 
-    void PhysicalMemoryManager::IngestMemory(uintptr_t base, size_t length)
+    void PMM::IngestMemory(uintptr_t base, size_t length)
     {
-        base = sl::AlignUp(base, PageSize);
-        length = sl::AlignDown(length, PageSize);
-        
         if (base < 4 * GiB)
         {
             size_t runover = 0;
@@ -166,26 +195,59 @@ namespace Npk::Memory
                 length -= runover;
             }
 
-            lowTail = AppendRegion(lowTail, base, length);
+            InsertRegion(&zoneLow, &lowTail, base, length);
             if (runover > 0)
-                highTail = AppendRegion(highTail, base + length, runover);
-            
+                InsertRegion(&zoneHigh, &highTail, base + length, runover);
+
             counts.totalLow += length / PageSize;
             counts.totalHigh += runover / PageSize;
         }
         else
         {
-            highTail = AppendRegion(highTail, base, length);
+            InsertRegion(&zoneHigh, &highTail, base, length);
             counts.totalHigh += length / PageSize;
         }
-
-        if (zoneLow == nullptr)
-            zoneLow = lowTail;
-        if (zoneHigh == nullptr)
-            zoneHigh = highTail;
     }
 
-    uintptr_t PhysicalMemoryManager::AllocLow(size_t count)
+    void PMM::DumpState()
+    {
+        //TODO: return structured data for parsing later, instead of writing to the log directly.
+        auto convUsed = sl::ConvertUnits(counts.usedLow * PageSize, sl::UnitBase::Binary);
+        auto convTotal = sl::ConvertUnits(counts.totalLow * PageSize, sl::UnitBase::Binary);
+        Log("PMM state: low zone %lu.%lu%sB/%lu.%lu%sB used.", LogLevel::Debug, 
+            convUsed.major, convUsed.minor, convTotal.prefix,
+            convTotal.major, convTotal.minor, convTotal.prefix);
+        
+        size_t count = 0;
+        for (PmRegion* it = zoneLow; it != nullptr; it = it->next)
+        {
+            convUsed = sl::ConvertUnits((it->totalPages - it->freePages) * PageSize, sl::UnitBase::Binary);
+            convTotal = sl::ConvertUnits(it->totalPages * PageSize, sl::UnitBase::Binary);
+            Log("l%lu: %lu.%lu%sB/%lu.%lu%sB in use, base=0x%lx, length=0x%lx, hint=%lu", LogLevel::Debug,
+                count, convUsed.major, convUsed.minor, convUsed.prefix, convTotal.major, convTotal.minor, convTotal.prefix,
+                it->base, it->totalPages * PageSize, it->bitmapHint);
+            count++;
+        }
+
+        convUsed = sl::ConvertUnits(counts.usedHigh * PageSize, sl::UnitBase::Binary);
+        convTotal = sl::ConvertUnits(counts.totalHigh * PageSize, sl::UnitBase::Binary);
+        Log("PMM state: high zone %lu.%lu%sB/%lu.%lu%sB used.", LogLevel::Debug, 
+            convUsed.major, convUsed.minor, convTotal.prefix,
+            convTotal.major, convTotal.minor, convTotal.prefix);
+        
+        count = 0;
+        for (PmRegion* it = zoneHigh; it != nullptr; it = it->next)
+        {
+            convUsed = sl::ConvertUnits((it->totalPages - it->freePages) * PageSize, sl::UnitBase::Binary);
+            convTotal = sl::ConvertUnits(it->totalPages * PageSize, sl::UnitBase::Binary);
+            Log("h%lu: %lu.%lu%sB/%lu.%lu%sB in use, base=0x%lx, length=0x%lx, hint=%lu", LogLevel::Debug,
+                count, convUsed.major, convUsed.minor, convUsed.prefix, convTotal.major, convTotal.minor, convTotal.prefix,
+                it->base, it->totalPages * PageSize, it->bitmapHint);
+            count++;
+        }
+    }
+
+    uintptr_t PMM::AllocLow(size_t count)
     {
         if (count == 0)
             return 0;
@@ -203,11 +265,10 @@ namespace Npk::Memory
             region = region->next;
         }
 
-        Log("PMM failed to allocate memory, boom.", LogLevel::Fatal);
-        ASSERT_UNREACHABLE();
+        ASSERT_UNREACHABLE(); //completely failed to allocate
     }
 
-    uintptr_t PhysicalMemoryManager::Alloc(size_t count)
+    uintptr_t PMM::Alloc(size_t count)
     {
         if (count == 0)
             return 0;
@@ -227,7 +288,7 @@ namespace Npk::Memory
         return AllocLow(count);
     }
 
-    void PhysicalMemoryManager::Free(uintptr_t base, size_t count)
+    void PMM::Free(uintptr_t base, size_t count)
     {
         if ((base & 0xFFF) != 0)
         {
