@@ -42,9 +42,6 @@ namespace Npk
     };
 
     constexpr inline size_t PageSize = 0x1000;
-    constexpr inline size_t HhdmLimit = TiB / 2;
-    constexpr inline size_t HeapLimit = TiB / 2;
-
     constexpr inline size_t IntVectorAllocBase = 0x30;
     constexpr inline size_t IntVectorAllocLimit = 0xFD;
     constexpr inline size_t IntVectorCount = 256;

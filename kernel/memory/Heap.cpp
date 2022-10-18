@@ -7,7 +7,7 @@ namespace Npk::Memory
 {
     void Heap::Init()
     {
-        nextSlabBase = hhdmBase + HhdmLimit;
+        nextSlabBase = hhdmBase + hhdmLength + PageSize; //guard pages
         size_t nextSlabSize = SlabBaseSize;
         size_t nextSlabCount = 1024;
 

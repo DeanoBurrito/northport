@@ -2,6 +2,7 @@
 #include <memory/virtual/VmDriver.h>
 #include <memory/Heap.h>
 #include <arch/Platform.h>
+#include <arch/Paging.h>
 #include <boot/LinkerSyms.h>
 #include <debug/Log.h>
 
@@ -36,8 +37,8 @@ namespace Npk::Memory
     {
         sl::ScopedLock scopeLock(rangesLock);
 
-        //protect the hhdm, heap and kernel binary from allocations.
-        globalLowerBound = hhdmBase + HhdmLimit + HeapLimit;
+        //protect hhdm from allocations, we allocate `hhdm_limit` bytes for the heap too.
+        globalLowerBound = hhdmBase + hhdmLength + GetHhdmLimit();
         globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GiB);
         ptRoot = kernelMasterTables;
 
@@ -148,6 +149,15 @@ namespace Npk::Memory
             }
         }
         rangesLock.Unlock();
+
+        /*
+            RE: removing ranges.
+            Maybe another state is needed here. Should we fail to remove the VMRange, it should remain present,
+            but be marked as 'invalid'. Some sort of valid flag could be used to indindicate whether the range
+            should be processed as normal, or is just a placeholder.
+            We could pass a completion token to the VMDriver, which it can then use to confirm it has removed the
+            range at a later date, alternatively it can immediately remove the range.
+        */
 
         //detach range from driver
         using namespace Virtual;

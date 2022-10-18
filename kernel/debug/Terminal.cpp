@@ -761,17 +761,17 @@ def:
         context.textFg = tmp;
     }
 
-    void Terminal::Init(const GTStyle& style, const GTBackground& background)
+    bool Terminal::Init(const GTStyle& style, const GTBackground& background)
     {
         if (initialized)
-            return;
+            return true;
         
         initialized = true;
         Deinit();
 
         const GTFont font = { (uintptr_t)FontBegin, { 8, 14 },  1 };
         if (Boot::framebufferRequest.response == nullptr)
-            return;
+            return false;
         auto& fb0 = Boot::framebufferRequest.response->framebuffers[0];
         fb = { (uintptr_t)fb0->address, { fb0->width, fb0->height }, fb0->pitch };
         fbAddr = reinterpret_cast<volatile uint32_t*>(fb.address);
@@ -849,6 +849,7 @@ def:
         Clear(true);
         Flush();
         Reinit();
+        return true;
     }
 
     void Terminal::Deinit()

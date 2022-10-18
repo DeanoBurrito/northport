@@ -38,7 +38,7 @@ namespace Npk::Config
         sl::Opt<const DtProperty> GetProp(const char* name) const;
     };
 
-    class DeviceTree //TODO: move this to another namespace, it doesn't really belong in 'devices'
+    class DeviceTree
     {
     private:
         const uint32_t* cells;

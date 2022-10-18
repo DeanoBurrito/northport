@@ -176,6 +176,11 @@ namespace Npk
         asm volatile("mov %0, %%cr3" :: "r"((uint64_t)root));
     }
 
+    size_t GetHhdmLimit()
+    {
+        return TiB / 2;
+    }
+
     PageSizes MaxSupportedPagingSize()
     {
         return CpuHasFeature(CpuFeature::Pml3Translation) ? PageSizes::_1G : PageSizes::_2M;

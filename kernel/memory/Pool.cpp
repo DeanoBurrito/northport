@@ -74,8 +74,10 @@ namespace Npk::Memory
         PoolRegion* region = new((void*)maybeRegion->base) PoolRegion();
         if (takeLock)
             region->lock.Lock();
-        region->base = sl::AlignUp(maybeRegion->base + sizeof(PoolRegion), sizeof(PoolNode));
-        region->length = maybeRegion->base + maybeRegion->length - region->base;
+        
+        const uintptr_t reservedSize = sl::AlignUp(maybeRegion->base + sizeof(PoolRegion), sizeof(PoolNode)) - maybeRegion->base;
+        region->base = maybeRegion->base + reservedSize;
+        region->length = maybeRegion->length - reservedSize;
         
         region->first = region->last = new((void*)region->base) PoolNode();
         region->first->next = region->first->prev = nullptr;

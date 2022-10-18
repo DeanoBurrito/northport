@@ -6,7 +6,7 @@
 
 namespace Npk::Memory
 {
-    constexpr size_t PoolMinExpansionScale = 16;
+    constexpr size_t PoolMinExpansionScale = 2;
     
     struct PoolRegion;
 

@@ -78,8 +78,12 @@ namespace Npk
     //NOTE: the physical address and page size are returned via ref args
     bool UnmapMemory(void* root, uintptr_t vaddr, uintptr_t& paddr, PageSizes& size, bool flushEntry);
     sl::Opt<uintptr_t> GetPhysicalAddr(void* root, uintptr_t virt);
+
     void SyncKernelTables(void* dest);
     void LoadTables(void* root);
+
+    size_t GetHhdmLimit();
     PageSizes MaxSupportedPagingSize();
     PageFaultFlags GetFaultFlags(uintptr_t nativeEc);
+    
 }

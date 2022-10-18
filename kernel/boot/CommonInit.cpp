@@ -2,6 +2,7 @@
 #include <boot/LimineTags.h>
 #include <arch/Cpu.h>
 #include <arch/Platform.h>
+#include <arch/Paging.h>
 #include <config/DeviceTree.h>
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
@@ -24,13 +25,13 @@ namespace Npk
 
         hhdmBase = Boot::hhdmRequest.response->offset;
         auto lastEntry = Boot::memmapRequest.response->entries[Boot::memmapRequest.response->entry_count - 1];
-        hhdmLength = sl::AlignUp(lastEntry->base + lastEntry->length, PageSize);
-        if (hhdmLength >= HhdmLimit)
+        hhdmLength = sl::AlignUp(lastEntry->base + lastEntry->length, GiB); //Hhdm is 1GiB aligned.
+        if (hhdmLength >= GetHhdmLimit())
         {
             Log("Memory map includes address up to 0x%lx, outside of allowable hhdm range.", LogLevel::Warning, hhdmLength);
-            hhdmLength = HhdmLimit;
+            hhdmLength = GetHhdmLimit();
         }
-        Log("Hhdm: base=0x%lx, length=0x%lx", LogLevel::Info, hhdmBase, hhdmLength);
+        Log("Hhdm: base=0x%lx, length=0x%lx, limit=0x%lx", LogLevel::Info, hhdmBase, hhdmLength, GetHhdmLimit());
 
 #ifdef NP_X86_64_E9_ALLOWED
         Debug::EnableLogBackend(Debug::LogBackend::Debugcon, true);

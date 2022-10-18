@@ -42,8 +42,7 @@ namespace Npk::Tasking
 
     void UptimeEventCallback(void*)
     {
-        //TODO: investigate, should I be using __atomic_add/__atomic_load instead of volatile?
-        ++uptimeMillis;
+        __atomic_add_fetch(&uptimeMillis, 1, __ATOMIC_RELAXED);
     }
 
     void StartSystemClock()

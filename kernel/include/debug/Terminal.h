@@ -171,7 +171,7 @@ namespace Npk::Debug
         void SwapPalette();
 
     public:
-        void Init(const GTStyle& style, const GTBackground& background);
+        bool Init(const GTStyle& style, const GTBackground& background);
         void Deinit();
         void Reinit();
 

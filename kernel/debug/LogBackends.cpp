@@ -52,8 +52,7 @@ namespace Npk::Debug
         GTStyle style { DEFAULT_ANSI_COLOURS, DEFAULT_ANSI_BRIGHT_COLOURS, 0x0F0404, 0xDDDDDD, 12, 0 };
         GTBackground bg { NULL,  0 };
 #endif
-        term.Init(style, bg);
-        return true; //TODO: terminal resource usage, report failure.
+        return term.Init(style, bg);
     }
 
     bool InitNs16550()
@@ -87,7 +86,6 @@ namespace Npk::Debug
         WriteReg(Ns16550Reg::LineControl, 3); //8 bits, no parity, 1 stop bit.
         WriteReg(Ns16550Reg::IntStatus, 0xC7); //enable and clear FIFOS, interrupt at 14 chars pending.
         WriteReg(Ns16550Reg::ModemControl, 7); //ints disabled, rts/dts set, out1 enabled.
-        //TODO: test uart
         return true;
     }
 
@@ -101,6 +99,8 @@ namespace Npk::Debug
 #ifdef __x86_64__
         for (size_t i = 0; i < length; i++)
             Out8(PortDebugcon, str[i]);
+#else
+        (void)str; (void)length;
 #endif
     }
 
