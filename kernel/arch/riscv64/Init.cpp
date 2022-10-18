@@ -1,5 +1,6 @@
 #include <arch/Platform.h>
 #include <arch/riscv64/Interrupts.h>
+#include <arch/riscv64/Timers.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
 #include <boot/LimineBootstrap.h>
@@ -23,8 +24,10 @@ namespace Npk
         clb->id = id;
         clb->selfAddr = (uintptr_t)clb;
         clb->interruptControl = plicContext;
+        // clb->nextKernelStack = (new uint8_t[0x800]) + 0x800; //TODO: not this
         WriteCsr("sscratch", (uintptr_t)clb);
 
+        EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }
 
@@ -59,6 +62,8 @@ extern "C"
         InitMemory();
         InitPlatform();
 
+        InitTimers();
+
         if (Boot::smpRequest.response != nullptr)
         {
             for (size_t i = 0; i < Boot::smpRequest.response->cpu_count; i++)
@@ -75,6 +80,6 @@ extern "C"
             }
         }
 
-        Halt();
+        ExitBspInit();
     }
 }

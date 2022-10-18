@@ -6,7 +6,16 @@
 TrapEntry:
     csrrw x1, sscratch, x1 
     sd sp, 0(x1) # stash the original stack pointer
-    ld sp, 72(x1) # load the next available kernel stack.
+
+    # only load a new stack if we came from u-mode.
+    csrr sp, sstatus
+    andi sp, sp, 1 << 8
+    bnez sp, 1f
+    ld sp, 72(x1) # we came from u-mode, use kernel stack.
+    j 2f
+1:
+    ld sp, 0(x1) # we came from s-mode, use existing stack.
+2:
     addi sp, sp, 288 # make space on the stack for the trap frame.
 
     sd zero, 0(sp) # stack key, 0 = local frame

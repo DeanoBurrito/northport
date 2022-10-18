@@ -14,11 +14,13 @@ namespace Npk
 
         //we use direct interrupts so we leave the mode bits clear.
         constexpr uintptr_t ModeMask = ~(uintptr_t)0b11;
-        WriteCsr("stvec", (uintptr_t)TrapEntry | ModeMask);
+        WriteCsr("stvec", (uintptr_t)TrapEntry & ModeMask);
 
         //enable supervisor interrupts: software, timer, external.
         SetCsrBits("sie", 0x222);
     }
+
+    extern void (*timerCallback)(size_t);
 }
 
 extern "C"
@@ -37,7 +39,8 @@ extern "C"
                 Log("Got riscv IPI.", LogLevel::Fatal);
                 break;
             case 5:
-                Log("Got riscv timer interrupt.", LogLevel::Fatal);
+                if (timerCallback)
+                    timerCallback(5);
                 break;
             case 9:
                 Log("Got riscv external interrupt.", LogLevel::Fatal);

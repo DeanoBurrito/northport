@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Maths.h>
+#include <arch/riscv64/Timers.h>
 
 //risc-v has multiple names per register, this allows us to use any of the given names.
 #define REG_ALIAS(a, b) union { uint64_t a; uint64_t b; };
@@ -113,8 +114,7 @@ namespace Npk
     [[gnu::always_inline]]
     inline void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t))
     {
-        while (true)
-        {}
+        SetTimer(nanoseconds, callback);
     }
 
     extern uintptr_t bspId;

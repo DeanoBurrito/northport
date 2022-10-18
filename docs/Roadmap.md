@@ -6,7 +6,7 @@
             - [x] Failover timers (HPET, PIT).
     - [x] riscv64:
         - [x] Core (paging, interrupts).
-        - [ ] Timer (SBI).
+        - [x] Timer (SBI).
         - [ ] F/D/Q and V extension support.
     - [x] Limine protocol boot shim (for riscv):
         - [x] Memory map, hhdm and kernel address.
@@ -81,4 +81,5 @@
         - [x] Basic string.
         - [ ] String builder.
         - [ ] String formatter.
+        - [ ] Integer <-> string conversions.
     - [x] Basic locks.
