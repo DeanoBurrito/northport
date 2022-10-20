@@ -29,8 +29,8 @@ namespace Npk::Debug
         "Terminal", "Debugcon", "NS16550"
     };
 
-    constexpr size_t LogBalloonSize = 0x8000;
-    uint8_t logBalloon[LogBalloonSize]; //allocated in .bss
+    // constexpr size_t LogBalloonSize = NP_LOG_BALLOON_SIZE;
+    uint8_t logBalloon[NP_LOG_BALLOON_SIZE]; //allocated in .bss
     size_t balloonHead = 0;
 
     sl::SpinLock outputLock;
@@ -77,7 +77,7 @@ namespace Npk::Debug
 
     void BalloonWrite(const char* message, size_t len)
     {
-        if (balloonHead + len > LogBalloonSize)
+        if (balloonHead + len > NP_LOG_BALLOON_SIZE)
             return; //Not ideal, but there's bigger problems if we're overflowing the default size I think.
         
         sl::memcopy(message, logBalloon + balloonHead, len);
@@ -92,7 +92,7 @@ namespace Npk::Debug
         InterruptGuard guard;
         sl::ScopedLock scopeLock(balloonLock);
 
-        balloonHead = sl::Min(LogBalloonSize - 1, balloonHead);
+        balloonHead = sl::Min(NP_LOG_BALLOON_SIZE - 1, balloonHead);
         logBalloon[balloonHead] = 0;
         //this is fine, the limine terminal handles upto 32K (balloon max size) characters pretty well (gj mint).
         LogInternal(reinterpret_cast<const char*>(logBalloon), balloonHead, nullptr, 0, (LogLevel)-1ul);

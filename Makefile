@@ -26,7 +26,8 @@ include misc/cross/$(CPU_ARCH)/CrossConfig.mk
 # Platform-agnostic compiler and linker flags for the kernel
 KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fno-pic -fno-pie \
 	-fno-omit-frame-pointer -ffreestanding -std=c++17 -fno-rtti -fno-exceptions \
-	-fno-unwind-tables -fno-asynchronous-unwind-tables -Iinclude
+	-fno-unwind-tables -fno-asynchronous-unwind-tables -Iinclude \
+	-DNP_LOG_BALLOON_SIZE=$(LOGGING_BALLOON_SIZE)
 KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
 
@@ -38,7 +39,7 @@ export ARCH_TARGET = $(CPU_ARCH)-elf
 PROJ_DIR_INITDISK = initdisk
 PROJ_DIR_KERNEL = kernel
 PROJ_DIR_LIBS = libs
-PROJ_DIR_DOCS = docs
+PROJ_DIR_DOCS = docs/manual
 
 export INITDISK_FULL_FILEPATH = $(abspath $(PROJ_DIR_INITDISK)/$(BUILD_DIR)/northport-initdisk.tar)
 export KERNEL_FILENAME = northport-kernel-$(CPU_ARCH).elf

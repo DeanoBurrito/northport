@@ -19,9 +19,12 @@ QUIET_BUILD = yes
 # ISA to compile for: 'x86_64' or 'riscv64'
 export CPU_ARCH = x86_64
 # KERNEL_CXX_FLAGS += -fsanitize=undefined
-KERNEL_CXX_FLAGS += -O2
+KERNEL_CXX_FLAGS += -O0 -g
 # Include a nice background for the terminal or not.
 INCLUDE_TERMINAL_BG = no
+# Space reserved for the log bladder. If inside a trap handler or no backends are available,
+# logs will be written here instead of being lost immediately. Cannot be zero.
+LOGGING_BALLOON_SIZE = 0x8000ul
 
 # ---- X86_64 Options ----
 # Use debugcon (port 0xE9) as the x86_64 serial driver. Only enable this for virtual machines.
