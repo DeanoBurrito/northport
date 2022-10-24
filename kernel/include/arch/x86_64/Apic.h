@@ -64,6 +64,7 @@ namespace Npk
 
         void SetTimer(size_t nanoseconds, void (*callback)(size_t));
         void SendEoi() const;
+        void SendIpi(size_t dest) const;
     };
 
     enum class IoApicReg : uint32_t

@@ -19,4 +19,9 @@ extern "C"
     {
         ASSERT_UNREACHABLE();
     }
+
+    void __cxa_pure_virtual()
+    {
+        ASSERT_UNREACHABLE()
+    }
 }

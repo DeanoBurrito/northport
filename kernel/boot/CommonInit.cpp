@@ -8,6 +8,7 @@
 #include <debug/Log.h>
 #include <debug/LogBackends.h>
 #include <interrupts/InterruptManager.h>
+#include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <tasking/Clock.h>
@@ -110,12 +111,8 @@ namespace Npk
     [[noreturn]]
     void ExitBspInit()
     {
-        const size_t refsLeft = __atomic_sub_fetch(&bootDataReferences, 1, __ATOMIC_RELAXED);
-        if (refsLeft == 0)
-            ReclaimBootloaderMemory();
-        
         Tasking::StartSystemClock();
-        Halt();
+        ExitApInit();
     }
 
     [[noreturn]]
@@ -125,6 +122,7 @@ namespace Npk
         if (refsLeft == 0)
             ReclaimBootloaderMemory();
         
+        Interrupts::InitIpiMailbox();
         Halt();
     }
 }

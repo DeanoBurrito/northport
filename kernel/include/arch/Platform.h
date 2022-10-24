@@ -5,6 +5,13 @@
 
 namespace Npk
 {
+    enum class RunLevel : uint8_t
+    {
+        Normal = 0,
+        Dispatch = 1,
+        IntHandler = 2,
+    };
+    
     struct TrapReturnFrame
     {
         uintptr_t key; //MUST be 1
@@ -18,6 +25,7 @@ namespace Npk
         uintptr_t selfAddr;
         uintptr_t id;
         uintptr_t interruptControl; //x86: lapic*, rv: plic context id
+        RunLevel runLevel;
         void* schedThread;
         void* vmm;
         void* nextKernelStack; //x86: duplicate of tss->rsp0
@@ -52,6 +60,8 @@ namespace Npk
     void BlockSumac();
 
     void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t));
+    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
+    void SendIpi(size_t dest);
 
     bool IsBsp();
     CoreLocalInfo& CoreLocal();
@@ -80,6 +90,26 @@ namespace Npk
         {
             if (prevState)
                 EnableInterrupts();
+        }
+    };
+
+    class InterruptLock
+    {
+    private:
+        bool restoreInts;
+        char lock = 0;
+    public:
+        inline void Lock()
+        {
+            restoreInts = InterruptsEnabled();
+            Npk::DisableInterrupts();
+            while (__atomic_test_and_set(&lock, __ATOMIC_ACQUIRE));
+        }
+
+        inline void Unlock()
+        {
+            __atomic_clear(&lock, __ATOMIC_RELEASE);
+            Npk::EnableInterrupts();
         }
     };
 }

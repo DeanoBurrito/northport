@@ -260,6 +260,20 @@ namespace Npk
         WriteReg(LApicReg::EOI, 0);
     }
 
+    void LocalApic::SendIpi(size_t dest) const
+    {
+        while (ReadReg(LApicReg::Icr0) & (1 << 12))
+        {}
+
+        if (inX2mode)
+            WriteMsr(0x830, (dest << 32) | IntVectorIpi);
+        else
+        {
+            WriteReg(LApicReg::Icr1, dest << 24);
+            WriteReg(LApicReg::Icr0, IntVectorIpi);
+        }
+    }
+
     struct ApicSourceOverride
     {
         size_t incoming;

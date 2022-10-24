@@ -53,6 +53,7 @@ namespace Npk
         clb->id = id;
         clb->selfAddr = (uintptr_t)clb;
         clb->interruptControl = (uintptr_t)new LocalApic();
+        clb->runLevel = RunLevel::Normal;
         WriteMsr(MsrGsBase, (uint64_t)clb);
 
         LocalApic::Local().Init();

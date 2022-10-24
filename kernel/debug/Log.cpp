@@ -35,7 +35,6 @@ namespace Npk::Debug
 
     sl::SpinLock outputLock;
     sl::SpinLock balloonLock;
-    bool suppressLogOutput asm("suppressLogOutput") = false;
 
     struct LogBackendStatus
     {
@@ -138,7 +137,7 @@ namespace Npk::Debug
         char timestampStr[timestampSize];
         npf_snprintf(timestampStr, timestampSize, "%lu.%03lu p%lut0 ", uptime / 1000, uptime % 1000, coreId);
 
-        if (backendsAvailable > 0 && !suppressLogOutput)
+        if (backendsAvailable > 0 && CoreLocalAvailable() && CoreLocal().runLevel == RunLevel::Normal)
         {
             //write directly to the outputs
             sl::ScopedLock scopeLock(outputLock);
@@ -161,7 +160,7 @@ namespace Npk::Debug
 
         if (level == LogLevel::Fatal)
         {
-            suppressLogOutput = false;
+            CoreLocal().runLevel = RunLevel::Normal;
             outputLock.Unlock();
             Log("System has halted indefinitely.", LogLevel::Info);
             Halt();

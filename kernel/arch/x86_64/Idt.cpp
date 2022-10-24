@@ -3,6 +3,7 @@
 #include <arch/x86_64/Gdt.h>
 #include <debug/Log.h>
 #include <interrupts/InterruptManager.h>
+#include <interrupts/Ipi.h>
 
 namespace Npk
 {
@@ -52,12 +53,18 @@ extern "C"
     void* TrapDispatch(Npk::TrapFrame* frame)
     {
         using namespace Npk;
-        
+        RunLevel prevRunLevel = CoreLocal().runLevel;
+        CoreLocal().runLevel = RunLevel::IntHandler;
+
         if (frame->vector < 0x20)
             Log("Native CPU exception: 0x%lx", LogLevel::Fatal, frame->vector);
-        
-        Interrupts::InterruptManager::Global().Dispatch(frame->vector);
+        else if (frame->vector == IntVectorIpi)
+            Interrupts::ProcessIpiMail(); //TODO: move this to a dpc
+        else
+            Interrupts::InterruptManager::Global().Dispatch(frame->vector);
+
         LocalApic::Local().SendEoi();
+        CoreLocal().runLevel = prevRunLevel;
         return frame;
     }
 }

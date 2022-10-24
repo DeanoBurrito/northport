@@ -5,6 +5,7 @@
 #include <Maths.h>
 #include <arch/x86_64/Apic.h>
 #include <arch/x86_64/Timers.h>
+#include <arch/x86_64/Gdt.h>
 
 namespace Npk
 {
@@ -44,6 +45,7 @@ namespace Npk
     constexpr inline size_t PageSize = 0x1000;
     constexpr inline size_t IntVectorAllocBase = 0x30;
     constexpr inline size_t IntVectorAllocLimit = 0xFD;
+    constexpr inline size_t IntVectorIpi = 0xFE;
     constexpr inline size_t IntVectorCount = 256;
 
     constexpr inline uint32_t MsrEfer = 0xC0000080;
@@ -104,6 +106,24 @@ namespace Npk
             LocalApic::Local().SetTimer(nanoseconds, callback);
         else
             InterruptSleep(nanoseconds, callback);
+    }
+
+    inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
+    {
+        frame->iret.cs = user ? SelectorUserCode : SelectorKernelCode;
+        frame->iret.ss = user ? SelectorUserData : SelectorKernelData;
+        frame->rdi = (uintptr_t)arg;
+        frame->iret.rsp = stack;
+        frame->iret.rip = entry;
+        frame->iret.flags = 0x202; //interrupts enabled, reserved bit set (as per spec).
+        frame->key = 0; //indicates this is a local trap frame.
+        frame->vector = (uint64_t)-1; //no purpose, for debuggging.
+    }
+
+    [[gnu::always_inline]]
+    inline void SendIpi(size_t dest)
+    {
+        LocalApic::Local().SendIpi(dest);
     }
 
     [[gnu::always_inline]]

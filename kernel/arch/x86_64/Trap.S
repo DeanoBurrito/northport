@@ -2,10 +2,8 @@
 .global TrapEntry
 
 .extern TrapDispatch
-.extern suppressLogOutput
 
 TrapEntry:
-    movb $1, (suppressLogOutput)
     clac
     push %rax
     push %rbx
@@ -81,7 +79,6 @@ TrapEntry:
     pop %rax
 
     add $0x10, %rsp
-    movb $0, suppressLogOutput
     iretq
 
 .altmacro
