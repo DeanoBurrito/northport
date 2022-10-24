@@ -131,7 +131,7 @@ namespace Npk
         return true;
     }
 
-    uintptr_t GetPhysAddr(void* root, uintptr_t virt)
+    sl::Opt<uintptr_t> GetPhysicalAddr(void* root, uintptr_t virt)
     {
         size_t indices[pagingLevels + 1];
         GetPageIndices(virt, indices);
@@ -159,7 +159,7 @@ namespace Npk
             pt = reinterpret_cast<PageTable*>((*entry & physAddrMask) + hhdmBase);
         }
 
-        return (*entry & ~mask) | (virt & mask);
+        return (*entry & ~(mask | 1ul << 63)) | (virt & mask);
     }
 
     void SyncKernelTables(void *dest)

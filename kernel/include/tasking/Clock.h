@@ -8,6 +8,6 @@ namespace Npk::Tasking
     void ClockEventDispatch(size_t);
 
     void StartSystemClock();
-    void QueueClockEvent(size_t nanoseconds, void* payloadData, void (*callback)(void* data), bool periodic = false);
+    void QueueClockEvent(size_t nanoseconds, void* payloadData, void (*callback)(void* data), bool periodic = false, size_t core = -1);
     size_t GetUptime();
 }

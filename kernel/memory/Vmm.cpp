@@ -5,6 +5,8 @@
 #include <arch/Paging.h>
 #include <boot/LinkerSyms.h>
 #include <debug/Log.h>
+#include <Memory.h>
+#include <Maths.h>
 
 namespace Npk::Memory
 {
@@ -111,6 +113,7 @@ namespace Npk::Memory
         }
         
         //couldn't find space anywhere
+        rangesLock.Unlock();
         return {};
         
     alloc_range_claim:
@@ -196,5 +199,44 @@ namespace Npk::Memory
         }
 
         return false;
+    }
+
+    size_t VMM::CopyIn(void* foreignBase, void* localBase, size_t length)
+    {
+        //TODO: should we check for write-privs first?
+        //TODO: we'll want to ensure these pages are backed, and fault them in if not.
+
+        sl::NativePtr local = localBase;
+        size_t count = 0;
+
+        while (count < length)
+        {
+            auto maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
+            ASSERT(maybePhys.HasValue(), "Could not copy into VMM, virtual memory not backed.");
+
+            const size_t copyLength = sl::Min(PageSize, length - count);
+            sl::memcopy(local.ptr, reinterpret_cast<void*>(AddHhdm(*maybePhys)), copyLength);
+            count += copyLength;
+            local.raw += copyLength;
+        }
+        return count;
+    }
+
+    size_t VMM::CopyOut(void* localBase, void* foreignBase, size_t length)
+    {
+        sl::NativePtr local = localBase;
+        size_t count = 0;
+
+        while (count < length)
+        {
+            auto maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
+            if (!maybePhys)
+                return count;
+            
+            const size_t copyLength = sl::Min(PageSize, length - count);
+            sl::memcopy(AddHhdm(reinterpret_cast<void*>(*maybePhys)), local.ptr, copyLength);
+            local.raw += copyLength;
+        }
+        return count;
     }
 }

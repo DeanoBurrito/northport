@@ -88,8 +88,8 @@ namespace Npk::Memory
 
         bool RangeExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags);
 
-        //CopyIn()
-        //CopyOut()
+        size_t CopyIn(void* foreignBase, void* localBase, size_t length);
+        size_t CopyOut(void* localBase, void* foreignBase, size_t length);
     };
 }
 
