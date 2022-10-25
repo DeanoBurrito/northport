@@ -116,6 +116,7 @@ namespace Npk
         frame->iret.rsp = stack;
         frame->iret.rip = entry;
         frame->iret.flags = 0x202; //interrupts enabled, reserved bit set (as per spec).
+        frame->rbp = 0;
         frame->key = 0; //indicates this is a local trap frame.
         frame->vector = (uint64_t)-1; //no purpose, for debuggging.
     }

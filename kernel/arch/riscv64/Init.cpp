@@ -24,6 +24,7 @@ namespace Npk
         clb->id = id;
         clb->selfAddr = (uintptr_t)clb;
         clb->interruptControl = plicContext;
+        clb->runLevel = RunLevel::Normal;
         // clb->nextKernelStack = (new uint8_t[0x800]) + 0x800; //TODO: not this
         WriteCsr("sscratch", (uintptr_t)clb);
 

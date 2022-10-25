@@ -45,7 +45,7 @@ namespace Npk::Memory
 
     void PoolAlloc::Split(PoolNode* node, size_t spaceNeeded)
     {
-        spaceNeeded = sl::AlignDown(spaceNeeded, sizeof(PoolNode));
+        spaceNeeded = sl::AlignUp(spaceNeeded, sizeof(PoolNode));
 
         if (node->length <= minAllocSize + spaceNeeded + sizeof(PoolNode))
             return;
@@ -204,7 +204,8 @@ namespace Npk::Memory
                 //append
                 node->next = nullptr;
                 node->prev = region->last;
-                region->last->next = node;
+                if (region->last != nullptr)
+                    region->last->next = node;
                 region->last = node;
                 MergePrev(node);
                 return true;

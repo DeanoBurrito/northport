@@ -7,6 +7,7 @@
 #include <debug/Log.h>
 #include <Memory.h>
 #include <Maths.h>
+#include <NativePtr.h>
 
 namespace Npk::Memory
 {

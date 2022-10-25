@@ -174,8 +174,9 @@ namespace Npk::Boot
         reservedBlocks[0].type = LIMINE_MEMMAP_RESERVED;
 
         //protect the physical memory where the kernel was loaded
+        const size_t kernelTop = physBase + (size_t)KERNEL_BLOB_SIZE;
         reservedBlocks[1].base = sl::AlignDown(physBase, PageSize);
-        reservedBlocks[1].length = sl::AlignUp((size_t)KERNEL_BLOB_SIZE, PageSize);
+        reservedBlocks[1].length = sl::AlignUp(kernelTop, PageSize) - reservedBlocks[1].base;
         reservedBlocks[1].type = LIMINE_MEMMAP_KERNEL_AND_MODULES;
 
         //find all free physical memory
@@ -242,7 +243,7 @@ namespace Npk::Boot
         //align usable entries to 4K
         for (size_t i = 0; i < mmapCount; i++)
         {
-            if (mmapEntries[mmapCount].type != LIMINE_MEMMAP_USABLE)
+            if (mmapEntries[i].type != LIMINE_MEMMAP_USABLE || mmapEntries[i].type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
                 continue;
             
             limine_memmap_entry& entry = mmapEntries[i];

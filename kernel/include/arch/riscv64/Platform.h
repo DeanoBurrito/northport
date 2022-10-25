@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <Maths.h>
 #include <arch/riscv64/Timers.h>
+#include <arch/riscv64/Sbi.h>
 
 //risc-v has multiple names per register, this allows us to use any of the given names.
 #define REG_ALIAS(a, b) union { uint64_t a; uint64_t b; };
@@ -111,6 +112,26 @@ namespace Npk
     inline void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t))
     {
         SetTimer(nanoseconds, callback);
+    }
+
+    inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
+    {
+        frame->flags.spie = 1;
+        frame->flags.spp = user ? 1 : 0;
+        frame->a0 = (uintptr_t)arg;
+        frame->sepc = entry;
+        frame->sp = stack;
+        frame->fp = 0;
+        frame->key = 0; //Local trap frame
+        frame->vector = (uint64_t)-1; //not necessary, helps with debugging
+    }
+    
+    [[gnu::always_inline]]
+    inline void SendIpi(size_t dest)
+    {
+        //SBI spec doesn't specify SXLEN-alignment, but some platforms expect it.
+        //so we do it anyway, just in case.
+        SbiSendIpi(1ul << (dest % 64), dest / 64);
     }
 
     extern uintptr_t bspId;

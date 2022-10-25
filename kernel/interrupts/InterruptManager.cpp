@@ -19,7 +19,7 @@ namespace Npk::Interrupts
         for (size_t i = 0; i < bitmapSize; i++)
         {
             sl::BitmapClear(allocBitmap, i);
-            callbacks[i] = 0;
+            callbacks[i] = nullptr;
         }
 
         Log("Interrupt manager has %lu allocatable vectors.", LogLevel::Info, bitmapSize);

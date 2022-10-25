@@ -1,7 +1,6 @@
 .global TrapEntry
 
 .extern TrapDispatch
-.extern suppressLogOutput
 
 TrapEntry:
     csrrw x1, sscratch, x1 
@@ -49,11 +48,6 @@ TrapEntry:
     sd x30, 0xF0(sp)
     sd x31, 0xF8(sp)
 
-    # suppress log output while we're in an interrupt
-    li t0, 1
-    la t2, suppressLogOutput
-    sw t0, (t2)
-
     # store other details about the trap
     csrr t3, scause
     sd t3, 0x100(sp) # vector number
@@ -85,11 +79,6 @@ TrapEntry:
     mv a0, sp
     jal TrapDispatch
     mv sp, a0
-
-    # restore log output
-    mv t1, zero
-    la t2, suppressLogOutput
-    sw t1, (t2)
 
     ld t0, (sp)
     beqz t0, 1f

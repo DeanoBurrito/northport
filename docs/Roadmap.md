@@ -24,6 +24,7 @@
         - [x] Slab/free-list style heap.
             - [ ] Debugging helpers.
     - [x] Core clock, software timers.
+    - [x] IPI mailbox.
     - [ ] Scheduler.
         - [ ] SMP-support.
         - [ ] Heterogenous cpu support.
@@ -73,6 +74,7 @@
 - np-syslib:
     - [ ] Containers:
         - [x] Vector.
+        - [ ] Deque.
         - [x] Linked list.
         - [ ] Map.
     - [x] Optional.
