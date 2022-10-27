@@ -2,11 +2,12 @@
 #include <memory/virtual/AnonVmDriver.h>
 #include <memory/virtual/KernelVmDriver.h>
 #include <debug/Log.h>
+#include <Lazy.h>
 
 namespace Npk::Memory::Virtual
 {
-    alignas(AnonVmDriver) uint8_t anonDriver[sizeof(AnonVmDriver)];
-    alignas(KernelVmDriver) uint8_t kernelDriver[sizeof(KernelVmDriver)];
+    sl::Lazy<AnonVmDriver> anonDriver;
+    sl::Lazy<KernelVmDriver> kernelDriver;
     VmDriver* vmDrivers[(size_t)VmDriverType::EnumCount];
 
     VmDriver* VmDriver::GetDriver(VmDriverType name)
@@ -19,8 +20,8 @@ namespace Npk::Memory::Virtual
 
     void VmDriver::InitEarly()
     {
-        vmDrivers[(size_t)VmDriverType::Anon] = new (anonDriver) AnonVmDriver();
-        vmDrivers[(size_t)VmDriverType::Kernel] = new (kernelDriver) KernelVmDriver();
+        vmDrivers[(size_t)VmDriverType::Anon] = &anonDriver.Init();
+        vmDrivers[(size_t)VmDriverType::Kernel] = &kernelDriver.Init();
 
         for (size_t i = 1; i < (size_t)VmDriverType::EnumCount; i++)
         {

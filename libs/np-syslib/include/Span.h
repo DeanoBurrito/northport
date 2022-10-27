@@ -15,8 +15,11 @@ namespace sl
         constexpr Span() : data(nullptr), size(0)
         {}
 
-        template<size_t Count>
+        template<size_t Count> //thanks thom_tl for this one (see github.com/thom_tl/luna)
         constexpr Span(T(&array)[Count]) : data(array), size(Count)
+        {}
+
+        constexpr Span(T* array, size_t count) : data(array), size(count)
         {}
 
         T* Begin()

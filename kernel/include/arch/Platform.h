@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <Locks.h>
 
 namespace Npk
 {
@@ -97,19 +98,21 @@ namespace Npk
     {
     private:
         bool restoreInts;
-        char lock = 0;
+        sl::SpinLock lock;
+        
     public:
         inline void Lock()
         {
             restoreInts = InterruptsEnabled();
             Npk::DisableInterrupts();
-            while (__atomic_test_and_set(&lock, __ATOMIC_ACQUIRE));
+            lock.Lock();
         }
 
         inline void Unlock()
         {
-            __atomic_clear(&lock, __ATOMIC_RELEASE);
-            Npk::EnableInterrupts();
+            lock.Unlock();
+            if (restoreInts)
+                Npk::EnableInterrupts();
         }
     };
 }

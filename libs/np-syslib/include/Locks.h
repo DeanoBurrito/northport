@@ -32,7 +32,12 @@ namespace sl
     public:
         inline void Lock()
         {
-            while (__atomic_test_and_set(&lock, __ATOMIC_ACQUIRE));
+            while (true)
+            {
+                if (!__atomic_test_and_set(&lock, __ATOMIC_ACQUIRE))
+                    break;
+                while (__atomic_load_n(&lock, __ATOMIC_RELAXED));
+            }
         }
 
         inline void Unlock()
@@ -44,8 +49,8 @@ namespace sl
     class TicketLock
     {
     private:
-        unsigned long serving = 0;
-        unsigned long next = 0;
+        unsigned serving = 0;
+        unsigned next = 0;
 
     public:
         inline void Lock()

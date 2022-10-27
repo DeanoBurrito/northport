@@ -8,10 +8,11 @@
 #include <Memory.h>
 #include <Maths.h>
 #include <NativePtr.h>
+#include <Lazy.h>
 
 namespace Npk::Memory
 {
-    alignas(VMM) uint8_t kernelVmm[sizeof(VMM)];
+    sl::Lazy<VMM> kernelVmm;
     void VMM::InitKernel()
     {
         //arch-specific paging setup (enable NX, etc)
@@ -19,12 +20,12 @@ namespace Npk::Memory
         //bring up basic VM drivers, including kernel driver.
         Virtual::VmDriver::InitEarly();
 
-        new (kernelVmm) VMM(VmmKey{});
+        kernelVmm.Init(VmmKey{});
         Heap::Global().Init();
     }
 
     VMM& VMM::Kernel()
-    { return *reinterpret_cast<VMM*>(kernelVmm); }
+    { return *kernelVmm; }
 
     VMM& VMM::Current()
     { return *static_cast<VMM*>(CoreLocal().vmm); }
