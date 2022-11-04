@@ -6,7 +6,7 @@
             - [x] Failover timers (HPET, PIT).
     - [x] riscv64:
         - [x] Core (paging, interrupts).
-        - [x] Timer (SBI).
+        - [x] Timer (SBI, sstc).
         - [ ] F/D/Q and V extension support.
     - [x] Limine protocol boot shim (for riscv):
         - [x] Memory map, hhdm and kernel address.
@@ -26,7 +26,8 @@
     - [x] Core clock, software timers.
     - [x] IPI mailbox.
     - [ ] Scheduler.
-        - [ ] SMP-support.
+        - [x] SMP-support.
+        - [ ] Work stealing.
         - [ ] Heterogenous cpu support.
     - [ ] Panic.
     - [x] Logging

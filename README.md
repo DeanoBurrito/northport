@@ -1,6 +1,6 @@
 **Please note: I'm in the middle of a big rewrite of the kernel, so its currently a bit chaotic. The previous master branch has been renamed to archive-2022-version if you were looking for that.**
 
-[![All Builds](https://github.com/DeanoBurrito/northport/actions/workflows/build-tests.yml/badge.svg)](https://github.com/DeanoBurrito/northport/actions/workflows/build-tests.yml) [![](https://tokei.rs/b1/github/DeanoBurrito/northport?category=code)](https://github.com/DeanoBurrito/northport).
+[![All Builds](https://github.com/DeanoBurrito/northport/actions/workflows/build-tests.yml/badge.svg)](https://github.com/DeanoBurrito/northport/actions/workflows/build-tests.yml) [![](https://tokei.rs/b1/github/DeanoBurrito/northport?category=code)](https://github.com/DeanoBurrito/northport)
 
 # Northport
 Northport is a monolithic kernel, with some supporting libraries and utilities.
@@ -27,7 +27,8 @@ Kernel:
 - Logging with support for various backends: serial/debugcon and built-in terminal (requires a framebuffer).
     - The terminal is based on gterm from the Limine Bootloader (see the individual files for the license).
 - Optional UB sanitizer, helpful for detecting bugs or increasing code size!
-- Support for platform-specific timers (PIT, HPET, APIC, TSC deadline, SBI), with a soft-timer interface on top.
+- Support for various platform-specific timers, soft-timer interface on top.
+- SMP-aware scheduler: round robin with per-core queues.
 
 Build System:
 - Uses stock core tools and GNU make. Runs anywhere (tm).

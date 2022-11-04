@@ -4,6 +4,7 @@
 #include <debug/Log.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
+#include <tasking/Scheduler.h>
 
 namespace Npk
 {
@@ -50,21 +51,25 @@ namespace Npk
 
 extern "C"
 {
-    void* TrapDispatch(Npk::TrapFrame* frame)
+    void TrapDispatch(Npk::TrapFrame* frame)
     {
         using namespace Npk;
-        RunLevel prevRunLevel = CoreLocal().runLevel;
+
+        Tasking::Scheduler::Global().SaveCurrentFrame(frame, CoreLocal().runLevel);
         CoreLocal().runLevel = RunLevel::IntHandler;
+        LocalApic::Local().SendEoi();
 
         if (frame->vector < 0x20)
             Log("Native CPU exception: 0x%lx", LogLevel::Fatal, frame->vector);
         else if (frame->vector == IntVectorIpi)
-            Interrupts::ProcessIpiMail(); //TODO: move this to a dpc
+            Interrupts::ProcessIpiMail();
         else
             Interrupts::InterruptManager::Global().Dispatch(frame->vector);
 
-        LocalApic::Local().SendEoi();
-        CoreLocal().runLevel = prevRunLevel;
-        return frame;
+        //RunNextFrame() wont return under most circumstances, but if we're handling an interrupt
+        //before the scheduler is initialized (timekeeping for example) it will fail to find the
+        //trap frame, so we return to where we were previously.
+        Tasking::Scheduler::Global().RunNextFrame();
+        ExecuteTrapFrame(frame);
     }
 }

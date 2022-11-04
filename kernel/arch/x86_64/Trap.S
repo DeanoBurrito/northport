@@ -1,5 +1,6 @@
 .global VectorStub0
 .global TrapEntry
+.global ExecuteTrapFrame
 
 .extern TrapDispatch
 
@@ -38,8 +39,10 @@ TrapEntry:
 
     mov %rsp, %rdi
     call TrapDispatch
-    mov %rax, %rsp
 
+ExecuteTrapFrame:
+    mov %rdi, %rsp
+    
     # Check if we're looking at a local or foreign stack
     pop %rax
     cmp $1, %rax
@@ -86,7 +89,7 @@ TrapEntry:
     .align 0x10
     VectorStub\first:
     .if \ec
-        push $0
+        push $0xc0de
     .endif
     push $\first
     jmp TrapEntry

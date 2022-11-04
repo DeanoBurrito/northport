@@ -14,6 +14,7 @@ namespace Npk::Debug
 
     [[gnu::format(printf, 1, 3)]]
     void Log(const char* str, LogLevel level, ...);
+    void DrainBalloon();
 }
 
 using Npk::Debug::LogLevel;

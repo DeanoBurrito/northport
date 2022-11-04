@@ -12,6 +12,7 @@
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <tasking/Clock.h>
+#include <tasking/Scheduler.h>
 
 namespace Npk
 {
@@ -66,8 +67,6 @@ namespace Npk
 
     void InitPlatform()
     {
-        Interrupts::InterruptManager::Global().Init();
-
         if (Boot::framebufferRequest.response != nullptr)
             Debug::EnableLogBackend(Debug::LogBackend::Terminal, true);
         else
@@ -86,10 +85,22 @@ namespace Npk
         if (Config::DeviceTree::Global().GetCompatibleNode("ns16550a")
             || Config::DeviceTree::Global().GetCompatibleNode("ns16550"))
             Debug::EnableLogBackend(Debug::LogBackend::SerialNs16550, true);
+        
+        Interrupts::InterruptManager::Global().Init();
+        Tasking::Scheduler::Global().Init();
+    }
+
+    void TestEntry(void* arg)
+    {
+        Log("Thread %lu is running!", LogLevel::Debug, (size_t)arg);
+        Halt();
     }
 
     void ReclaimBootloaderMemory()
     {
+#ifdef NP_NO_RECLAIM_BOOTLOADER_MEMORY
+        return;
+#endif
         //since the memory map is contained within the memory we're going to reclaim, we'll need our own copy.
         size_t reclaimCount = 0;
         limine_memmap_entry reclaimEntries[Boot::memmapRequest.response->entry_count];
@@ -106,6 +117,10 @@ namespace Npk
         // PMM::Global().DumpState();
 
         Log("Bootloader memory no-longer in use, reclaimed %lu entries.", LogLevel::Info, reclaimCount);
+
+        //--- for testing purposes ---
+        for (size_t i = 0; i < 10; i++)
+            Tasking::Thread::Create(TestEntry, (void*)i);
     }
 
     [[noreturn]]
@@ -123,6 +138,7 @@ namespace Npk
             ReclaimBootloaderMemory();
         
         Interrupts::InitIpiMailbox();
-        Halt();
+        Tasking::Scheduler::Global().RegisterCore(true);
+        ASSERT_UNREACHABLE();
     }
 }

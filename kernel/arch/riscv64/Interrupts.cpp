@@ -2,6 +2,8 @@
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <interrupts/InterruptManager.h>
+#include <interrupts/Ipi.h>
+#include <tasking/Scheduler.h>
 #include <stdint.h>
 
 namespace Npk
@@ -20,14 +22,23 @@ namespace Npk
         SetCsrBits("sie", 0x222);
     }
 
+    void ProcessIpisDpc(void*)
+    {
+        Interrupts::ProcessIpiMail();
+        Tasking::Scheduler::Global().DpcExit();
+    }
+
     extern void (*timerCallback)(size_t);
 }
 
 extern "C"
 {
-    void* TrapDispatch(Npk::TrapFrame* frame)
+    void TrapDispatch(Npk::TrapFrame* frame)
     {
         using namespace Npk;
+        Tasking::Scheduler::Global().SaveCurrentFrame(frame, CoreLocal().runLevel);
+        CoreLocal().runLevel = RunLevel::IntHandler;
+
         const bool isInterrupt = frame->vector & (1ul << 63);
         frame->vector &= ~(1ul << 63);
 
@@ -36,7 +47,7 @@ extern "C"
             switch (frame->vector)
             {
             case 1:
-                Log("Got riscv IPI.", LogLevel::Fatal);
+                Interrupts::ProcessIpiMail();
                 break;
             case 5:
                 if (timerCallback)
@@ -53,6 +64,7 @@ extern "C"
         else
             Log("Native CPU exception: 0x%lx.", LogLevel::Fatal, frame->vector);
 
-        return frame;
+        Tasking::Scheduler::Global().RunNextFrame();
+        ExecuteTrapFrame(frame);
     }
 }

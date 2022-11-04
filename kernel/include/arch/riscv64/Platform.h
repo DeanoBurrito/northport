@@ -121,6 +121,7 @@ namespace Npk
         frame->a0 = (uintptr_t)arg;
         frame->sepc = entry;
         frame->sp = stack;
+        frame->ec = 0xC0DE;
         frame->fp = 0;
         frame->key = 0; //Local trap frame
         frame->vector = (uint64_t)-1; //not necessary, helps with debugging

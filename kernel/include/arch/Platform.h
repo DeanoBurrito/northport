@@ -62,6 +62,7 @@ namespace Npk
 
     void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t));
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
+    void ExecuteTrapFrame(TrapFrame* frame) asm("ExecuteTrapFrame");
     void SendIpi(size_t dest);
 
     bool IsBsp();

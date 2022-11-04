@@ -1,4 +1,5 @@
 .global TrapEntry
+.global ExecuteTrapFrame
 
 .extern TrapDispatch
 
@@ -15,7 +16,7 @@ TrapEntry:
 1:
     ld sp, 0(x1) # we came from s-mode, use existing stack.
 2:
-    addi sp, sp, 288 # make space on the stack for the trap frame.
+    addi sp, sp, -288 # make space on the stack for the trap frame.
 
     sd zero, 0(sp) # stack key, 0 = local frame
     sd x3, 0x18(sp)
@@ -78,6 +79,8 @@ TrapEntry:
 
     mv a0, sp
     jal TrapDispatch
+
+ExecuteTrapFrame:
     mv sp, a0
 
     ld t0, (sp)
