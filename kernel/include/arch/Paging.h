@@ -74,6 +74,7 @@ namespace Npk
     extern uint32_t kernelTablesGen;
 
     void PagingSetup();
+    void* InitPageTables(uint32_t* gen);
     bool MapMemory(void* root, uintptr_t vaddr, uintptr_t paddr, PageFlags flags, PageSizes size, bool flushEntry);
     //NOTE: the physical address and page size are returned via ref args
     bool UnmapMemory(void* root, uintptr_t vaddr, uintptr_t& paddr, PageSizes& size, bool flushEntry);

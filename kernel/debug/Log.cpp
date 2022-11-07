@@ -3,6 +3,7 @@
 #include <debug/NanoPrintf.h>
 #include <arch/Platform.h>
 #include <tasking/Clock.h>
+#include <tasking/Thread.h>
 #include <Memory.h>
 #include <Locks.h>
 
@@ -29,7 +30,6 @@ namespace Npk::Debug
         "Terminal", "Debugcon", "NS16550"
     };
 
-    // constexpr size_t LogBalloonSize = NP_LOG_BALLOON_SIZE;
     uint8_t logBalloon[NP_LOG_BALLOON_SIZE]; //allocated in .bss
     size_t balloonHead = 0;
 
@@ -133,9 +133,13 @@ namespace Npk::Debug
         
         const size_t uptime = Tasking::GetUptime();
         const size_t coreId = CoreLocalAvailable() ? CoreLocal().id : 0;
-        const size_t timestampSize = npf_snprintf(nullptr, 0, "%lu.%03lu p%lut0 ", uptime / 1000, uptime % 1000, coreId) + 1;
+        size_t threadId = 0;
+        if (CoreLocalAvailable() && CoreLocal().schedThread != nullptr)
+            threadId = static_cast<Tasking::Thread*>(CoreLocal().schedThread)->Id();
+
+        const size_t timestampSize = npf_snprintf(nullptr, 0, "%lu.%03lu p%lut%lu ", uptime / 1000, uptime % 1000, coreId, threadId) + 1;
         char timestampStr[timestampSize];
-        npf_snprintf(timestampStr, timestampSize, "%lu.%03lu p%lut0 ", uptime / 1000, uptime % 1000, coreId);
+        npf_snprintf(timestampStr, timestampSize, "%lu.%03lu p%lut%lu ", uptime / 1000, uptime % 1000, coreId, threadId);
 
         if (backendsAvailable > 0 && CoreLocalAvailable() && CoreLocal().runLevel == RunLevel::Normal)
         {
@@ -161,7 +165,7 @@ namespace Npk::Debug
         if (level == LogLevel::Fatal)
         {
             CoreLocal().runLevel = RunLevel::Normal;
-            outputLock.Unlock();
+            outputLock.Unlock(); //TODO: implement panic()
             Log("System has halted indefinitely.", LogLevel::Info);
             Halt();
         }

@@ -11,8 +11,6 @@ namespace Npk
 {
     struct TrapFrame
     {
-        uint64_t key; //MUST be 0
-    
         uint64_t r15;
         uint64_t r14;
         uint64_t r13;
@@ -117,8 +115,6 @@ namespace Npk
         frame->iret.rip = entry;
         frame->iret.flags = 0x202; //interrupts enabled, reserved bit set (as per spec).
         frame->rbp = 0;
-        frame->key = 0; //indicates this is a local trap frame.
-        frame->ec = 0xC0DE;
         frame->vector = (uint64_t)-1; //no purpose, for debuggging.
     }
 

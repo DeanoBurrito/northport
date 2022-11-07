@@ -15,10 +15,8 @@ namespace Npk::Memory
     sl::Lazy<VMM> kernelVmm;
     void VMM::InitKernel()
     {
-        //arch-specific paging setup (enable NX, etc)
-        PagingSetup();
-        //bring up basic VM drivers, including kernel driver.
-        Virtual::VmDriver::InitEarly();
+        PagingSetup(); //arch-specific paging setup (enable NX, etc)
+        Virtual::VmDriver::InitEarly(); //bring up basic VM drivers, including kernel driver.
 
         kernelVmm.Init(VmmKey{});
         Heap::Global().Init();
@@ -32,8 +30,12 @@ namespace Npk::Memory
 
     VMM::VirtualMemoryManager()
     {
+        sl::ScopedLock scopeLock(rangesLock);
+
         globalLowerBound = PageSize; //dont allocate in page 0.
         globalUpperBound = ~hhdmBase;
+        ptRoot = InitPageTables(&localKernelGen);
+        
         Log("User VMM initialized.", LogLevel::Info);
     }
 
@@ -56,6 +58,13 @@ namespace Npk::Memory
 
     void VMM::MakeActive()
     {
+        //ensure this VMM's kernel mappings match the master set
+        if (__atomic_load_n(&kernelTablesGen, __ATOMIC_RELAXED) != localKernelGen)
+        {
+            localKernelGen = kernelTablesGen;
+            SyncKernelTables(ptRoot);
+        }
+
         LoadTables(ptRoot);
     }
 

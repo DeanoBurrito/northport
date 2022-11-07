@@ -26,8 +26,6 @@ namespace Npk::Tasking
 
     void TimerCallback(void*)
     {
-        if (!CoreLocalAvailable())
-            return;
         Scheduler::Global().QueueDpc(RescheduleDpc, nullptr);
     }
 
@@ -35,7 +33,7 @@ namespace Npk::Tasking
     { 
         while (true)
         {
-            Debug::DrainBalloon();
+            // Debug::DrainBalloon(); //TODO: this breaks the log output mutex
             Wfi();
         }
         ASSERT_UNREACHABLE();
@@ -151,6 +149,9 @@ namespace Npk::Tasking
 
     void Scheduler::QueueDpc(ThreadMain function, void* arg)
     {
+        if (!CoreLocalAvailable() || CoreLocal().id >= cores.Size() || cores[CoreLocal().id] == nullptr)
+            return;
+        
         ASSERT(CoreLocal().runLevel == RunLevel::IntHandler, "Run level too low.");
         SchedulerCore& core = *cores[CoreLocal().id];
 
@@ -257,12 +258,12 @@ namespace Npk::Tasking
         }
 
         //no dpcs, resume the current thread.
-        TrapFrame* frame = static_cast<Thread*>(CoreLocal().schedThread)->frame;
-        ASSERT(frame->ec == 0xC0DE, "bad error code");
+        Thread* target = static_cast<Thread*>(CoreLocal().schedThread);
+        target->parent->vmm.MakeActive(); //TODO: we could be smarter about when we switch address spaces (ASIDS?)
 
         CoreLocal().runLevel = RunLevel::Normal;
         core.lock.Unlock();
-        ExecuteTrapFrame(frame);
+        ExecuteTrapFrame(target->frame);
         __builtin_unreachable();
     }
 }

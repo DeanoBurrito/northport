@@ -11,8 +11,6 @@ namespace Npk
 {
     struct TrapFrame
     {
-        uint64_t key; //MUST be 0
-
         REG_ALIAS(x1, ra)
         REG_ALIAS(x2, sp)
         REG_ALIAS(x3, gp)
@@ -120,10 +118,8 @@ namespace Npk
         frame->flags.spp = user ? 1 : 0;
         frame->a0 = (uintptr_t)arg;
         frame->sepc = entry;
-        frame->sp = stack;
-        frame->ec = 0xC0DE;
+        frame->sp = sl::AlignDown(stack, 8);
         frame->fp = 0;
-        frame->key = 0; //Local trap frame
         frame->vector = (uint64_t)-1; //not necessary, helps with debugging
     }
     

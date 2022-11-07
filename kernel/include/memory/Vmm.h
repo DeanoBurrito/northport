@@ -63,6 +63,7 @@ namespace Npk::Memory
         sl::TicketLock rangesLock;
         sl::TicketLock ptLock;
         void* ptRoot;
+        uint32_t localKernelGen;
 
         uintptr_t globalLowerBound;
         uintptr_t globalUpperBound;

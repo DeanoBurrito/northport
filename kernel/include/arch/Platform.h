@@ -13,13 +13,6 @@ namespace Npk
         IntHandler = 2,
     };
     
-    struct TrapReturnFrame
-    {
-        uintptr_t key; //MUST be 1
-        uintptr_t mapRoot;
-        uintptr_t stack;
-    };
-
     struct CoreLocalInfo
     {
         uintptr_t scratch[4]; //reserved for use during syscall/sysret/rv64 trap handlers.

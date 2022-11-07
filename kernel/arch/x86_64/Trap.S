@@ -22,9 +22,6 @@ TrapEntry:
     push %r14
     push %r15
 
-    # Dummy stack key
-    push $0
-
     # Swap gs/kernelgs if needed
     mov %ds, %ax
     cmp $0x10, %ax
@@ -43,18 +40,6 @@ TrapEntry:
 ExecuteTrapFrame:
     mov %rdi, %rsp
     
-    # Check if we're looking at a local or foreign stack
-    pop %rax
-    cmp $1, %rax
-    jne 1f
-
-    # Change address space, reload stack
-    pop %rax
-    pop %rbx
-    mov %rax, %cr3
-    mov %rbx, %rsp
-    add $0x8, %rsp
-1:
     # Load data segments + swapgs if needed
     mov 0xA8(%rsp), %eax
     mov %ax, %ds

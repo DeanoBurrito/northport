@@ -40,6 +40,16 @@ namespace Npk
             pagingLevels, maxTranslationLevel);
     }
 
+    void* InitPageTables(uint32_t* gen)
+    {
+        void* ptRoot = reinterpret_cast<void*>(PMM::Global().Alloc());
+        sl::memset(AddHhdm(ptRoot), 0, PageSize);
+
+        *gen = __atomic_load_n(&kernelTablesGen, __ATOMIC_RELAXED);
+        SyncKernelTables(ptRoot);
+        return ptRoot;
+    }
+
     inline void GetPageindices(uintptr_t virtAddr, size_t* indices)
     {
         if (pagingLevels > 4)
@@ -145,11 +155,11 @@ namespace Npk
 
     void SyncKernelTables(void* dest)
     {
-        const PageTable* masterTables = static_cast<PageTable*>(kernelMasterTables);
-        PageTable* destTables = static_cast<PageTable*>(dest);
+        const PageTable* masterTables = AddHhdm(static_cast<PageTable*>(kernelMasterTables));
+        PageTable* destTables = AddHhdm(static_cast<PageTable*>(dest));
 
         for (size_t i = 0; i < 256; i++)
-            destTables[i] = masterTables[i];
+            destTables->entries[i] = masterTables->entries[i];
     }
 
     void LoadTables(void* root)
