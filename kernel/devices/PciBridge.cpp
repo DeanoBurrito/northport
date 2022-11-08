@@ -1,11 +1,18 @@
 #include <devices/PciBridge.h>
 #include <config/AcpiTables.h>
+#include <config/DeviceTree.h>
 #include <debug/Log.h>
 
 namespace Npk::Devices
 {
     void PciBridge::ScanSegment(uintptr_t segmentBase, uint16_t segId, bool ecamAvail)
     {
+        //convinience wrapper
+        auto MakeAddr = [=](uintptr_t base, uint8_t bus, uint8_t dev, uint8_t func)
+        {
+            return ecamAvail ? PciAddress::CreateMmio(base, bus, dev, func) : PciAddress::CreateLegacy(bus, dev, func);
+        };
+        
         //we assume bus 0 exists, and only scan other busses if we know they exist.
         sl::Vector<uint8_t> busses;
         busses.PushBack(0);
@@ -16,17 +23,14 @@ namespace Npk::Devices
 
             for (size_t dev = 0; dev < 32; dev++)
             {
-                const PciAddress addr = ecamAvail ? PciAddress::CreateMmio(segmentBase, bus, dev, 0) : PciAddress::CreateLegacy(bus, dev, 0);
-                const uint32_t idReg = addr.ReadReg(PciReg::Id);
-
-                if ((idReg & 0xFFFF) == 0xFFFF)
+                const PciAddress addr = MakeAddr(segmentBase, bus, dev, 0);
+                if ((addr.ReadReg(PciReg::Id) & 0xFFFF) == 0xFFFF)
                     continue; //invalid device
                 
                 const size_t functionCount = ((addr.ReadReg(PciReg::LatencyCache) >> 16) & 0x80) != 0 ? 8 : 1;
                 for (size_t func = 0; func < functionCount; func++)
                 {
-                    const PciAddress funcAddr = ecamAvail ? PciAddress::CreateMmio(segmentBase, bus, dev, func) : PciAddress::CreateLegacy(bus, dev, func);
-
+                    const PciAddress funcAddr = MakeAddr(segmentBase, bus, dev, func);
                     if ((funcAddr.ReadReg(PciReg::Id) & 0xFFFF) == 0xFFFF)
                         continue;
                     
@@ -49,17 +53,10 @@ namespace Npk::Devices
     {
         sl::ScopedLock scopeLock(lock);
         
-        auto maybeMcfg = Config::FindAcpiTable(Config::SigMcfg);
-        Config::Mcfg* mcfg = maybeMcfg ? static_cast<Config::Mcfg*>(*maybeMcfg) : nullptr;
+        if (auto maybeMcfg = Config::FindAcpiTable(Config::SigMcfg); maybeMcfg.HasValue())
+        {
+            Config::Mcfg* mcfg = static_cast<Config::Mcfg*>(*maybeMcfg);
 
-        if (mcfg == nullptr)
-        {
-            //ECAM not available, use legacy mechanism
-            Log("PCIe ECAM not available, using legacy mechanism.", LogLevel::Verbose);
-            ScanSegment(0, 0, false);
-        }
-        else
-        {
             //discover and scan all segment groups
             const size_t segmentCount = ((mcfg->length - sizeof(Config::Mcfg)) / sizeof(Config::McfgSegment));
             for (size_t i = 0; i < segmentCount; i++)
@@ -70,6 +67,28 @@ namespace Npk::Devices
                     seg->base, seg->id, seg->firstBus, seg->lastBus);
             }
         }
+        else if (auto maybeDtNode = Config::DeviceTree::Global().GetCompatibleNode("pci-host-ecam-generic"); maybeDtNode.HasValue())
+        {
+            auto regProp = maybeDtNode->GetProp("reg");
+            uintptr_t base;
+            size_t length;
+            ASSERT(regProp->ReadRegs(*maybeDtNode, &base, &length) == 1, "Unexpected register count for PCI bridge");
+            ScanSegment(base, 0, true);
+            Log("PCIe segment added: base=0x%lx, length=0x%lx", LogLevel::Verbose, base, length);
+        }
+        else
+#ifdef __x86_64__
+        {
+            //fallback to legacy mechanism
+            Log("PCIe ECAM not available, using x86 legacy mechanism.", LogLevel::Verbose);
+            ScanSegment(0, 0, false);
+        }
+#else
+        { 
+            Log("No known mechanism for PCI discovery available.", LogLevel::Error); 
+            return;
+        }
+#endif
 
         Log("PCI bridge finished scanning, found %lu endpoints.", LogLevel::Info, addresses.Size());
         //TODO: tell driver manager new devices were found.

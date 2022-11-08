@@ -116,7 +116,7 @@ namespace Npk::Debug
         TerminalContext context;
         GTFramebuffer fb;
         volatile uint32_t* fbAddr;
-        bool initialized; //TODO: this is underused
+        bool initialized;
         bool autoflush;
 
         Vector2 size;

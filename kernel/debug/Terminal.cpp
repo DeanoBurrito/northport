@@ -886,6 +886,9 @@ def:
 
     void Terminal::Write(const char* str, size_t length)
     {
+        if (!initialized)
+            return;
+
         for (size_t i = 0; i < length; i++)
             Putchar(str[i]);
         
@@ -908,6 +911,9 @@ def:
 
     void Terminal::Flush()
     {
+        if (!initialized)
+            return;
+
         if (context.cursorVisible) 
             DrawCursor();
 
@@ -940,6 +946,7 @@ def:
     {
         if (!initialized)
             return;
+
         context.cursorVisible = true;
     }
 
@@ -955,6 +962,9 @@ def:
 
     void Terminal::SetCursorPos(Vector2 pos)
     {
+        if (!initialized)
+            return;
+        
         if (pos.x >= size.x)
             pos.x = (int)pos.x < 0 ? 0 : size.x - 1;
         if (pos.y >= size.y)
@@ -966,6 +976,6 @@ def:
 
     Vector2 Terminal::GetCursorPos()
     {
-        return context.cursor;
+        return initialized ? context.cursor : Vector2{ 0, 0 };
     }
 }

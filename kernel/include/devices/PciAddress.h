@@ -7,9 +7,9 @@ namespace Npk::Devices
 {
     struct PciBar
     {
-        size_t index;
         uintptr_t address;
         size_t size;
+        uint8_t index;
         bool isPrefetchable;
         bool is64Bit;
         bool isMemory;

@@ -69,6 +69,9 @@ namespace Npk::Config
 
     sl::Opt<Sdt*> FindAcpiTable(const char* signature)
     {
+        if (rsdp == nullptr)
+            return {};
+
         for (size_t i = 0; i < sdtCount; i++)
         {
             Sdt* test = GetSdt(i);

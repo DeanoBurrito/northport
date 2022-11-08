@@ -10,6 +10,7 @@ namespace Npk::Devices
     constexpr uint16_t PortPciData = 0xCFC;
     constexpr uint32_t PciEnableConfig = 0x80000000;
 #endif
+    constexpr uintptr_t PciLegacyPoison = 0x8888'8888;
     
     PciAddress PciAddress::CreateMmio(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t function)
     {
@@ -18,7 +19,7 @@ namespace Npk::Devices
 
     PciAddress PciAddress::CreateLegacy(uint8_t bus, uint8_t device, uint8_t function)
     {
-        return (0x8765'4321ul << 32) | (bus << 16) | (device << 11) | (function << 8);
+        return (PciLegacyPoison << 32) | (bus << 16) | (device << 11) | (function << 8);
     }
 
     void PciAddress::WriteAt(size_t offset, uint32_t value) const
@@ -50,7 +51,7 @@ namespace Npk::Devices
 #ifndef __x86_64__
         return false;
 #else
-        return (addr >> 32) == 0x8765'4321;
+        return (addr >> 32) == PciLegacyPoison;
 #endif
     }
 

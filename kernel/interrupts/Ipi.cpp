@@ -31,14 +31,21 @@ namespace Npk::Interrupts
     void ProcessIpiMail()
     {
         IpiMailbox& mailbox = mailboxes[CoreLocal().id];
-        sl::ScopedLock scopeLock(mailbox.lock);
 
         for (size_t i = 0; i < MailboxQueueDepth; i++)
         {
             if (mailbox.callbacks[i].callback == nullptr)
                 continue;
-            mailbox.callbacks[i].callback(mailbox.callbacks[i].arg);
+
+            //only acquire the lock while we read the mailbox, this allows other cores to post mail while the callback runs.
+            mailbox.lock.Lock();
+            auto callback = mailbox.callbacks[i].callback;
+            void* arg = mailbox.callbacks[i].arg;
             mailbox.callbacks[i].callback = nullptr;
+            mailbox.lock.Unlock();
+
+            callback(arg);
+            i = (size_t)-1;
         }
     }
 
@@ -54,8 +61,8 @@ namespace Npk::Interrupts
             if (mailbox.callbacks[i].callback != nullptr)
                 continue;
             
-            mailbox.callbacks[i].callback = callback;
             mailbox.callbacks[i].arg = arg;
+            mailbox.callbacks[i].callback = callback;
             SendIpi(dest);
             return;
         }
