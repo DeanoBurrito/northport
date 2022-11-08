@@ -2,10 +2,11 @@ KERNEL_CXX_FLAGS += -I../libs/np-syslib/include
 
 CXX_SRCS = \
 	boot/CommonInit.cpp boot/LimineTags.cpp boot/LimineBootstrap.cpp \
+	config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/LogBackends.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp \
 	debug/Terminal.cpp \
-	config/DeviceTree.cpp config/AcpiTables.cpp \
+	devices/PciAddress.cpp devices/PciBridge.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/Heap.cpp memory/Slab.cpp memory/Pool.cpp \
 	memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp memory/virtual/KernelVmDriver.cpp \

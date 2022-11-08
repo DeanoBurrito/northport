@@ -25,7 +25,7 @@
             - [ ] Debugging helpers.
     - [x] Core clock, software timers.
     - [x] IPI mailbox.
-    - [ ] Scheduler.
+    - [x] Scheduler.
         - [x] SMP-support.
         - [ ] Work stealing.
         - [ ] Heterogenous cpu support.
@@ -49,7 +49,8 @@
         - [ ] Pipes.
     - [ ] Device drivers:
         - [ ] PS/2 keyboard + mouse.
-        - [ ] PCI(e) support.
+        - [x] PCI support.
+            - [ ] PCIe.
             - [ ] MSI(-X).
         - [ ] Virtio:
             - [ ] VirtQueue helpers.

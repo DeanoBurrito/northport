@@ -68,6 +68,7 @@ namespace Npk::Config
     constexpr const char* SigXsdt = "XSDT";
     constexpr const char* SigMadt = "APIC";
     constexpr const char* SigHpet = "HPET";
+    constexpr const char* SigMcfg = "MCFG";
 
     struct [[gnu::packed]] Rsdt : public Sdt
     {
@@ -193,5 +194,20 @@ namespace Npk::Config
         uint8_t hpetNumber;
         uint16_t minClockTicks;
         uint8_t pageProtection;
+    };
+
+    struct [[gnu::packed]] McfgSegment
+    {
+        uint64_t base;
+        uint16_t id;
+        uint8_t firstBus;
+        uint8_t lastBus;
+        uint32_t reserved;
+    };
+
+    struct [[gnu::packed]] Mcfg : public Sdt
+    {
+        uint64_t reserved; //good one pci-sig, all in a day's work i'm sure.
+        McfgSegment segments[];
     };
 }
