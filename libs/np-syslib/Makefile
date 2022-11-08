@@ -19,18 +19,18 @@ K_OBJS = $(patsubst %.cpp, $(K_BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 all-kernel: $(K_TARGET)
 
 $(K_TARGET): $(K_OBJS)
-	@echo "[$(TARGET)] Linking static library (with kernel flags) ..."
+	@echo "[$(TARGET)-k] Creating static library ..."
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_AR_BIN) -rcs $(K_TARGET) $(K_OBJS)
 	@echo "[$(TARGET)] Done."
 
 clean-kernel:
-	@echo "[$(TARGET)] Cleaning build files ..."
+	@echo "[$(TARGET)-k] Cleaning build files ..."
 	$(LOUD)-rm -r $(K_BUILD_DIR)
 	$(LOUD)-rm -r $(K_TARGET)
 	@echo "[$(TARGET)] Done."
 
 $(K_BUILD_DIR)/%.cpp.o: %.cpp
-	@echo "[$(TARGET)] Compiling $< (with kernel flags)"
+	@echo "[$(TARGET)-k] Compiling C++ source: $<"
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@

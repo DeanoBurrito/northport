@@ -15,7 +15,7 @@ $(TARGET_STATIC): $(OBJS)
 	@echo "[$(TARGET)] Creating static library ..."
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_AR_BIN) -rcs $(TARGET_STATIC) $(OBJS)
-	$(LOUD)echo "[$(TARGET)] Static library created."
+	$(LOUD)echo "[$(TARGET)] Done."
 
 clean:
 	@echo "[$(TARGET)] Cleaning build dir ..."

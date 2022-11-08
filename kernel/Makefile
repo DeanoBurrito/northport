@@ -37,11 +37,11 @@ clean:
 	@echo "[Kernel] Done."
 
 $(BUILD_DIR)/%.S.o: %.S
-	@echo "[Kernel] Assembling $<"
+	@echo "[Kernel] Assembling: $<"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_AS_BIN) $(KERNEL_AS_FLAGS) $< -o $@
 
 $(BUILD_DIR)/%.cpp.o: %.cpp
-	@echo "[Kernel] Compiling $<"
+	@echo "[Kernel] Compiling C++ source: $<"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@
