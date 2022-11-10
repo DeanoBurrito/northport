@@ -32,6 +32,15 @@ using Npk::Debug::Log;
         Log("Assert failed (%s:%u in %s): ASSERT_UNREACHABLE reached.", LogLevel::Fatal, __FILE__, __LINE__, __PRETTY_FUNCTION__); \
         __builtin_unreachable(); \
     }
+
+    #define VALIDATE(cond, retval, msg) \
+    { \
+        if (!(cond)) \
+        { \
+            Log("Validation failed (%s:%u in %s): %s", LogLevel::Error, __FILE__, __LINE__, __PRETTY_FUNCTION__,(msg)); \
+            return retval; \
+        } \
+    }
 #else
     #define ASSERT(cond, msg) \
     { \
@@ -43,5 +52,14 @@ using Npk::Debug::Log;
     { \
         Log("Assert failed (%s:%u): ASSERT_UNREACHABLE reached.", LogLevel::Fatal, __FILE__, __LINE__); \
         __builtin_unreachable(); \
+    }
+
+    #define VALIDATE(cond, retval, msg) \
+    { \
+        if (!(cond)) \
+        { \
+            Log("Check failed (%s:%u): %s", LogLevel::Error, __FILE__, __LINE__, (msg)); \
+            return retval; \
+        } \
     }
 #endif
