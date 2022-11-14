@@ -36,7 +36,8 @@ namespace sl
             {
                 if (!__atomic_test_and_set(&lock, __ATOMIC_ACQUIRE))
                     break;
-                while (__atomic_load_n(&lock, __ATOMIC_RELAXED));
+                while (__atomic_load_n(&lock, __ATOMIC_ACQUIRE))
+                {}
             }
         }
 
@@ -55,8 +56,9 @@ namespace sl
     public:
         inline void Lock()
         {
-            const unsigned long ticket = __atomic_fetch_add(&next, 1, __ATOMIC_ACQUIRE);
-            while (__atomic_load_n(&serving, __ATOMIC_ACQUIRE) != ticket);
+            const unsigned ticket = __atomic_fetch_add(&next, 1, __ATOMIC_RELAXED);
+            while (__atomic_load_n(&serving, __ATOMIC_ACQUIRE) != ticket)
+            {}
         }
 
         inline void Unlock()

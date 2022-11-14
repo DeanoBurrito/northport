@@ -8,6 +8,7 @@
 namespace Npk::Interrupts
 {
     constexpr size_t MailboxQueueDepth = 0x1F;
+    constexpr size_t EmitErrorOnCount = 50;
     
     struct MailboxRpc
     {
@@ -19,13 +20,15 @@ namespace Npk::Interrupts
     {
         InterruptLock lock;
         MailboxRpc callbacks[MailboxQueueDepth];
+        size_t fullErrorCount;
     };
 
     sl::Vector<IpiMailbox> mailboxes;
 
     void InitIpiMailbox()
     {
-        mailboxes.EmplaceAt(CoreLocal().id);
+        IpiMailbox& mailbox = mailboxes.EmplaceAt(CoreLocal().id);
+        mailbox.fullErrorCount = 0;
     }
 
     void ProcessIpiMail()
@@ -64,9 +67,13 @@ namespace Npk::Interrupts
             mailbox.callbacks[i].arg = arg;
             mailbox.callbacks[i].callback = callback;
             SendIpi(dest);
+            
+            mailbox.fullErrorCount = 0;
             return;
         }
 
-        Log("Mailbox queue for core %lu is full, mail dropped.", LogLevel::Error, dest);
+        if ((mailbox.fullErrorCount % EmitErrorOnCount) == 0)
+            Log("Mailbox queue for core %lu is full, mail dropped.", LogLevel::Error, dest);
+        mailbox.fullErrorCount++;
     }
 }

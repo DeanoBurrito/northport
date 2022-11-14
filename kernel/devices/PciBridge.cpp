@@ -62,9 +62,10 @@ namespace Npk::Devices
             for (size_t i = 0; i < segmentCount; i++)
             {
                 const Config::McfgSegment* seg = &mcfg->segments[i];
-                ScanSegment(seg->base, seg->id, true);
                 Log("PCIe segment added: base=0x%lx, id=%u, firstBus=%u, lastBus=%u", LogLevel::Verbose, 
                     seg->base, seg->id, seg->firstBus, seg->lastBus);
+
+                ScanSegment(seg->base, seg->id, true);
             }
         }
         else if (auto maybeDtNode = Config::DeviceTree::Global().GetCompatibleNode("pci-host-ecam-generic"); maybeDtNode.HasValue())
@@ -73,8 +74,9 @@ namespace Npk::Devices
             uintptr_t base;
             size_t length;
             ASSERT(regProp->ReadRegs(*maybeDtNode, &base, &length) == 1, "Unexpected register count for PCI bridge");
-            ScanSegment(base, 0, true);
             Log("PCIe segment added: base=0x%lx, length=0x%lx", LogLevel::Verbose, base, length);
+
+            ScanSegment(base, 0, true);
         }
         else
 #ifdef __x86_64__
