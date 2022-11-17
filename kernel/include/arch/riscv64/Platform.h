@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Maths.h>
-#include <arch/riscv64/Timers.h>
 #include <arch/riscv64/Sbi.h>
 
 //risc-v has multiple names per register, this allows us to use any of the given names.
@@ -104,12 +103,6 @@ namespace Npk
     inline void BlockSumac()
     {
         ClearCsrBits("sstatus", 1 << 18);
-    }
-
-    [[gnu::always_inline]]
-    inline void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t))
-    {
-        SetTimer(nanoseconds, callback);
     }
 
     inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)

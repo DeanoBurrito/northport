@@ -1,6 +1,7 @@
 #include <tasking/Clock.h>
 #include <arch/Platform.h>
-#include <containers/Vector.h>
+#include <arch/Timers.h>
+#include <containers/LinkedList.h>
 #include <debug/Log.h>
 #include <interrupts/Ipi.h>
 #include <Locks.h>
@@ -23,15 +24,15 @@ namespace Npk::Tasking
 
     volatile size_t uptimeMillis = 0;
     Npk::InterruptLock eventsLock;
-    sl::Vector<ClockEvent> events; //TODO: implement sl::Queue<T>, use it here
+    sl::LinkedList<ClockEvent> events;
 
     void ClockEventDispatch(size_t)
     {
-        //TODO: we dont account for the time taken by the callback to run.
-        //future timer events could expire while these are running, we'll need some sort of polling clock too?
+dispatch_event:
+        const size_t startTick = PollTimer();
+
         eventsLock.Lock();
-        const ClockEvent event = events.Front();
-        events.Erase(0);
+        const ClockEvent event = events.PopFront();
         eventsLock.Unlock();
 
         if (event.Callback != nullptr)
@@ -44,9 +45,15 @@ namespace Npk::Tasking
         
         if (event.period != 0)
             QueueClockEvent(event.period, event.data, event.Callback, true, event.callbackCore);
+
+        const size_t nanosPassed = PolledTicksToNanos(PollTimer() - startTick);
+        if (nanosPassed >= events.Front().nanosRemaining)
+            goto dispatch_event;
+        else
+            events.Front().nanosRemaining -= nanosPassed;
         
         ASSERT(events.Size() > 0, "System clock has empty event queue. No time-keeping event?");
-        SetSystemTimer(events[0].nanosRemaining, nullptr);
+        SetSysTimer(events.Front().nanosRemaining, nullptr);
     }
 
     void UptimeEventCallback(void*)
@@ -56,11 +63,10 @@ namespace Npk::Tasking
 
     void StartSystemClock()
     {
-        events.EnsureCapacity(0x10);
         QueueClockEvent(1'000'000, nullptr, UptimeEventCallback, true); //time-keeping event
-        SetSystemTimer(events[0].nanosRemaining, ClockEventDispatch);
+        SetSysTimer(events.Front().nanosRemaining, ClockEventDispatch);
 
-        Log("System clock start: uptimeTick=1ms", LogLevel::Info);
+        Log("System clock start: uptimeTick=1ms, sysTimer=%s, pollTimer=%s", LogLevel::Info, SysTimerName(), PollTimerName());
     }
 
     void QueueClockEvent(size_t nanoseconds, void* payloadData, void (*callback)(void* data), bool periodic, size_t core)
@@ -70,16 +76,16 @@ namespace Npk::Tasking
         const size_t period = nanoseconds;
 
         sl::ScopedLock scopeLock(eventsLock);
-        for (size_t i = 0; i < events.Size(); i++)
+        for (auto it = events.Begin(); it != events.End(); ++it)
         {
-            if (events[i].nanosRemaining < nanoseconds)
+            if (it->nanosRemaining < nanoseconds)
             {
-                nanoseconds -= events[i].nanosRemaining;
+                nanoseconds -= it->nanosRemaining;
                 continue;
             }
 
-            events[i].nanosRemaining -= nanoseconds;
-            events.Emplace(i, nanoseconds, payloadData, callback, periodic ? period : 0, core);
+            it->nanosRemaining -= nanoseconds;
+            events.Insert(it, { nanoseconds, payloadData, callback, periodic ? period : 0, core });
             return;
         }
 

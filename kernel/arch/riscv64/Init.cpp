@@ -1,6 +1,6 @@
-#include <arch/Platform.h>
 #include <arch/riscv64/Interrupts.h>
-#include <arch/riscv64/Timers.h>
+#include <arch/Timers.h>
+#include <arch/Platform.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
 #include <boot/LimineBootstrap.h>

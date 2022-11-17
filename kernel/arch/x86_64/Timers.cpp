@@ -1,6 +1,6 @@
-#include <arch/x86_64/Timers.h>
+#include <arch/Timers.h>
+#include <arch/Cpu.h>
 #include <arch/x86_64/Apic.h>
-#include <arch/Platform.h>
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
@@ -8,20 +8,35 @@
 
 namespace Npk
 {
-    constexpr size_t PitPeriodNanos = 838; //838.09511ns
+    constexpr const char* TimerStrs[] = 
+    { "pit", "hpet", "lapic", "tsc" };
+
+    enum class TimerName : size_t
+    {
+        Pit = 0,
+        Hpet,
+        Lapic,
+        Tsc,
+    };
+
+    TimerName selectedSysTimer;
+    TimerName selectedPollTimer;
     
+    constexpr size_t FemtosPerNano = 1'000'000;
+    constexpr size_t PitPeriod = 838; //838.09511ns
+
     constexpr size_t HpetRegCaps = 0x0;
     constexpr size_t HpetRegConfig = 0x10;
     constexpr size_t HpetRegCounter = 0xF0;
     constexpr size_t HpetRegT0Config = 0x100;
     constexpr size_t HpetRegT0Comparator = 0x108;
-
-    constexpr size_t FemtosPerNano = 1'000'000;
     
-    sl::NativePtr hpetMmio = nullptr;
+    sl::NativePtr hpetRegs;
     size_t hpetPeriod;
-    size_t timerVector;
-    uint8_t timerIoapicPin;
+    size_t tscTicksPerMs;
+
+    size_t timerIntVector;
+    uint8_t timerIoApicPin;
 
     inline uint16_t PitRead()
     {
@@ -31,135 +46,223 @@ namespace Npk
         return data;
     }
 
+    inline uint64_t TscRead()
+    {
+        uint64_t low, high;
+        asm volatile("lfence; rdtsc" : "=a"(low), "=d"(high) :: "memory");
+        return low | (high << 32);
+    }
+
     void PitSleep(size_t nanos)
     {
-        ASSERT((nanos / PitPeriodNanos) < 0xFFFF, "Sleep time too long for PIT.");
-        const uint16_t target = 0xFFFF - (nanos / PitPeriodNanos);
+        ASSERT((nanos / PitPeriod) < 0xFFFF, "Sleep time too long for PIT.");
+        const uint16_t target = 0xFFFF - (nanos / PitPeriod);
 
         //reset PIT counter to max
         Out8(PortPitCmd, 0x34);
         Out8(PortPitData, 0xFF);
         Out8(PortPitData, 0xFF);
 
-        while (PitRead() > target);
-    }
-
-    void InitTimers()
-    {
-        auto maybeHpet = Config::FindAcpiTable(Config::SigHpet);
-        if (!maybeHpet)
-            return;
-        
-        const Config::Hpet* hpetTable = static_cast<Config::Hpet*>(*maybeHpet);
-        auto mmioRange = VMM::Kernel().Alloc(0x1000, hpetTable->baseAddress.address, VmFlags::Write | VmFlags::Mmio);
-        ASSERT(mmioRange.HasValue(), "Failed to allocate hpet mmio.");
-        hpetMmio = mmioRange->base;
-
-        //reset main counter and leave it enabled
-        hpetMmio.Offset(HpetRegConfig).VolatileWrite<uint64_t>(0);
-        hpetMmio.Offset(HpetRegCounter).VolatileWrite<uint64_t>(0);
-        hpetMmio.Offset(HpetRegConfig).VolatileWrite<uint64_t>(0b01); //bit 0 = enable bit, bit 1 = legacy routing
-        hpetPeriod = hpetMmio.Offset(HpetRegCaps).VolatileRead<uint64_t>() >> 32;
-
-        ASSERT(hpetPeriod <= 0x05F5E100, "Bad HPET period."); //magic number pulled from hpet spec
-        ASSERT(hpetPeriod > FemtosPerNano, "HPET period < 1ns.");
-        Log("Hpet available: period=%luns, regs=0x%lx (0x%lx)", LogLevel::Info, 
-            hpetPeriod / FemtosPerNano, hpetMmio.raw, hpetTable->baseAddress.address);
-    }
-
-    void InitInterruptTimers()
-    {
-        timerIoapicPin = 0;
-        timerVector = *Interrupts::InterruptManager::Global().Alloc();
-
-        if (hpetMmio.ptr == nullptr)
-        {
-            IoApic::Route(timerIoapicPin, timerVector, CoreLocal().id, TriggerMode::Edge, PinPolarity::High, true);
-            Log("Pit selected as system timer, will use vector 0x%lx (via ioapic pin %u", LogLevel::Info, timerVector, timerIoapicPin);
-        }
-        else
-        {
-            //NOTE: we skip a lot of HPET init stuff because we only use comparator 0, which
-            //always exists, according to spec.
-            uint64_t configWord = hpetMmio.Offset(HpetRegT0Config).VolatileRead<uint64_t>();
-            uint32_t allowedRoutes = configWord >> 32;
-            while ((allowedRoutes & 1) == 0)
-            {
-                timerIoapicPin++;
-                allowedRoutes >>= 1;
-            }
-
-            configWord &= ~(0b1111ul << 9); //zero routing field before writing
-            configWord |= timerIoapicPin << 9;
-            configWord &= ~(1ul << 3); //clear type bit = one shot timer
-            configWord |= 1ul << 2; //enable interrupts
-            configWord &= ~(1ul << 1); //edge triggered
-            hpetMmio.Offset(HpetRegT0Config).VolatileWrite(configWord);
-            ASSERT(hpetMmio.Offset(HpetRegT0Config).VolatileRead<uint64_t>() == configWord, "HPET comparator 0 readback incorrect.");
-
-            IoApic::Route(timerIoapicPin, timerVector, CoreLocal().id, TriggerMode::Edge, PinPolarity::High, true);
-            Log("Hpet selected as system timer, will use vector 0x%lx (via ioapic pin %u)", LogLevel::Info, timerVector, timerIoapicPin);
-        }
+        while (PitRead() > target)
+        {}
     }
 
     void HpetSleep(size_t nanos)
     {
-        ASSERT(hpetMmio.ptr != nullptr, "No HPET sleep: device is not available.");
+        ASSERT(hpetRegs.ptr != nullptr, "No HPET sleep: device is not available.");
         
-        const sl::NativePtr counter = hpetMmio.Offset(HpetRegCounter);
+        const sl::NativePtr counter = hpetRegs.Offset(HpetRegCounter);
         const size_t target = counter.VolatileRead<uint64_t>() + ((nanos * FemtosPerNano) / hpetPeriod);
 
         while (counter.VolatileRead<uint64_t>() < target)
             asm("pause");
     }
 
-    void PolledSleep(size_t nanos)
+    void InitTsc()
     {
-        if (hpetMmio.ptr == nullptr)
-            PitSleep(nanos);
-        else
-            HpetSleep(nanos);
+        if (!CpuHasFeature(CpuFeature::Tsc))
+            return;
+        if (!CpuHasFeature(CpuFeature::InvariantTsc))
+            Log("Invariant TSC not supported on this cpu.", LogLevel::Warning);
+        
+        auto maybeTscCalib = TryCalibrateTimer(TimerStrs[(size_t)TimerName::Tsc], PolledSleep, nullptr, nullptr, TscRead);
+        if (!maybeTscCalib)
+            return;
+        
+        selectedPollTimer = TimerName::Tsc;
+        tscTicksPerMs = *maybeTscCalib;
+
+        if (CpuHasFeature(CpuFeature::TscDeadline))
+            selectedSysTimer = TimerName::Tsc;
     }
 
-    void InterruptSleep(size_t nanos, void (*callback)(size_t))
+    void InitTimers()
     {
-        InterruptGuard intGuard;
+        timerIntVector = *Interrupts::InterruptManager::Global().Alloc();
+        timerIoApicPin = 0;
+        selectedSysTimer = (TimerName)-1;
+
+        if (auto maybeHpet = Config::FindAcpiTable(Config::SigHpet); maybeHpet.HasValue())
+        {
+            const Config::Hpet* hpetTable = static_cast<Config::Hpet*>(*maybeHpet);
+            auto mmioRange = VMM::Kernel().Alloc(0x1000, hpetTable->baseAddress.address, VmFlags::Write | VmFlags::Mmio);
+            ASSERT(mmioRange.HasValue(), "Failed to allocate hpet mmio.");
+            hpetRegs = mmioRange->base;
+
+            //reset main counter and leave it enabled
+            hpetRegs.Offset(HpetRegConfig).VolatileWrite<uint64_t>(0);
+            hpetRegs.Offset(HpetRegCounter).VolatileWrite<uint64_t>(0);
+            hpetRegs.Offset(HpetRegConfig).VolatileWrite<uint64_t>(0b01); //bit 0 = enable bit, bit 1 = legacy routing
+            hpetPeriod = hpetRegs.Offset(HpetRegCaps).VolatileRead<uint64_t>() >> 32;
+
+            ASSERT(hpetPeriod <= 0x05F5E100, "Bad HPET period."); //magic number pulled from hpet spec
+            ASSERT(hpetPeriod > FemtosPerNano, "HPET period < 1ns.");
+            Log("Hpet available: period=%luns, regs=0x%lx (0x%lx)", LogLevel::Info, 
+                hpetPeriod / FemtosPerNano, hpetRegs.raw, hpetTable->baseAddress.address);
+            
+            selectedPollTimer = TimerName::Hpet;
+        }
+        else
+            selectedPollTimer = TimerName::Pit;
+        
+        InitTsc();
+    }
+
+    void InitSysTimer()
+    {
+        if (LocalApic::Local().CalibrateTimer())
+        {
+            selectedSysTimer = TimerName::Lapic;
+            return;
+        }
+        
+        if (hpetRegs.ptr == nullptr)
+        {
+            selectedSysTimer = TimerName::Pit;
+            IoApic::Route(timerIoApicPin, timerIntVector, CoreLocal().id, TriggerMode::Edge, PinPolarity::High, true);
+            Log("PIT will be used for sys timer :(", LogLevel::Info);
+        }
+        else
+        {
+            //setup HPET comparator 0 for interrupts
+            uint64_t configWord = hpetRegs.Offset(HpetRegT0Config).VolatileRead<uint64_t>();
+            uint32_t allowedRoutes = configWord >> 32;
+            while ((allowedRoutes & 1) == 0)
+            {
+                timerIoApicPin++;
+                allowedRoutes >>= 1;
+            }
+
+            configWord &= ~(0b1111ul << 9); //zero routing field before writing
+            configWord |= timerIoApicPin << 9;
+            configWord &= ~(1ul << 3); //clear type bit = one shot timer
+            configWord |= 1ul << 2; //enable interrupts
+            configWord &= ~(1ul << 1); //edge triggered
+            hpetRegs.Offset(HpetRegT0Config).VolatileWrite(configWord);
+            ASSERT(hpetRegs.Offset(HpetRegT0Config).VolatileRead<uint64_t>() == configWord, "HPET comparator 0 readback incorrect.");
+
+            selectedSysTimer = TimerName::Hpet;
+            IoApic::Route(timerIoApicPin, timerIntVector, CoreLocal().id, TriggerMode::Edge, PinPolarity::High, true);
+            Log("Hpet comparator 0 available for sys timer: vector=0x%lx, ioapicPin=%u.", 
+                LogLevel::Info, timerIntVector, timerIoApicPin);
+        }
+    }
+
+    void SetSysTimer(size_t nanoseconds, void (*callback)(size_t))
+    {
+        if ((size_t)selectedSysTimer == -1ul)
+            InitSysTimer();
 
         if (callback != nullptr)
         {
-            Interrupts::InterruptManager::Global().Detach(timerVector);
-            Interrupts::InterruptManager::Global().Attach(timerVector, callback);
+            Interrupts::InterruptManager::Global().Detach(timerIntVector);
+            Interrupts::InterruptManager::Global().Attach(timerIntVector, callback);
         }
         
-        if (hpetMmio.ptr == nullptr)
+        switch (selectedSysTimer)
         {
-            ASSERT((nanos / PitPeriodNanos) < 0xFFFF, "Sleep time too long for PIT.");
+        case TimerName::Pit:
+        {
+            ASSERT((nanoseconds / PitPeriod) < 0xFFFF, "Sleep time too long for PIT.");
 
-            const uint16_t target = nanos / PitPeriodNanos;
+            const uint16_t target = nanoseconds / PitPeriod;
             //mode 0, sets output high (level + high pintrigger) when count reached.
             Out8(PortPitCmd, 0x30); //mode 0, one-shot edge triggered (active high) timer.
             Out8(PortPitData, target);
             Out8(PortPitData, target >> 8);
+
+            IoApic::Mask(timerIoApicPin, false);
+            return;
         }
-        else
+
+        case TimerName::Hpet:
         {
-            const uint64_t mainCounter = hpetMmio.Offset(HpetRegCounter).VolatileRead<uint64_t>();
-            const uint64_t target = mainCounter + ((nanos * FemtosPerNano) / hpetPeriod);
-            hpetMmio.Offset(HpetRegT0Comparator).VolatileWrite(target);
+            const uint64_t mainCounter = hpetRegs.Offset(HpetRegCounter).VolatileRead<uint64_t>();
+            const uint64_t target = mainCounter + ((nanoseconds * FemtosPerNano) / hpetPeriod);
+            hpetRegs.Offset(HpetRegT0Comparator).VolatileWrite(target);
+            
+            IoApic::Mask(timerIoApicPin, false);
+            return;
         }
-        IoApic::Mask(timerIoapicPin, false);
+
+        case TimerName::Lapic:
+            LocalApic::Local().SetTimer(false, nanoseconds, timerIntVector);
+            return;
+
+        case TimerName::Tsc:
+            LocalApic::Local().SetTimer(true, nanoseconds / 1'000'000 * tscTicksPerMs, timerIntVector);
+            return;
+        
+        default:
+            ASSERT_UNREACHABLE();
+        }
     }
 
-    size_t GetTimerNanos()
+    void PolledSleep(size_t nanoseconds)
     {
-        if (hpetMmio.ptr == nullptr)
-            return (0xFFFF - PitRead()) * PitPeriodNanos;
+        if (hpetRegs.ptr == nullptr)
+            PitSleep(nanoseconds);
         else
-            return hpetMmio.Offset(HpetRegCounter).VolatileRead<uint64_t>() * hpetPeriod / FemtosPerNano;
+            HpetSleep(nanoseconds);
     }
 
-    const char* ActiveTimerName()
+    size_t PollTimer()
     {
-        return hpetMmio.ptr == nullptr ? "pit" : "hpet";
+        switch (selectedPollTimer)
+        {
+        case TimerName::Pit:
+            return PitRead();
+        case TimerName::Hpet:
+            return hpetRegs.Offset(HpetRegCounter).VolatileRead<uint64_t>();
+        case TimerName::Tsc:
+            return TscRead();
+        default:
+            ASSERT_UNREACHABLE();
+        }
+    }
+
+    size_t PolledTicksToNanos(size_t ticks)
+    {
+        switch (selectedPollTimer)
+        {
+        case TimerName::Pit:
+            return ticks * PitPeriod;
+        case TimerName::Hpet:
+            return (ticks * hpetPeriod) / FemtosPerNano;
+        case TimerName::Tsc:
+            return (ticks / tscTicksPerMs) * 1'000'000;
+        default:
+            ASSERT_UNREACHABLE();
+        }
+    }
+    
+    const char* SysTimerName()
+    {
+        return TimerStrs[(size_t)selectedSysTimer];
+    }
+
+    const char* PollTimerName()
+    {
+        return TimerStrs[(size_t)selectedPollTimer];
     }
 }

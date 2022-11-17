@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <Maths.h>
 #include <arch/x86_64/Apic.h>
-#include <arch/x86_64/Timers.h>
 #include <arch/x86_64/Gdt.h>
 
 namespace Npk
@@ -94,16 +93,6 @@ namespace Npk
     inline void BlockSumac()
     {
         asm("clac" ::: "cc");
-    }
-
-    extern bool lapicTimerAvailable;
-    [[gnu::always_inline]]
-    inline void SetSystemTimer(size_t nanoseconds, void (*callback)(size_t))
-    {
-        if (lapicTimerAvailable)
-            LocalApic::Local().SetTimer(nanoseconds, callback);
-        else
-            InterruptSleep(nanoseconds, callback);
     }
 
     inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)

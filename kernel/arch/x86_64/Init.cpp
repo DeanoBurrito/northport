@@ -1,9 +1,9 @@
 #include <arch/x86_64/Apic.h>
 #include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Idt.h>
-#include <arch/x86_64/Timers.h>
-#include <arch/Platform.h>
 #include <arch/Cpu.h>
+#include <arch/Timers.h>
+#include <arch/Platform.h>
 #include <boot/LimineTags.h>
 #include <boot/CommonInit.h>
 #include <debug/Log.h>
@@ -11,8 +11,6 @@
 
 namespace Npk
 {
-    bool lapicTimerAvailable;
-    
     void InitCore(size_t id)
     {
         //ensure we're using the kernel's pagemap.
@@ -57,14 +55,6 @@ namespace Npk
         WriteMsr(MsrGsBase, (uint64_t)clb);
 
         LocalApic::Local().Init();
-        if (IsBsp())
-        {
-            //If we fail to calibrate the lapic timer, we'll use one of the platform
-            //timers. The hpet if its available, and ultimately the pit if we have to.
-            lapicTimerAvailable = LocalApic::Local().CalibrateTimer();
-            if (!lapicTimerAvailable)
-                InitInterruptTimers();
-        }
 
         EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);

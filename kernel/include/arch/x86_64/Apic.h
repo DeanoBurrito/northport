@@ -48,21 +48,16 @@ namespace Npk
         size_t ticksPerMs;
         sl::SpinLock lock;
 
-        static size_t timerVector;
-
         uint32_t ReadReg(LApicReg reg) const;
         void WriteReg(LApicReg reg, uint32_t value) const;
-        bool ApplyTimerCalibration(long* runs, size_t runCount, size_t failThreshold);
-
-        uint64_t ReadTsc() const;
 
     public:
         static LocalApic& Local();
 
         void Init();
-        bool CalibrateTimer();
 
-        void SetTimer(size_t nanoseconds, void (*callback)(size_t));
+        bool CalibrateTimer();
+        void SetTimer(bool tsc, size_t nanos, size_t vector);
         void SendEoi() const;
         void SendIpi(size_t dest) const;
     };

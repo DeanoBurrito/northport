@@ -15,9 +15,3 @@ ifeq ($(CPU_ARCH), x86_64)
 		KERNEL_CXX_FLAGS += -DNP_X86_64_E9_ALLOWED
 	endif
 endif
-
-ifeq ($(CPU_ARCH), riscv64)
-	ifeq ($(RV64_NO_RDTIME), yes)
-		KERNEL_CXX_FLAGS += -DNP_RV64_NO_RDTIME_INSTR
-	endif
-endif

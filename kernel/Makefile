@@ -1,6 +1,6 @@
 KERNEL_CXX_FLAGS += -I../libs/np-syslib/include
 
-CXX_SRCS = \
+CXX_SRCS = arch/Helpers.cpp \
 	boot/CommonInit.cpp boot/LimineTags.cpp boot/LimineBootstrap.cpp \
 	config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \

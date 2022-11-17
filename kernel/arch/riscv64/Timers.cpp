@@ -1,4 +1,4 @@
-#include <arch/riscv64/Timers.h>
+#include <arch/Timers.h>
 #include <arch/riscv64/Sbi.h>
 #include <config/DeviceTree.h>
 #include <debug/Log.h>
@@ -8,19 +8,14 @@
 namespace Npk
 {
     sl::ScaledTime timerPeriod;
-
-    [[gnu::always_inline]]
+    
     inline uint64_t RdTime()
     {
-#ifdef NP_RV64_NO_RDTIME_INSTR
-        return 0;
-#else
         uintptr_t value;
         asm volatile("rdtime %0" : "=r"(value) :: "memory");
         return value;
-#endif
     }
-    
+
     void InitTimers()
     {
         ASSERT(SbiExtensionAvail(SbiExt::Time), "SBI time extension not available.");
@@ -35,7 +30,7 @@ namespace Npk
     }
 
     void (*timerCallback)(size_t);
-    void SetTimer(size_t nanoseconds, void (*callback)(size_t))
+    void SetSysTimer(size_t nanoseconds, void (*callback)(size_t))
     {
         const size_t triggerTime = RdTime() + (nanoseconds / timerPeriod.ToScale(sl::TimeScale::Nanos).units);
         if (callback != nullptr)
@@ -44,8 +39,30 @@ namespace Npk
         SbiSetTimer(triggerTime);
     }
 
-    const char* ActiveTimerName()
+    void PolledSleep(size_t nanoseconds)
+    {
+        const uint64_t target = RdTime() + (nanoseconds / timerPeriod.ToScale(sl::TimeScale::Nanos).units);
+        while (RdTime() < target)
+        {}
+    }
+
+    size_t PollTimer()
+    {
+        return RdTime();
+    }
+
+    size_t PolledTicksToNanos(size_t ticks)
+    {
+        return ticks * timerPeriod.ToScale(sl::TimeScale::Nanos).units;
+    }
+    
+    const char* SysTimerName()
     {
         return "sbi";
+    }
+
+    const char* PollTimerName()
+    {
+        return "rdtime";
     }
 }

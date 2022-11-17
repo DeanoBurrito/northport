@@ -22,12 +22,6 @@ namespace Npk
         SetCsrBits("sie", 0x222);
     }
 
-    void ProcessIpisDpc(void*)
-    {
-        Interrupts::ProcessIpiMail();
-        Tasking::Scheduler::Global().DpcExit();
-    }
-
     extern void (*timerCallback)(size_t);
 }
 
@@ -50,7 +44,7 @@ extern "C"
                 Interrupts::ProcessIpiMail();
                 break;
             case 5:
-                if (timerCallback)
+                if (timerCallback != nullptr)
                     timerCallback(5);
                 break;
             case 9:
@@ -62,7 +56,7 @@ extern "C"
             }
         }
         else
-            Log("Native CPU exception: 0x%lx.", LogLevel::Fatal, frame->vector);
+            Log("Native CPU exception: 0x%lx, ec=0x%lx.", LogLevel::Fatal, frame->vector, frame->ec);
 
         Tasking::Scheduler::Global().RunNextFrame();
         ExecuteTrapFrame(frame);

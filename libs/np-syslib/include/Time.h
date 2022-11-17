@@ -19,5 +19,5 @@ namespace sl
         static ScaledTime FromFrequency(size_t hertz);
 
         ScaledTime ToScale(TimeScale newScale);
-    }; //TODO: apply this elsewhere where time is concerned, add util methods
+    };
 }

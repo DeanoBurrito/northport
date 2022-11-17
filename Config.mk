@@ -31,7 +31,3 @@ LOGGING_BALLOON_SIZE = 0x8000ul
 X86_64_ENABLE_DEBUGCON_E9 = yes
 
 # ---- Riscv 64 Options ----
-# Some platforms don't support the 'rdtime' instruction, instead reading from an external timer.
-# To save a trap to m-mode and extra instructions you can enable this if you know your target has this
-# behaviour. We'll try to read from the clint->time register instead (if it exists).
-RV64_NO_RDTIME = no
