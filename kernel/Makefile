@@ -10,7 +10,8 @@ CXX_SRCS = \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/Heap.cpp memory/Slab.cpp memory/Pool.cpp \
 	memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp memory/virtual/KernelVmDriver.cpp \
-	tasking/Clock.cpp tasking/Thread.cpp tasking/Process.cpp tasking/Scheduler.cpp
+	tasking/Clock.cpp tasking/Thread.cpp tasking/Process.cpp tasking/Scheduler.cpp \
+	tasking/ServiceThreads.cpp
 
 AS_SRCS =
 

@@ -19,7 +19,7 @@ namespace Npk::Tasking
 
     struct SchedulerCore
     {
-        sl::Vector<Thread*> threads;
+        Thread* threads; //this is an intrusive list, see the thread.next field.
         Thread* idleThread;
         size_t threadCount;
 
@@ -45,14 +45,20 @@ namespace Npk::Tasking
         size_t nextPid;
         Process* idleProcess;
 
+        void LateInit();
+
     public:
         static Scheduler& Global();
 
         void Init();
-        void RegisterCore(bool beginScheduling);
+        void RegisterCore();
 
-        Process* CreateProcess(void* environment);
+        Process* CreateProcess();
         Thread* CreateThread(ThreadMain entry, void* arg, Process* parent = nullptr, size_t coreAffinity = -1);
+        void DestroyThread(size_t id, size_t errorCode);
+        void EnqueueThread(size_t id);
+        //TODO: DequeueThread(), DestroyProcess()
+
         void QueueDpc(ThreadMain function, void* arg = nullptr);
         void DpcExit();
 

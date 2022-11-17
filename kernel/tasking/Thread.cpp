@@ -7,4 +7,17 @@ namespace Npk::Tasking
     {
         return Scheduler::Global().CreateThread(entry, arg, parent);
     }
+
+    Thread& Thread::Current()
+    { return *reinterpret_cast<Thread*>(CoreLocal().schedThread); }
+
+    void Thread::Start()
+    {
+        Scheduler::Global().EnqueueThread(id);
+    }
+
+    void Thread::Exit(size_t code)
+    {
+        Scheduler::Global().DestroyThread(id, code);
+    }
 }

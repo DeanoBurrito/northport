@@ -1,5 +1,6 @@
 #include <tasking/Scheduler.h>
 #include <tasking/Process.h>
+#include <tasking/ServiceThreads.h>
 #include <tasking/Clock.h>
 #include <memory/Vmm.h>
 #include <debug/Log.h>
@@ -8,6 +9,16 @@ namespace Npk::Tasking
 {
     constexpr size_t DefaultStackSize = 0x4000;
 
+    CleanupData schedCleanupData;
+
+    void Scheduler::LateInit()
+    {
+        //Init() runs before any cores are registered, LateInit() runs after at least 1 core
+        //has been registered, and is suitible for things like creating service threads.
+
+        CreateThread(SchedulerCleanupThreadMain, &schedCleanupData)->Start();
+    }
+
     Scheduler globalScheduler;
     Scheduler& Scheduler::Global()
     { return globalScheduler; }
@@ -15,7 +26,7 @@ namespace Npk::Tasking
     void Scheduler::Init()
     {
         nextPid = nextTid = 2; //id = 0 is reserved for 'null', id = 1 is the idle threads
-        idleProcess = CreateProcess(nullptr);
+        idleProcess = CreateProcess();
     }
 
     void RescheduleDpc(void*)
@@ -31,17 +42,14 @@ namespace Npk::Tasking
 
     void IdleMain(void*)
     { 
-        while (true)
-        {
-            // Debug::DrainBalloon(); //TODO: this breaks the log output mutex
-            Wfi();
-        }
+        Halt();
         ASSERT_UNREACHABLE();
     }
 
-    void Scheduler::RegisterCore(bool beginScheduling)
+    void Scheduler::RegisterCore()
     {
         SchedulerCore* core = cores.EmplaceAt(CoreLocal().id, new SchedulerCore());
+        InterruptGuard intGuard;
         sl::ScopedLock coreLock(core->lock);
 
         //we create the idle thread manually, since it shouldn't be in the normal thread pool.
@@ -54,6 +62,7 @@ namespace Npk::Tasking
         core->idleThread->stack.base = VMM::Kernel().Alloc(IdleStackSize, 1, VmFlags::Anon | VmFlags::Write)->base;
         core->idleThread->stack.length = IdleStackSize;
         core->idleThread->frame = reinterpret_cast<TrapFrame*>((core->idleThread->stack.base + IdleStackSize) - sizeof(TrapFrame));
+        core->idleThread->frame = sl::AlignDown(core->idleThread->frame, sizeof(TrapFrame));
         InitTrapFrame(core->idleThread->frame, core->idleThread->stack.base + core->idleThread->stack.length, (uintptr_t)IdleMain, nullptr, false);
 
         auto dpcStack = VMM::Kernel().Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write);
@@ -66,17 +75,18 @@ namespace Npk::Tasking
         CoreLocal().schedThread = core->idleThread;
         
         core->state = CoreState::Available;
-        QueueClockEvent(10'000'000, nullptr, TimerCallback, true);
         Log("Scheduler registered core %lu.", LogLevel::Verbose, CoreLocal().id);
 
-        if (!beginScheduling)
-            return;
-        CoreLocal().runLevel = RunLevel::Dispatch;
         core->lock.Unlock();
+        if (IsBsp())
+            LateInit();
+
+        QueueClockEvent(10'000'000, nullptr, TimerCallback, true);
         RunNextFrame();
+        ASSERT_UNREACHABLE();
     }
 
-    Process* Scheduler::CreateProcess(void* environment)
+    Process* Scheduler::CreateProcess()
     {
         const size_t id = __atomic_fetch_add(&nextPid, 1, __ATOMIC_RELAXED);
         Process* proc = new Process();
@@ -86,22 +96,21 @@ namespace Npk::Tasking
         processes.Emplace(id, proc);
         processesLock.Unlock();
 
-        (void)environment;//TODO: process environments
         return proc;
     }
 
     Thread* Scheduler::CreateThread(ThreadMain entry, void* arg, Process* parent, size_t coreAffinity)
     {
         if (parent == nullptr)
-            parent = CreateProcess(nullptr);
+            parent = CreateProcess();
         
         const size_t tid = __atomic_fetch_add(&nextTid, 1, __ATOMIC_RELAXED);
+
         threadsLock.Lock();
         Thread* thread = threadLookup.EmplaceAt(tid, new Thread());
         thread->id = tid;
         threadsLock.Unlock();
 
-        thread->parent = parent;
         auto maybeStack = parent->vmm.Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write);
         ASSERT(maybeStack, "No thread stack"); //TODO: critical junction here, do we fail or stall until memory is available?
         thread->stack.base = maybeStack->base;
@@ -114,34 +123,74 @@ namespace Npk::Tasking
         InitTrapFrame(&frame, thread->stack.base + thread->stack.length, (uintptr_t)entry, arg, false);
         parent->vmm.CopyIn((void*)thread->frame, &frame, sizeof(TrapFrame));
 
-        size_t smallestCount = (size_t)-1;
-        size_t smallestIndex = 0;
-        if (coreAffinity == -1ul)
+        thread->parent = parent;
+        thread->coreAffinity = coreAffinity;
+        thread->state = ThreadState::Ready;
+
+        return thread;
+    }
+
+    void Scheduler::DestroyThread(size_t id, size_t errorCode)
+    {
+        ASSERT(id <= threadLookup.Size(), "Invalid thread id");
+        ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
+        Log("Thread %lu exited with code %lu", LogLevel::Debug, id, errorCode);
+
+        DisableInterrupts();
+        threadsLock.Lock();
+        Thread* t = threadLookup[id];
+        threadLookup[id] = nullptr;
+        t->state = ThreadState::Dead;
+        //TODO: free tid (implement IdA)
+        threadsLock.Unlock();
+
+        schedCleanupData.lock.Lock();
+        schedCleanupData.threads.PushBack(t);
+        schedCleanupData.lock.Unlock();
+
+        QueueDpc(RescheduleDpc);
+    }
+
+    void Scheduler::EnqueueThread(size_t id)
+    {
+        ASSERT(id <= threadLookup.Size(), "Invalid thread id");
+        ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
+
+        Thread* t = threadLookup[id];
+        ASSERT(t->state == ThreadState::Ready, "Thread is not ready.");
+        t->state = ThreadState::Runnable;
+
+        size_t affinity = t->coreAffinity;
+
+        size_t smallestCount = -1ul;
+        if (affinity == -1ul)
         {
+            //core has no preferred core, find the least worked one.
             for (size_t i = 0; i < cores.Size(); i++)
             {
                 if (cores[i] == nullptr || cores[i]->state != CoreState::Available)
                     continue;
-                if (cores[i]->threadCount >= smallestCount)
+                const size_t coreThreadCount = __atomic_load_n(&cores[i]->threadCount, __ATOMIC_RELAXED);
+                if (coreThreadCount >= smallestCount)
                     continue;
                 
-                smallestCount = cores[i]->threadCount;
-                smallestIndex = i;
+                smallestCount = coreThreadCount;
+                affinity = i;
             }
-            if (smallestIndex == (size_t)-1)
-                smallestIndex = CoreLocal().id;
+            ASSERT(affinity != -1ul, "Failed to allocate processor for thread.");
         }
+
+        sl::ScopedLock scopeLock(cores[affinity]->lock);
+        Thread* last = cores[affinity]->threads;
+        if (last == nullptr)
+            cores[affinity]->threads = t;
         else
-            smallestIndex = coreAffinity;
-        
-        cores[smallestIndex]->lock.Lock();
-        cores[smallestIndex]->threads.PushBack(thread);
-        cores[smallestIndex]->threadCount++;
-        cores[smallestIndex]->lock.Unlock();
-        
-        thread->state = ThreadState::Runnable;
-        Log("Thread %lu added to core %lu", LogLevel::Debug, tid, smallestIndex);
-        return thread;
+        {
+            while (last->next != nullptr)
+                last = last->next;
+            last->next = t;
+        }
+        cores[affinity]->threadCount++;
     }
 
     void DpcQueue(void (*function)(void* arg), void* arg)
@@ -152,11 +201,17 @@ namespace Npk::Tasking
         if (!CoreLocalAvailable() || CoreLocal().id >= cores.Size() || cores[CoreLocal().id] == nullptr)
             return;
         
-        ASSERT(CoreLocal().runLevel == RunLevel::IntHandler, "Run level too low.");
         SchedulerCore& core = *cores[CoreLocal().id];
-
-        sl::ScopedLock scopeLock(core.lock);
+        core.lock.Lock();
         core.dpcs.EmplaceBack(function, arg);
+        core.lock.Unlock();
+
+        if (CoreLocal().runLevel == RunLevel::Normal)
+        {
+            //run the dpc immediately, we'll return here later
+            //SaveCurrentFrame()
+            RunNextFrame();
+        }
     }
 
     void DpcExit()
@@ -172,6 +227,7 @@ namespace Npk::Tasking
     void Scheduler::Reschedule()
     {
         ASSERT(CoreLocal().runLevel != RunLevel::Normal, "Run level too low.");
+        
         sl::ScopedLock coreLock(cores[CoreLocal().id]->lock);
         SchedulerCore& core = *cores[CoreLocal().id];
         if (core.state != CoreState::Available)
@@ -182,9 +238,8 @@ namespace Npk::Tasking
         Thread* loopedNext = nullptr;
         bool passedCurrent = false;
 
-        for (auto it = core.threads.Begin(); it != core.threads.End(); ++it)
+        for (Thread* scan = core.threads; scan != nullptr; scan = scan->next)
         {
-            Thread* scan = *it;
             if (loopedNext == nullptr && scan->state == ThreadState::Runnable)
             {
                 loopedNext = scan;
@@ -193,11 +248,14 @@ namespace Npk::Tasking
             }
 
             if (current != nullptr && scan->id == current->id)
+            {
                 passedCurrent = true;
+                continue;
+            }
             
             if (!passedCurrent)
                 continue;
-            if (scan->state != ThreadState::Runnable)            
+            if (scan->state != ThreadState::Runnable)
                 continue;
             
             next = scan;
@@ -221,7 +279,7 @@ namespace Npk::Tasking
 
         if (prevRunLevel == RunLevel::Dispatch)
             core.dpcFrame = current;
-        else if (CoreLocal().schedThread != nullptr)
+        else if (CoreLocal().schedThread != nullptr && prevRunLevel == RunLevel::Normal)
             static_cast<Thread*>(CoreLocal().schedThread)->frame = current;
     }
 
@@ -229,41 +287,34 @@ namespace Npk::Tasking
     {
         if (!CoreLocalAvailable() || CoreLocal().id >= cores.Size() || cores[CoreLocal().id] == nullptr)
             return; //we're super early in init, missing critical data so just return.
+
+        auto RunNext = [](SchedulerCore& core, RunLevel level, TrapFrame* frame) 
+        {
+            CoreLocal().runLevel = level;
+            core.lock.Unlock();
+            ExecuteTrapFrame(frame);
+            __builtin_unreachable();
+        };
         
         DisableInterrupts();
-        ASSERT(CoreLocal().runLevel != RunLevel::Normal, "Run level too low");
 
         SchedulerCore& core = *cores[CoreLocal().id];
         core.lock.Lock();
         if (!core.dpcFinished)
-        {
-            //resume an interrupted dpc
-            CoreLocal().runLevel = RunLevel::Dispatch;
-            core.lock.Unlock();
-            ExecuteTrapFrame(core.dpcFrame);
-            __builtin_unreachable();
-        }
+            RunNext(core, RunLevel::Dispatch, core.dpcFrame);
         
         if (core.dpcs.Size() > 0)
         {
-            //run the next dpc
             const DeferredCall dpc = core.dpcs.PopFront();
             InitTrapFrame(core.dpcFrame, core.dpcStack, (uintptr_t)dpc.function, dpc.arg, false);
-
-            CoreLocal().runLevel = RunLevel::Dispatch;
             core.dpcFinished = false;
-            core.lock.Unlock();
-            ExecuteTrapFrame(core.dpcFrame);
-            __builtin_unreachable();
+
+            RunNext(core, RunLevel::Dispatch, core.dpcFrame);
         }
 
         //no dpcs, resume the current thread.
         Thread* target = static_cast<Thread*>(CoreLocal().schedThread);
         target->parent->vmm.MakeActive(); //TODO: we could be smarter about when we switch address spaces (ASIDS?)
-
-        CoreLocal().runLevel = RunLevel::Normal;
-        core.lock.Unlock();
-        ExecuteTrapFrame(target->frame);
-        __builtin_unreachable();
+        RunNext(core, RunLevel::Normal, target->frame);
     }
 }

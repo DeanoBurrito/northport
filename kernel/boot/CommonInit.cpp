@@ -7,6 +7,7 @@
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <debug/LogBackends.h>
+#include <devices/PciBridge.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
@@ -90,17 +91,8 @@ namespace Npk
         Tasking::Scheduler::Global().Init();
     }
 
-    void TestEntry(void* arg)
-    {
-        Log("Thread %lu is running!", LogLevel::Debug, (size_t)arg);
-        Halt();
-    }
-
     void ReclaimBootloaderMemory()
     {
-#ifdef NP_NO_RECLAIM_BOOTLOADER_MEMORY
-        return;
-#endif
         //since the memory map is contained within the memory we're going to reclaim, we'll need our own copy.
         size_t reclaimCount = 0;
         limine_memmap_entry reclaimEntries[Boot::memmapRequest.response->entry_count];
@@ -117,10 +109,13 @@ namespace Npk
         // PMM::Global().DumpState();
 
         Log("Bootloader memory no-longer in use, reclaimed %lu entries.", LogLevel::Info, reclaimCount);
+    }
 
-        //--- for testing purposes ---
-        for (size_t i = 0; i < 10; i++)
-            Tasking::Thread::Create(TestEntry, (void*)i);
+    void InitThread(void*)
+    {
+        Devices::PciBridge::Global().Init();
+        
+        Tasking::Thread::Current().Exit(0);
     }
 
     [[noreturn]]
@@ -135,10 +130,15 @@ namespace Npk
     {
         const size_t refsLeft = __atomic_sub_fetch(&bootDataReferences, 1, __ATOMIC_RELAXED);
         if (refsLeft == 0)
+        {
+#ifndef NP_NO_RELCIAIM_BOOTLOADER_MEMORY
             ReclaimBootloaderMemory();
+#endif
+            Tasking::Thread::Create(InitThread, nullptr)->Start();
+        }
         
         Interrupts::InitIpiMailbox();
-        Tasking::Scheduler::Global().RegisterCore(true);
+        Tasking::Scheduler::Global().RegisterCore();
         ASSERT_UNREACHABLE();
     }
 }

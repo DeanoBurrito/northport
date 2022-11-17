@@ -17,7 +17,7 @@ namespace Npk::Tasking
         size_t id;
 
     public:
-        static Process* Create(void* environment);
+        static Process* Create();
 
         [[gnu::always_inline]]
         inline size_t Id()

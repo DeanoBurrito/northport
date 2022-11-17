@@ -3,8 +3,8 @@
 
 namespace Npk::Tasking
 {
-    Process* Process::Create(void* environment)
+    Process* Process::Create()
     {
-        return Scheduler::Global().CreateProcess(environment);
+        return Scheduler::Global().CreateProcess();
     }
 }
