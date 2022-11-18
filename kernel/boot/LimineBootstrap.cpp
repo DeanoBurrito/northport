@@ -307,12 +307,12 @@ namespace Npk::Boot
             smpResponse->cpus[cpuCount++] = cpu;
             cpu->goto_address = 0;
             cpu->extra_argument = 0;
-            cpu->plic_context = 0; //TODO: determine plic context id
             cpu->reserved = 0;
 
             auto regProp = child.GetProp("reg");
             ASSERT(regProp, "/cpus/cpuX has no reg property.")
             cpu->hart_id = regProp->ReadNumber();
+            cpu->plic_context = cpu->hart_id * 2 + 1; //TODO: parse interrupt maps and determine this properly.
 
 #if __riscv_xlen == 64
             SmpConfig* config = new(BootAlloc(sizeof(SmpConfig))) SmpConfig{};

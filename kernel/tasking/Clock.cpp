@@ -47,7 +47,7 @@ dispatch_event:
             QueueClockEvent(event.period, event.data, event.Callback, true, event.callbackCore);
 
         const size_t nanosPassed = PolledTicksToNanos(PollTimer() - startTick);
-        if (nanosPassed >= events.Front().nanosRemaining)
+        if (nanosPassed >= events.Front().nanosRemaining || events.Front().nanosRemaining == 0)
             goto dispatch_event;
         else
             events.Front().nanosRemaining -= nanosPassed;

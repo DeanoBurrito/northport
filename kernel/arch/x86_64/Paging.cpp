@@ -51,7 +51,7 @@ namespace Npk
         void* ptRoot = reinterpret_cast<void*>(PMM::Global().Alloc());
         sl::memset(AddHhdm(ptRoot), 0, PageSize);
 
-        *gen = __atomic_load_n(&kernelTablesGen, __ATOMIC_RELAXED);
+        *gen = __atomic_load_n(&kernelTablesGen, __ATOMIC_ACQUIRE);
         SyncKernelTables(ptRoot);
         return ptRoot;
     }
@@ -105,7 +105,7 @@ namespace Npk
         
         *entry = actualFlags | (phys & physAddrMask);
         if (flushEntry)
-            asm volatile("invlpg %0" :: "m"(virt));
+            asm volatile("invlpg %0" :: "m"(virt) : "memory");
         return true;
     }
 
@@ -137,7 +137,7 @@ namespace Npk
         *entry = 0;
 
         if (flushEntry)
-            asm volatile("invlpg %0" :: "m"(virt));
+            asm volatile("invlpg %0" :: "m"(virt) : "memory");
         return true;
     }
 
@@ -183,7 +183,7 @@ namespace Npk
 
     void LoadTables(void* root)
     {
-        asm volatile("mov %0, %%cr3" :: "r"((uint64_t)root));
+        asm volatile("mov %0, %%cr3" :: "r"((uint64_t)root) : "memory");
     }
 
     size_t GetHhdmLimit()

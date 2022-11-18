@@ -27,11 +27,11 @@ namespace Npk::Devices
 #ifdef __x86_64__
         if (IsLegacy())
         {
-            Out32(PortPciAddr, (uint32_t)addr | PciEnableConfig);
+            Out32(PortPciAddr, (uint32_t)addr | PciEnableConfig | (offset & 0xFF));
             Out32(PortPciData, value);
         }
 #endif
-        sl::NativePtr(addr).Offset(AddHhdm(offset)).VolatileWrite<uint32_t>(value);
+        sl::NativePtr(addr).Offset(AddHhdm(offset & 0xFFF)).VolatileWrite<uint32_t>(value);
     }
 
     uint32_t PciAddress::ReadAt(size_t offset) const
@@ -39,11 +39,11 @@ namespace Npk::Devices
 #ifdef __x86_64__
         if (IsLegacy())
         {
-            Out32(PortPciAddr, (uint32_t)addr | PciEnableConfig);
+            Out32(PortPciAddr, (uint32_t)addr | PciEnableConfig | (offset & 0xFF));
             return In32(PortPciData);
         }
 #endif
-        return sl::NativePtr(addr).Offset(AddHhdm(offset)).VolatileRead<uint32_t>();
+        return sl::NativePtr(addr).Offset(AddHhdm(offset & 0xFFF)).VolatileRead<uint32_t>();
     }
 
     bool PciAddress::IsLegacy() const

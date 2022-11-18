@@ -8,13 +8,12 @@ namespace Npk::Memory::Virtual
 {
     void KernelVmDriver::Init()
     {
-        //use the biggest pages we can for the hhdm, with a limit of 1GiB pages.
-        //any bigger and we might clobber them. TODO: revist this in the future.
-        const PageSizes hhdmSize = MaxSupportedPagingSize() > PageSizes::_1G ? PageSizes::_1G: MaxSupportedPagingSize();
-        const uintptr_t hhdmPageSize = GetPageSize(hhdmSize);
-
+        PageSizes hhdmSize = MaxSupportedPagingSize();
+        while (GetPageSize(hhdmSize) > hhdmLength)
+            hhdmSize = (PageSizes)((size_t)hhdmSize - 1);
+        
         //map the hhdm.
-        for (uintptr_t i = 0; i < hhdmLength; i += hhdmPageSize)
+        for (uintptr_t i = 0; i < hhdmLength; i += GetPageSize(hhdmSize))
             MapMemory(kernelMasterTables, hhdmBase + i, i, PageFlags::Write, hhdmSize, false);
         
         //map the kernel binary

@@ -139,7 +139,7 @@ namespace Npk::Memory
         {
             const limine_memmap_entry* entry = mmapEntries[i];
 
-            if (entry->type != LIMINE_MEMMAP_USABLE)
+            if (entry->type != LIMINE_MEMMAP_USABLE && entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
             {
                 Log("Ignoring memmap entry: base=%#lx, length=%lx, type=%lu (%s)", LogLevel::Verbose,
                     entry->base, entry->length, entry->type, MemmapTypeStrs[entry->type]);

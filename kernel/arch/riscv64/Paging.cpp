@@ -45,7 +45,7 @@ namespace Npk
         void* ptRoot = reinterpret_cast<void*>(PMM::Global().Alloc());
         sl::memset(AddHhdm(ptRoot), 0, PageSize);
 
-        *gen = __atomic_load_n(&kernelTablesGen, __ATOMIC_RELAXED);
+        *gen = __atomic_load_n(&kernelTablesGen, __ATOMIC_ACQUIRE);
         SyncKernelTables(ptRoot);
         return ptRoot;
     }
