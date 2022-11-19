@@ -5,9 +5,12 @@
 #include <debug/Log.h>
 #include <interrupts/Ipi.h>
 #include <Locks.h>
+#include <Maths.h>
 
 namespace Npk::Tasking
 {
+    constexpr size_t ClockTickMs = sl::Clamp<size_t>(NP_CLOCK_MS, 1, 20);
+    
     struct ClockEvent
     {
         size_t nanosRemaining;
@@ -58,15 +61,15 @@ dispatch_event:
 
     void UptimeEventCallback(void*)
     {
-        __atomic_add_fetch(&uptimeMillis, 1, __ATOMIC_RELAXED);
+        __atomic_add_fetch(&uptimeMillis, ClockTickMs, __ATOMIC_RELAXED);
     }
 
     void StartSystemClock()
     {
-        QueueClockEvent(1'000'000, nullptr, UptimeEventCallback, true); //time-keeping event
+        QueueClockEvent(ClockTickMs * 1'000'000, nullptr, UptimeEventCallback, true); //main timekeeping event.
         SetSysTimer(events.Front().nanosRemaining, ClockEventDispatch);
 
-        Log("System clock start: uptimeTick=1ms, sysTimer=%s, pollTimer=%s", LogLevel::Info, SysTimerName(), PollTimerName());
+        Log("System clock start: tick=%lums, sysTimer=%s, pollTimer=%s", LogLevel::Info, ClockTickMs, SysTimerName(), PollTimerName());
     }
 
     void QueueClockEvent(size_t nanoseconds, void* payloadData, void (*callback)(void* data), bool periodic, size_t core)

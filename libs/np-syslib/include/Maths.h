@@ -47,6 +47,16 @@ namespace sl
         return ((a > b) ? a : b);
     }
 
+    template<typename T>
+    constexpr inline T Clamp(T value, T low, T high)
+    {
+        if (value < low)
+            return low;
+        if (value > high)
+            return high;
+        return value;
+    }
+
     constexpr inline uint8_t ByteSwap(uint8_t value)
     { return value; }
 

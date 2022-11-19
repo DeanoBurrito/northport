@@ -27,7 +27,7 @@ include misc/cross/$(CPU_ARCH)/CrossConfig.mk
 KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fno-pic -fno-pie \
 	-fno-omit-frame-pointer -ffreestanding -std=c++17 -fno-rtti -fno-exceptions \
 	-fno-unwind-tables -fno-asynchronous-unwind-tables -Iinclude \
-	-DNP_LOG_BALLOON_SIZE=$(LOGGING_BALLOON_SIZE)
+	-DNP_LOG_BALLOON_SIZE=$(LOGGING_BALLOON_SIZE)ul -DNP_CLOCK_MS=$(CLOCK_TICK_MS)ul
 KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
 

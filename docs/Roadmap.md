@@ -24,6 +24,7 @@
         - [x] Slab/free-list style heap.
             - [ ] Debugging helpers.
     - [x] Core clock, software timers.
+        - [x] Configurable tickrate.
     - [x] IPI mailbox.
     - [x] Scheduler.
         - [x] SMP-support.
@@ -40,18 +41,18 @@
         - [x] Device tree parser.
     - [ ] Driver manager.
         - [ ] Loadable drivers.
-    - [ ] Device manager.
+    - [x] Device manager.
         - [ ] Queued IO.
     - [ ] System calls.
-    - [ ] Reclaim bootloader memory.
+    - [x] Reclaim bootloader memory.
     - [ ] IPC.
         - [ ] Shared memory.
         - [ ] Pipes.
+    - [x] PCI.
+        - [ ] PCIe.
+        - [ ] MSI(-X).
     - [ ] Device drivers:
         - [ ] PS/2 keyboard + mouse.
-        - [x] PCI support.
-            - [ ] PCIe.
-            - [ ] MSI(-X).
         - [ ] Virtio:
             - [ ] VirtQueue helpers.
             - [ ] GPU.
@@ -61,7 +62,7 @@
         - [ ] Bochs VGA.
         - [ ] AHCI.
         - [ ] NVMe.
-        - [ ] EHCI (USB 2).
+        - [ ] XHCI (USB 3).
         - [ ] E1000 NIC.
         - [ ] AC97 audio.
     - [ ] Graphics manager.
