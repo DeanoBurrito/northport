@@ -4,6 +4,7 @@
 #include <debug/Log.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
+#include <memory/Vmm.h>
 #include <tasking/Scheduler.h>
 
 namespace Npk
@@ -59,7 +60,27 @@ extern "C"
         CoreLocal().runLevel = RunLevel::IntHandler;
         LocalApic::Local().SendEoi();
 
-        if (frame->vector < 0x20)
+        if (frame->vector == IntVectorPageFault)
+        {
+            using Memory::VmFaultFlags;
+            VmFaultFlags flags = VmFaultFlags::None;
+            if (frame->ec & (1 << 1))
+                flags |= VmFaultFlags::Write;
+            if (frame->ec & (1 << 4))
+                flags |= VmFaultFlags::Execute;
+            if (flags == VmFaultFlags::None)
+                flags = VmFaultFlags::Read;
+            
+            if (frame->ec & (1 << 2))
+                flags |= VmFaultFlags::User;
+
+            const uintptr_t cr2 = ReadCr2();
+            if (cr2 < hhdmBase)
+                VMM::Current().HandleFault(cr2, flags);
+            else
+                VMM::Kernel().HandleFault(cr2, flags);
+        }
+        else if (frame->vector < 0x20)
             Log("Native CPU exception: 0x%lx", LogLevel::Fatal, frame->vector);
         else if (frame->vector == IntVectorIpi)
             Interrupts::ProcessIpiMail();

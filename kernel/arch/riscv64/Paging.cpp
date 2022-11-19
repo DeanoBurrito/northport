@@ -178,9 +178,4 @@ namespace Npk
     {
         return (PageSizes)maxTranslationLevel;
     }
-
-    PageFaultFlags GetFaultFlags(uintptr_t nativeEc)
-    {
-        return PageFaultFlags::None;
-    }
 }

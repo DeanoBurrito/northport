@@ -22,25 +22,24 @@ namespace Npk::Memory::Virtual
             return EventResult::Kill;
         }
 
-        using PFFlags = PageFaultFlags;
-        const PFFlags flags = (PFFlags)eventArg;
+        const VmFaultFlags flags = (VmFaultFlags)eventArg;
         const size_t pageAddr = sl::AlignDown(addr, PageSize);
 
         //check it's not a permission violation
-        if ((flags & PFFlags::Write) == PFFlags::Write && (context.flags & VmFlags::Write) == VmFlags::None)
+        if ((flags & VmFaultFlags::Write) == VmFaultFlags::Write && (context.range.flags & VmFlags::Write) == VmFlags::None)
             return EventResult::Kill; //tried to write to non-writable VmRegion.
-        if ((flags & PFFlags::Execute) == PFFlags::Execute && (context.flags & VmFlags::Execute) == VmFlags::None)
+        if ((flags & VmFaultFlags::Execute) == VmFaultFlags::Execute && (context.range.flags & VmFlags::Execute) == VmFlags::None)
             return EventResult::Kill; //tried to execute from an invalid range
-        if ((flags & PFFlags::User) == PFFlags::User && (context.flags & VmFlags::User) == VmFlags::None)
+        if ((flags & VmFaultFlags::User) == VmFaultFlags::User && (context.range.flags & VmFlags::User) == VmFlags::None)
             return EventResult::Kill; //user tried to access supervisor range
 
         //everything checks out, map it and back it.
-        const size_t loadCount = sl::Min(FaultMaxLoadAhead, (context.vaddr + context.length - pageAddr) / PageSize);
+        const size_t loadCount = sl::Min(FaultMaxLoadAhead, (context.range.base + context.range.length - pageAddr) / PageSize);
         InterruptGuard guard;
         sl::ScopedLock scopeLock(context.lock);
 
         for (size_t i = 0; i < loadCount; i++)
-            MapMemory(context.ptRoot, pageAddr + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.flags), PageSizes::_4K, false);
+            MapMemory(context.ptRoot, pageAddr + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.range.flags), PageSizes::_4K, false);
         
         if (context.ptRoot == kernelMasterTables)
             __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
@@ -56,8 +55,8 @@ namespace Npk::Memory::Virtual
         InterruptGuard guad;
         sl::ScopedLock scopeLock(context.lock);
 
-        for (size_t i = 0; i < context.length / PageSize; i++)
-            MapMemory(context.ptRoot, context.vaddr + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.flags), PageSizes::_4K, false);
+        for (size_t i = 0; i < context.range.length / PageSize; i++)
+            MapMemory(context.ptRoot, context.range.base + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.range.flags), PageSizes::_4K, false);
         return 0;
     }
 

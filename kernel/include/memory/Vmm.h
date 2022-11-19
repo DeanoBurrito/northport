@@ -8,7 +8,7 @@
 
 namespace Npk::Memory
 {
-    enum VmFlags : size_t
+    enum class VmFlags : size_t
     {
         None = 0,
 
@@ -48,6 +48,24 @@ namespace Npk::Memory
         { return base + length; }
     };
 
+    enum class VmFaultFlags : uintptr_t
+    {
+        None = 0,
+        Read = 1 << 0,
+        Write = 1 << 1,
+        Execute = 1 << 2,
+        User = 1 << 3,
+    };
+
+    constexpr VmFaultFlags operator|(const VmFaultFlags& a, const VmFaultFlags& b)
+    { return (VmFaultFlags)((uintptr_t)a | (uintptr_t)b); }
+
+    constexpr VmFaultFlags operator&(const VmFaultFlags& a, const VmFaultFlags& b)
+    { return (VmFaultFlags)((uintptr_t)a & (uintptr_t)b); }
+
+    constexpr VmFaultFlags operator|=(VmFaultFlags& src, const VmFaultFlags& other)
+    { return src = (VmFaultFlags)((uintptr_t)src | (uintptr_t)other); }
+
     //badge pattern
     class VirtualMemoryManager;
     class VmmKey
@@ -83,6 +101,7 @@ namespace Npk::Memory
         VirtualMemoryManager& operator=(VirtualMemoryManager&&) = delete;
 
         void MakeActive();
+        void HandleFault(uintptr_t addr, VmFaultFlags flags);
         
         sl::Opt<VmRange> Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
         bool Free(uintptr_t base, size_t length);

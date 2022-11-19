@@ -43,6 +43,7 @@ namespace Npk
     constexpr inline size_t IntVectorAllocBase = 0x30;
     constexpr inline size_t IntVectorAllocLimit = 0xFD;
     constexpr inline size_t IntVectorIpi = 0xFE;
+    constexpr inline size_t IntVectorPageFault = 0xE;
     constexpr inline size_t IntVectorCount = 256;
 
     constexpr inline uint32_t MsrEfer = 0xC0000080;

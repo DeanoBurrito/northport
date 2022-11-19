@@ -1,10 +1,9 @@
 #include <arch/riscv64/Interrupts.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
+#include <memory/Vmm.h>
 #include <tasking/Scheduler.h>
-#include <stdint.h>
 
 namespace Npk
 {
@@ -54,6 +53,24 @@ extern "C"
                 Interrupts::InterruptManager::Global().Dispatch(frame->vector);
                 break;
             }
+        }
+        else if (frame->vector >= 12 && frame->vector <= 15)
+        {
+            using Memory::VmFaultFlags;
+            VmFaultFlags flags = VmFaultFlags::None;
+            if (frame->vector == 12)
+                flags |= VmFaultFlags::Execute;
+            else if (frame->vector == 13)
+                flags |= VmFaultFlags::Read;
+            else if (frame->vector == 15)
+                flags |= VmFaultFlags::Write;
+            
+            if (frame->flags.spp == 0)
+                flags |= VmFaultFlags::User;
+            if (frame->ec < hhdmBase)
+                VMM::Current().HandleFault(frame->ec, flags);
+            else
+                VMM::Kernel().HandleFault(frame->ec, flags);
         }
         else
             Log("Native CPU exception: 0x%lx, ec=0x%lx.", LogLevel::Fatal, frame->vector, frame->ec);

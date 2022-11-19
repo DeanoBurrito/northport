@@ -17,11 +17,11 @@ namespace Npk::Memory::Virtual
         /*  VMFlags are stable across platforms, while PageFlags have different meanings
             depending on the ISA. This provides source-level translation between the two. */
         PageFlags value = PageFlags::None;
-        if (flags & VmFlags::Write)
+        if ((flags & VmFlags::Write) != VmFlags::None)
             value |= PageFlags::Write;
-        if (flags & VmFlags::Execute)
+        if ((flags & VmFlags::Execute) != VmFlags::None)
             value |= PageFlags::Execute;
-        if (flags & VmFlags::User)
+        if ((flags & VmFlags::User) != VmFlags::None)
             value |= PageFlags::User;
         
         return value;
@@ -58,10 +58,7 @@ namespace Npk::Memory::Virtual
     {
         void* ptRoot;
         sl::TicketLock& lock;
-        uintptr_t vaddr;
-        size_t length;
-        uintptr_t token;
-        VmFlags flags;
+        VmRange range;
     };
     
     class VmDriver

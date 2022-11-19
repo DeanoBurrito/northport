@@ -68,16 +68,49 @@ namespace Npk::Memory
         LoadTables(ptRoot);
     }
 
+    void VMM::HandleFault(uintptr_t addr, VmFaultFlags flags)
+    {
+        if (addr < globalLowerBound || addr >= globalUpperBound)
+            Log("Bad page fault at 0x%lx, flags=0x%lx", LogLevel::Fatal, addr, (size_t)flags);
+        
+        rangesLock.Lock();
+        VmRange* range = nullptr;
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
+        {
+            if (addr < it->base)
+                break;
+            if (addr > it->Top())
+                continue;
+            
+            if (addr >= it->base && addr < it->Top())
+                range = &(*it);
+        }
+        
+        if (range == nullptr)
+            Log("Bad page fault at 0x%lx, flags=0x%lx", LogLevel::Fatal, addr, (size_t)flags);
+        rangesLock.Unlock();
+
+        using namespace Virtual;
+        VmDriver* driver = VmDriver::GetDriver((VmDriverType)((size_t)range->flags >> 48));
+        ASSERT(driver != nullptr, "Active range with no driver");
+
+        VmDriverContext context{ ptRoot, ptLock, *range };
+        EventResult result = driver->HandleEvent(context, EventType::PageFault, addr, (uintptr_t)flags);
+        
+        ASSERT(result == EventResult::Continue, "TODO: handle other page-fault results");
+        Log("Good page fault: 0x%lx, ec=0x%lx", LogLevel::Debug, addr, (size_t)flags);
+    }
+
     sl::Opt<VmRange> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
     {
         using namespace Virtual;
 
         //check we have a driver for this allocation type
         //the top 16 bits of the flags contain the allocaction type (anon, kernel-special, shared, etc...)
-        VmDriver* driver = VmDriver::GetDriver((VmDriverType)(flags >> 48));
+        VmDriver* driver = VmDriver::GetDriver((VmDriverType)((size_t)flags >> 48));
         if (driver == nullptr)
         {
-            Log("VMM failed to allocate 0x%lu bytes, no driver (requested type %lu).", LogLevel::Error, length, flags >> 48);
+            Log("VMM failed to allocate 0x%lu bytes, no driver (requested type %lu).", LogLevel::Error, length, (size_t)flags >> 48);
             return {};
         }
 
@@ -135,7 +168,7 @@ namespace Npk::Memory
             range = *ranges.Insert(insertBefore, { allocAt, length, flags, 0ul });
         rangesLock.Unlock();
 
-        VmDriverContext context{ ptRoot, ptLock, range.base, length, 0ul, flags };
+        VmDriverContext context{ ptRoot, ptLock, range };
         auto maybeToken = driver->AttachRange(context, initArg);
         if (!maybeToken)
         {
@@ -164,23 +197,14 @@ namespace Npk::Memory
         }
         rangesLock.Unlock();
 
-        /*
-            RE: removing ranges.
-            Maybe another state is needed here. Should we fail to remove the VMRange, it should remain present,
-            but be marked as 'invalid'. Some sort of valid flag could be used to indindicate whether the range
-            should be processed as normal, or is just a placeholder.
-            We could pass a completion token to the VMDriver, which it can then use to confirm it has removed the
-            range at a later date, alternatively it can immediately remove the range.
-        */
-
         //detach range from driver
         using namespace Virtual;
-        const uint16_t driverIndex = range.flags >> 48;
+        const uint16_t driverIndex = (size_t)range.flags >> 48;
         VmDriver* driver = VmDriver::GetDriver((VmDriverType)driverIndex);
         ASSERT(driver != nullptr, "Attempted to free range with no associated driver");
         
         constexpr size_t DetachTryCount = 3;
-        VmDriverContext context { ptRoot, ptLock, range.base, range.length, range.token, range.flags };
+        VmDriverContext context { ptRoot, ptLock, range };
         bool success = driver->DetachRange(context);
         for (size_t i = 0; i < DetachTryCount && !success; i++)
         {
@@ -214,8 +238,8 @@ namespace Npk::Memory
 
     size_t VMM::CopyIn(void* foreignBase, void* localBase, size_t length)
     {
-        //TODO: should we check for write-privs first?
-        //TODO: we'll want to ensure these pages are backed, and fault them in if not.
+        if (!RangeExists((uintptr_t)foreignBase, length, {}))
+            return 0;
 
         sl::NativePtr local = localBase;
         size_t count = 0;
@@ -223,7 +247,9 @@ namespace Npk::Memory
         while (count < length)
         {
             auto maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
-            ASSERT(maybePhys.HasValue(), "Could not copy into VMM, virtual memory not backed.");
+            if (!maybePhys.HasValue())
+                HandleFault((uintptr_t)foreignBase + count, VmFaultFlags::None);
+            maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
 
             const size_t copyLength = sl::Min(PageSize, length - count);
             sl::memcopy(local.ptr, reinterpret_cast<void*>(AddHhdm(*maybePhys)), copyLength);

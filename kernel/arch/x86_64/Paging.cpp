@@ -195,20 +195,4 @@ namespace Npk
     {
         return CpuHasFeature(CpuFeature::Pml3Translation) ? PageSizes::_1G : PageSizes::_2M;
     }
-
-    PageFaultFlags GetFaultFlags(uintptr_t nativeEc)
-    {
-        uintptr_t flags = 0;
-        if (nativeEc & (1 << 1))
-            flags |= (uintptr_t)PageFaultFlags::Write;
-        if (nativeEc & (1 << 4))
-            flags |= (uintptr_t)PageFaultFlags::Execute;
-        if (flags == 0) //my powers of deduction tell me that if it was neither write nor fetch
-            flags |= (uintptr_t)PageFaultFlags::Read; //it must be a read!
-
-        if (nativeEc & (1 << 2))
-            flags |= (uintptr_t)PageFaultFlags::User;
-
-        return (PageFaultFlags)flags;
-    }
 }

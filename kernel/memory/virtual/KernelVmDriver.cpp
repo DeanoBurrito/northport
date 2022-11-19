@@ -51,8 +51,8 @@ namespace Npk::Memory::Virtual
         sl::ScopedLock ptLock(context.lock);
         
         //attachArg is the physical address to map.
-        for (size_t i = 0; i < context.length; i += PageSize)
-            MapMemory(context.ptRoot, context.vaddr + i, attachArg + i, PageFlags::Write, PageSizes::_4K, false);
+        for (size_t i = 0; i < context.range.length; i += PageSize)
+            MapMemory(context.ptRoot, context.range.base + i, attachArg + i, PageFlags::Write, PageSizes::_4K, false);
         
         if (context.ptRoot == kernelMasterTables)
             __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
@@ -65,7 +65,7 @@ namespace Npk::Memory::Virtual
         InterruptGuard guard;
         sl::ScopedLock ptLock(context.lock);
 
-        for (uintptr_t base = context.vaddr; base < context.vaddr + context.length;)
+        for (uintptr_t base = context.range.base; base < context.range.base + context.range.length;)
         {
             uintptr_t ignored;
             PageSizes ignored2;
