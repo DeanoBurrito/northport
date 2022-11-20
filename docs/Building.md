@@ -6,9 +6,10 @@ This should cover everything needed to build, run and debug the kernel. If you e
 
 The following tools are required:
 - Core utils, your system should already have these installed: `cp`, `mv`, `rm` and `mkdir`.
-- For non riscv architectures, you'll need `xorriso` and a copy of the [limine bootloader](https://github.com/limine-bootloader/limine). See their install instructions for getting setup with limine. This is usually just cloning the latest binary branch and running `make` to build a copy of the `limine-deploy` tool for your system.
-- A compiler: Either a gcc cross compiler or clang is required. Building with clang for riscv is currently not supported. For gcc, your target triplet should be `x86_64-elf` or `riscv64-elf` to use the default setup, but you can override this if yours differs.
+- You'll need `xorriso` and a copy of the [limine bootloader](https://github.com/limine-bootloader/limine). See their install instructions for getting setup with limine. This is usually just cloning the latest binary branch and running `make` to build a copy of the `limine-deploy` tool for your system.
+- A cross compiler: either a GCC cross compiler or clang is required. For GCC the target triplet is expected to be `x86_64-elf`, `riscv64-elf` or similar to use the default names. The binary names used can be changed in the root makefile  (at the very top) if yours is different.
 - For testing you will need qemu, and `gdb-multiarch` is required for debugging.
+- For building the manual, you'll also need `texlive`.
 
 At this point your system is setup, you'll want to edit some variables in `Config.mk` before building:
 - `TOOLCHAIN`: Select 'gcc' or 'clang'.
@@ -17,14 +18,16 @@ At this point your system is setup, you'll want to edit some variables in `Confi
 - `LIMINE_DIR`: Where you cloned the limine repo.
 - `CPU_ARCH`: The architecture to build for.
 
-This file is used to store any user-facing settings. If you need to override the names used for the toolchain binaries, these are defined at the top of the root makefile. This is not the recommended way of doing this, but it is available should you need to.
+This file is used to store any user-facing settings. If you need to override the names used for the toolchain binaries, these are defined at the top of the root makefile. Changing them like this is not the recommended approach, but it is available should you need to.
 
 ## Supported Configurations
 
 | Platform | GCC | Clang | Qemu | Hardware                  |
 |----------|-----|-------|------|---------------------------|
 | x86_64   | Yes | Yes   | Yes  | Partially working, 2 out of 3 tested computers will boot. |
-| riscv64  | Yes | No    | Yes  | Untested, awaiting hardware. |
+| riscv64  | Yes | Yes   | Yes  | Untested, awaiting hardware. |
+
+This table is updated on a best effort basis. Latest tests done with GCC 11 and clang 14 with qemu 7.0.0.
 
 ## Make Targets
 
@@ -35,4 +38,4 @@ All build commands should be run from the project root directory. Currently the 
 - `make run-kvmless`: Same as above, but will use software emulator instead of kvm.
 - `make debug`: Builds the project, launches it in qemu. Qemu will launch a gdb server with default args (port 1234) and stop the cpu before running any code.
 - `make attach`: Launches gdb with the kernel symbols loaded, connects to a gdb remote server, like one launched using `make debug`.
-- `make docs`: Currently a no op, will build the documentation when available.
+- `make docs`: Builds the documentation and renders it as a pdf.
