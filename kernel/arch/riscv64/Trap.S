@@ -10,8 +10,8 @@ TrapEntry:
     # only load a new stack if we came from u-mode.
     csrr sp, sstatus
     andi sp, sp, 1 << 8
-    bnez sp, 1f
-    ld sp, 72(x1) # we came from u-mode, use kernel stack.
+    bne sp, zero, 1f
+    ld sp, 80(x1) # we came from u-mode, use kernel stack.
     j 2f
 1:
     ld sp, 0(x1) # we came from s-mode, use existing stack.

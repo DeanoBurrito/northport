@@ -53,6 +53,8 @@ extern "C"
                 Interrupts::InterruptManager::Global().Dispatch(frame->vector);
                 break;
             }
+            
+            ClearCsrBits("sip", 1 << frame->vector);
         }
         else if (frame->vector >= 12 && frame->vector <= 15)
         {

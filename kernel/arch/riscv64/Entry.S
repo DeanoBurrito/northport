@@ -28,12 +28,14 @@ SbiEntry:
     sd a1, 8(t0)
     la t1, PHYS_BASE
     sd t1, 16(t0)
-    la t1, VIRT_BASE
+    lui t1, %hi(VIRT_BASE)
+    addi t1, t1, %lo(VIRT_BASE)
     sd t1, 24(t0)
 
     # Load the stack for C++land.
     mv fp, zero
-    la sp, bootStackTop
+    lui sp, %hi(bootStackTop)
+    addi sp, sp, %lo(bootStackTop)
 
     # fallthrough
 DetectPaging:
@@ -47,7 +49,7 @@ DetectPaging:
     jal AdjustPageTable
 
     la a1, table0
-    la a2, 1
+    li a2, 1
 
     # test for sv57 support
     li a0, 10
@@ -131,8 +133,10 @@ SetupSv39:
 
 JumpToMain:
     # cheeky jump to arbitary address using sepc + sret
-    la t0, KernelEntry
+    lui t0, %hi(KernelEntry)
+    addi t0, t0, %lo(KernelEntry)
     csrw sepc, t0
+    
     li t0, 0x100 # ensure SPP (prev priv) is set, so we sret to s-mode.
     csrs sstatus, t0
     la a0, entryData
@@ -245,7 +249,7 @@ entryData:
     .quad 0 # virt load address
     .quad 0 # bsp lock, first hart to set this is the bsp
 
-.section .data
+.section .bss
 bootStack:
     .zero 0x2000
 bootStackTop:

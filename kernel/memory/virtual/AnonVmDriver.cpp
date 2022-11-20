@@ -57,6 +57,9 @@ namespace Npk::Memory::Virtual
 
         for (size_t i = 0; i < context.range.length / PageSize; i++)
             MapMemory(context.ptRoot, context.range.base + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.range.flags), PageSizes::_4K, false);
+        
+        if (context.ptRoot == kernelMasterTables)
+            __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
         return 0;
     }
 

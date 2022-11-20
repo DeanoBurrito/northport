@@ -108,7 +108,7 @@ namespace Npk
     inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
     {
         frame->flags.spie = 1;
-        frame->flags.spp = user ? 1 : 0;
+        frame->flags.spp = user ? 0 : 1;
         frame->a0 = (uintptr_t)arg;
         frame->sepc = entry;
         frame->sp = sl::AlignDown(stack, 8);

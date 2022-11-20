@@ -117,7 +117,7 @@ namespace Npk
             pt = reinterpret_cast<PageTable*>(((*entry & physAddrMask) << 2) + hhdmBase);
         }
 
-        paddr = (*entry << 2) & physAddrMask;
+        paddr = (*entry & physAddrMask) << 2;
         *entry = 0;
 
         if (flushEntry)
@@ -142,7 +142,7 @@ namespace Npk
             
             if (*entry & 0b1110)
             {
-                mask <<= i * 9 + 12;
+                mask <<= ((i - 1) * 9) + 12;
                 mask--;
                 break;
             }
@@ -150,7 +150,8 @@ namespace Npk
             pt = reinterpret_cast<PageTable*>(((*entry & physAddrMask) << 2) + hhdmBase);
         }
 
-        return ((*entry << 2) & ~mask) | (virt & mask);
+        const uintptr_t physAddr = (*entry & physAddrMask) << 2;
+        return (physAddr & ~mask) | (virt & mask);
     }
 
     void SyncKernelTables(void* dest)
@@ -158,7 +159,7 @@ namespace Npk
         const PageTable* masterTables = AddHhdm(static_cast<PageTable*>(kernelMasterTables));
         PageTable* destTables = AddHhdm(static_cast<PageTable*>(dest));
 
-        for (size_t i = 0; i < 256; i++)
+        for (size_t i = 256; i < 512; i++)
             destTables->entries[i] = masterTables->entries[i];
     }
 
