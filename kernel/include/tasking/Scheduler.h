@@ -19,7 +19,8 @@ namespace Npk::Tasking
 
     struct SchedulerCore
     {
-        Thread* threads; //this is an intrusive list, see the thread.next field.
+        Thread* queue; //this is an intrusive list, see the thread.next field.
+        Thread* queueTail;
         Thread* idleThread;
         size_t threadCount;
 

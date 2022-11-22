@@ -7,6 +7,7 @@
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <debug/LogBackends.h>
+#include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
@@ -113,6 +114,7 @@ namespace Npk
 
     void InitThread(void*)
     {
+        Devices::DeviceManager::Global().Init();
         Devices::PciBridge::Global().Init();
         
         Tasking::Thread::Current().Exit(0);

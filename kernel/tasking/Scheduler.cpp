@@ -16,7 +16,7 @@ namespace Npk::Tasking
         //Init() runs before any cores are registered, LateInit() runs after at least 1 core
         //has been registered, and is suitible for things like creating service threads.
 
-        CreateThread(SchedulerCleanupThreadMain, &schedCleanupData)->Start();
+        CreateThread(SchedulerCleanupThreadMain, &schedCleanupData, idleProcess)->Start();
     }
 
     Scheduler globalScheduler;
@@ -56,7 +56,7 @@ namespace Npk::Tasking
         core->idleThread = new Thread();
         core->idleThread->id = 1;
         core->idleThread->parent = idleProcess;
-        core->idleThread->state = ThreadState::Runnable;
+        core->idleThread->state = ThreadState::Dead;
 
         constexpr size_t IdleStackSize = PageSize;
         core->idleThread->stack.base = VMM::Kernel().Alloc(IdleStackSize, 1, VmFlags::Anon | VmFlags::Write)->base;
@@ -74,6 +74,7 @@ namespace Npk::Tasking
 
         CoreLocal().schedThread = core->idleThread;
         
+        core->queue = core->queueTail = nullptr;
         core->state = CoreState::Available;
         Log("Scheduler registered core %lu.", LogLevel::Verbose, CoreLocal().id);
 
@@ -165,7 +166,7 @@ namespace Npk::Tasking
         size_t smallestCount = -1ul;
         if (affinity == -1ul)
         {
-            //core has no preferred core, find the least worked one.
+            //thread has no preferred core, find the least worked one.
             for (size_t i = 0; i < cores.Size(); i++)
             {
                 if (cores[i] == nullptr || cores[i]->state != CoreState::Available)
@@ -181,15 +182,13 @@ namespace Npk::Tasking
         }
 
         sl::ScopedLock scopeLock(cores[affinity]->lock);
-        Thread* last = cores[affinity]->threads;
-        if (last == nullptr)
-            cores[affinity]->threads = t;
+        t->next = nullptr;
+        if (cores[affinity]->queueTail == nullptr)
+            cores[affinity]->queue = t;
         else
-        {
-            while (last->next != nullptr)
-                last = last->next;
-            last->next = t;
-        }
+            cores[affinity]->queueTail->next = t;
+        cores[affinity]->queueTail = t;
+
         cores[affinity]->threadCount++;
     }
 
@@ -234,38 +233,26 @@ namespace Npk::Tasking
             return;
 
         Thread* current = static_cast<Thread*>(CoreLocal().schedThread);
-        Thread* next = nullptr;
-        Thread* loopedNext = nullptr;
-        bool passedCurrent = false;
-
-        for (Thread* scan = core.threads; scan != nullptr; scan = scan->next)
+        current->next = nullptr;
+        if (current != nullptr && current->state == ThreadState::Runnable)
         {
-            if (loopedNext == nullptr && scan->state == ThreadState::Runnable)
-            {
-                loopedNext = scan;
-                if (current == nullptr)
-                    break;
-            }
-
-            if (current != nullptr && scan->id == current->id)
-            {
-                passedCurrent = true;
-                continue;
-            }
-            
-            if (!passedCurrent)
-                continue;
-            if (scan->state != ThreadState::Runnable)
-                continue;
-            
-            next = scan;
-            break;
+            if (core.queue == nullptr)
+                core.queue = current;
+            else
+                core.queueTail->next = current;
+            core.queueTail = current;
         }
 
-        next = (next == nullptr) ? loopedNext : next;
+        Thread* next = core.queue;
         if (next == nullptr)
-            next = core.idleThread; //TOOD: work stealing
-
+            next = core.idleThread; //TODO: work stealing
+        else
+        {
+            if (core.queue == core.queueTail)
+                core.queueTail = nullptr;
+            core.queue = next->next;
+        }
+        
         CoreLocal().schedThread = next;
     }
 
