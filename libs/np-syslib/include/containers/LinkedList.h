@@ -35,6 +35,7 @@
 
 #include <stddef.h>
 #include <CppUtils.h>
+#include <Allocator.h>
 
 namespace sl
 {
@@ -226,7 +227,7 @@ namespace sl
         };
     }
 
-    template<typename T>
+    template<typename T, typename Allocator = DefaultAllocator>
     class LinkedList
     {
     private:
@@ -243,6 +244,7 @@ namespace sl
         };
 
         Impl::LinkedList<Item> list;
+        Allocator alloc;
 
     public:
         constexpr LinkedList() : list{}
@@ -291,19 +293,19 @@ namespace sl
 
         Iterator Insert(Iterator where, const T& value)
         {
-            auto* entry = new Item(value);
+            auto* entry = new(alloc.Allocate(sizeof(Item))) Item(value);
             return { list.Insert(where.it, entry) };
         }
 
         void PushFront(const T& value)
         {
-            auto* entry = new Item(value);
+            auto* entry = new(alloc.Allocate(sizeof(Item))) Item(value);
             list.PushFront(entry);
         }
 
         void PushBack(const T& value)
         {
-            auto* entry = new Item(value);
+            auto* entry = new(alloc.Allocate(sizeof(Item))) Item(value);
             list.PushBack(entry);
         }
 
@@ -311,7 +313,7 @@ namespace sl
         {
             auto* entry = &list.PopFront()->Item();
             T value = entry->entry;
-            delete entry;
+            alloc.Deallocate(entry, sizeof(T));
 
             return value;
         }
@@ -320,7 +322,7 @@ namespace sl
         {
             auto* entry = &list.PopBack()->Item();
             T value = entry->entry;
-            delete entry;
+            alloc.Deallocate(entry, sizeof(T));
 
             return value;
         }
@@ -330,7 +332,7 @@ namespace sl
             auto* item = &where.it.entry->Item();
             (void)list.Erase(item);
             T value = item->entry;
-            delete item;
+            alloc.Deallocate(item, sizeof(T));
 
             return value;
         }
@@ -338,7 +340,7 @@ namespace sl
         template<typename... Args>
         T& EmplaceBack(Args&&... args)
         {
-            auto* entry = new Item(sl::Forward<Args>(args)...);
+            auto* entry = new(alloc.Allocate(sizeof(Item))) Item(sl::Forward<Args>(args)...);
             list.PushBack(entry);
             return entry->entry;
         }

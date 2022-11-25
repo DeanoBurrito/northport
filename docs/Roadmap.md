@@ -2,8 +2,7 @@
     - [x] x86_64:
         - [x] Core (paging, interrupts).
         - [ ] FPU, SSE, AVX.
-        - [x] Timers (LAPIC, TSC).
-            - [x] Failover timers (HPET, PIT).
+        - [x] Timers (LAPIC, TSC, HPET, PIT).
     - [x] riscv64:
         - [x] Core (paging, interrupts).
         - [x] Timer (SBI, sstc).
@@ -22,7 +21,6 @@
             - [ ] Swapping.
             - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
-            - [ ] Debugging helpers.
     - [x] Core clock, software timers.
         - [x] Configurable tickrate.
     - [x] IPI mailbox.
@@ -39,7 +37,7 @@
     - [x] Peripheral discovery:
         - [x] ACPI tables parser.
         - [x] Device tree parser.
-    - [ ] Driver manager.
+    - [ ] Driver manager, with C interface.
         - [ ] Loadable drivers.
     - [x] Device manager.
         - [ ] Queued IO.
@@ -80,6 +78,7 @@
         - [ ] Deque.
         - [x] Linked list.
         - [ ] Map.
+        - [x] Custom allocator support.
     - [x] Optional.
     - [ ] Strings:
         - [x] Basic string.

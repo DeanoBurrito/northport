@@ -16,16 +16,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include <Memory.h>
 #include <CppUtils.h>
+#include <Allocator.h>
 
 namespace sl
 {
-    template<typename T>
+    template<typename T, typename Allocator = DefaultAllocator>
     class Vector
     {
     private:
         T* elements = nullptr;
         size_t size = 0;
         size_t capacity = 0;
+        Allocator alloc;
 
     public:
         friend void Swap(Vector& a, Vector& b)
@@ -43,14 +45,14 @@ namespace sl
             size_t newCapacity = capacity * 2;
             if (newCapacity == 0)
                 newCapacity = neededCapacity;
-            T* newElements = (T*)malloc(sizeof(T) * newCapacity);
+            T* newElements = (T*)alloc.Allocate(sizeof(T) * newCapacity);
             for (size_t i = 0; i < capacity; i++)
                 new(&newElements[i]) T(sl::Move(elements[i]));
             
             for (size_t i = 0; i < size; i++)
                 elements[i].~T();
             if (elements != nullptr)
-                free(elements);
+                alloc.Deallocate(elements, sizeof(T) * capacity);
 
             elements = newElements;
             capacity = newCapacity;
@@ -73,7 +75,7 @@ namespace sl
         {
             Clear();
             if (elements)
-                free(elements);
+                alloc.Deallocate(elements, sizeof(T) * capacity);
         }
 
         Vector(const Vector& other)
