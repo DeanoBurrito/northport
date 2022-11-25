@@ -3,6 +3,7 @@
 #include <arch/Paging.h>
 #include <debug/Log.h>
 #include <memory/Pmm.h>
+#include <memory/Vmm.h>
 #include <Bitmap.h>
 #include <Memory.h>
 
@@ -15,18 +16,30 @@ namespace Npk::Memory
         const size_t metaSize = sl::AlignUp(sizeof(SlabSegment) + bitmapSize, slabSize);
         const size_t slabCount = slabsPerSeg - metaSize / slabSize;
 
-        //TODO: split into swap and no-swap heaps.
-        //For now the slabs dont have any associated VmRanges, since they're outside of the usual range.
-        for (size_t i = 0; i < totalSize; i += PageSize)
-            MapMemory(kernelMasterTables, base + i, PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
-        __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
-        
+        //behaviour changes if we're a pinned slab: modify paging structure directly, otherwise use the VMM.
+        //Since the VMM needs to allocate VMRanges for VMM::Alloc() to function, the initial pinned slabs 
+        //can't rely on the VMM as this creates a circular dependency.
+        //Pinned slabs are also used for other critical/non-swappable kernel data (process/thread/core control blocks)
+        if (pinned)
+        {
+            //TODO: check we dont overflow our reserved space above the hhdm, and handle that.
+            for (size_t i = 0; i < totalSize; i += PageSize)
+                MapMemory(kernelMasterTables, base + i, PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
+            __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
+        }
+        else
+        {
+            auto maybeRegion = VMM::Kernel().Alloc(totalSize, 0, VmFlags::Write | VmFlags::Anon);
+            ASSERT(maybeRegion, "Failed to expand kernel slabs.");
+            base = maybeRegion->base;
+        }
+
         uint8_t* bitmapBase = reinterpret_cast<uint8_t*>(base + sizeof(SlabSegment));
         SlabSegment* segment = new((void*)base) SlabSegment(base + metaSize, bitmapBase, slabCount);
         sl::memset(bitmapBase, 0, bitmapSize);
 
-        Log("New kslab seg: base=0x%016lx, slabSize=%luB, count=%lu (%lu reserved)", LogLevel::Verbose,
-            base + metaSize, slabSize, slabCount, slabsPerSeg - slabCount);
+        Log("New kslab seg: base=0x%016lx, slabSize=%luB, count=%lu (%lu reserved), pinned=%s", LogLevel::Verbose,
+            base + metaSize, slabSize, slabCount, slabsPerSeg - slabCount, pinned ? "yes" : "no");
         
         return segment;
     }
@@ -35,6 +48,8 @@ namespace Npk::Memory
     {
         slabSize = sizeSize;
         slabsPerSeg = slabCount;
+        pinned = (firstSegment != 0);
+
         head = tail = InitSegment(firstSegment);
     }
 
@@ -62,7 +77,8 @@ namespace Npk::Memory
         tail->next = InitSegment(expansionBase);
         tail = tail->next;
 
-        expansionBase += sl::AlignUp(slabSize * slabsPerSeg, PageSize);
+        if (pinned)
+            expansionBase += sl::AlignUp(slabSize * slabsPerSeg, PageSize);
 
         //dont even bother searching, just take the first slab
         sl::BitmapSet(tail->bitmap, 0);

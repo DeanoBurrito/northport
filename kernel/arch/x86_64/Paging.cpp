@@ -98,8 +98,7 @@ namespace Npk
         if (size > PageSizes::_4K)
             actualFlags |= 1 << 7;
 
-        //execute is backwards on x86:
-        //if we dont specify the execute flag, set nx
+        //execute is backwards on x86: if we dont specify the execute flag, set nx
         if (nxSupported && (((uintptr_t)flags >> 63) & 1) == 0)
             actualFlags |= 1ul << 63;
         
@@ -122,13 +121,11 @@ namespace Npk
             if ((*entry & PresentFlag) == 0)
                 return false;
 
-            if (i > 1 && *entry & (1 << 7))
+            if ((i > 1 && *entry & (1 << 7)) || i == 1)
             {
                 size = (PageSizes)i;
                 break;
             }
-            else if (i == 1)
-                size = PageSizes::_4K;
             
             pt = reinterpret_cast<PageTable*>((*entry & physAddrMask) + hhdmBase);
         }
@@ -157,14 +154,12 @@ namespace Npk
             if ((*entry & PresentFlag) == 0)
                 return {};
 
-            if (i > 1 && *entry & (1 << 7))
+            if ((i > 1 && *entry & (1 << 7)) || i == 1)
             {
-                mask <<= (i * 9 + 12);
+                mask <<= ((i - 1) * 9 + 12);
                 mask--;
                 break;
             }
-            else if (i == 1)
-                mask = 0xFFF;
             
             pt = reinterpret_cast<PageTable*>((*entry & physAddrMask) + hhdmBase);
         }
@@ -184,11 +179,6 @@ namespace Npk
     void LoadTables(void* root)
     {
         asm volatile("mov %0, %%cr3" :: "r"((uint64_t)root) : "memory");
-    }
-
-    size_t GetHhdmLimit()
-    {
-        return TiB / 2;
     }
 
     PageSizes MaxSupportedPagingSize()

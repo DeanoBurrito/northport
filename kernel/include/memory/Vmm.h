@@ -5,6 +5,7 @@
 #include <Locks.h>
 #include <Optional.h>
 #include <containers/LinkedList.h>
+#include <memory/Heap.h>
 
 namespace Npk::Memory
 {
@@ -77,7 +78,7 @@ namespace Npk::Memory
     class VirtualMemoryManager
     {
     private:
-        sl::LinkedList<VmRange> ranges;
+        sl::LinkedList<VmRange, PinnedAllocator> ranges;
         sl::TicketLock rangesLock;
         sl::TicketLock ptLock;
         void* ptRoot;

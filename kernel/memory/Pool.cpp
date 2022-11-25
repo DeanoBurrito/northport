@@ -68,8 +68,8 @@ namespace Npk::Memory
     void PoolAlloc::Expand(size_t minSize, bool takeLock)
     {
         const size_t expandSize = sl::Max(minSize, minAllocSize * PoolMinExpansionScale) + sizeof(PoolRegion) + sizeof(PoolNode);
-        auto maybeRegion = VMM::Kernel().Alloc(expandSize, 1, VmFlags::Anon | VmFlags::Write);
-        ASSERT(maybeRegion, "Failed to expand kernel pool, VMM alloc failed.");
+        auto maybeRegion = VMM::Kernel().Alloc(expandSize, pinned ? 0b11 : 0, VmFlags::Anon | VmFlags::Write);
+        ASSERT(maybeRegion, "Failed to expand kernel pool.");
 
         PoolRegion* region = new((void*)maybeRegion->base) PoolRegion();
         if (takeLock)
@@ -111,13 +111,15 @@ namespace Npk::Memory
         }
     }
 
-    void PoolAlloc::Init(size_t minAllocBytes)
+    void PoolAlloc::Init(size_t minAllocBytes, bool isPinned)
     {
         sl::ScopedLock scopeLock(listLock);
         head = tail = nullptr;
         minAllocSize = minAllocBytes;
+        pinned = isPinned;
 
-        Log("Kpool initialized: minSize=0x%lx", LogLevel::Verbose, minAllocSize);
+        Log("Kpool initialized: minSize=0x%lx, pinned=%s", LogLevel::Verbose, minAllocSize, 
+            pinned ? "yes" : "no");
     }
 
     void* PoolAlloc::Alloc(size_t bytes)

@@ -43,8 +43,8 @@ namespace Npk::Memory
     {
         sl::ScopedLock scopeLock(rangesLock);
 
-        //protect hhdm from allocations, we allocate `hhdm_limit` bytes for the heap too.
-        globalLowerBound = hhdmBase + hhdmLength + GetHhdmLimit();
+        //protect hhdm from allocations, we also reserve a region right after hhdm for early slab allocation.
+        globalLowerBound = hhdmBase + (hhdmLength * 2);
         globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GiB);
         ptRoot = kernelMasterTables;
 
@@ -59,7 +59,7 @@ namespace Npk::Memory
     void VMM::MakeActive()
     {
         //ensure this VMM's kernel mappings match the master set
-        if (__atomic_load_n(&kernelTablesGen, __ATOMIC_RELAXED) != localKernelGen)
+        if (kernelTablesGen != localKernelGen)
         {
             localKernelGen = kernelTablesGen;
             SyncKernelTables(ptRoot);
@@ -212,14 +212,9 @@ namespace Npk::Memory
                 i + 1ul, driverIndex, VmDriverTypeStrs[driverIndex], i);
             success = driver->DetachRange(context);
         }
-        if (!success)
-        {
-            Log("VM driver (index %u, %s) failed %lu to detach from VM range at 0x%lx.", LogLevel::Error, 
-                driverIndex, VmDriverTypeStrs[driverIndex], DetachTryCount, range.base);
-            //TODO: if we failed to remove it, it should probably go back in the list to block
-            //further allocations in that particular address space.
-        }
 
+        ASSERT(success, "Failed to detach VM range");
+        //TODO: we should handle this more gracefully in the future, when we have ways this can fail.
         return true;
     }
 
@@ -248,10 +243,16 @@ namespace Npk::Memory
         {
             auto maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
             if (!maybePhys.HasValue())
-                HandleFault((uintptr_t)foreignBase + count, VmFaultFlags::None);
-            maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
+            {
+                HandleFault((uintptr_t)foreignBase + count, VmFaultFlags::Write);
+                maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
+            }
+            
+            size_t copyLength = sl::Min(PageSize, length - count);
+            //first copy can be misaligned (in the destination address space), so handle that.
+            if (count == 0)
+                copyLength = sl::AlignUp((uintptr_t)foreignBase, PageSize) - (uintptr_t)foreignBase;
 
-            const size_t copyLength = sl::Min(PageSize, length - count);
             sl::memcopy(local.ptr, reinterpret_cast<void*>(AddHhdm(*maybePhys)), copyLength);
             count += copyLength;
             local.raw += copyLength;
@@ -270,7 +271,9 @@ namespace Npk::Memory
             if (!maybePhys)
                 return count;
             
-            const size_t copyLength = sl::Min(PageSize, length - count);
+            size_t copyLength = sl::Min(PageSize, length - count);
+            if (count == 0)
+                copyLength = sl::AlignUp((uintptr_t)foreignBase, PageSize) - (uintptr_t)foreignBase;
             sl::memcopy(AddHhdm(reinterpret_cast<void*>(*maybePhys)), local.ptr, copyLength);
             local.raw += copyLength;
         }

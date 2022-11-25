@@ -67,6 +67,5 @@ namespace Npk
     void SyncKernelTables(void* dest);
     void LoadTables(void* root);
 
-    size_t GetHhdmLimit();
     PageSizes MaxSupportedPagingSize();
 }

@@ -28,6 +28,7 @@ namespace Npk::Memory
         size_t slabSize;
         size_t slabsPerSeg;
         sl::TicketLock lock;
+        bool pinned;
 
         SlabSegment* InitSegment(uintptr_t base);
 

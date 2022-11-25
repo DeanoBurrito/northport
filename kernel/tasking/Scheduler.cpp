@@ -7,7 +7,7 @@
 
 namespace Npk::Tasking
 {
-    constexpr size_t DefaultStackSize = 0x4000;
+    constexpr size_t DefaultStackSize = 0x10000;
 
     CleanupData schedCleanupData;
 
@@ -112,7 +112,7 @@ namespace Npk::Tasking
         thread->id = tid;
         threadsLock.Unlock();
 
-        auto maybeStack = parent->vmm.Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write);
+        auto maybeStack = parent->vmm.Alloc(DefaultStackSize, 0, VmFlags::Anon | VmFlags::Write);
         ASSERT(maybeStack, "No thread stack"); //TODO: critical junction here, do we fail or stall until memory is available?
         thread->stack.base = maybeStack->base;
         thread->stack.length = maybeStack->length;

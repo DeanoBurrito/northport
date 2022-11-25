@@ -68,8 +68,12 @@ namespace Npk::Memory::Virtual
         for (uintptr_t base = context.range.base; base < context.range.base + context.range.length;)
         {
             uintptr_t ignored;
-            PageSizes ignored2;
-            UnmapMemory(context.ptRoot, base, ignored, ignored2, true);
+            PageSizes size;
+            if (UnmapMemory(context.ptRoot, base, ignored, size, true))
+                base += GetPageSize(size);
+            else
+                base += PageSize;
+
         }
         
         if (context.ptRoot == kernelMasterTables)

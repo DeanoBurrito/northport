@@ -170,11 +170,6 @@ namespace Npk
         asm volatile("sfence.vma zero, %0" :: "r"(0) : "memory");
     }
 
-    size_t GetHhdmLimit()
-    {
-        return pagingLevels == 3 ? 8 * GiB : TiB / 2;
-    }
-
     PageSizes MaxSupportedPagingSize()
     {
         return (PageSizes)maxTranslationLevel;

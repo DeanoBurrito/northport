@@ -8,6 +8,7 @@
 namespace Npk::Memory
 {
     constexpr size_t SlabCount = 5;
+    constexpr size_t PinnedSlabCount = 3;
     constexpr size_t SlabBaseSize = 32;
 
     class VirtualMemoryManager;
@@ -18,7 +19,10 @@ namespace Npk::Memory
     private:
         uintptr_t nextSlabBase;
         SlabAlloc slabs[SlabCount];
+        SlabAlloc pinnedSlabs[PinnedSlabCount];
+        
         PoolAlloc pool;
+        PoolAlloc pinnedPool;
 
         void Init();
 
@@ -31,7 +35,17 @@ namespace Npk::Memory
         Heap(Heap&&) = delete;
         Heap& operator=(Heap&&) = delete;
 
-        void* Alloc(size_t);
-        void Free(void* ptr);
+        void* Alloc(size_t, bool pinned = false);
+        void Free(void* ptr, bool pinned = false);
+    };
+
+    struct PinnedAllocator
+    {
+        [[nodiscard]]
+        inline void* Allocate(size_t length)
+        { return Heap::Global().Alloc(length, true); }
+
+        inline void Deallocate(void* ptr, size_t length)
+        { Heap::Global().Free(ptr, true); (void)length; }
     };
 }
