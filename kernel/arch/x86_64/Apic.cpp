@@ -6,6 +6,8 @@
 #include <debug/Log.h>
 #include <memory/Vmm.h>
 #include <containers/Vector.h>
+#include <UnitConverter.h>
+#include <Maths.h>
 
 namespace Npk
 {
@@ -105,38 +107,40 @@ namespace Npk
     {
         if (!CpuHasFeature(CpuFeature::AlwaysRunningApic))
             Log("Always running apic timer not supported on this cpu.", LogLevel::Warning);
-        return false;
-        //TODO: calibrate apic timer
-    }
 
-    // bool LocalApic::CalibrateTimer()
-    // {
-    //         if (!CpuHasFeature(CpuFeature::AlwaysRunningApic))
-    //             Log("Always running apic timer not supported on this cpu.", LogLevel::Warning);
-            
-    //         WriteReg(LApicReg::LvtTimer, 1 << 16);
-    //         WriteReg(LApicReg::TimerInitCount, 0);
-    //         WriteReg(LApicReg::TimerDivisor, TimerDivisor);
+        WriteReg(LApicReg::LvtTimer, 1 << 16); //mask and stop timer
+        WriteReg(LApicReg::TimerInitCount, 0);
+        WriteReg(LApicReg::TimerDivisor, TimerDivisor);
+
+        constexpr size_t CalibRuns = 8;
+        constexpr size_t CalibMillis = 10;
+
+        long calibTimes[CalibRuns];
+
+        for (size_t i = 0; i < CalibRuns; i++)
+        {
+            WriteReg(LApicReg::LvtTimer, 1 << 16);
+            WriteReg(LApicReg::TimerInitCount, (uint32_t)-1);
+            PolledSleep(CalibMillis * 1'000'000);
+
+            const uint32_t passed = (uint32_t)-1 - ReadReg(LApicReg::TimerCount);
+            calibTimes[i] = (long)(passed / CalibMillis);
+        }
+
+        WriteReg(LApicReg::LvtTimer, 1 << 16);
+        WriteReg(LApicReg::TimerInitCount, 0);
+
+        auto finalTime = CoalesceTimerRuns(calibTimes, CalibRuns, 8);
+        if (!finalTime)
+            return false;
         
-    //     for (size_t attempt = 0; attempt < MaxCalibrateAttempts; attempt++)
-    //     {
-    //         //gather calibration data
-    //         for (size_t i = 0; i < CalibrationRuns; i++)
-    //         {
-    //                 WriteReg(LApicReg::LvtTimer, 1 << 16);
-    //                 WriteReg(LApicReg::TimerInitCount, (uint32_t)-1);
-    //                 PolledSleep(CalibrationMillis * 1'000'000);
-                    
-    //                 const uint32_t invertedReg = (uint32_t)-1 - ReadReg(LApicReg::TimerCount);
-    //                 calibTimes[i] = (long)(invertedReg / CalibrationMillis);
-    //         }
+        ticksPerMs = *finalTime;
 
-    //         if (!tscForTimer)
-    //         {   //ensure timer is stopped.
-    //             WriteReg(LApicReg::LvtTimer, 1 << 16);
-    //             WriteReg(LApicReg::TimerInitCount, 0);
-    //         }
-    // }
+        sl::UnitConversion freqs = sl::ConvertUnits(ticksPerMs * 1000);
+        Log("Lapic timer calibrated: %lu ticks/ms, %lu.%lu%shz (divisor=%u).", LogLevel::Info, ticksPerMs,
+            freqs.major, freqs.minor, freqs.prefix, TimerDivisor);
+        return true;
+    }
 
     void LocalApic::SetTimer(bool tsc, size_t nanos, size_t vector)
     {
@@ -146,13 +150,13 @@ namespace Npk
         if (tsc)
         {
             WriteReg(LApicReg::LvtTimer, vector | (1 << 18));
-            WriteMsr(MsrTscDeadline, ReadMsr(MsrTsc) + nanos);
+            WriteMsr(MsrTscDeadline, ReadMsr(MsrTsc) + nanos); //nanos is pre-calculated here, its actually a tick count.
         }
         else
         {
             WriteReg(LApicReg::LvtTimer, vector);
             WriteReg(LApicReg::TimerDivisor, TimerDivisor);
-            WriteReg(LApicReg::TimerInitCount, (nanos / 1'000'000) * ticksPerMs);
+            WriteReg(LApicReg::TimerInitCount, sl::Max((nanos / 1'000'000), 1ul) * ticksPerMs);
         }
     }
 

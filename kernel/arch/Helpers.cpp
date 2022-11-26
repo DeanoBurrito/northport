@@ -5,7 +5,7 @@
 
 namespace Npk
 {
-    sl::Opt<size_t> TryCalibrateTimer(const char* timerName, void (*PolledSleep)(size_t nanos), void (*Start)(), void (*Stop)(), size_t (*ReadTicks)())
+    sl::Opt<size_t> TryCalibrateTimer(const char* timerName, void (*Start)(), void (*Stop)(), size_t (*ReadTicks)())
     {
         ASSERT(ReadTicks != nullptr, "ReadTicks() is required");
         
@@ -35,35 +35,42 @@ namespace Npk
                 calibMean += calibTimes[i];
             }
 
-            calibMean /= CalibrationRuns;
-            const long deviation = sl::StandardDeviation(calibTimes, CalibrationRuns);
-            size_t validRuns = 0;
-            size_t calibrationTime = 0;
-            
-            for (size_t i = 0; i < CalibrationRuns; i++)
+            auto maybeCalib = CoalesceTimerRuns(calibTimes, CalibrationRuns, CalibrationRuns - RequiredRuns);
+            if (maybeCalib)
             {
-                if (calibTimes[i] < calibMean - deviation || calibTimes[i] > calibMean + deviation)
-                {
-                    Log("Dropped %s calibration run: %li ticks/ms", LogLevel::Verbose, timerName, calibTimes[i]);
-                    continue;
-                }
-
-                validRuns++;
-                calibrationTime += (size_t)calibTimes[i];
-                Log("Keeping %s calibration run: %li ticks/ms", LogLevel::Verbose, timerName, calibTimes[i]);
+                sl::UnitConversion freqs = sl::ConvertUnits(*maybeCalib * 1000);
+                Log("Calibrated %s for %lu ticks/ms (%lu.%lu%shz).", LogLevel::Info, timerName,
+                    *maybeCalib, freqs.major, freqs.minor, freqs.prefix);
+                return *maybeCalib;
             }
-
-            if (validRuns < RequiredRuns)
-                continue;
-
-            calibrationTime /= validRuns;
-            sl::UnitConversion freqs = sl::ConvertUnits(calibrationTime * 1000);
-            Log("Calibrated %s for %lu ticks/ms (%lu.%lu%shz).", LogLevel::Info, timerName,
-                calibrationTime, freqs.major, freqs.minor, freqs.prefix);
-            return calibrationTime;
         }
 
         Log("Failed to calibrate %s, bad calibration data.", LogLevel::Warning, timerName);
         return {};
+    }
+
+    sl::Opt<size_t> CoalesceTimerRuns(long* timerRuns, size_t runCount, size_t allowedFails)
+    {
+        long mean = 0;
+        for (size_t i = 0; i < runCount; i++)
+            mean += timerRuns[i];
+        mean /= runCount;
+
+        const long deviation = sl::StandardDeviation(timerRuns, runCount);
+        size_t validRuns = 0;
+        size_t finalTime = 0;
+
+        for (size_t i = 0; i < runCount; i++)
+        {
+            if (timerRuns[i] < mean - deviation || timerRuns[i] > mean + deviation)
+                continue;
+            
+            validRuns++;
+            finalTime += (size_t)timerRuns[i];
+        }
+
+        if (validRuns < runCount - allowedFails)
+            return {};
+        return finalTime / validRuns;
     }
 }

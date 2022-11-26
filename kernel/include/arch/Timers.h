@@ -5,8 +5,11 @@
 
 namespace Npk
 {
-    //This function is a helper function, and does not need to be implemented.
-    sl::Opt<size_t> TryCalibrateTimer(const char* timerName, void (*PolledSleep)(size_t nanos), void (*Start)(), void (*Stop)(), size_t (*ReadTicks)());
+    //These are helper functions for use by platform-specific implemenations.
+    //You don't need to implement these yourself :) 
+    sl::Opt<size_t> TryCalibrateTimer(const char* timerName, void (*Start)(), void (*Stop)(), size_t (*ReadTicks)());
+    sl::Opt<size_t> CoalesceTimerRuns(long* timerRuns, size_t runCount, size_t allowedFails);
+    //---
     
     void InitTimers();
 

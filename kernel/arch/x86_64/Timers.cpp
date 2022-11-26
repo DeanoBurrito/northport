@@ -85,7 +85,7 @@ namespace Npk
         if (!CpuHasFeature(CpuFeature::InvariantTsc))
             Log("Invariant TSC not supported on this cpu.", LogLevel::Warning);
         
-        auto maybeTscCalib = TryCalibrateTimer(TimerStrs[(size_t)TimerName::Tsc], PolledSleep, nullptr, nullptr, TscRead);
+        auto maybeTscCalib = TryCalibrateTimer(TimerStrs[(size_t)TimerName::Tsc], nullptr, nullptr, TscRead);
         if (!maybeTscCalib)
             return;
         
