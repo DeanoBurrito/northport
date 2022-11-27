@@ -5,6 +5,8 @@
 #include <tasking/Thread.h>
 #include <tasking/Dpc.h>
 #include <Locks.h>
+#include <Lazy.h>
+#include <Random.h>
 
 namespace Npk::Tasking
 {
@@ -45,8 +47,13 @@ namespace Npk::Tasking
         size_t nextTid; //TODO: id allocators for these
         size_t nextPid;
         Process* idleProcess;
+        size_t activeCores = 0;
+
+        sl::TicketLock rngLock;
+        sl::Lazy<sl::XoshiroRng> rng;
 
         void LateInit();
+        size_t NextRand();
 
     public:
         static Scheduler& Global();

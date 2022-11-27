@@ -57,7 +57,6 @@ namespace Npk
     void ExecuteTrapFrame(TrapFrame* frame) asm("ExecuteTrapFrame");
     void SendIpi(size_t dest);
 
-    bool IsBsp();
     CoreLocalInfo& CoreLocal();
     bool CoreLocalAvailable();
 

@@ -124,14 +124,6 @@ namespace Npk
         SbiSendIpi(1ul << (dest % 64), dest / 64);
     }
 
-    extern uintptr_t bspId;
-    
-    [[gnu::always_inline]]
-    inline bool IsBsp()
-    {
-        return CoreLocal().id == bspId;
-    }
-
     struct CoreLocalInfo;
 
     [[gnu::always_inline]]

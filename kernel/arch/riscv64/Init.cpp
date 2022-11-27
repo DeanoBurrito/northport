@@ -9,8 +9,6 @@
 
 namespace Npk
 {
-    uintptr_t bspId;
-
     void InitCore(size_t id, uint32_t plicContext)
     {
         VMM::Kernel().MakeActive();
@@ -53,7 +51,6 @@ extern "C"
     {
         using namespace Npk;
         
-        bspId = data->hartId;
         WriteCsr("sscratch", 0);
         Boot::PerformLimineBootstrap(data->physBase, data->virtBase, data->hartId, data->dtb);
         data = nullptr;

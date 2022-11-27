@@ -19,6 +19,14 @@ namespace Npk::Tasking
         CreateThread(SchedulerCleanupThreadMain, &schedCleanupData, idleProcess)->Start();
     }
 
+    size_t Scheduler::NextRand()
+    {
+        ASSERT(CoreLocal().runLevel != RunLevel::IntHandler, "Run level too high.");
+        sl::ScopedLock scopeLock(rngLock);
+
+        return rng->Next();
+    }
+
     Scheduler globalScheduler;
     Scheduler& Scheduler::Global()
     { return globalScheduler; }
@@ -77,9 +85,9 @@ namespace Npk::Tasking
         core->queue = core->queueTail = nullptr;
         core->state = CoreState::Available;
         Log("Scheduler registered core %lu.", LogLevel::Verbose, CoreLocal().id);
-
         core->lock.Unlock();
-        if (IsBsp())
+
+        if (__atomic_add_fetch(&activeCores, 1, __ATOMIC_RELAXED) == 1)
             LateInit();
 
         QueueClockEvent(10'000'000, nullptr, TimerCallback, true);
@@ -225,7 +233,7 @@ namespace Npk::Tasking
 
     void Scheduler::Reschedule()
     {
-        ASSERT(CoreLocal().runLevel != RunLevel::Normal, "Run level too low.");
+        ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Run level too low.");
         
         sl::ScopedLock coreLock(cores[CoreLocal().id]->lock);
         SchedulerCore& core = *cores[CoreLocal().id];
@@ -242,10 +250,31 @@ namespace Npk::Tasking
                 core.queueTail->next = current;
             core.queueTail = current;
         }
+        else if (current != nullptr)
+            core.threadCount--;
 
         Thread* next = core.queue;
-        if (next == nullptr)
-            next = core.idleThread; //TODO: work stealing
+        if (next == nullptr && activeCores > 1)
+        {
+            //work stealing: pick a core at random, take from it's work queue.
+            size_t target;
+            do { 
+                target = NextRand() % cores.Size();
+            } while (cores[target] == nullptr || target == CoreLocal().id);
+
+            sl::ScopedLock targetLock(cores[target]->lock);
+            next = cores[target]->queue;
+            if (next == nullptr)
+                next = core.idleThread;
+            else
+            {
+                if (cores[target]->queue == cores[target]->queueTail)
+                    cores[target]->queueTail = nullptr;
+                cores[target]->queue = next->next;
+            }
+        }
+        else if (cores.Size() == 1)
+            next = core.idleThread; //no work stealing on single core systems.
         else
         {
             if (core.queue == core.queueTail)

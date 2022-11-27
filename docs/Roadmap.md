@@ -26,7 +26,7 @@
     - [x] IPI mailbox.
     - [x] Scheduler.
         - [x] SMP-support.
-        - [ ] Work stealing.
+        - [x] Work stealing.
         - [ ] Heterogenous cpu support.
     - [ ] Panic.
     - [x] Logging
@@ -86,3 +86,4 @@
         - [ ] String formatter.
         - [ ] Integer <-> string conversions.
     - [x] Basic locks.
+    - [x] Psuedo-RNG.
