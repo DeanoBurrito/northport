@@ -87,7 +87,7 @@ namespace Npk
         Tasking::Scheduler::Global().Init();
     }
 
-    void ReclaimBootloaderMemory()
+    void ReclaimMemoryThread(void*)
     {
         //since the memory map is contained within the memory we're going to reclaim, we'll need our own copy.
         size_t reclaimCount = 0;
@@ -101,10 +101,9 @@ namespace Npk
 
         for (size_t i = 0; i < reclaimCount; i++)
             PMM::Global().IngestMemory(reclaimEntries[i].base, reclaimEntries[i].length);
-        //Feel free to enable this for cool diagnostics, beware the boot-time increase.
-        // PMM::Global().DumpState();
 
         Log("Bootloader memory no-longer in use, reclaimed %lu entries.", LogLevel::Info, reclaimCount);
+        Tasking::Thread::Current().Exit(0);
     }
 
     void InitThread(void*)
@@ -125,17 +124,22 @@ namespace Npk
     [[noreturn]]
     void ExitApInit()
     {
+        Interrupts::InitIpiMailbox();
+
         const size_t refsLeft = __atomic_sub_fetch(&bootDataReferences, 1, __ATOMIC_RELAXED);
         if (refsLeft == 0)
         {
-#ifndef NP_NO_RELCIAIM_BOOTLOADER_MEMORY
-            ReclaimBootloaderMemory();
-#endif
+            DisableInterrupts();
             Tasking::Thread::Create(InitThread, nullptr)->Start();
+            
+            //The last core to finish initialization queues the reclaim thread on itself. Since all cores
+            //are using a stack within reclaimable memory we have to do this in a threaded context.
+            Tasking::Scheduler::Global().RegisterCore(false);
+            Tasking::Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr, nullptr, CoreLocal().id)->Start();
+            Tasking::Scheduler::Global().Yield();
         }
-        
-        Interrupts::InitIpiMailbox();
-        Tasking::Scheduler::Global().RegisterCore();
+        else
+            Tasking::Scheduler::Global().RegisterCore(true);
         ASSERT_UNREACHABLE();
     }
 }

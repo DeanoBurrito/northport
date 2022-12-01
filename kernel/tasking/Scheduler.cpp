@@ -54,7 +54,7 @@ namespace Npk::Tasking
         ASSERT_UNREACHABLE();
     }
 
-    void Scheduler::RegisterCore()
+    void Scheduler::RegisterCore(bool yieldNow)
     {
         SchedulerCore* core = cores.EmplaceAt(CoreLocal().id, new SchedulerCore());
         InterruptGuard intGuard;
@@ -91,8 +91,8 @@ namespace Npk::Tasking
             LateInit();
 
         QueueClockEvent(10'000'000, nullptr, TimerCallback, true);
-        RunNextFrame();
-        ASSERT_UNREACHABLE();
+        if (yieldNow)
+            RunNextFrame();
     }
 
     Process* Scheduler::CreateProcess()
@@ -214,11 +214,7 @@ namespace Npk::Tasking
         core.lock.Unlock();
 
         if (CoreLocal().runLevel == RunLevel::Normal)
-        {
-            //run the dpc immediately, we'll return here later
-            //SaveCurrentFrame()
-            RunNextFrame();
-        }
+            Yield();
     }
 
     void DpcExit()
@@ -228,6 +224,13 @@ namespace Npk::Tasking
     {
         ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Bad run level.");
         cores[CoreLocal().id]->dpcFinished = true;
+        RunNextFrame();
+    }
+
+    void Scheduler::Yield()
+    {
+        DisableInterrupts();
+        //TODO: SaveCurrentContext(); so that we can return here if the thread isn't exiting
         RunNextFrame();
     }
 

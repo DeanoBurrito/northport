@@ -12,7 +12,7 @@ A brief summary of the current goals and features are listed below, check [the r
 ## Project Goals
 1) To build a modern and relatively complete kernel: driver infrastructure, graphics/audio/network stacks, VFS, and smp-aware scheduler.
 2) Support for multiple platforms. My plan is to develop for risc-v first, and use the x86_64 port as a sanity check. With limine now supporting aarch64, support for that may come later.
-3) To eventually be self-hosting, and have the system able to cross-compile itself.
+3) To eventually be self-hosting, and have the system be able to cross-compile itself.
 4) Clean code and useful documentation.
 5) A comfortable (if limited) userspace experience.
 

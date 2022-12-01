@@ -59,7 +59,7 @@ namespace Npk::Tasking
         static Scheduler& Global();
 
         void Init();
-        void RegisterCore();
+        void RegisterCore(bool yieldNow);
 
         Process* CreateProcess();
         Thread* CreateThread(ThreadMain entry, void* arg, Process* parent = nullptr, size_t coreAffinity = -1);
@@ -70,6 +70,7 @@ namespace Npk::Tasking
         void QueueDpc(ThreadMain function, void* arg = nullptr);
         void DpcExit();
 
+        void Yield();
         void Reschedule();
         void SaveCurrentFrame(TrapFrame* current, RunLevel prevRunLevel);
         void RunNextFrame();

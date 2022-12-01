@@ -15,10 +15,9 @@
 #ifdef NP_INCLUDE_LIMINE_BOOTSTRAP
 namespace Npk::Boot
 {
-    constexpr size_t LoaderDataReserveSize = 4 * PageSize;
+    constexpr size_t LoaderDataReserveSize = 2 * PageSize;
     uintptr_t loaderDataNext; //next free address
     size_t loaderDataSpace; //bytes remaining for this area
-    size_t memmapResponseCapacity;
 
     struct MemBlock
     {
@@ -37,45 +36,42 @@ namespace Npk::Boot
 #endif
     }
 
-    void* BootAlloc(size_t t)
-    {
-        t = sl::AlignUp(t, 16);
-        void* ptr = reinterpret_cast<void*>(loaderDataNext);
-        loaderDataNext += t;
-        loaderDataSpace -= t;
-        return ptr;
-    }
-
     void* BootAllocPages(size_t count)
     {
         for (size_t i = 0; i < memmapRequest.response->entry_count; i++)
         {
             auto* entry = memmapRequest.response->entries[i];
-            if (entry->type != LIMINE_MEMMAP_USABLE)
+            if (entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
                 continue;
-            if (entry->length < count * PageSize)
-                continue;
-            
-            const uintptr_t addr = entry->base;
-            entry->base += count * PageSize;
-            entry->length -= count * PageSize;
 
-            if (i > 0 && memmapRequest.response->entries[i - 1]->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
-            {
-                auto* prevEntry = memmapRequest.response->entries[i - 1];
-                prevEntry->length += count * PageSize;
-            }
-            else
-            {
-                limine_memmap_entry* newEntry = new(BootAlloc(sizeof(limine_memmap_entry))) limine_memmap_entry{};
-                newEntry->base = addr;
-                newEntry->length = count * PageSize;
-                newEntry->type = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE;
-                //TODO: insert into memmap entries are current pos (use capacity then resort).
-            }
-            return reinterpret_cast<void*>(addr + DetermineHhdm());
+            auto* next = memmapRequest.response->entries[i + 1];
+            ASSERT(next->type == LIMINE_MEMMAP_USABLE, "Unexpected memmap layout"); //TODO: this is a big assumption to make, be smarter?
+            ASSERT(next->length / PageSize > count, "Not enough space");
+
+            void* ptr = reinterpret_cast<void*>(next->base + DetermineHhdm());
+            next->base += count * PageSize;
+            next->length -= count * PageSize;
+            entry->length += count * PageSize;
+            return ptr;
         }
         ASSERT_UNREACHABLE();
+    }
+
+    void* BootAlloc(size_t t)
+    {
+        t = sl::AlignUp(t, 16);
+        if (t > loaderDataSpace)
+        {
+            //this is quite wasteful, if we lack the space for an allocation the previous slack is just thrown away.
+            //we reclaim this memory later on, but it would be nice to reduce the waste here
+            loaderDataNext = (uintptr_t)BootAllocPages(sl::AlignUp(t, PageSize) / PageSize);
+            loaderDataSpace = sl::AlignUp(t, PageSize);
+        }
+
+        void* ptr = reinterpret_cast<void*>(loaderDataNext);
+        loaderDataNext += t;
+        loaderDataSpace -= t;
+        return ptr;
     }
 
     limine_memmap_entry* BuildMemoryMap(MemBlock* freeBlocks, MemBlock* reservedBlocks, size_t freeCount, size_t reservedCount, size_t& mmapCount)
@@ -252,12 +248,9 @@ namespace Npk::Boot
             entry.length = sl::AlignDown(top - entry.base, 0x1000);
         }
 
-        //gives us room for future expansion later on
-        memmapResponseCapacity = mmapCount * 2;
-
         //populate the memory map request
         auto* mmapResponse = new(BootAlloc(sizeof(limine_memmap_response))) limine_memmap_response{};
-        limine_memmap_entry** entryPtrs = static_cast<limine_memmap_entry**>(BootAlloc(sizeof(void*) * memmapResponseCapacity));
+        limine_memmap_entry** entryPtrs = static_cast<limine_memmap_entry**>(BootAlloc(sizeof(void*) * mmapCount));
 
         mmapResponse->entry_count = mmapCount;
         mmapResponse->entries = entryPtrs;

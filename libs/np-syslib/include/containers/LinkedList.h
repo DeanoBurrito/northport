@@ -114,7 +114,7 @@ namespace sl
                 }
 
                 NodeT* prev = where.entry->prev;
-                where.entry->prev->next = element;
+                prev->next = element;
                 where.entry->prev = element;
                 element->prev = prev;
                 element->next = where.entry;
@@ -129,7 +129,7 @@ namespace sl
                 element->prev = nullptr;
 
                 if (head != nullptr)
-                    head->prev = head;
+                    head->prev = element;
                 if (tail == nullptr)
                     tail = element;
                 head = element;
