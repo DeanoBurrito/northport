@@ -97,7 +97,8 @@ namespace Npk::Memory
         VmDriverContext context{ ptRoot, ptLock, *range };
         EventResult result = driver->HandleEvent(context, EventType::PageFault, addr, (uintptr_t)flags);
         
-        ASSERT(result == EventResult::Continue, "TODO: handle other page-fault results");
+        if (result != EventResult::Continue)
+            Log("Bad page fault at 0x%lx, flags=0x%lx, result=%lu", LogLevel::Fatal, addr, (size_t)flags, (size_t)result);
         Log("Good page fault: 0x%lx, ec=0x%lx", LogLevel::Debug, addr, (size_t)flags);
     }
 
@@ -180,7 +181,7 @@ namespace Npk::Memory
         return range;
     }
 
-    bool VMM::Free(uintptr_t base, size_t length)
+    bool VMM::Free(uintptr_t base)
     {
         rangesLock.Lock();
 
@@ -188,7 +189,7 @@ namespace Npk::Memory
         VmRange range {};
         for (auto it = ranges.Begin(); it != ranges.End(); ++it)
         {
-            if (it->base == base && it->length == length)
+            if (base >= it->base && base < it->Top())
             {
                 range = sl::Move(*it);
                 ranges.Erase(it);

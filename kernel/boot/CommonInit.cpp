@@ -9,6 +9,7 @@
 #include <debug/LogBackends.h>
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
+#include <drivers/DriverManager.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
@@ -109,6 +110,7 @@ namespace Npk
     void InitThread(void*)
     {
         Devices::DeviceManager::Global().Init();
+        Drivers::DriverManager::Global().Init();
         Devices::PciBridge::Global().Init();
         
         Tasking::Thread::Current().Exit(0);

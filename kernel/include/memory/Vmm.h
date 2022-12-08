@@ -105,7 +105,7 @@ namespace Npk::Memory
         void HandleFault(uintptr_t addr, VmFaultFlags flags);
         
         sl::Opt<VmRange> Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
-        bool Free(uintptr_t base, size_t length);
+        bool Free(uintptr_t base);
 
         bool RangeExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags);
 

@@ -5,7 +5,7 @@ namespace Npk::Devices
 {
     constexpr const char* DevTypeStrs[] = 
     {
-        "Keyboard", "Pointer"
+        "Keyboard", "Pointer", "Framebuffer"
     };
     
     DeviceManager globalDeviceManager;

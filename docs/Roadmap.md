@@ -37,10 +37,10 @@
     - [x] Peripheral discovery:
         - [x] ACPI tables parser.
         - [x] Device tree parser.
-    - [ ] Driver manager, with C interface.
-        - [ ] Loadable drivers.
+    - [x] Driver manager.
+        - [ ] Loadable drivers, with C api.
     - [x] Device manager.
-        - [ ] Queued IO.
+        - [ ] Async command queues.
     - [ ] System calls.
     - [x] Reclaim bootloader memory.
     - [ ] IPC.
@@ -57,7 +57,7 @@
             - [ ] Block.
             - [ ] Network.
             - [ ] Input (kb + mouse).
-        - [ ] Bochs VGA.
+        - [x] Bochs VGA.
         - [ ] AHCI.
         - [ ] NVMe.
         - [ ] XHCI (USB 3).
