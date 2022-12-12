@@ -62,7 +62,8 @@ namespace Npk::Tasking
         void RegisterCore(bool yieldNow);
 
         Process* CreateProcess();
-        Thread* CreateThread(ThreadMain entry, void* arg, Process* parent = nullptr, size_t coreAffinity = -1);
+        Thread* CreateThread(ThreadMain entry, void* arg, Process* parent = nullptr, size_t coreAffinity = -1ul);
+        void DestroyProcess(size_t id);
         void DestroyThread(size_t id, size_t errorCode);
         void EnqueueThread(size_t id);
         //TODO: DequeueThread(), DestroyProcess()

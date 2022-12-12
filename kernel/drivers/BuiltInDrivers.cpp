@@ -13,7 +13,7 @@ namespace Npk::Drivers
     {
         {   //bochs vga
             ManifestName name { sizeof(bochsVgaName), bochsVgaName };
-            DriverManifest manifest { true, name, "Bochs VGA", BochsVgaMain };
+            DriverManifest manifest { true, name, "bochs_vga", BochsVgaMain };
             DriverManager::Global().RegisterDriver(manifest);
         }
 

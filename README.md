@@ -24,7 +24,8 @@ Kernel:
     - The terminal is based on gterm from the Limine Bootloader (see the individual files for the license).
 - Optional UB sanitizer, helpful for detecting bugs or increasing code size!
 - Support for various platform-specific timers, soft-timer interface on top.
-- SMP-aware scheduler: round robin with per-core queues.
+- SMP-aware scheduler: round robin with per-core queues and work stealing.
+- Loadable drivers and device management.
 
 Build System:
 - Uses stock core tools and GNU make, runs anywhere (tm).

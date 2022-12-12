@@ -139,13 +139,32 @@ namespace Npk::Tasking
         return thread;
     }
 
+    void Scheduler::DestroyProcess(size_t id)
+    {
+        ASSERT(id <= processes.Size(), "Invalid process id");
+        ASSERT(processes[id] != nullptr, "Invalid process id");
+        Log("Process %lu is being destroyed", LogLevel::Debug, id);
+
+        processesLock.Lock();
+        Process* proc = processes[id];
+        processes[id] = nullptr;
+        processesLock.Unlock();
+
+        schedCleanupData.lock.Lock();
+        schedCleanupData.processes.PushBack(proc);
+        schedCleanupData.lock.Unlock();
+        
+        //TODO: remove processes threads from active lists and core queues.
+        ASSERT_UNREACHABLE();
+    }
+
     void Scheduler::DestroyThread(size_t id, size_t errorCode)
     {
         ASSERT(id <= threadLookup.Size(), "Invalid thread id");
         ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
         Log("Thread %lu exited with code %lu", LogLevel::Debug, id, errorCode);
 
-        DisableInterrupts();
+        InterruptGuard guard;
         threadsLock.Lock();
         Thread* t = threadLookup[id];
         threadLookup[id] = nullptr;
@@ -153,11 +172,15 @@ namespace Npk::Tasking
         //TODO: free tid (implement IdA)
         threadsLock.Unlock();
 
+        //TODO: remove thread from runqueues if present.
+        //TODO: if we're the last thread in a process, remove the whole process as well.
+
         schedCleanupData.lock.Lock();
         schedCleanupData.threads.PushBack(t);
         schedCleanupData.lock.Unlock();
 
-        QueueDpc(RescheduleDpc);
+        if (CoreLocal().schedThread == t)
+            QueueDpc(RescheduleDpc);
     }
 
     void Scheduler::EnqueueThread(size_t id)
@@ -197,7 +220,7 @@ namespace Npk::Tasking
             cores[affinity]->queueTail->next = t;
         cores[affinity]->queueTail = t;
 
-        cores[affinity]->threadCount++;
+        __atomic_add_fetch(&cores[affinity]->threadCount, 1, __ATOMIC_RELAXED);
     }
 
     void DpcQueue(void (*function)(void* arg), void* arg)
@@ -254,7 +277,7 @@ namespace Npk::Tasking
             core.queueTail = current;
         }
         else if (current != nullptr)
-            core.threadCount--;
+            __atomic_sub_fetch(&core.threadCount, 1, __ATOMIC_RELAXED);
 
         Thread* next = core.queue;
         if (next == nullptr && activeCores > 1)

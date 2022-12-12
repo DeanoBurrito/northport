@@ -22,5 +22,7 @@ namespace Npk::Tasking
         [[gnu::always_inline]]
         inline size_t Id()
         { return id; }
+
+        void Kill() const;
     };
 }

@@ -2,7 +2,9 @@
 
 #include <drivers/DriverManifest.h>
 #include <drivers/InitTags.h>
+#include <tasking/Process.h>
 #include <containers/LinkedList.h>
+#include <containers/Vector.h>
 #include <Optional.h>
 #include <Locks.h>
 
@@ -17,17 +19,17 @@ namespace Npk::Drivers
         Error,
     };
     
-    struct DriverInstance
+    struct LoadedDriver
     {
         DriverManifest& manifest;
-        DriverStatus status;
-        void* instance;
+        Tasking::Process* proc;
     };
     
     class DriverManager
     {
     private:
         sl::LinkedList<DriverManifest> manifests;
+        sl::LinkedList<LoadedDriver> instances;
         sl::TicketLock lock;
 
     public:
@@ -43,6 +45,7 @@ namespace Npk::Drivers
 
         void RegisterDriver(const DriverManifest& manifest);
         bool TryLoadDriver(ManifestName name, InitTag* tags);
-        //TODO: UnloadDriver()
+        bool UnloadDriver(ManifestName name, bool force = false);
+        bool UnloadDriver(const char* friendlyName, bool force = false);
     };
 }

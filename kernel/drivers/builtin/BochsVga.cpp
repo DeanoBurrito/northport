@@ -98,8 +98,6 @@ namespace Npk::Drivers
         auto maybeFramebuffer = VMM::Kernel().Alloc(bar0.size, bar0.address, VmFlags::Mmio | VmFlags::Write);
         ASSERT(maybeFramebuffer, "Failed to alloc VM spce for bochs VGA framebuffer.");
         fbBase = maybeFramebuffer->base;
-        
-        //setmode()
 
         status = Devices::DeviceStatus::Online;
         return true;

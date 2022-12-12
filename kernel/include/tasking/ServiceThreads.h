@@ -9,6 +9,7 @@ namespace Npk::Tasking
     struct CleanupData
     {
         sl::LinkedList<Thread*> threads;
+        sl::LinkedList<Process*> processes;
         sl::TicketLock lock;
     };
 
