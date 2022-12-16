@@ -35,7 +35,6 @@ namespace Npk::Drivers
             Log("Bochs BGA init failed, could not attach device.", LogLevel::Error);
             Tasking::Thread::Current().Exit(1);
         }
-        const size_t deviceId = *maybeDeviceId;
 
         //cleanup the init tags
         tags = static_cast<InitTag*>(arg);
@@ -46,7 +45,7 @@ namespace Npk::Drivers
             delete temp;
         }
 
-        Log("Bochs VGA init done.", LogLevel::Debug);
+        Log("Bochs VGA init done. Framebuffer device id=%lu", LogLevel::Debug, *maybeDeviceId);
 
         while (true)
         {}

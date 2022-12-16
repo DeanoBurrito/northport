@@ -45,7 +45,7 @@ namespace Npk::Drivers
 
         void RegisterDriver(const DriverManifest& manifest);
         bool TryLoadDriver(ManifestName name, InitTag* tags);
-        bool UnloadDriver(ManifestName name, bool force = false);
-        bool UnloadDriver(const char* friendlyName, bool force = false);
+        bool UnloadDriver(ManifestName name);
+        bool UnloadDriver(const char* friendlyName);
     };
 }

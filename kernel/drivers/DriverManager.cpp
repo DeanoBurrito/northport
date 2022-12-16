@@ -65,7 +65,7 @@ namespace Npk::Drivers
         return true;
     }
 
-    bool DriverManager::UnloadDriver(ManifestName name, bool force)
+    bool DriverManager::UnloadDriver(ManifestName name)
     {
         sl::ScopedLock scopeLock(lock);
         
@@ -75,7 +75,7 @@ namespace Npk::Drivers
                 continue;
             
             Log("Stopping driver: %s, proc=%lu.", LogLevel::Debug, it->manifest.friendlyName, it->proc->Id());
-            it->proc->Kill();
+            it->proc->Kill(); //TODO: would be nice to allow for a graceful exit.
             instances.Erase(it);
             return true;
         }
@@ -83,7 +83,7 @@ namespace Npk::Drivers
         return false;
     }
 
-    bool DriverManager::UnloadDriver(const char* friendlyName, bool force)
+    bool DriverManager::UnloadDriver(const char* friendlyName)
     {
         const size_t nameLen = sl::memfirst(friendlyName, 0, 0);
         sl::ScopedLock scopeLock(lock);

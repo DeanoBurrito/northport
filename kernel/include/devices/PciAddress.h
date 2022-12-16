@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <Optional.h>
 
 namespace Npk::Devices
 {
@@ -59,6 +60,25 @@ namespace Npk::Devices
         { return ReadAt((size_t)reg * 4); }
 
         bool IsLegacy() const;
-        PciBar ReadBar(size_t index) const;
+        PciBar ReadBar(size_t index, bool noSize = false) const;
+
+        //returns the state of a bit, optionally writes to it.
+        bool BitReadWrite(PciReg reg, size_t index, sl::Opt<bool> setValue = {}) const;
+
+        [[gnu::always_inline]]
+        inline bool BusMastering(sl::Opt<bool> set = {}) const
+        { return BitReadWrite(PciReg::CmdStatus, 2, set); }
+
+        [[gnu::always_inline]]
+        inline bool InterruptDisable(sl::Opt<bool> set = {}) const
+        { return BitReadWrite(PciReg::CmdStatus, 10, set); }
+
+        [[gnu::always_inline]]
+        inline bool InterruptPending() const
+        { return BitReadWrite(PciReg::CmdStatus, 19, {}); }
+
+        [[gnu::always_inline]]
+        inline bool HasCapsList() const
+        { return BitReadWrite(PciReg::CmdStatus, 20, {}); }
     };
 }

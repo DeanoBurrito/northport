@@ -11,7 +11,7 @@ namespace Npk::Devices
     constexpr uint32_t PciEnableConfig = 0x80000000;
 #endif
     constexpr uintptr_t PciLegacyPoison = 0x8888'8888;
-    
+
     PciAddress PciAddress::CreateMmio(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t function)
     {
         return segmentBase + ((bus << 20) | (device << 15) | (function << 12));
@@ -55,7 +55,7 @@ namespace Npk::Devices
 #endif
     }
 
-    PciBar PciAddress::ReadBar(size_t index) const
+    PciBar PciAddress::ReadBar(size_t index, bool noSize) const
     {
         ASSERT(index < 6, "Invalid PCI BAR");
 
@@ -68,11 +68,14 @@ namespace Npk::Devices
             //io bar
             bar.isMemory = bar.is64Bit = bar.isPrefetchable = false;
             bar.address = original & ~(uint32_t)0b11;
-
-            WriteAt(offset, 0xFFFF'FFFF);
-            const uint32_t readback = ReadAt(offset);
-            bar.size = ~(readback & 0b11) + 1;
-            WriteAt(offset, original);
+            
+            if (!noSize)
+            {
+                WriteAt(offset, 0xFFFF'FFFF);
+                const uint32_t readback = ReadAt(offset);
+                bar.size = ~(readback & 0b11) + 1;
+                WriteAt(offset, original);
+            }
         }
         else
         {
@@ -88,20 +91,41 @@ namespace Npk::Devices
             {
                 bar.address = (uint64_t)ReadAt(offset + 4) << 32;
 
-                const uint32_t originalUpper = ReadAt(offset + 4);
-                WriteAt(offset + 4, 0xFFFF'FFFF);
-                upperSize = ReadAt(offset + 4);
-                WriteAt(offset + 4, originalUpper);
+                if (!noSize)
+                {
+                    const uint32_t originalUpper = ReadAt(offset + 4);
+                    WriteAt(offset + 4, 0xFFFF'FFFF);
+                    upperSize = ReadAt(offset + 4);
+                    WriteAt(offset + 4, originalUpper);
+                }
             }
 
-            WriteAt(offset, 0xFFFF'FFFF);
-            bar.size = upperSize << 32 | (ReadAt(offset) & ~(uint32_t)0xF);
-            WriteAt(offset, original);
+            if (!noSize)
+            {
+                WriteAt(offset, 0xFFFF'FFFF);
+                bar.size = upperSize << 32 | (ReadAt(offset) & ~(uint32_t)0xF);
+                WriteAt(offset, original);
 
-            bar.size = (~bar.size) + 1;
+                bar.size = (~bar.size) + 1;
+            }
         }
 
+        if (noSize)
+            bar.size = 0;
         bar.index = index;
         return bar;
+    }
+
+    bool PciAddress::BitReadWrite(PciReg reg, size_t index, sl::Opt<bool> setValue) const
+    {
+        uint32_t regValue = ReadReg(reg);
+        const bool prevState = regValue & (1 << index);
+
+        if (setValue)
+        {
+            regValue = *setValue ? regValue | (1 << index) : regValue & ~((uint32_t)1 << index);
+            WriteReg(reg, regValue);
+        }
+        return prevState;
     }
 }
