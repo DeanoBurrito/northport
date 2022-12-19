@@ -53,22 +53,22 @@ namespace Npk::Drivers
 
     void BochsFramebuffer::WriteVgaReg(uint16_t reg, uint16_t data) const
     {
-        mmioRegs.Offset(reg - 0x3C0 + 0x400).VolatileWrite(data);
+        mmioRegs.Offset(reg - 0x3C0 + 0x400).Write(data);
     }
 
     uint16_t BochsFramebuffer::ReadVgaReg(uint16_t reg) const
     {
-        return mmioRegs.Offset(reg - 0x3C0 + 0x400).VolatileRead<uint16_t>();
+        return mmioRegs.Offset(reg - 0x3C0 + 0x400).Read<uint16_t>();
     }
 
     void BochsFramebuffer::WriteDispiReg(DispiReg reg, uint16_t data) const
     {
-        mmioRegs.Offset(0x500).Offset((uint16_t)reg << 1).VolatileWrite(data);
+        mmioRegs.Offset(0x500).Offset((uint16_t)reg << 1).Write(data);
     }
 
     uint16_t BochsFramebuffer::ReadDispiReg(DispiReg reg) const
     {
-        return mmioRegs.Offset(0x500).Offset((uint16_t)reg << 1).VolatileRead<uint16_t>();
+        return mmioRegs.Offset(0x500).Offset((uint16_t)reg << 1).Read<uint16_t>();
     }
     
     bool BochsFramebuffer::Init()

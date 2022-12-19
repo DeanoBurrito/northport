@@ -45,13 +45,13 @@ namespace sl
         { return IntPtr(raw + offset); }
 
         template<typename Word>
-        void VolatileWrite(Word value) const
+        void Write(Word value) const
         {
             *reinterpret_cast<volatile Word*>(ptr) = value;
         }
 
         template<typename Word>
-        Word VolatileRead() const
+        Word Read() const
         {
             return *reinterpret_cast<volatile Word*>(ptr);
         }

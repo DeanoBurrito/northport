@@ -61,7 +61,7 @@ namespace Npk::Debug
     //NS16550 uart is available over port io.
     #define WriteReg(reg, val) Out8(PortSerial + reg, val)    
 #else
-    #define WriteReg(reg, val) ns16550mmio.Offset(reg).VolatileWrite<uint8_t>(val)
+    #define WriteReg(reg, val) ns16550mmio.Offset(reg).Write<uint8_t>(val)
 
         //See if there's a compatible node in the device tree.
         ns16550mmio = nullptr;
@@ -115,8 +115,8 @@ namespace Npk::Debug
 #else
         for (size_t i = 0; i < length; i++)
         {
-            while ((ns16550mmio.Offset(Ns16550Reg::LineStatus).VolatileRead<uint8_t>() & (1 << 5)) == 0);
-            ns16550mmio.Offset(Ns16550Reg::Data).VolatileWrite<uint8_t>(str[i]);
+            while ((ns16550mmio.Offset(Ns16550Reg::LineStatus).Read<uint8_t>() & (1 << 5)) == 0);
+            ns16550mmio.Offset(Ns16550Reg::Data).Write<uint8_t>(str[i]);
         }
 #endif
     }

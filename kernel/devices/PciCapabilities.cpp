@@ -89,10 +89,10 @@ namespace Npk::Devices
         ASSERT(bar.isMemory, "BIR must be memory space.");
 
         sl::NativePtr entry { bar.address + birOffset + hhdmBase + (index * 4) };
-        entry.Offset(0).VolatileWrite<uint32_t>(addr);
-        entry.Offset(4).VolatileWrite<uint32_t>(addr >> 32);
-        entry.Offset(8).VolatileWrite<uint32_t>(data);
-        entry.Offset(12).VolatileWrite<uint32_t>(masked ? 1 : 0);
+        entry.Offset(0).Write<uint32_t>(addr);
+        entry.Offset(4).Write<uint32_t>(addr >> 32);
+        entry.Offset(8).Write<uint32_t>(data);
+        entry.Offset(12).Write<uint32_t>(masked ? 1 : 0);
     }
 
     void MsixCap::MaskEntry(size_t index, bool mask) const
@@ -103,6 +103,6 @@ namespace Npk::Devices
         ASSERT(bar.isMemory, "BIR must be memory space.");
 
         sl::NativePtr entry { bar.address + birOffset + hhdmBase + (index * 4) };
-        entry.Offset(12).VolatileWrite<uint32_t>(mask ? 1 : 0);
+        entry.Offset(12).Write<uint32_t>(mask ? 1 : 0);
     }
 }

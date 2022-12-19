@@ -31,7 +31,7 @@ namespace Npk::Devices
             Out32(PortPciData, value);
         }
 #endif
-        sl::NativePtr(addr).Offset(AddHhdm(offset & 0xFFF)).VolatileWrite<uint32_t>(value);
+        sl::NativePtr(addr).Offset(AddHhdm(offset & 0xFFF)).Write<uint32_t>(value);
     }
 
     uint32_t PciAddress::ReadAt(size_t offset) const
@@ -43,7 +43,7 @@ namespace Npk::Devices
             return In32(PortPciData);
         }
 #endif
-        return sl::NativePtr(addr).Offset(AddHhdm(offset & 0xFFF)).VolatileRead<uint32_t>();
+        return sl::NativePtr(addr).Offset(AddHhdm(offset & 0xFFF)).Read<uint32_t>();
     }
 
     bool PciAddress::IsLegacy() const

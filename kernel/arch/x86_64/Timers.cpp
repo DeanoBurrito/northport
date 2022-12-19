@@ -72,9 +72,9 @@ namespace Npk
         ASSERT(hpetRegs.ptr != nullptr, "No HPET sleep: device is not available.");
         
         const sl::NativePtr counter = hpetRegs.Offset(HpetRegCounter);
-        const size_t target = counter.VolatileRead<uint64_t>() + ((nanos * FemtosPerNano) / hpetPeriod);
+        const size_t target = counter.Read<uint64_t>() + ((nanos * FemtosPerNano) / hpetPeriod);
 
-        while (counter.VolatileRead<uint64_t>() < target)
+        while (counter.Read<uint64_t>() < target)
             asm("pause");
     }
 
@@ -110,10 +110,10 @@ namespace Npk
             hpetRegs = mmioRange->base;
 
             //reset main counter and leave it enabled
-            hpetRegs.Offset(HpetRegConfig).VolatileWrite<uint64_t>(0);
-            hpetRegs.Offset(HpetRegCounter).VolatileWrite<uint64_t>(0);
-            hpetRegs.Offset(HpetRegConfig).VolatileWrite<uint64_t>(0b01); //bit 0 = enable bit, bit 1 = legacy routing
-            hpetPeriod = hpetRegs.Offset(HpetRegCaps).VolatileRead<uint64_t>() >> 32;
+            hpetRegs.Offset(HpetRegConfig).Write<uint64_t>(0);
+            hpetRegs.Offset(HpetRegCounter).Write<uint64_t>(0);
+            hpetRegs.Offset(HpetRegConfig).Write<uint64_t>(0b01); //bit 0 = enable bit, bit 1 = legacy routing
+            hpetPeriod = hpetRegs.Offset(HpetRegCaps).Read<uint64_t>() >> 32;
 
             ASSERT(hpetPeriod <= 0x05F5E100, "Bad HPET period."); //magic number pulled from hpet spec
             ASSERT(hpetPeriod > FemtosPerNano, "HPET period < 1ns.");
@@ -145,7 +145,7 @@ namespace Npk
         else
         {
             //setup HPET comparator 0 for interrupts
-            uint64_t configWord = hpetRegs.Offset(HpetRegT0Config).VolatileRead<uint64_t>();
+            uint64_t configWord = hpetRegs.Offset(HpetRegT0Config).Read<uint64_t>();
             uint32_t allowedRoutes = configWord >> 32;
             while ((allowedRoutes & 1) == 0)
             {
@@ -158,8 +158,8 @@ namespace Npk
             configWord &= ~(1ul << 3); //clear type bit = one shot timer
             configWord |= 1ul << 2; //enable interrupts
             configWord &= ~(1ul << 1); //edge triggered
-            hpetRegs.Offset(HpetRegT0Config).VolatileWrite(configWord);
-            ASSERT(hpetRegs.Offset(HpetRegT0Config).VolatileRead<uint64_t>() == configWord, "HPET comparator 0 readback incorrect.");
+            hpetRegs.Offset(HpetRegT0Config).Write(configWord);
+            ASSERT(hpetRegs.Offset(HpetRegT0Config).Read<uint64_t>() == configWord, "HPET comparator 0 readback incorrect.");
 
             selectedSysTimer = TimerName::Hpet;
             IoApic::Route(timerIoApicPin, timerIntVector, CoreLocal().id, TriggerMode::Edge, PinPolarity::High, true);
@@ -197,9 +197,9 @@ namespace Npk
 
         case TimerName::Hpet:
         {
-            const uint64_t mainCounter = hpetRegs.Offset(HpetRegCounter).VolatileRead<uint64_t>();
+            const uint64_t mainCounter = hpetRegs.Offset(HpetRegCounter).Read<uint64_t>();
             const uint64_t target = mainCounter + ((nanoseconds * FemtosPerNano) / hpetPeriod);
-            hpetRegs.Offset(HpetRegT0Comparator).VolatileWrite(target);
+            hpetRegs.Offset(HpetRegT0Comparator).Write(target);
             
             IoApic::Mask(timerIoApicPin, false);
             return;
@@ -233,7 +233,7 @@ namespace Npk
         case TimerName::Pit:
             return PitRead();
         case TimerName::Hpet:
-            return hpetRegs.Offset(HpetRegCounter).VolatileRead<uint64_t>();
+            return hpetRegs.Offset(HpetRegCounter).Read<uint64_t>();
         case TimerName::Tsc:
             return TscRead();
         default:

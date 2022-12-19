@@ -26,7 +26,7 @@ namespace Npk
         if (inX2mode)
             return ReadMsr(X2Reg(reg));
         else
-            return mmio.Offset((size_t)reg).VolatileRead<uint32_t>();
+            return mmio.Offset((size_t)reg).Read<uint32_t>();
     }
     
     void LocalApic::WriteReg(LApicReg reg, uint32_t value) const
@@ -34,7 +34,7 @@ namespace Npk
         if (inX2mode)
             WriteMsr(X2Reg(reg), value); //Note: this breaks for ICR, as it's the exception to the rule here.
         else
-            mmio.Offset((size_t)reg).VolatileWrite(value);
+            mmio.Offset((size_t)reg).Write(value);
     }
 
     LocalApic& LocalApic::Local()
@@ -193,32 +193,32 @@ namespace Npk
 
     uint32_t IoApic::ReadReg(IoApicReg reg) const
     {
-        mmio.VolatileWrite((uint32_t)reg);
-        return mmio.Offset(0x10).VolatileRead<uint32_t>();
+        mmio.Write((uint32_t)reg);
+        return mmio.Offset(0x10).Read<uint32_t>();
     }
     
     void IoApic::WriteReg(IoApicReg reg, uint32_t value) const
     {
-        mmio.VolatileWrite((uint32_t)reg);
-        mmio.Offset(0x10).VolatileWrite(value);
+        mmio.Write((uint32_t)reg);
+        mmio.Offset(0x10).Write(value);
     }
 
     uint64_t IoApic::ReadRedirect(size_t index) const
     {
         uint64_t value = 0;
-        mmio.VolatileWrite(index * 2 + (uint32_t)IoApicReg::TableBase);
-        value |= mmio.Offset(0x10).VolatileRead<uint32_t>();
-        mmio.VolatileWrite(index * 2 + (uint32_t)IoApicReg::TableBase + 1);
-        value |= (uint64_t)mmio.Offset(0x10).VolatileRead<uint32_t>() << 32;
+        mmio.Write(index * 2 + (uint32_t)IoApicReg::TableBase);
+        value |= mmio.Offset(0x10).Read<uint32_t>();
+        mmio.Write(index * 2 + (uint32_t)IoApicReg::TableBase + 1);
+        value |= (uint64_t)mmio.Offset(0x10).Read<uint32_t>() << 32;
         return value;
     }
 
     void IoApic::WriteRedirect(size_t index, uint64_t value) const
     {
-        mmio.VolatileWrite(index * 2 + (uint32_t)IoApicReg::TableBase);
-        mmio.Offset(0x10).VolatileWrite<uint32_t>(value);
-        mmio.VolatileWrite(index * 2 + (uint32_t)IoApicReg::TableBase + 1);
-        mmio.Offset(0x10).VolatileWrite<uint32_t>(value >> 32);
+        mmio.Write(index * 2 + (uint32_t)IoApicReg::TableBase);
+        mmio.Offset(0x10).Write<uint32_t>(value);
+        mmio.Write(index * 2 + (uint32_t)IoApicReg::TableBase + 1);
+        mmio.Offset(0x10).Write<uint32_t>(value >> 32);
     }
 
     void IoApic::InitAll()
