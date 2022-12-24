@@ -46,7 +46,7 @@ namespace Npk::Config
         const uint8_t* strings;
         DtNode rootNode;
 
-        sl::Opt<const DtNode> FindCompatibleHelper(const DtNode& scan, const char* str, size_t strlen) const;
+        sl::Opt<const DtNode> FindCompatibleHelper(const DtNode& scan, const char* str, size_t strlen, DtbPtr start) const;
         size_t SkipNode(size_t start) const;
         DtNode CreateNode(size_t start, size_t addrCells, size_t sizeCells) const;
         DtProperty CreateProperty(size_t start) const;
@@ -55,9 +55,10 @@ namespace Npk::Config
         static DeviceTree& Global();
         
         void Init(uintptr_t dtbAddr);
+        bool Available();
 
         sl::Opt<const DtNode> GetNode(const char* path) const;
-        sl::Opt<const DtNode> GetCompatibleNode(const char* compatStr) const;
+        sl::Opt<const DtNode> GetCompatibleNode(const char* compatStr, sl::Opt<const DtNode> start = {}) const;
         sl::Opt<const DtNode> GetChild(const DtNode& parent, const char* name) const;
         sl::Opt<const DtNode> GetChild(const DtNode& parent, size_t index) const;
         sl::Opt<const DtProperty> GetProp(const DtNode& node, const char*) const;

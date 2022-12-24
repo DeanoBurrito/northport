@@ -47,12 +47,15 @@ namespace Npk::Config
 //This is what I will call your standard if you make it big-endian by default.
 #define BS(x) sl::ByteSwap(x)
 
-    sl::Opt<const DtNode> DeviceTree::FindCompatibleHelper(const DtNode& scan, const char* compatStr, size_t compatStrLen) const
+    sl::Opt<const DtNode> DeviceTree::FindCompatibleHelper(const DtNode& scan, const char* compatStr, size_t compatStrLen, size_t start) const
     {
         //NOTE: two loops are used because I want to search width-first.
         for (size_t i = 0; i < scan.childCount; i++)
         {
             const DtNode child = *GetChild(scan, i);
+            if (child.ptr <= start)
+                continue;
+
             auto maybeProp = GetProp(child, "compatible");
             if (!maybeProp)
                 continue;
@@ -65,14 +68,13 @@ namespace Npk::Config
                     continue;
                 if (sl::memcmp(propStr, compatStr, compatStrLen) != 0)
                     continue;
-                
                 return child;
             }
         }
 
         for (size_t i = 0; i < scan.childCount; i++)
         {
-            auto found = FindCompatibleHelper(*GetChild(scan, i), compatStr, compatStrLen);
+            auto found = FindCompatibleHelper(*GetChild(scan, i), compatStr, compatStrLen, start);
             if (found)
                 return *found;
         }
@@ -205,6 +207,11 @@ namespace Npk::Config
         Log("Device tree parser initialized: dtb=0x%lx, rootCell=%lu", LogLevel::Info, (uintptr_t)header, rootNode.ptr);
     }
 
+    bool DeviceTree::Available()
+    {
+        return cellsCount != 0;
+    }
+
     sl::Opt<const DtNode> DeviceTree::GetNode(const char* path) const
     {
         if (cellsCount == 0)
@@ -267,15 +274,13 @@ namespace Npk::Config
         return {};
     }
 
-    sl::Opt<const DtNode> DeviceTree::GetCompatibleNode(const char* compatStr) const
+    sl::Opt<const DtNode> DeviceTree::GetCompatibleNode(const char* compatStr, sl::Opt<const DtNode> start) const
     {
         if (cellsCount == 0)
             return {};
 
         const size_t compatStrLen = sl::memfirst(compatStr, 0, 0);
-        sl::Opt<const DtNode> node {};
-
-        return FindCompatibleHelper(rootNode, compatStr, compatStrLen);
+        return FindCompatibleHelper(rootNode, compatStr, compatStrLen, start ? start->ptr : rootNode.ptr);
     }
 
     sl::Opt<const DtNode> DeviceTree::GetChild(const DtNode& parent, const char* name) const
