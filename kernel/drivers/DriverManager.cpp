@@ -14,8 +14,8 @@ namespace Npk::Drivers
 
     void DriverManager::Init()
     {
-        LoadBuiltInDrivers();
         Log("Driver mananger initialized.", LogLevel::Info);
+        LoadBuiltInDrivers();
     }
 
     void DriverManager::RegisterDriver(const DriverManifest& manifest)

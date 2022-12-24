@@ -52,10 +52,14 @@ namespace Npk
     void DisableInterrupts();
     void AllowSumac();
     void BlockSumac();
+    void HintSpinloop();
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
     void ExecuteTrapFrame(TrapFrame* frame) asm("ExecuteTrapFrame");
+
     void SendIpi(size_t dest);
+    uintptr_t MsiAddress(size_t core, size_t vector);
+    uintptr_t MsiData(size_t core, size_t vector);
 
     CoreLocalInfo& CoreLocal();
     bool CoreLocalAvailable();

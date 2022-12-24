@@ -306,7 +306,10 @@ namespace Npk::Memory
             if (base < searchStart->base)
                 break; //we've gone too far.
             if (base > regionTop)
+            {
+                searchStart = searchStart->next;
                 continue; //but not far enough.
+            }
             
             sl::ScopedLock regionLock(searchStart->lock);
             const size_t index = (base - searchStart->base) / PageSize;
@@ -318,6 +321,7 @@ namespace Npk::Memory
             
             //we dont care when the count is modified, as long as its done atomically.
             __atomic_sub_fetch(base >= 4 * GiB ? &counts.usedHigh : &counts.usedLow, count, __ATOMIC_RELAXED);
+            return;
         }
 
         Log("Cannot free %lu physical pages at %016lx", LogLevel::Error, count, base);

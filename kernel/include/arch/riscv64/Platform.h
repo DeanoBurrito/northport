@@ -105,6 +105,10 @@ namespace Npk
         ClearCsrBits("sstatus", 1 << 18);
     }
 
+    [[gnu::always_inline]]
+    inline void HintSpinloop()
+    {}
+
     inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
     {
         frame->flags.spie = 1;
@@ -122,6 +126,21 @@ namespace Npk
         //SBI spec doesn't specify SXLEN-alignment, but some platforms expect it.
         //so we do it anyway, just in case.
         SbiSendIpi(1ul << (dest % 64), dest / 64);
+    }
+
+    [[gnu::always_inline]]
+    inline uintptr_t MsiAddress(size_t core, size_t vector)
+    {
+        //TODO: imsic driver
+        (void)core; (void)vector;
+        return 0;
+    }
+
+    [[gnu::always_inline]]
+    inline uintptr_t MsiData(size_t core, size_t vector)
+    {
+        (void)core; (void)vector;
+        return 0;
     }
 
     struct CoreLocalInfo;

@@ -91,6 +91,9 @@ namespace Npk::Devices
         virtual bool CanModeset() = 0;
         virtual FramebufferMode CurrentMode() = 0;
         virtual bool SetMode(const FramebufferMode& newMode) = 0;
+        
         virtual sl::NativePtr LinearAddress() = 0;
+        virtual void BeginDraw() = 0;
+        virtual void EndDrawAndFlush() = 0;
     };
 }

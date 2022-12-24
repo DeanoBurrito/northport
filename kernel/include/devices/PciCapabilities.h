@@ -10,8 +10,8 @@ namespace Npk::Devices
 
     struct PciCap
     {
-        const PciAddress base;
-        const size_t offset;
+        PciAddress base;
+        size_t offset;
         
         PciCap(PciAddress base, size_t offset) : base(base), offset(offset)
         {}

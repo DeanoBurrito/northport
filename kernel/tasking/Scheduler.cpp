@@ -83,7 +83,7 @@ namespace Npk::Tasking
         CoreLocal().schedThread = core->idleThread;
         
         core->queue = core->queueTail = nullptr;
-        core->state = CoreState::Available;
+        core->state = CoreState::Available; //TODO: replace core state with a suspend scheduling flag. RunNextFrame uses this flag to decide where to return to.
         Log("Scheduler registered core %lu.", LogLevel::Verbose, CoreLocal().id);
         core->lock.Unlock();
 
@@ -121,6 +121,7 @@ namespace Npk::Tasking
         threadsLock.Unlock();
 
         auto maybeStack = parent->vmm.Alloc(DefaultStackSize, 0, VmFlags::Anon | VmFlags::Write);
+        // auto maybeStack = VMM::Kernel().Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write); //TODO: kernel processes (why does using the kernel vmm fail here?).
         ASSERT(maybeStack, "No thread stack"); //TODO: critical junction here, do we fail or stall until memory is available?
         thread->stack.base = maybeStack->base;
         thread->stack.length = maybeStack->length;
@@ -267,16 +268,16 @@ namespace Npk::Tasking
             return;
 
         Thread* current = static_cast<Thread*>(CoreLocal().schedThread);
-        current->next = nullptr;
-        if (current != nullptr && current->state == ThreadState::Runnable)
+        if (current != nullptr && current->state == ThreadState::Runnable && current->id != 1)
         {
+            current->next = nullptr;
             if (core.queue == nullptr)
                 core.queue = current;
             else
                 core.queueTail->next = current;
             core.queueTail = current;
         }
-        else if (current != nullptr)
+        else if (current != nullptr && current->id != 1)
             __atomic_sub_fetch(&core.threadCount, 1, __ATOMIC_RELAXED);
 
         Thread* next = core.queue;
@@ -284,22 +285,34 @@ namespace Npk::Tasking
         {
             //work stealing: pick a core at random, take from it's work queue.
             size_t target;
+            size_t attempts = 0;
             do { 
+                if (attempts == 3)
+                {
+                    next = core.idleThread;
+                    break;
+                }
+
                 target = NextRand() % cores.Size();
+                attempts++;
+
             } while (cores[target] == nullptr || target == CoreLocal().id);
 
-            sl::ScopedLock targetLock(cores[target]->lock);
-            next = cores[target]->queue;
             if (next == nullptr)
-                next = core.idleThread;
-            else
             {
-                if (cores[target]->queue == cores[target]->queueTail)
-                    cores[target]->queueTail = nullptr;
-                cores[target]->queue = next->next;
+                sl::ScopedLock targetLock(cores[target]->lock);
+                next = cores[target]->queue;
+                if (next == nullptr)
+                    next = core.idleThread;
+                else
+                {
+                    if (cores[target]->queue == cores[target]->queueTail)
+                        cores[target]->queueTail = nullptr;
+                    cores[target]->queue = next->next;
+                }
             }
         }
-        else if (cores.Size() == 1)
+        else if (next == nullptr && cores.Size() == 1)
             next = core.idleThread; //no work stealing on single core systems.
         else
         {

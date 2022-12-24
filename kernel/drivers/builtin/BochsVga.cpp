@@ -149,4 +149,10 @@ namespace Npk::Drivers
 
     sl::NativePtr BochsFramebuffer::LinearAddress()
     { return fbBase; }
+
+    void BochsFramebuffer::BeginDraw()
+    {} //no-op
+
+    void BochsFramebuffer::EndDrawAndFlush()
+    {} //no-op
 }

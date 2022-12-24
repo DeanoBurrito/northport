@@ -22,6 +22,7 @@ namespace Npk::Interrupts
         void Init();
         void Dispatch(size_t vector);
 
+        void Claim(size_t vector);
         sl::Opt<size_t> Alloc();
         void Free(size_t vector);
         void Attach(size_t vector, IntVectorCallback callback);

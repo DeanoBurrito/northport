@@ -51,8 +51,9 @@ namespace Npk::Memory::Virtual
         sl::ScopedLock ptLock(context.lock);
         
         //attachArg is the physical address to map.
+        const PageFlags flags = (context.range.flags & VmFlags::Write) == VmFlags::Write ? PageFlags::Write : PageFlags::None;
         for (size_t i = 0; i < context.range.length; i += PageSize)
-            MapMemory(context.ptRoot, context.range.base + i, attachArg + i, PageFlags::Write, PageSizes::_4K, false);
+            MapMemory(context.ptRoot, context.range.base + i, attachArg + i, flags, PageSizes::_4K, false);
         
         if (context.ptRoot == kernelMasterTables)
             __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);

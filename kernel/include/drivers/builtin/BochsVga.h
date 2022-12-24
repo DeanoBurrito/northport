@@ -42,9 +42,13 @@ namespace Npk::Drivers
 
         bool Init() override;
         bool Deinit() override;
+
         bool CanModeset() override;
         Devices::FramebufferMode CurrentMode() override;
         bool SetMode(const Devices::FramebufferMode& newMode) override;
+        
         sl::NativePtr LinearAddress() override;
+        void BeginDraw() override;
+        void EndDrawAndFlush() override;
     };
 }

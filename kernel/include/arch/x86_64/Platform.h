@@ -96,6 +96,12 @@ namespace Npk
         asm("clac" ::: "cc");
     }
 
+    [[gnu::always_inline]]
+    inline void HintSpinloop()
+    {
+        asm("pause");
+    }
+
     inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
     {
         frame->iret.cs = user ? SelectorUserCode : SelectorKernelCode;
@@ -112,6 +118,20 @@ namespace Npk
     inline void SendIpi(size_t dest)
     {
         LocalApic::Local().SendIpi(dest);
+    }
+
+    [[gnu::always_inline]]
+    inline uintptr_t MsiAddress(size_t core, size_t vector)
+    {
+        (void)vector;
+        return ((core & 0xFF) << 12) | 0xFEE'0000;
+    }
+
+    [[gnu::always_inline]]
+    inline uintptr_t MsiData(size_t core, size_t vector)
+    {
+        (void)core;
+        return vector & 0xFF;
     }
 
     [[gnu::always_inline]]
