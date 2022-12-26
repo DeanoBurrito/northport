@@ -2,6 +2,7 @@
 
 #include <devices/GenericDevices.h>
 #include <devices/PciAddress.h>
+#include <memory/VmObject.h>
 
 namespace Npk::Drivers
 {
@@ -24,8 +25,8 @@ namespace Npk::Drivers
     class BochsFramebuffer : public Devices::GenericFramebuffer
     {
         Devices::PciAddress addr;
-        sl::NativePtr mmioRegs;
-        sl::NativePtr fbBase;
+        VmObject mmio;
+        VmObject fbBase;
 
         size_t width;
         size_t height;

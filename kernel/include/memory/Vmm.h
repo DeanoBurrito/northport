@@ -6,38 +6,10 @@
 #include <Optional.h>
 #include <containers/LinkedList.h>
 #include <memory/Heap.h>
+#include <memory/VmObject.h>
 
 namespace Npk::Memory
 {
-    enum class VmFlags : size_t
-    {
-        None = 0,
-
-        //access flags
-        Write = 1 << 0,
-        Execute = 1 << 1,
-        User = 1 << 2,
-
-        //bits 48-63 are the type of memory to be requested
-        Anon = 1ul << 48,
-        Mmio = 2ul << 48,
-    };
-
-    constexpr VmFlags operator|(const VmFlags& a, const VmFlags& b)
-    { return (VmFlags)((uintptr_t)a | (uintptr_t)b); }
-
-    constexpr VmFlags operator&(const VmFlags& a, const VmFlags& b)
-    { return (VmFlags)((uintptr_t)a & (uintptr_t)b); }
-
-    constexpr VmFlags operator|=(VmFlags& src, const VmFlags& other)
-    { return src = (VmFlags)((uintptr_t)src | (uintptr_t)other); }
-
-    constexpr VmFlags operator&=(VmFlags& src, const VmFlags& other)
-    { return src = (VmFlags)((uintptr_t)src & (uintptr_t)other); }
-
-    constexpr VmFlags operator~(const VmFlags& src)
-    { return (VmFlags)(~(uintptr_t)src); }
-
     struct VmRange
     {
         uintptr_t base;
@@ -115,4 +87,3 @@ namespace Npk::Memory
 }
 
 using VMM = Npk::Memory::VirtualMemoryManager;
-using Npk::Memory::VmFlags;

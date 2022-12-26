@@ -6,11 +6,13 @@ CXX_SRCS = arch/Helpers.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/LogBackends.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp \
 	debug/Terminal.cpp \
-	devices/PciAddress.cpp devices/PciBridge.cpp devices/PciCapabilities.cpp devices/DeviceManager.cpp \
+	devices/PciAddress.cpp devices/PciBridge.cpp devices/PciCapabilities.cpp \
+	devices/DeviceManager.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp drivers/builtin/BochsVga.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \
-	memory/Pmm.cpp memory/Vmm.cpp memory/Heap.cpp memory/Slab.cpp memory/Pool.cpp \
-	memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp memory/virtual/KernelVmDriver.cpp \
+	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
+	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \
+	memory/virtual/KernelVmDriver.cpp \
 	tasking/Clock.cpp tasking/Thread.cpp tasking/Process.cpp tasking/Scheduler.cpp \
 	tasking/ServiceThreads.cpp
 

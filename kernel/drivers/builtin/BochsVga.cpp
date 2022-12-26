@@ -2,7 +2,6 @@
 #include <drivers/InitTags.h>
 #include <devices/DeviceManager.h>
 #include <debug/Log.h>
-#include <memory/Vmm.h>
 #include <tasking/Thread.h>
 
 #define BGA_DISPI_DISABLE 0x0
@@ -53,22 +52,22 @@ namespace Npk::Drivers
 
     void BochsFramebuffer::WriteVgaReg(uint16_t reg, uint16_t data) const
     {
-        mmioRegs.Offset(reg - 0x3C0 + 0x400).Write(data);
+        mmio->Offset(reg - 0x3C0 + 0x400).Write(data);
     }
 
     uint16_t BochsFramebuffer::ReadVgaReg(uint16_t reg) const
     {
-        return mmioRegs.Offset(reg - 0x3C0 + 0x400).Read<uint16_t>();
+        return mmio->Offset(reg - 0x3C0 + 0x400).Read<uint16_t>();
     }
 
     void BochsFramebuffer::WriteDispiReg(DispiReg reg, uint16_t data) const
     {
-        mmioRegs.Offset(0x500).Offset((uint16_t)reg << 1).Write(data);
+        mmio->Offset(0x500).Offset((uint16_t)reg << 1).Write(data);
     }
 
     uint16_t BochsFramebuffer::ReadDispiReg(DispiReg reg) const
     {
-        return mmioRegs.Offset(0x500).Offset((uint16_t)reg << 1).Read<uint16_t>();
+        return mmio->Offset(0x500).Offset((uint16_t)reg << 1).Read<uint16_t>();
     }
     
     bool BochsFramebuffer::Init()
@@ -83,9 +82,7 @@ namespace Npk::Drivers
         const Devices::PciBar bar2 = addr.ReadBar(2);
         ASSERT(subclass == 0x80 || bar2.size > 0, "Only legacy-free is supported, update your emulator.");
 
-        auto maybeRegs = VMM::Kernel().Alloc(bar2.size, bar2.address, VmFlags::Mmio | VmFlags::Write);
-        ASSERT(maybeRegs, "Failed to alloc VM space for bochs VGA regs.");
-        mmioRegs = maybeRegs->base;
+        mmio = VmObject{ bar2.size, bar2.address, VmFlags::Mmio | VmFlags::Write };
 
         WriteDispiReg(DispiReg::Enable, BGA_DISPI_DISABLE);
         width = ReadDispiReg(DispiReg::XRes);
@@ -94,9 +91,7 @@ namespace Npk::Drivers
         WriteDispiReg(DispiReg::Enable, BGA_DISPI_ENABLE | BGA_DISPI_LFB_ENABLED | BGA_DISPI_NO_CLEAR_MEM);
 
         const Devices::PciBar bar0 = addr.ReadBar(0);
-        auto maybeFramebuffer = VMM::Kernel().Alloc(bar0.size, bar0.address, VmFlags::Mmio | VmFlags::Write);
-        ASSERT(maybeFramebuffer, "Failed to alloc VM spce for bochs VGA framebuffer.");
-        fbBase = maybeFramebuffer->base;
+        fbBase = VmObject { bar0.size, bar0.address, VmFlags::Mmio | VmFlags::Write };
 
         status = Devices::DeviceStatus::Online;
         return true;
@@ -106,11 +101,9 @@ namespace Npk::Drivers
     {
         sl::ScopedLock scopeLock(lock);
 
-        VMM::Kernel().Free(fbBase.raw);
-        VMM::Kernel().Free(mmioRegs.raw);
-        fbBase = mmioRegs = nullptr;
-
-        ASSERT_UNREACHABLE();
+        mmio.Release();
+        fbBase.Release();
+        ASSERT_UNREACHABLE(); //TODO: finish device deinit
     }
 
     bool BochsFramebuffer::CanModeset()
@@ -148,7 +141,7 @@ namespace Npk::Drivers
     }
 
     sl::NativePtr BochsFramebuffer::LinearAddress()
-    { return fbBase; }
+    { return *fbBase; }
 
     void BochsFramebuffer::BeginDraw()
     {} //no-op
