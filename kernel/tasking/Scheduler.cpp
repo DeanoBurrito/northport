@@ -21,7 +21,7 @@ namespace Npk::Tasking
 
     size_t Scheduler::NextRand()
     {
-        ASSERT(CoreLocal().runLevel != RunLevel::IntHandler, "Run level too high.");
+        ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Run level too high.");
         sl::ScopedLock scopeLock(rngLock);
 
         return rng->Next();
@@ -56,9 +56,8 @@ namespace Npk::Tasking
 
     void Scheduler::RegisterCore(bool yieldNow)
     {
-        SchedulerCore* core = cores.EmplaceAt(CoreLocal().id, new SchedulerCore());
-        InterruptGuard intGuard;
-        sl::ScopedLock coreLock(core->lock);
+        SchedulerCore* core = new SchedulerCore();
+        core->coreId = CoreLocal().id;
 
         //we create the idle thread manually, since it shouldn't be in the normal thread pool.
         core->idleThread = new Thread();
@@ -66,6 +65,7 @@ namespace Npk::Tasking
         core->idleThread->parent = idleProcess;
         core->idleThread->state = ThreadState::Dead;
 
+        //setup the idle thread stack
         constexpr size_t IdleStackSize = PageSize;
         core->idleThread->stack.base = VMM::Kernel().Alloc(IdleStackSize, 1, VmFlags::Anon | VmFlags::Write)->base;
         core->idleThread->stack.length = IdleStackSize;
@@ -73,6 +73,7 @@ namespace Npk::Tasking
         core->idleThread->frame = sl::AlignDown(core->idleThread->frame, sizeof(TrapFrame));
         InitTrapFrame(core->idleThread->frame, core->idleThread->stack.base + core->idleThread->stack.length, (uintptr_t)IdleMain, nullptr, false);
 
+        //DPC (deferred procedure call) setup
         auto dpcStack = VMM::Kernel().Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write);
         ASSERT(dpcStack, "No DPC stack for core.");
         core->dpcStack = dpcStack->Top();
@@ -80,12 +81,20 @@ namespace Npk::Tasking
         core->dpcFrame = reinterpret_cast<TrapFrame*>(core->dpcStack);
         core->dpcFinished = true;
 
+        DisableInterrupts();
+        core->lock.Lock();
+        core->queue = core->queueTail = nullptr; //clear the work queue
+        core->suspendScheduling = false; //enable scheduling by default
+
         CoreLocal().schedThread = core->idleThread;
+        CoreLocal().schedData = core;
+        core->lock.Unlock(); //lock is used as a memory barrier here.
         
-        core->queue = core->queueTail = nullptr;
-        core->state = CoreState::Available; //TODO: replace core state with a suspend scheduling flag. RunNextFrame uses this flag to decide where to return to.
+        coresListLock.Lock();
+        cores.PushBack(core);
+        coresListLock.Unlock();
+
         Log("Scheduler registered core %lu.", LogLevel::Verbose, CoreLocal().id);
-        core->lock.Unlock();
 
         if (__atomic_add_fetch(&activeCores, 1, __ATOMIC_RELAXED) == 1)
             LateInit();
@@ -193,35 +202,52 @@ namespace Npk::Tasking
         ASSERT(t->state == ThreadState::Ready, "Thread is not ready.");
         t->state = ThreadState::Runnable;
 
-        size_t affinity = t->coreAffinity;
-
-        size_t smallestCount = -1ul;
-        if (affinity == -1ul)
+        SchedulerCore* selectedCore = nullptr;
+        if (t->coreAffinity == CoreLocal().id) //preferred core is self, no list traversal needed
+            selectedCore = static_cast<SchedulerCore*>(CoreLocal().schedData);
+        else if (t->coreAffinity != NoAffinity)
         {
-            //thread has no preferred core, find the least worked one.
-            for (size_t i = 0; i < cores.Size(); i++)
+            //find preferred core
+            for (auto i = cores.Begin(); i != cores.End(); ++i)
             {
-                if (cores[i] == nullptr || cores[i]->state != CoreState::Available)
+                SchedulerCore* core = *i;
+                if (core == nullptr || core->coreId != t->coreAffinity)
                     continue;
-                const size_t coreThreadCount = __atomic_load_n(&cores[i]->threadCount, __ATOMIC_RELAXED);
-                if (coreThreadCount >= smallestCount)
-                    continue;
-                
-                smallestCount = coreThreadCount;
-                affinity = i;
+                selectedCore = core;
+                break;
             }
-            ASSERT(affinity != -1ul, "Failed to allocate processor for thread.");
         }
 
-        sl::ScopedLock scopeLock(cores[affinity]->lock);
-        t->next = nullptr;
-        if (cores[affinity]->queueTail == nullptr)
-            cores[affinity]->queue = t;
-        else
-            cores[affinity]->queueTail->next = t;
-        cores[affinity]->queueTail = t;
+        if (selectedCore == nullptr)
+        {
+            //preferred core not found or n/a, select the least-worked core.
+            size_t smallestCount = -1ul;
+            for (auto it = cores.Begin(); it != cores.End(); ++it)
+            {
+                SchedulerCore* core = *it;
+                if (core == nullptr)
+                    continue;
+                
+                const size_t threadCount = __atomic_load_n(&core->threadCount, __ATOMIC_RELAXED);
+                if (threadCount >= smallestCount)
+                    continue;
+                
+                smallestCount = threadCount;
+                selectedCore = core;
+            }
+        }
+        ASSERT(selectedCore != nullptr, "Failed to allocate processor.");
 
-        __atomic_add_fetch(&cores[affinity]->threadCount, 1, __ATOMIC_RELAXED);
+        sl::ScopedLock scopeLock(selectedCore->lock);
+        t->next = nullptr;
+        //single list append
+        if (selectedCore->queueTail == nullptr)
+            selectedCore->queue = t;
+        else
+            selectedCore->queueTail->next = t;
+        selectedCore->queueTail = t;
+        
+        __atomic_add_fetch(&selectedCore->threadCount, 1, __ATOMIC_RELAXED);
     }
 
     void DpcQueue(void (*function)(void* arg), void* arg)
@@ -229,10 +255,7 @@ namespace Npk::Tasking
 
     void Scheduler::QueueDpc(ThreadMain function, void* arg)
     {
-        if (!CoreLocalAvailable() || CoreLocal().id >= cores.Size() || cores[CoreLocal().id] == nullptr)
-            return;
-        
-        SchedulerCore& core = *cores[CoreLocal().id];
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
         core.lock.Lock();
         core.dpcs.EmplaceBack(function, arg);
         core.lock.Unlock();
@@ -247,7 +270,9 @@ namespace Npk::Tasking
     void Scheduler::DpcExit()
     {
         ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Bad run level.");
-        cores[CoreLocal().id]->dpcFinished = true;
+
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        core.dpcFinished = true;
         RunNextFrame();
     }
 
@@ -262,9 +287,9 @@ namespace Npk::Tasking
     {
         ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Run level too low.");
         
-        sl::ScopedLock coreLock(cores[CoreLocal().id]->lock);
-        SchedulerCore& core = *cores[CoreLocal().id];
-        if (core.state != CoreState::Available)
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        sl::ScopedLock coreLock(core.lock);
+        if (core.suspendScheduling)
             return;
 
         Thread* current = static_cast<Thread*>(CoreLocal().schedThread);
@@ -281,35 +306,35 @@ namespace Npk::Tasking
             __atomic_sub_fetch(&core.threadCount, 1, __ATOMIC_RELAXED);
 
         Thread* next = core.queue;
-        if (next == nullptr && activeCores > 1)
+        if (next == nullptr && cores.Size() > 1)
         {
             //work stealing: pick a core at random, take from it's work queue.
-            size_t target;
-            size_t attempts = 0;
-            do { 
-                if (attempts == 3)
-                {
-                    next = core.idleThread;
-                    break;
-                }
+            size_t targetOffset = sl::Max(NextRand() % cores.Size(), 1ul);
+            auto scan = cores.Begin();
+            while ((**scan).coreId != CoreLocal().id)
+                ++scan;
 
-                target = NextRand() % cores.Size();
-                attempts++;
-
-            } while (cores[target] == nullptr || target == CoreLocal().id);
-
-            if (next == nullptr)
+            ASSERT(scan != cores.End(), "Core not registered.");
+            while (targetOffset > 0)
             {
-                sl::ScopedLock targetLock(cores[target]->lock);
-                next = cores[target]->queue;
-                if (next == nullptr)
-                    next = core.idleThread;
-                else
-                {
-                    if (cores[target]->queue == cores[target]->queueTail)
-                        cores[target]->queueTail = nullptr;
-                    cores[target]->queue = next->next;
-                }
+                ++scan;
+                if (scan == cores.End())
+                    scan = cores.Begin();
+                targetOffset--;
+            }
+
+            SchedulerCore& target = **scan;
+            sl::ScopedLock targetLock(target.lock);
+            next = target.queue;
+            if (next == nullptr)
+                next = core.idleThread; //failed, target has nothing to steal
+            else
+            {
+                //success, update target queue like it was our own.
+                if (target.queue == target.queueTail)
+                    target.queueTail = nullptr;
+                target.queue = next->next;
+
             }
         }
         else if (next == nullptr && cores.Size() == 1)
@@ -326,10 +351,10 @@ namespace Npk::Tasking
 
     void Scheduler::SaveCurrentFrame(TrapFrame* current, RunLevel prevRunLevel)
     {
-        if (!CoreLocalAvailable() || CoreLocal().id >= cores.Size() || cores[CoreLocal().id] == nullptr)
+        if (!CoreLocalAvailable() || CoreLocal().schedData == nullptr)
             return;
         
-        SchedulerCore& core = *cores[CoreLocal().id];
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
         sl::ScopedLock scopeLock(core.lock);
 
         if (prevRunLevel == RunLevel::Dispatch)
@@ -340,7 +365,7 @@ namespace Npk::Tasking
 
     void Scheduler::RunNextFrame()
     {
-        if (!CoreLocalAvailable() || CoreLocal().id >= cores.Size() || cores[CoreLocal().id] == nullptr)
+        if (!CoreLocalAvailable() || CoreLocal().schedData == nullptr)
             return; //we're super early in init, missing critical data so just return.
 
         auto RunNext = [](SchedulerCore& core, RunLevel level, TrapFrame* frame) 
@@ -353,7 +378,7 @@ namespace Npk::Tasking
         
         DisableInterrupts();
 
-        SchedulerCore& core = *cores[CoreLocal().id];
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
         core.lock.Lock();
         if (!core.dpcFinished)
             RunNext(core, RunLevel::Dispatch, core.dpcFrame);

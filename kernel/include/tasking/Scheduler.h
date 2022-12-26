@@ -10,14 +10,9 @@
 
 namespace Npk::Tasking
 {
+    constexpr size_t NoAffinity = -1ul;
+    
     using ThreadMain = void (*)(void* arg);
-
-    enum class CoreState
-    {
-        PendingOnline,
-        Available,
-        PendingOffline,
-    };
 
     struct SchedulerCore
     {
@@ -26,8 +21,9 @@ namespace Npk::Tasking
         Thread* idleThread;
         size_t threadCount;
 
-        CoreState state = CoreState::PendingOnline;
+        size_t coreId;
         Npk::InterruptLock lock;
+        bool suspendScheduling;
 
         sl::LinkedList<DeferredCall> dpcs;
         TrapFrame* dpcFrame;
@@ -38,9 +34,10 @@ namespace Npk::Tasking
     class Scheduler
     {
     private:
-        sl::Vector<SchedulerCore*> cores;
+        sl::LinkedList<SchedulerCore*> cores;
         sl::Vector<Process*> processes;
         sl::Vector<Thread*> threadLookup;
+        sl::TicketLock coresListLock; //only for modifying the list, not the items within.
         sl::TicketLock threadsLock;
         sl::TicketLock processesLock;
         
@@ -62,7 +59,7 @@ namespace Npk::Tasking
         void RegisterCore(bool yieldNow);
 
         Process* CreateProcess();
-        Thread* CreateThread(ThreadMain entry, void* arg, Process* parent = nullptr, size_t coreAffinity = -1ul);
+        Thread* CreateThread(ThreadMain entry, void* arg, Process* parent = nullptr, size_t coreAffinity = NoAffinity);
         void DestroyProcess(size_t id);
         void DestroyThread(size_t id, size_t errorCode);
         void EnqueueThread(size_t id);

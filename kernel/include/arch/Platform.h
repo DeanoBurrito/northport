@@ -21,6 +21,7 @@ namespace Npk
         uintptr_t interruptControl; //x86: lapic*, rv: plic context id
         RunLevel runLevel;
         void* schedThread;
+        void* schedData;
         void* vmm;
         void* nextKernelStack; //x86: duplicate of tss->rsp0
     };
