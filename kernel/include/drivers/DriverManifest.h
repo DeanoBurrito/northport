@@ -25,6 +25,7 @@ namespace Npk::Drivers
     struct DriverManifest
     {
         bool builtin;
+        bool isFilter;
         ManifestName name;
         const char* friendlyName;
         void (*EnterNew)(void* arg);

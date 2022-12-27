@@ -4,7 +4,6 @@
 #include <drivers/InitTags.h>
 #include <tasking/Process.h>
 #include <containers/LinkedList.h>
-#include <containers/Vector.h>
 #include <Optional.h>
 #include <Locks.h>
 

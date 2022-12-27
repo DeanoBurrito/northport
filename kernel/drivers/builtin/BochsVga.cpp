@@ -13,18 +13,15 @@ namespace Npk::Drivers
 {
     void BochsVgaMain(void* arg)
     {
-        InitTag* tags = static_cast<InitTag*>(arg);
-        while (tags != nullptr && tags->type != InitTagType::Pci)
-            tags = tags->next;
-        
-        if (tags == nullptr)
+        auto pciTag = FindTag(arg, InitTagType::Pci);
+        if (!pciTag)
         {
             Log("Bochs VGA init failed, no pci address.", LogLevel::Error);
             Tasking::Thread::Current().Exit(1); //TODO: drivers should have their own exit function.
         }
 
         //the bochs gpu only supports a single framebuffer, so there's no detection/count logic.
-        BochsFramebuffer* framebuffer = new BochsFramebuffer(static_cast<PciInitTag*>(tags)->address);
+        BochsFramebuffer* framebuffer = new BochsFramebuffer(static_cast<PciInitTag*>(*pciTag)->address);
 
         using namespace Devices;
         auto maybeDeviceId = Devices::DeviceManager::Global().AttachDevice(framebuffer);
@@ -35,15 +32,7 @@ namespace Npk::Drivers
             Tasking::Thread::Current().Exit(1);
         }
 
-        //cleanup the init tags
-        tags = static_cast<InitTag*>(arg);
-        while (tags != nullptr)
-        {
-            InitTag* temp = tags;
-            tags = tags->next;
-            delete temp;
-        }
-
+        CleanupTags(arg);
         Log("Bochs VGA init done. Framebuffer device id=%lu", LogLevel::Debug, *maybeDeviceId);
 
         while (true)

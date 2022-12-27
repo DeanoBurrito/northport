@@ -9,6 +9,7 @@ CXX_SRCS = arch/Helpers.cpp \
 	devices/PciAddress.cpp devices/PciBridge.cpp devices/PciCapabilities.cpp \
 	devices/DeviceManager.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp drivers/builtin/BochsVga.cpp \
+	drivers/InitTags.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
 	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \

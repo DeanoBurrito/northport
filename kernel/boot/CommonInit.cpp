@@ -7,6 +7,7 @@
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <debug/LogBackends.h>
+#include <debug/NanoPrintf.h>
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
@@ -107,12 +108,84 @@ namespace Npk
         Tasking::Thread::Current().Exit(0);
     }
 
+    void ProbeDtbDrivers()
+    {
+        //we make this assumption below when generating driver names.
+        ASSERT(sizeof(char) == sizeof(uint8_t), "Oof");
+
+        using namespace Config;
+        sl::Vector<DtNode> compatibles;
+        sl::Vector<DtNode> parents;
+        size_t totalNodes = 1;
+        parents.PushBack(*DeviceTree::Global().GetNode("/"));
+
+        while (!parents.Empty())
+        {
+            const DtNode node = parents.PopBack();
+            totalNodes += node.childCount;
+
+            for (size_t i = 0; i < node.childCount; i++)
+            {
+                auto maybeChild = DeviceTree::Global().GetChild(node, i);
+                if (!maybeChild)
+                    continue;
+                
+                if (maybeChild->childCount > 0)
+                    parents.PushBack(*maybeChild);
+
+                auto maybeCompat = maybeChild->GetProp("compatible");
+                if (maybeCompat)
+                    compatibles.PushBack(*maybeChild);
+            }
+        }
+
+        Log("Searched %lu dtb nodes, found %lu with 'compatible' properties.", LogLevel::Info,
+            totalNodes, compatibles.Size());
+        
+        for (size_t i = 0; i < compatibles.Size(); i++)
+        {
+            const DtProperty prop = compatibles[i].GetProp("compatible").Value();
+            const char* nameTemplate = "dtbc%s";
+            const char* propStr = prop.ReadStr(0);
+
+            using namespace Drivers;
+            DeviceTreeInitTag* initTag = new DeviceTreeInitTag(compatibles[i], nullptr);
+
+            //NOTE: that this property lists multiple strings (which we handle), starting with
+            //the most specific device name. This means we'll load specific drivers before more 
+            //generic ones, which is a nice behaviour to have.
+            bool success = false;
+            for (size_t i = 0; (propStr = prop.ReadStr(i)) != nullptr; i++)
+            {
+                const size_t nameLen = npf_snprintf(nullptr, 0, nameTemplate, propStr) + 1;
+                char driverName[nameLen];
+                npf_snprintf(driverName, nameLen, nameTemplate, propStr);
+
+                //see the 'oof' assert early in this function.
+                ManifestName manifestName { nameLen, reinterpret_cast<uint8_t*>(driverName) };
+                success = DriverManager::Global().TryLoadDriver(manifestName, initTag);
+                if (success)
+                    break;
+            }
+
+            if (!success)
+            {
+                Log("DTB node %s has no driver.", LogLevel::Verbose, prop.ReadStr());
+                delete initTag;
+            }
+        }
+    }
+
     void InitThread(void*)
     {
         Devices::DeviceManager::Global().Init();
         Drivers::DriverManager::Global().Init();
         Devices::PciBridge::Global().Init();
-        
+
+        //manually search the device tree for any devices to load drivers for.
+        if (Config::DeviceTree::Global().Available())
+            ProbeDtbDrivers();
+
         Tasking::Thread::Current().Exit(0);
     }
 

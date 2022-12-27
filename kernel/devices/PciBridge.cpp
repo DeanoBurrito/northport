@@ -127,6 +127,7 @@ namespace Npk::Devices
                 continue;
 
             Log("PCI function %04x:%04x has no driver.", LogLevel::Verbose, funcId & 0xFFFF, funcId >> 16);
+            delete initTag;
         }
     }
 }

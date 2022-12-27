@@ -27,13 +27,15 @@ namespace Npk::Drivers
         {
             if (it->name == manifest.name)
             {
-                Log("Failed to register driver manifest, name already in use: %s", LogLevel::Error, manifest.friendlyName);
+                Log("Failed to register driver manifest, name already in use: %s", LogLevel::Error, 
+                    manifest.friendlyName);
                 return;
             }
         }
 
         manifests.PushBack(manifest);
-        Log("Driver manifest registered: %s", LogLevel::Verbose, manifest.friendlyName);
+        Log("Driver manifest registered: %s %s", LogLevel::Verbose, manifest.friendlyName, 
+            manifest.isFilter ? "(filter)" : "");
     }
 
     bool DriverManager::TryLoadDriver(ManifestName name, InitTag* tags)
@@ -51,6 +53,18 @@ namespace Npk::Drivers
 
         if (manifest == nullptr)
             return false;
+        
+        if (manifest->isFilter)
+        {
+            volatile bool success = false;
+            FilterInitTag* initTag = new FilterInitTag(name, &success, tags);
+
+            scopeLock.Release();
+            manifest->EnterNew(initTag);
+            if (!success)
+                delete initTag;
+            return success;
+        }
         ASSERT(manifest->builtin, "Only builtin drivers currently supported");
 
         using namespace Tasking;
