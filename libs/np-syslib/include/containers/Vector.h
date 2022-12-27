@@ -17,6 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <Memory.h>
 #include <CppUtils.h>
 #include <Allocator.h>
+#include <Maths.h>
 
 namespace sl
 {
@@ -42,9 +43,8 @@ namespace sl
             if (neededCapacity <= capacity)
                 return;
 
-            size_t newCapacity = capacity * 2;
-            if (newCapacity == 0)
-                newCapacity = neededCapacity;
+            const size_t newCapacity = sl::Max(capacity * 2, neededCapacity);
+            
             T* newElements = (T*)alloc.Allocate(sizeof(T) * newCapacity);
             for (size_t i = 0; i < capacity; i++)
                 new(&newElements[i]) T(sl::Move(elements[i]));

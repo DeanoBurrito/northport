@@ -7,22 +7,32 @@ namespace sl
     {
     private:
         LockType& lock;
+        bool shouldUnlock;
 
     public:
         ScopedLock(LockType& l) : lock(l)
         {
             lock.Lock();
+            shouldUnlock = true;
         }
 
         ~ScopedLock()
         {
-            lock.Unlock();
+            if (shouldUnlock)
+                lock.Unlock();
         }
     
         ScopedLock(const ScopedLock&) = delete;
         ScopedLock& operator=(const ScopedLock&) = delete;
         ScopedLock(ScopedLock&&) = delete;
         ScopedLock& operator=(ScopedLock&&) = delete;
+
+        inline void Release()
+        {
+            if (shouldUnlock)
+                lock.Unlock();
+            shouldUnlock = false;
+        }
     };
 
     class SpinLock
