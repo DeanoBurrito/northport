@@ -42,7 +42,6 @@ namespace Npk
     {
     private:
         bool inX2mode;
-        bool tscForTimer;
         uint32_t id;
         sl::NativePtr mmio;
         size_t ticksPerMs;

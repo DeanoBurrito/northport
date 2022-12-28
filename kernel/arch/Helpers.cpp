@@ -15,7 +15,6 @@ namespace Npk
         constexpr size_t MaxCalibrationAttempts = 3;
 
         long calibTimes[CalibrationRuns];
-        long calibMean = 0;
         
         if (Stop != nullptr)
             Stop();
@@ -32,7 +31,6 @@ namespace Npk
                     Stop();
 
                 calibTimes[i] = (long)((end - begin) / CalibrationMillis);
-                calibMean += calibTimes[i];
             }
 
             auto maybeCalib = CoalesceTimerRuns(calibTimes, CalibrationRuns, CalibrationRuns - RequiredRuns);

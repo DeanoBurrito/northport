@@ -13,7 +13,7 @@ namespace Npk::Memory
             size = maybeBase->length;
         }
         else
-            Log("VMO creation failed, caller: 0x%lx", LogLevel::Error, (uintptr_t)__builtin_return_address(1));
+            Log("VMO creation failed, caller: 0x%lx", LogLevel::Error, (uintptr_t)__builtin_return_address(0));
     }
 
     VmObject::~VmObject()

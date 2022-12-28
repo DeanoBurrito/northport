@@ -102,7 +102,7 @@ namespace Npk::Memory
 
             const uintptr_t localPtr = (uintptr_t)ptr - seg->allocBase;
             if (!sl::BitmapClear(seg->bitmap, localPtr / slabSize))
-                Log("Attempt to double free kernel heap pointer at 0x%016lx", LogLevel::Error, (uintptr_t)ptr);
+                Log("Kernel slab %sdouble free @ 0x%016lx", LogLevel::Error, pinned ? "(pinned) " : "", (uintptr_t)ptr);
             
             seg->hint = localPtr / slabSize;
             seg->freeCount++;

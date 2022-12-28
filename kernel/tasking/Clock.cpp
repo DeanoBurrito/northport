@@ -4,8 +4,8 @@
 #include <containers/LinkedList.h>
 #include <debug/Log.h>
 #include <interrupts/Ipi.h>
+#include <memory/Heap.h>
 #include <Locks.h>
-#include <Maths.h>
 
 namespace Npk::Tasking
 {
@@ -27,7 +27,7 @@ namespace Npk::Tasking
 
     volatile size_t uptimeMillis = 0;
     Npk::InterruptLock eventsLock;
-    sl::LinkedList<ClockEvent> events;
+    sl::LinkedList<ClockEvent, Memory::PinnedAllocator> events;
 
     void ClockEventDispatch(size_t)
     {

@@ -1,13 +1,12 @@
 #include <interrupts/Ipi.h>
-#include <containers/Vector.h>
-#include <containers/LinkedList.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
+#include <containers/Vector.h>
 #include <Locks.h>
 
 namespace Npk::Interrupts
 {
-    constexpr size_t MailboxQueueDepth = 0x1F;
+    constexpr size_t MailboxQueueDepth = 0x40;
     constexpr size_t EmitErrorOnCount = 50;
     
     struct MailboxRpc
@@ -19,21 +18,24 @@ namespace Npk::Interrupts
     struct IpiMailbox
     {
         InterruptLock lock;
-        MailboxRpc callbacks[MailboxQueueDepth];
         size_t fullErrorCount;
+        MailboxRpc callbacks[MailboxQueueDepth];
     };
 
-    sl::Vector<IpiMailbox> mailboxes;
+    InterruptLock mailboxContainerLock;
+    sl::Vector<IpiMailbox*> mailboxes;
 
     void InitIpiMailbox()
     {
-        IpiMailbox& mailbox = mailboxes.EmplaceAt(CoreLocal().id);
+        sl::ScopedLock scopeLock(mailboxContainerLock);
+
+        IpiMailbox& mailbox = *mailboxes.EmplaceAt(CoreLocal().id, new IpiMailbox);
         mailbox.fullErrorCount = 0;
     }
 
     void ProcessIpiMail()
     {
-        IpiMailbox& mailbox = mailboxes[CoreLocal().id];
+        IpiMailbox& mailbox = *mailboxes[CoreLocal().id];
 
         for (size_t i = 0; i < MailboxQueueDepth; i++)
         {
@@ -56,7 +58,7 @@ namespace Npk::Interrupts
     {
         ASSERT(dest < mailboxes.Size(), "IPI mailbox does not exist");
 
-        IpiMailbox& mailbox = mailboxes[dest];
+        IpiMailbox& mailbox = *mailboxes[dest];
         sl::ScopedLock scopeLock(mailbox.lock);
 
         for (size_t i = 0; i < MailboxQueueDepth; i++)
