@@ -36,8 +36,8 @@ namespace Npk::Devices
         sl::ScopedLock scopeLock(listLock);
         devices.PushBack(instance);
 
-        Log("Device attached: %lu, type=%lu (%s), ptr=0x%lx", LogLevel::Verbose, id, 
-            (size_t)instance->Type(), DevTypeStrs[(size_t)instance->Type()], (uintptr_t)instance);
+        Log("Device attached: %lu, type=%lu (%s)", LogLevel::Verbose, id, 
+            (size_t)instance->Type(), DevTypeStrs[(size_t)instance->Type()]);
         return id;
     }
 
