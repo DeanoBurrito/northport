@@ -39,6 +39,7 @@
         - [x] Device tree parser.
     - [x] Driver manager.
         - [ ] Loadable drivers, with C api.
+        - [ ] Move some existing drivers into separate binaries.
     - [x] Device manager.
         - [ ] Async command queues.
     - [ ] System calls.
@@ -48,12 +49,12 @@
         - [ ] Pipes.
     - [x] PCI.
         - [ ] PCIe.
-        - [ ] MSI(-X).
+        - [x] MSI(-X).
     - [ ] Device drivers:
         - [ ] PS/2 keyboard + mouse.
         - [ ] Virtio:
-            - [ ] VirtQueue helpers.
-            - [ ] GPU.
+            - [x] Transport layer (PCI + MMIO).
+            - [x] GPU.
             - [ ] Block.
             - [ ] Network.
             - [ ] Input (kb + mouse).

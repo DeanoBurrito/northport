@@ -70,7 +70,13 @@ namespace Npk::Devices
         constexpr ColourFormat(uint8_t r_o, uint8_t g_o, uint8_t b_o, uint8_t a_o, uint8_t r_m, uint8_t g_m, uint8_t b_m, uint8_t a_m)
         : redOffset(r_o), greenOffset(g_o), blueOffset(b_o), alphaOffset(a_o), redMask(r_m), greenMask(g_m), blueMask(b_m), alphaMask(a_m)
         {}
+
     };
+
+    namespace ColourFormats 
+    {
+        constexpr ColourFormat R8G8B8A8 = { 0, 8, 16, 24, 0xFF, 0xFF, 0xFF, 0xFF };
+    }
 
     struct FramebufferMode
     {

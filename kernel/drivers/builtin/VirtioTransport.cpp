@@ -399,7 +399,7 @@ namespace Npk::Drivers
         VirtioQueue q = *maybeQueue;
 
         volatile VirtqDescriptor* descs = q.descTable.As<volatile VirtqDescriptor>(hhdmBase);
-        for (size_t i = 0; i < q.size; i++)
+        for (size_t i = 1; i < q.size; i++)
         {
             if (descs[i].base != 0)
                 continue;

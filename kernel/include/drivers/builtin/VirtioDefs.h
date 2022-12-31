@@ -154,7 +154,7 @@ namespace Npk::Drivers
         MoveCursor,
     };
 
-    enum class GpuCmdResponseType : uint32_t
+    enum class GpuCmdRespType : uint32_t
     {
         //Great success!
         OkNoData = 0x1100,
@@ -187,7 +187,7 @@ namespace Npk::Drivers
         union
         {
             GpuCmdType cmdType;
-            GpuCmdResponseType responseType;
+            GpuCmdRespType responseType;
         };
         GpuCmdFlags flags = GpuCmdFlags::None;
         uint64_t fenceId;
