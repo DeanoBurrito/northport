@@ -100,6 +100,6 @@ namespace Npk::Devices
         
         virtual sl::NativePtr LinearAddress() = 0;
         virtual void BeginDraw() = 0;
-        virtual void EndDrawAndFlush() = 0;
+        virtual void EndDraw() = 0;
     };
 }

@@ -50,6 +50,6 @@ namespace Npk::Drivers
         
         sl::NativePtr LinearAddress() override;
         void BeginDraw() override;
-        void EndDrawAndFlush() override;
+        void EndDraw() override;
     };
 }

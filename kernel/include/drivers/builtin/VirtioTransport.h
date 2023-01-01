@@ -28,7 +28,7 @@ namespace Npk::Drivers
         sl::NativePtr descTable;
         sl::NativePtr availRing;
         sl::NativePtr usedRing;
-        size_t size;
+        size_t size = 0;
     };
 
     struct VirtioCmdToken
@@ -58,6 +58,7 @@ namespace Npk::Drivers
 
     public:
         bool Init(InitTag* tags);
+        bool Deinit();
         
         void Reset();
         VirtioStatus ProgressInit(VirtioStatus stage);

@@ -135,6 +135,6 @@ namespace Npk::Drivers
     void BochsFramebuffer::BeginDraw()
     {} //no-op
 
-    void BochsFramebuffer::EndDrawAndFlush()
+    void BochsFramebuffer::EndDraw()
     {} //no-op
 }

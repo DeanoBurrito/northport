@@ -149,6 +149,28 @@ namespace Npk::Drivers
         return foundTag;
     }
 
+    bool VirtioTransport::Deinit()
+    {
+        ASSERT(initialized, "Uninitialized");
+        
+        //cleanup any active virtqueues
+        for (size_t i = 0; i < queues.Size(); i++)
+        {
+            if (queues[i].size == 0)
+                continue;
+            
+            Log("VirtioTransport deinit occured while virtq %lu is active.", LogLevel::Warning, i);;
+            DeinitQueue(i);
+        }
+        
+        initialized = false;
+        configAccess.Release();
+        notifyAccess.Release();
+        deviceCfgAccess.Release();
+
+        return true;
+    }
+
     void VirtioTransport::Reset()
     {
         ASSERT(initialized, "Uninitialized");
@@ -256,6 +278,9 @@ namespace Npk::Drivers
 
             Devices::MsixCap msix(*maybeMsix);
             msix.SetEntry(0, MsiAddress(CoreLocal().id, *maybeVector), MsiData(CoreLocal().id, *maybeVector), false);
+            msix.Enable(true);
+            msix.GlobalMask(false);
+            
             cfg->queueMsixVector = 0;
             if (cfg->queueMsixVector != 0)
             {
@@ -310,10 +335,7 @@ namespace Npk::Drivers
                 //legacy spec recommends page-alignment for the used ring, and qemu will break if
                 //a smaller alignment is used.
                 WRITE_MMIO_REG(QueueAlign, PageSize);
-
                 WRITE_MMIO_REG(QueuePfn, descPtr / PageSize);
-                Log("VirtQ %lu init (legacy): size=%u, desc=0x%lx, avail=0x%lx, used=0x%lx", LogLevel::Verbose,
-                    index, queueSize, descPtr, availPtr, usedPtr);
             }
             else
             {
@@ -325,11 +347,10 @@ namespace Npk::Drivers
                 WRITE_MMIO_REG(QueueDeviceHigh, usedPtr >> 32);
 
                 WRITE_MMIO_REG(QueueReady, 1);
-
-                Log("VirtQ %lu init: size=%u, desc=0x%lx, avail=0x%lx, used=0x%lx", LogLevel::Verbose,
-                    index, queueSize, descPtr, availPtr, usedPtr);
             }
 
+            Log("VirtQ %lu init: %ssize=%u, desc=0x%lx, avail=0x%lx, used=0x%lx", LogLevel::Verbose,
+                    index, isLegacy ? "legacy-mode, " : "", queueSize, descPtr, availPtr, usedPtr);
             return true;
         }
     }
@@ -337,7 +358,77 @@ namespace Npk::Drivers
     bool VirtioTransport::DeinitQueue(size_t index)
     {
         ASSERT(initialized, "Uninitialized");
-        ASSERT_UNREACHABLE(); //TODO:
+
+        if (index >= NumQueues())
+            return false;
+        
+        if (isPci)
+        {
+            volatile VirtioPciCommonCfg* cfg = configAccess->As<volatile VirtioPciCommonCfg>();
+            cfg->queueSelect = index;
+            cfg->queueEnable = 0;
+
+            cfg->queueDesc = 0;
+            cfg->queueDriver = 0;
+            cfg->queueDevice = 0;
+
+            cfg->queueMsixVector = 0xFFFF; //-1 means disable msix
+            auto maybeMsix = Devices::PciCap::Find(pciAddr, Devices::PciCapMsix);
+            ASSERT(maybeMsix, "No MSIX cap.");
+
+            Devices::MsixCap msix(*maybeMsix);
+            msix.GlobalMask(true);
+            msix.Enable(false);
+            
+            uintptr_t msixAddr;
+            uint32_t msixData;
+            bool msixEnabled;
+            msix.GetEntry(0, msixAddr, msixData, msixEnabled);
+            
+            size_t ignored;
+            size_t msixVector;
+            MsiExtract(msixAddr, msixData, ignored, msixVector);
+            Interrupts::InterruptManager::Global().Free(msixVector);
+        }
+        else
+        {
+            WRITE_MMIO_REG(QueueSelect, index);
+
+            if (isLegacy)
+            {
+                WRITE_MMIO_REG(QueuePfn, 0);
+            }
+            else
+            {
+                WRITE_MMIO_REG(QueueReady, 0);
+
+                WRITE_MMIO_REG(QueueDescLow, 0);
+                WRITE_MMIO_REG(QueueDescHigh, 0);
+                WRITE_MMIO_REG(QueueDriverLow, 0);
+                WRITE_MMIO_REG(QueueDriverHigh, 0);
+                WRITE_MMIO_REG(QueueDeviceLow, 0);
+                WRITE_MMIO_REG(QueueDeviceHigh, 0);
+            }
+        }
+
+        const size_t queueSize = queues[index].size;
+        const uintptr_t physBase = queues[index].descTable.raw;
+        queues[index].size = 0;
+        queues[index].descTable = nullptr;
+        queues[index].availRing = nullptr;
+        queues[index].usedRing = nullptr;
+
+        size_t sizeBytes = queueSize * 16;
+        sizeBytes = sl::AlignUp(sizeBytes, 2);
+        sizeBytes += queueSize * 2 + 6;
+        sizeBytes = sl::AlignUp(sizeBytes, 4);
+        sizeBytes += queueSize * 8 + 6;
+
+        const size_t sizePages = sl::AlignUp(sizeBytes, PageSize) / PageSize;
+        PMM::Global().Free(physBase, sizePages);
+
+        Log("VirtQ %lu deinitialized.", LogLevel::Verbose, index);
+        return true;
     }
 
     size_t VirtioTransport::NumQueues()
@@ -448,7 +539,7 @@ namespace Npk::Drivers
         while (foundAt == -1ul)
         {
             //scan from the head (at time of cmd submission) to the current head
-            for (size_t i = token.submitHead; i != ring->index; i = (i++) % q.size)
+            for (size_t i = token.submitHead; i != ring->index; i = (i + 1) % q.size)
             {
                 if (ring->ring[i].index != token.descIndex)
                     continue;

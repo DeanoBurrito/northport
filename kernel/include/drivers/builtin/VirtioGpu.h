@@ -24,7 +24,7 @@ namespace Npk::Drivers
         bool SendCmd(size_t q, uintptr_t cmdAddr, size_t cmdLen, size_t respLen, sl::Opt<GpuCmdRespType> respType = {});
         sl::Opt<sl::Vector2u> GetDisplayInfo(uint32_t scanoutId);
         sl::Opt<uint32_t> CreateResource2D(size_t width, size_t height, GpuFormat format);
-        bool DestroyResource(uint32_t resId);
+        bool ResourceUnref(uint32_t resId);
         bool SetScanout(uint32_t resId, uint32_t scanoutId, sl::UIntRect rect);
         bool FlushResource(uint32_t resId, sl::UIntRect rect);
         bool TransferToHost2D(uint32_t resId, sl::UIntRect rect, uintptr_t offset);
@@ -38,6 +38,7 @@ namespace Npk::Drivers
         sl::Vector<VirtioFramebuffer*> framebuffers;
 
         bool Init();
+        bool Deinit();
     };
 
     class VirtioFramebuffer : public Devices::GenericFramebuffer
@@ -52,7 +53,12 @@ namespace Npk::Drivers
         size_t stride;
         Devices::FramebufferMode currentMode;
 
-        VirtioFramebuffer(VirtioGpuDriver& driv, size_t scanoutId = -1ul) : driver(driv), scanoutId(scanoutId)
+        VirtioFramebuffer(VirtioGpuDriver& driv, size_t scanoutId = -1ul) 
+        : driver(driv), scanoutId(scanoutId)
+        {}
+
+        VirtioFramebuffer(VirtioGpuDriver& driv, size_t width, size_t height)
+        : driver(driv), scanoutId(-1u), currentMode({ width, height, 32, Devices::ColourFormats::R8G8B8A8 })
         {}
 
     public:
@@ -65,6 +71,6 @@ namespace Npk::Drivers
 
         sl::NativePtr LinearAddress() override;
         void BeginDraw() override;
-        void EndDrawAndFlush() override;
+        void EndDraw() override;
     };
 }

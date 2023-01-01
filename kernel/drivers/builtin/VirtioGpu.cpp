@@ -4,7 +4,6 @@
 #include <devices/PciCapabilities.h>
 #include <devices/DeviceManager.h>
 #include <debug/Log.h>
-#include <memory/Vmm.h>
 #include <memory/Pmm.h>
 #include <tasking/Thread.h>
 
@@ -34,6 +33,9 @@ namespace Npk::Drivers
         Log("Virtio GPU init done.", LogLevel::Debug);
         while (true)
         {}
+        
+        driver.Deinit();
+        driver.transport.Deinit();
     }
 
     bool VirtioGpuDriver::SendCmd(size_t q, uintptr_t cmdAddr, size_t cmdLen, size_t respLen, sl::Opt<GpuCmdRespType> respType)
@@ -89,7 +91,7 @@ namespace Npk::Drivers
         return static_cast<uint32_t>(cmd->resourceId); //cast away volatile
     }
 
-    bool VirtioGpuDriver::DestroyResource(uint32_t resId)
+    bool VirtioGpuDriver::ResourceUnref(uint32_t resId)
     {
         sl::ScopedLock scopeLock(lock);
         volatile GpuResourceUnref* cmd = cmdPage.As<volatile GpuResourceUnref>();
@@ -118,12 +120,33 @@ namespace Npk::Drivers
 
     bool VirtioGpuDriver::FlushResource(uint32_t resId, sl::UIntRect rect)
     {
-        ASSERT_UNREACHABLE();
+        sl::ScopedLock scopeLock(lock);
+        volatile GpuResourceFlush* cmd = cmdPage.As<volatile GpuResourceFlush>();
+        cmd->header.cmdType = GpuCmdType::ResourceFlush;
+        cmd->resourceId = resId;
+        cmd->rect.y = rect.left;
+        cmd->rect.x = rect.top;
+        cmd->rect.width = rect.width;
+        cmd->rect.height = rect.height;
+
+        return SendCmd(0, cmdPage.raw - hhdmBase, sizeof(GpuResourceFlush), 
+            sizeof(GpuCmdHeader), GpuCmdRespType::OkNoData);
     }
 
     bool VirtioGpuDriver::TransferToHost2D(uint32_t resId, sl::UIntRect rect, uintptr_t offset)
     {
-        ASSERT_UNREACHABLE();
+        sl::ScopedLock scopeLock(lock);
+        volatile GpuTransferToHost2D* cmd = cmdPage.As<volatile GpuTransferToHost2D>();
+        cmd->header.cmdType = GpuCmdType::TransferToHost2D;
+        cmd->resourceId = resId;
+        cmd->offset = offset;
+        cmd->rect.y = rect.left;
+        cmd->rect.x = rect.top;
+        cmd->rect.width = rect.width;
+        cmd->rect.height = rect.height;
+
+        return SendCmd(0, cmdPage.raw - hhdmBase, sizeof(GpuTransferToHost2D), 
+            sizeof(GpuCmdHeader), GpuCmdRespType::OkNoData);
     }
 
     bool VirtioGpuDriver::AttachBacking(uint32_t resId, const sl::Vector<GpuMemEntry>& memEntries)
@@ -147,17 +170,40 @@ namespace Npk::Drivers
 
     bool VirtioGpuDriver::DetachBacking(uint32_t resId)
     {
-        ASSERT_UNREACHABLE();
+        sl::ScopedLock scopeLock(lock);
+        volatile GpuDetachBacking* cmd = cmdPage.As<volatile GpuDetachBacking>();
+        cmd->header.cmdType = GpuCmdType::DetachBacking;
+        cmd->resourceId = resId;
+
+        return SendCmd(0, cmdPage.raw - hhdmBase, sizeof(GpuDetachBacking), 
+            sizeof(GpuCmdHeader), GpuCmdRespType::OkNoData);
     }
 
     bool VirtioGpuDriver::UpdateCursor(uint32_t resId, sl::Vector2u pos)
     {
-        ASSERT_UNREACHABLE();
+        sl::ScopedLock scopeLock(lock);
+        volatile GpuUpdateCursor* cmd = cmdPage.As<volatile GpuUpdateCursor>();
+        cmd->header.cmdType = GpuCmdType::UpdateCursor;
+        cmd->cursorX = pos.x;
+        cmd->cursorY = pos.y;
+        cmd->hotX = 0;
+        cmd->hotY = 0;
+        cmd->resourceId = resId;
+
+        return SendCmd(0, cmdPage.raw - hhdmBase, sizeof(GpuUpdateCursor),
+            sizeof(GpuCmdHeader), GpuCmdRespType::OkNoData);
     }
 
     bool VirtioGpuDriver::MoveCursor(sl::Vector2u pos)
     {
-        ASSERT_UNREACHABLE();
+        sl::ScopedLock scopeLock(lock);
+        volatile GpuUpdateCursor* cmd = cmdPage.As<volatile GpuUpdateCursor>();
+        cmd->header.cmdType = GpuCmdType::MoveCursor;
+        cmd->cursorX = pos.x;
+        cmd->cursorY = pos.y;
+
+        return SendCmd(0, cmdPage.raw - hhdmBase, sizeof(GpuUpdateCursor),
+            sizeof(GpuCmdHeader), GpuCmdRespType::OkNoData);
     }
 
     bool VirtioGpuDriver::Init()
@@ -208,6 +254,11 @@ namespace Npk::Drivers
         return true;
     }
 
+    bool VirtioGpuDriver::Deinit()
+    {
+        ASSERT_UNREACHABLE(); //TODO: ensure all resources released, free each queue
+    }
+
     bool VirtioFramebuffer::Init()
     {
         using namespace Devices;
@@ -218,13 +269,16 @@ namespace Npk::Drivers
         status = DeviceStatus::Starting;
 
         //gather info about the scanout
-        auto maybeDisplay = driver.GetDisplayInfo(scanoutId);
-        VALIDATE(maybeDisplay, false, "Virtio scanout has no display");
-        currentMode.width = maybeDisplay->x;
-        currentMode.height = maybeDisplay->y;
-        currentMode.bpp = 32;
-        stride = currentMode.width * 4;
-        currentMode.format = ColourFormats::R8G8B8A8;
+        if (scanoutId != -1u)
+        {
+            auto maybeDisplay = driver.GetDisplayInfo(scanoutId);
+            VALIDATE(maybeDisplay, false, "Virtio scanout has no display");
+            currentMode.width = maybeDisplay->x;
+            currentMode.height = maybeDisplay->y;
+            currentMode.bpp = 32;
+            stride = currentMode.width * 4;
+            currentMode.format = ColourFormats::R8G8B8A8;
+        }
 
         //create the host resource
         auto maybeResource = driver.CreateResource2D(currentMode.width, currentMode.height, GpuFormat::R8G8B8X8);
@@ -235,14 +289,17 @@ namespace Npk::Drivers
         const uint32_t fbPages = sl::AlignUp(currentMode.width * currentMode.height * 4, PageSize) / PageSize;
         address = PMM::Global().Alloc(fbPages);
         sl::Vector<GpuMemEntry> backingMemory;
-        backingMemory.PushBack({ address, fbPages * (uint32_t)PageSize });
+        backingMemory.PushBack({ address, fbPages * (uint32_t)PageSize, 0 });
         VALIDATE(driver.AttachBacking(resourceId, backingMemory), false, "AttachBacking() failed");
 
-        //tell host to use this framebuffer as the scanout framebuffer
-        const sl::UIntRect scanoutRect { 0, 0, currentMode.width, currentMode.height };
-        VALIDATE(driver.SetScanout(resourceId, scanoutId, scanoutRect), false, "SetScanout() failed");
+        if (scanoutId != 1u)
+        {
+            //tell host to use this framebuffer as the scanout framebuffer
+            const sl::UIntRect scanoutRect { 0, 0, currentMode.width, currentMode.height };
+            VALIDATE(driver.SetScanout(resourceId, scanoutId, scanoutRect), false, "SetScanout() failed");
+        }
 
-        Log("Virtio framebuffer initial mode: %lu x %lu, %lubpp.", LogLevel::Verbose, 
+        Log("Virtio framebuffer mode: %lu x %lu, %lubpp.", LogLevel::Verbose, 
             currentMode.width, currentMode.height, currentMode.bpp);
         status = DeviceStatus::Online;
         return true;
@@ -250,12 +307,31 @@ namespace Npk::Drivers
 
     bool VirtioFramebuffer::Deinit()
     {
-        ASSERT_UNREACHABLE();
+        sl::ScopedLock scopeLock(lock);
+        
+        //the reverse of initializing a framebuffer
+        if (scanoutId != -1u)
+        {
+            //if we're driving a scanout, disable that scanout by assigning resource 0 (null).
+            const sl::UIntRect scanoutRect { 0, 0, currentMode.width, currentMode.height };
+            VALIDATE(driver.SetScanout(0, scanoutId, scanoutRect), false, "SetScanout() failed");
+        }
+
+        //detach the backing pages from the resource, free them.
+        VALIDATE(driver.DetachBacking(resourceId), false, "DetachBacking() failed");
+        const uint32_t fbPages = sl::AlignUp(currentMode.width * currentMode.height * 4, PageSize) / PageSize;
+        PMM::Global().Free(address, fbPages);
+        address = 0;
+
+        VALIDATE(driver.ResourceUnref(resourceId), false, "ResourceUnref() failed.");
+        resourceId = 0;
+
+        return true;
     }
 
     bool VirtioFramebuffer::CanModeset()
     {
-        ASSERT_UNREACHABLE();
+        return true;
     }
 
     Devices::FramebufferMode VirtioFramebuffer::CurrentMode()
@@ -266,22 +342,26 @@ namespace Npk::Drivers
     bool VirtioFramebuffer::SetMode(const Devices::FramebufferMode& newMode)
     {
         VALIDATE(newMode.bpp == 32, false, "Virtio framebuffers require 32bpp");
+        VALIDATE(newMode.format.redMask == 0xFF, false, "Masks must be 8 bits");
+        VALIDATE(newMode.format.greenMask == 0xFF, false, "Masks must be 8 bits");
+        VALIDATE(newMode.format.blueMask == 0xFF, false, "Masks must be 8 bits");
 
-        ASSERT_UNREACHABLE();
+        ASSERT_UNREACHABLE(); //TODO:
     }
 
     sl::NativePtr VirtioFramebuffer::LinearAddress()
     {
-        return address;
+        return address + hhdmBase;
     }
 
     void VirtioFramebuffer::BeginDraw()
-    {
-        ASSERT_UNREACHABLE();
-    }
+    {} //no-op, we can safely write to framebuffer memory without side-effects.
 
-    void VirtioFramebuffer::EndDrawAndFlush()
+    void VirtioFramebuffer::EndDraw()
     {
-        ASSERT_UNREACHABLE();
+        sl::ScopedLock scopeLock(lock);
+        const sl::UIntRect framebufferBounds = { 0, 0, currentMode.width, currentMode.height };
+        driver.TransferToHost2D(resourceId, framebufferBounds, 0);
+        driver.FlushResource(resourceId, framebufferBounds);
     }
 }
