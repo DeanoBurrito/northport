@@ -133,14 +133,21 @@ namespace Npk
     {
         //TODO: imsic driver
         (void)core; (void)vector;
-        return 0;
+        return -1ul;
     }
 
     [[gnu::always_inline]]
     inline uintptr_t MsiData(size_t core, size_t vector)
     {
         (void)core; (void)vector;
-        return 0;
+        return -1ul;
+    }
+
+    [[gnu::always_inline]]
+    inline void MsiExtract(uintptr_t addr, uintptr_t data, size_t& core, size_t& vector)
+    {
+        (void)addr; (void)data;
+        core = vector = -1ul;
     }
 
     struct CoreLocalInfo;

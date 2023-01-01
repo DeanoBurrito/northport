@@ -61,6 +61,7 @@ namespace Npk
     void SendIpi(size_t dest);
     uintptr_t MsiAddress(size_t core, size_t vector);
     uintptr_t MsiData(size_t core, size_t vector);
+    void MsiExtract(uintptr_t addr, uintptr_t data, size_t& core, size_t& vector);
 
     CoreLocalInfo& CoreLocal();
     bool CoreLocalAvailable();

@@ -56,5 +56,6 @@ namespace Npk::Devices
         size_t TableSize() const;
         void SetEntry(size_t index, uintptr_t addr, uint32_t data, bool masked) const;
         void MaskEntry(size_t index, bool mask) const;
+        void GetEntry(size_t index, uintptr_t& addr, uint32_t& data, bool& masked) const;
     };
 }

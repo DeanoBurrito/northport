@@ -30,9 +30,10 @@ namespace Npk::Interrupts
         ASSERT(vector >= IntVectorAllocBase && vector < IntVectorAllocLimit, "bad vector");
 
         vector -= IntVectorAllocBase;
-        if (!sl::BitmapGet(allocBitmap, vector) || callbacks[vector] == nullptr)
+        if (!sl::BitmapGet(allocBitmap, vector))
             return;
         
+        VALIDATE(callbacks[vector] != nullptr,, "Allocated interrupt served, but no callback installed.")
         callbacks[vector](vector);
     }
 

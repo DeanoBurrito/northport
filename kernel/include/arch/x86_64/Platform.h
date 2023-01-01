@@ -135,6 +135,13 @@ namespace Npk
     }
 
     [[gnu::always_inline]]
+    inline void MsiExtract(uintptr_t addr, uintptr_t data, size_t& core, size_t& vector)
+    {
+        core = (addr >> 12) & 0xFF;
+        vector = data & 0xFF;
+    }
+
+    [[gnu::always_inline]]
     inline uint8_t In8(uint16_t port)
     { 
         uint8_t value;
