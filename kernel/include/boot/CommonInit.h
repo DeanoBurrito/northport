@@ -6,6 +6,8 @@ namespace Npk
     void InitMemory();
     void InitPlatform();
 
+    void InitThread(void*);
+
     [[noreturn]]
     void ExitBspInit();
     [[noreturn]]

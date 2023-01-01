@@ -1,4 +1,5 @@
 #include <tasking/Scheduler.h>
+#include <boot/CommonInit.h>
 #include <tasking/Process.h>
 #include <tasking/ServiceThreads.h>
 #include <tasking/Clock.h>
@@ -17,6 +18,7 @@ namespace Npk::Tasking
         //has been registered, and is suitible for things like creating service threads.
 
         CreateThread(SchedulerCleanupThreadMain, &schedCleanupData, idleProcess)->Start();
+        CreateThread(InitThread, nullptr)->Start();
     }
 
     size_t Scheduler::NextRand()
@@ -325,7 +327,7 @@ namespace Npk::Tasking
 
             SchedulerCore& target = **scan;
             sl::ScopedLock targetLock(target.lock);
-            next = target.queue;
+            next = target.queue; //TODO: we dont honour thread/core affinities here
             if (next == nullptr)
                 next = core.idleThread; //failed, target has nothing to steal
             else

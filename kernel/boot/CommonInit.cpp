@@ -169,10 +169,7 @@ namespace Npk
             }
 
             if (!success)
-            {
-                Log("DTB node %s has no driver.", LogLevel::Verbose, prop.ReadStr());
                 delete initTag;
-            }
         }
     }
 
@@ -209,7 +206,6 @@ namespace Npk
             //The last core to finish initialization queues the reclaim thread on itself. Since all cores
             //are using a stack within reclaimable memory we have to do this in a threaded context.
             Tasking::Scheduler::Global().RegisterCore(false);
-            Tasking::Thread::Create(InitThread, nullptr)->Start();
             Tasking::Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr, nullptr, CoreLocal().id)->Start();
             Tasking::Scheduler::Global().Yield();
         }
