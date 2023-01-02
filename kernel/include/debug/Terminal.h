@@ -70,6 +70,16 @@ namespace Npk::Debug
         uint16_t fontSpacing;
     };
 
+    constexpr GTStyle DefaultTerminalStyle = 
+    { 
+        DEFAULT_ANSI_COLOURS, 
+        DEFAULT_ANSI_BRIGHT_COLOURS, 
+        0x68000000, 
+        0xDDDDDD, 
+        12, 
+        0 
+    };
+
     struct GTBackground
     {
         GTImage* background;
@@ -171,7 +181,7 @@ namespace Npk::Debug
         void SwapPalette();
 
     public:
-        bool Init(const GTStyle& style, const GTBackground& background);
+        bool Init(const GTStyle& style);
         void Deinit();
         void Reinit();
 

@@ -4,6 +4,7 @@
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
 #include <boot/LimineBootstrap.h>
+#include <config/DeviceTree.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
 
@@ -35,6 +36,33 @@ namespace Npk
         InitCore(info->hart_id, info->plic_context);
         ExitApInit();
     }
+
+    sl::NativePtr uartRegs;
+    void UartWrite(const char* str, size_t length)
+    {
+        for (size_t i = 0; i < length; i++)
+        {
+            while ((uartRegs.Offset(5).Read<uint8_t>() & (1 << 5)) == 0);
+            uartRegs.Write<uint8_t>(str[i]);
+        }
+    }
+
+    void TryInitUart()
+    {
+        auto maybeUart = Config::DeviceTree::Global().GetCompatibleNode("ns16550a");
+        if (!maybeUart)
+            return;
+
+        auto regsProp = maybeUart->GetProp("reg");
+        if (!regsProp)
+            return;
+        
+        uintptr_t base;
+        regsProp->ReadRegs(*maybeUart, &base, nullptr);
+        uartRegs = base + Npk::hhdmBase;
+
+        Debug::AddEarlyLogOutput(UartWrite);
+    }
 }
 
 extern "C"
@@ -60,6 +88,7 @@ extern "C"
         InitMemory();
         InitPlatform();
 
+        TryInitUart();
         InitTimers();
 
         if (Boot::smpRequest.response != nullptr)

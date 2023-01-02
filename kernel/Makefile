@@ -4,8 +4,8 @@ CXX_SRCS = arch/Helpers.cpp \
 	boot/CommonInit.cpp boot/LimineTags.cpp boot/LimineBootstrap.cpp \
 	config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
-	debug/Log.cpp debug/LogBackends.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp \
-	debug/Terminal.cpp \
+	debug/Log.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
+	debug/TerminalDriver.cpp \
 	devices/PciAddress.cpp devices/PciBridge.cpp devices/PciCapabilities.cpp \
 	devices/DeviceManager.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp drivers/builtin/BochsVga.cpp \

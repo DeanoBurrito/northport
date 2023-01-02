@@ -69,9 +69,20 @@ namespace Npk
 
 extern "C"
 {
+    void DebugconWrite(const char* str, size_t length)
+    {
+        using namespace Npk;
+        for (size_t i = 0; i < length; i++)
+            Out8(PortDebugcon, str[i]);
+    }
+    
     void KernelEntry()
     {
         using namespace Npk;
+
+#ifdef NP_X86_64_E9_ALLOWED
+        Debug::AddEarlyLogOutput(DebugconWrite);
+#endif
 
         WriteMsr(MsrGsBase, 0);
         InitEarlyPlatform();

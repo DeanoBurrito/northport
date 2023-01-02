@@ -22,16 +22,11 @@ export CPU_ARCH = x86_64
 KERNEL_CXX_FLAGS += -O0 -g
 # Include a nice background for the terminal or not.
 INCLUDE_TERMINAL_BG = no
-# Space reserved for the log bladder. If inside a trap handler or no backends are available,
-# logs will be written here instead of being lost immediately. Cannot be zero.
-LOGGING_BALLOON_SIZE = 0x8000
 # Time (in milliseconds) between core clock ticks, range is 1 - 20 (1000hz - 50hz).
-# Note that this only affects timekeeping, scheduler decisions and other time-based events.
-# are not affected by this. Lowering this may reduce system stress on slower systems.
 CLOCK_TICK_MS = 1
 
 # ---- X86_64 Options ----
-# Use debugcon (port 0xE9) as the x86_64 serial driver. Only enable this for virtual machines.
-X86_64_ENABLE_DEBUGCON_E9 = yes
+# Use debugcon (port 0xE9) as a serial driver and early log output. Only enable this for virtual machines.
+X86_64_ENABLE_DEBUGCON_E9 = no
 
 # ---- Riscv 64 Options ----

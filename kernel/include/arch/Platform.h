@@ -20,10 +20,11 @@ namespace Npk
         uintptr_t id;
         uintptr_t interruptControl; //x86: lapic*, rv: plic context id
         RunLevel runLevel;
-        void* schedThread;
+        void* schedThread; //currently executing thread
         void* schedData;
-        void* vmm;
+        void* vmm; //current lower-half vmm.
         void* nextKernelStack; //x86: duplicate of tss->rsp0
+        void* logBuffers;
     };
 
     extern uintptr_t hhdmBase;

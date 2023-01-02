@@ -49,6 +49,22 @@ namespace Npk::Debug
     extern uint8_t FontBegin[] asm("FontBegin");
     extern uint8_t FontEnd[] asm("FontEnd");
 
+#ifdef NP_INCLUDE_TERMINAL_BG
+    asm("\
+    .section .rodata \n\
+    .balign 0x10 \n\
+    BackgroundBegin: \n\
+        .incbin \"../misc/TerminalBg.qoi\" \n\
+    BackgroundEnd: \n \
+    .previous \n \
+    ");
+
+    extern uint8_t BackgroundBegin[] asm("BackgroundBegin");
+    extern uint8_t BackgroundEnd[] asm("BackgroundEnd");
+
+    GTImage termBg;
+#endif
+
     void Terminal::QueueOp(GTChar* c, size_t x, size_t y)
     {
         auto CompareChar = [](const GTChar& a, const GTChar& b)
@@ -761,7 +777,7 @@ def:
         context.textFg = tmp;
     }
 
-    bool Terminal::Init(const GTStyle& style, const GTBackground& background)
+    bool Terminal::Init(const GTStyle& style)
     {
         if (initialized)
             return true;
@@ -775,6 +791,13 @@ def:
         auto& fb0 = Boot::framebufferRequest.response->framebuffers[0];
         fb = { (uintptr_t)fb0->address, { fb0->width, fb0->height }, fb0->pitch };
         fbAddr = reinterpret_cast<volatile uint32_t*>(fb.address);
+
+#ifdef NP_INCLUDE_TERMINAL_BG
+        background = new GTImage();
+        OpenImage(*background, (uintptr_t)BackgroundBegin, (uintptr_t)BackgroundEnd - (uintptr_t)BackgroundBegin);
+#else
+        background = nullptr;
+#endif
         
         context.cursorVisible = true;
         context.scrollEnabled = true;
@@ -785,7 +808,6 @@ def:
         defaultFg = style.foreground & 0xFFFFFF;
         context.textFg = defaultFg;
         context.textBg = 0xFFFFFFFF;
-        this->background = background.background;
         margin = this->background == nullptr ? 0 : style.margin;
 
         fontSize.x = font.size.x;
@@ -857,6 +879,12 @@ def:
         if (!initialized)
             return;
         
+        if (background)
+        {
+            CloseImage(*background);
+            delete background;
+        }
+
         vgaFontBits = nullptr;
         delete[] vgaFontBool;
         delete[] grid;

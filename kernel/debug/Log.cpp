@@ -1,173 +1,229 @@
 #include <debug/Log.h>
-#include <debug/LogBackends.h>
-#include <debug/NanoPrintf.h>
 #include <arch/Platform.h>
+#include <debug/NanoPrintf.h>
+#include <memory/Pmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Thread.h>
-#include <Memory.h>
 #include <Locks.h>
+#include <Memory.h>
 
 namespace Npk::Debug
 {
-    constexpr inline const char* LogLevelStrs[] = 
+    constexpr size_t MaxEarlyLogOuts = 4;
+    constexpr size_t CoreLogBufferSize = 4 * PageSize;
+    constexpr size_t EarlyBufferSize = 0x4000;
+
+    constexpr const char* LevelStrs[] = 
     {
         "[ Fatal ] ", "[ Error ] ", "[Warning] ",
         "[ Info  ] ", "[Verbose] ", "[ Debug ] "
     };
 
-    constexpr inline const char* LogLevelAnsiStrs[] =
+    constexpr const char* LevelColourStrs[] =
     {
         "\e[91m", "\e[31m", "\e[93m",
         "\e[97m", "\e[90m", "\e[94m",
     };
 
-    constexpr inline const char* LogLevelAnsiReset = "\e[39m";
-    constexpr inline size_t LogLevelStrLength = 10;
-    constexpr inline size_t LogLevelAnsiLength = 5;
+    constexpr const char* LevelColourReset = "\e[39m";
+    constexpr size_t LevelStrLength = 10;
+    constexpr size_t LevelColourLength = 5;
 
-    constexpr inline const char* BackendStrings[] = 
+    struct CoreLogBuffer
     {
-        "Terminal", "Debugcon", "NS16550"
+        char* buffer;
+        size_t head;
+        size_t reserveHead;
+        size_t eloLastHead;
+        size_t lock;
     };
 
-    uint8_t logBalloon[NP_LOG_BALLOON_SIZE]; //allocated in .bss
-    size_t balloonHead = 0;
+    char earlyBufferStore[EarlyBufferSize];
+    CoreLogBuffer earlyBuffer;
 
-    sl::SpinLock outputLock;
-    sl::SpinLock balloonLock;
+    EarlyLogWrite earlyOuts[MaxEarlyLogOuts];
+    size_t eloCount = 0;
+    sl::TicketLock eloLock;
 
-    struct LogBackendStatus
+    void WriteToEarlyOuts(const char* buffer, size_t length)
     {
-        bool enabled;
-        bool (*Init)();
-        void (*Write)(const char*, size_t);
-    };
-
-    LogBackendStatus backends[] = 
-    {
-        { false, InitTerminal, WriteTerminal },
-        { false, nullptr, WriteDebugcon },
-        { false, InitNs16550, WriteNs16550 },
-    };
-    size_t backendsAvailable = 0;
-
-    inline void LogInternal(const char* str, size_t strLen, const char* timestamp, size_t timestampLen, LogLevel level)
-    {
-        for (size_t i = 0; i < (size_t)LogBackend::EnumCount; i++)
+        if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) != 0)
         {
-            if (!backends[i].enabled)
-                continue;
-
-            backends[i].Write(timestamp, timestampLen);
-
-            if ((size_t)level == -1ul)
+            sl::ScopedLock scopeLock(eloLock);
+            for (size_t i = 0; i < MaxEarlyLogOuts; i++)
             {
-                backends[i].Write(str, strLen);
-                continue;
-            }
-
-            backends[i].Write(LogLevelAnsiStrs[(size_t)level], LogLevelAnsiLength);
-            backends[i].Write(LogLevelStrs[(size_t)level], LogLevelStrLength);
-            backends[i].Write(LogLevelAnsiReset, LogLevelAnsiLength);
-            backends[i].Write(str, strLen);
-            backends[i].Write("\r\n", 2);
-        }
-    }
-
-    void BalloonWrite(const char* message, size_t len)
-    {
-        if (balloonHead + len > NP_LOG_BALLOON_SIZE)
-            return; //Not ideal, but there's bigger problems if we're overflowing the default size I think.
-        
-        sl::memcopy(message, logBalloon + balloonHead, len);
-        balloonHead += len;
-    }
-
-    void DrainBalloon()
-    {
-        if (balloonHead == 0)
-            return;
-        
-        InterruptGuard guard;
-        sl::ScopedLock scopeLock(balloonLock);
-
-        balloonHead = sl::Min(NP_LOG_BALLOON_SIZE - 1, balloonHead);
-        logBalloon[balloonHead] = 0;
-        //this is fine, the limine terminal handles upto 32K (balloon max size) characters pretty well (gj mint).
-        LogInternal(reinterpret_cast<const char*>(logBalloon), balloonHead, nullptr, 0, (LogLevel)-1ul);
-        balloonHead = 0;
-    }
-    
-    void EnableLogBackend(LogBackend backend, bool enabled)
-    {
-        if (backend == LogBackend::EnumCount)
-            return;
-        if (backends[(size_t)backend].enabled == enabled)
-            return;
-
-        if (enabled && backends[(size_t)backend].Init != nullptr)
-        {
-            if (!backends[(size_t)backend].Init())
-            {
-                Log("Failed to init log backend: %s", LogLevel::Error, BackendStrings[(size_t)backend]);
-                return;
+                if (earlyOuts[i] != nullptr)
+                    earlyOuts[i](buffer, length);
             }
         }
+    }
 
-        backends[(size_t)backend].enabled = enabled;
-        backendsAvailable = enabled ? backendsAvailable + 1 : backendsAvailable - 1;
-        Log("%s log backend: %s.", LogLevel::Info, enabled ? "Enabled" : "Disabled", BackendStrings[(size_t)backend]);
+    void WriteBufferToEarlyOuts(const char* buffer, size_t base, size_t length)
+    {
+        if (length == 0)
+            return;
+
+        base = base % (CoreLogBufferSize);
+        size_t runover = 0;
+        if (base + length >= CoreLogBufferSize)
+        {
+            runover = base + length - (CoreLogBufferSize);
+            length  -= runover;
+        }
+
+        WriteToEarlyOuts(&buffer[base], length);
+        if (runover > 0)
+            WriteToEarlyOuts(buffer, runover);
+    }
+
+    void WriteLog(const char* msg, size_t msgLength, size_t bufferLength, CoreLogBuffer& buffer)
+    {
+        __atomic_add_fetch(&buffer.lock, 1, __ATOMIC_ACQUIRE); //acquire lock
+        const size_t beginWrite = __atomic_fetch_add(&buffer.reserveHead, msgLength, __ATOMIC_RELAXED);
+
+        size_t overrunLength = 0;
+        if (beginWrite + msgLength >=- bufferLength)
+        {
+            overrunLength = (beginWrite + msgLength) - bufferLength;
+            msgLength -= overrunLength;
+        }
+
+        sl::memcopy(msg, 0, buffer.buffer, beginWrite, msgLength);
+        if (overrunLength > 0)
+            sl::memcopy(msg, msgLength, buffer.buffer, 0, overrunLength);
+        
+        const size_t releaseCount = __atomic_sub_fetch(&buffer.lock, 1, __ATOMIC_RELEASE); //release lock
+
+        //if we were the last to unlock, update the public head with the reserved space head
+        if (releaseCount == 0)
+        {
+            const size_t newHead = __atomic_load_n(&buffer.reserveHead, __ATOMIC_RELAXED);
+            __atomic_store_n(&buffer.head, newHead, __ATOMIC_RELAXED);
+
+            if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) != 0)
+            {
+                //we're in early init, write to the early log outputs
+                const size_t beginRead = __atomic_exchange_n(&buffer.eloLastHead, newHead, __ATOMIC_RELAXED);
+                WriteBufferToEarlyOuts(buffer.buffer, beginRead, newHead - beginRead);
+            }
+            //else: ELOs are not present, meaning service thread is active and will flush buffers for us.
+        }
     }
     
-    void Log(const char* message, LogLevel level, ...)
+    void Log(const char* str, LogLevel level, ...)
     {
-        va_list argsList;
-        va_start(argsList, level);
-        const size_t strLen = npf_vsnprintf(nullptr, 0, message, argsList) + 1;
-        va_end(argsList);
-        char str[strLen];
-
-        va_start(argsList, level);
-        npf_vsnprintf(str, strLen, message, argsList);
-        va_end(argsList);
-        
+        //get length of uptime
         const size_t uptime = Tasking::GetUptime();
-        const size_t coreId = CoreLocalAvailable() ? CoreLocal().id : 0;
+        const size_t uptimeLen = npf_snprintf(nullptr, 0, "%lu.%03lu", uptime / 1000, uptime % 1000) + 1;
+
+        //get length of header (processor id + thread id)
+        const size_t processorId = CoreLocalAvailable() ? CoreLocal().id : 0;
         size_t threadId = 0;
         if (CoreLocalAvailable() && CoreLocal().schedThread != nullptr)
             threadId = static_cast<Tasking::Thread*>(CoreLocal().schedThread)->Id();
+        const size_t headerLen = npf_snprintf(nullptr, 0, "p%lut%lu", processorId, threadId) + 1;
 
-        const size_t timestampSize = npf_snprintf(nullptr, 0, "%lu.%03lu p%lut%lu ", uptime / 1000, uptime % 1000, coreId, threadId) + 1;
-        char timestampStr[timestampSize];
-        npf_snprintf(timestampStr, timestampSize, "%lu.%03lu p%lut%lu ", uptime / 1000, uptime % 1000, coreId, threadId);
+        //get formatted message length
+        va_list argsList;
+        va_start(argsList, level);
+        const size_t strLen = npf_vsnprintf(nullptr, 0, str, argsList) + 1;
+        va_end(argsList);
 
-        if (backendsAvailable > 0 && CoreLocalAvailable() && CoreLocal().runLevel == RunLevel::Normal)
+        //create buffer on stack, +2 to allow space for "\r\n".
+        const size_t bufferLen = uptimeLen + LevelStrLength + headerLen + 
+            (LevelColourLength * 2) + strLen + 2;
+        char buffer[bufferLen];
+        size_t bufferStart = 0;
+
+        //print uptime
+        npf_snprintf(buffer, uptimeLen, "%lu.%03lu", uptime / 1000, uptime % 1000);
+        bufferStart += uptimeLen;
+        buffer[bufferStart - 1] = ' ';
+
+        //print processor + thread ids
+        npf_snprintf(&buffer[bufferStart], headerLen, "p%lut%lu", processorId, threadId);
+        bufferStart += headerLen;
+        buffer[bufferStart - 1] = ' ';
+
+        //add level string (+ colouring escape codes)
+        sl::memcopy(LevelColourStrs[(size_t)level], 0, buffer, bufferStart, LevelColourLength);
+        bufferStart += LevelColourLength;
+        sl::memcopy(LevelStrs[(size_t)level], 0, buffer, bufferStart, LevelStrLength);
+        bufferStart += LevelStrLength;
+        sl::memcopy(LevelColourReset, 0, buffer, bufferStart, LevelColourLength);
+        bufferStart += LevelColourLength;
+
+        //format and print log message
+        va_start(argsList, level);
+        npf_vsnprintf(&buffer[bufferStart], strLen, str, argsList);
+        va_end(argsList);
+        bufferStart += strLen;
+        
+        buffer[bufferStart++] = '\r';
+        buffer[bufferStart++] = '\n';
+
+        if (CoreLocalAvailable() && CoreLocal().logBuffers != nullptr)
         {
-            //write directly to the outputs
-            sl::ScopedLock scopeLock(outputLock);
-            
-            DrainBalloon();
-            LogInternal(str, strLen, timestampStr, timestampSize, level);
+            CoreLogBuffer& localBuffer = *reinterpret_cast<CoreLogBuffer*>(CoreLocal().logBuffers);
+            WriteLog(buffer, bufferLen, CoreLogBufferSize, localBuffer);
         }
         else
         {
-            //use the balloon
-            sl::ScopedLock scopeLock(balloonLock);
-
-            BalloonWrite(timestampStr, timestampSize - 1);
-            BalloonWrite(LogLevelAnsiStrs[(size_t)level], LogLevelAnsiLength);
-            BalloonWrite(LogLevelStrs[(size_t)level], LogLevelStrLength);
-            BalloonWrite(LogLevelAnsiReset, LogLevelAnsiLength);
-            BalloonWrite(str, strLen);
-            BalloonWrite("\r\n", 2);
+            if (earlyBuffer.buffer == nullptr)
+                earlyBuffer.buffer = earlyBufferStore;
+            WriteLog(buffer, bufferLen, EarlyBufferSize, earlyBuffer);
         }
+    }
 
-        if (level == LogLevel::Fatal)
+    void InitCoreLogBuffers()
+    {
+        CoreLogBuffer* coreLog = new CoreLogBuffer();
+        coreLog->head = coreLog->reserveHead = coreLog->lock = coreLog->eloLastHead = 0;
+        
+        uintptr_t bufferAddr = PMM::Global().Alloc(CoreLogBufferSize / PageSize) + hhdmBase;
+        coreLog->buffer = reinterpret_cast<char*>(bufferAddr);
+
+        CoreLocal().logBuffers = coreLog;
+    }
+
+    void AddEarlyLogOutput(EarlyLogWrite callback)
+    {
+        sl::ScopedLock scopeLock(eloLock);
+        if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) == 0) //deferred init
         {
-            CoreLocal().runLevel = RunLevel::Normal;
-            outputLock.Unlock(); //TODO: implement panic()
-            Log("System has halted indefinitely.", LogLevel::Info);
-            Halt();
+            for (size_t i = 0; i < MaxEarlyLogOuts; i++)
+                earlyOuts[i] = nullptr;
         }
+
+        for (size_t i = 0; i < MaxEarlyLogOuts; i++)
+        {
+            if (earlyOuts[i] != nullptr)
+                continue;
+
+            __atomic_add_fetch(&eloCount, 1,__ATOMIC_RELAXED);
+            earlyOuts[i] = callback;
+            return;
+        }
+    }
+
+    void AttachLogDriver(size_t deviceId)
+    {
+        ASSERT_UNREACHABLE();
+    }
+
+    void DetachLogDriver(size_t deviceId)
+    {
+        ASSERT_UNREACHABLE();
+    }
+
+    void LogWriterServiceMain(void*)
+    {
+        //TODO: if ELOs are active, flush those, otherwise update each driver with the new
+        //read head.
+    }
+
+    void Panic(TrapFrame* exceptionFrame, const char* reason)
+    {
+        ASSERT_UNREACHABLE(); //lol
     }
 }

@@ -1,8 +1,12 @@
 #pragma once
 
+#include <stddef.h>
+
 namespace Npk::Debug
 {
-    enum class LogLevel : unsigned long
+    struct TrapFrame; //see arch/Platform.h
+    
+    enum class LogLevel : size_t
     {
         Fatal = 0,
         Error = 1,
@@ -14,52 +18,38 @@ namespace Npk::Debug
 
     [[gnu::format(printf, 1, 3)]]
     void Log(const char* str, LogLevel level, ...);
-    void DrainBalloon();
+
+    using EarlyLogWrite = void (*)(const char* str, size_t length);
+    void InitCoreLogBuffers();
+    void AddEarlyLogOutput(EarlyLogWrite callback);
+    void AttachLogDriver(size_t deviceId);
+    void DetachLogDriver(size_t deviceId);
+
+    void LogWriterServiceMain(void*); //service thread for push logs to drivers
+
+    void Panic(TrapFrame* exceptionFrame, const char* reason);
 }
 
 using Npk::Debug::LogLevel;
 using Npk::Debug::Log;
 
-#ifdef NP_LOG_FUNCTION_NAMES
 #define ASSERT(cond, msg) \
-    { \
-        if (!(cond)) \
-            Log("Assert failed (%s:%u in %s): %s", LogLevel::Fatal, __FILE__, __LINE__, __PRETTY_FUNCTION__, (msg)); \
-    }
+{ \
+    if (!(cond)) \
+        Log("Assert failed (%s:%u): %s", LogLevel::Fatal, __FILE__, __LINE__, (msg)); \
+}
 
-    #define ASSERT_UNREACHABLE() \
-    { \
-        Log("Assert failed (%s:%u in %s): ASSERT_UNREACHABLE reached.", LogLevel::Fatal, __FILE__, __LINE__, __PRETTY_FUNCTION__); \
-        __builtin_unreachable(); \
-    }
+#define ASSERT_UNREACHABLE() \
+{ \
+    Log("Assert failed (%s:%u): ASSERT_UNREACHABLE reached.", LogLevel::Fatal, __FILE__, __LINE__); \
+    __builtin_unreachable(); \
+}
 
-    #define VALIDATE(cond, retval, msg) \
+#define VALIDATE(cond, retval, msg) \
+{ \
+    if (!(cond)) \
     { \
-        if (!(cond)) \
-        { \
-            Log("Validation failed (%s:%u in %s): %s", LogLevel::Error, __FILE__, __LINE__, __PRETTY_FUNCTION__,(msg)); \
-            return retval; \
-        } \
-    }
-#else
-    #define ASSERT(cond, msg) \
-    { \
-        if (!(cond)) \
-            Log("Assert failed (%s:%u): %s", LogLevel::Fatal, __FILE__, __LINE__, (msg)); \
-    }
-
-    #define ASSERT_UNREACHABLE() \
-    { \
-        Log("Assert failed (%s:%u): ASSERT_UNREACHABLE reached.", LogLevel::Fatal, __FILE__, __LINE__); \
-        __builtin_unreachable(); \
-    }
-
-    #define VALIDATE(cond, retval, msg) \
-    { \
-        if (!(cond)) \
-        { \
-            Log("Check failed (%s:%u): %s", LogLevel::Error, __FILE__, __LINE__, (msg)); \
-            return retval; \
-        } \
-    }
-#endif
+        Log("Check failed (%s:%u): %s", LogLevel::Error, __FILE__, __LINE__, (msg)); \
+        return retval; \
+    } \
+}
