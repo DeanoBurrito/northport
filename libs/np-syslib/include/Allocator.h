@@ -12,6 +12,9 @@ namespace sl
 {
     struct DefaultAllocator
     {
+        constexpr DefaultAllocator()
+        {}
+        
         [[nodiscard]]
         inline void* Allocate(size_t length)
         {

@@ -35,10 +35,10 @@ namespace sl
         }
 
     public:
-        Optional() : isValid(false)
+        constexpr Optional() : isValid(false)
         {}
 
-        Optional(OptionalNoType) : isValid(false)
+        constexpr Optional(OptionalNoType) : isValid(false)
         {}
 
         Optional(const T& value) : isValid(true)

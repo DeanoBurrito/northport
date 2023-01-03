@@ -28,7 +28,7 @@ namespace sl
         : left(topLeft.x), top(topLeft.y), width(size.x), height(size.y)
         {}
 
-        bool Intersects(Rect<T> other) const
+        constexpr bool Intersects(Rect<T> other) const
         {
             if (left > other.left + other.width)
                 return false;
@@ -41,21 +41,21 @@ namespace sl
             return true;
         }
 
-        bool Contains(Vector2<T> point) const
+        constexpr bool Contains(Vector2<T> point) const
         {
             return Intersects({ point, { 0, 0 }});
         }
 
-        Vector2<T> TopLeft() const
+        constexpr Vector2<T> TopLeft() const
         { return { left, top }; }
 
-        Vector2<T> Size() const
+        constexpr Vector2<T> Size() const
         { return { width, height }; }
 
-        Vector2<T> BotRight() const
+        constexpr Vector2<T> BotRight() const
         { return { left + width, top + height}; }
 
-        Vector4<T> ToVector4() const
+        constexpr Vector4<T> ToVector4() const
         { return { left, top, width, height }; }
     };
 

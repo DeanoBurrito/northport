@@ -38,8 +38,11 @@ namespace sl
     class SpinLock
     {
     private:
-        char lock = 0;
+        char lock;
     public:
+        constexpr SpinLock() : lock(0)
+        {}
+
         inline void Lock()
         {
             while (true)
@@ -60,10 +63,13 @@ namespace sl
     class TicketLock
     {
     private:
-        unsigned serving = 0;
-        unsigned next = 0;
+        unsigned serving;
+        unsigned next;
 
     public:
+        constexpr TicketLock() : serving(0), next(0)
+        {}
+
         inline void Lock()
         {
             const unsigned ticket = __atomic_fetch_add(&next, 1, __ATOMIC_RELAXED);

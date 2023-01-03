@@ -58,7 +58,7 @@ namespace sl
             capacity = newCapacity;
         }
 
-        Vector() : elements(nullptr), size(0), capacity(0)
+        constexpr Vector() : elements(nullptr), size(0), capacity(0), alloc()
         {}
 
         Vector(size_t initialCapacity) : Vector()
