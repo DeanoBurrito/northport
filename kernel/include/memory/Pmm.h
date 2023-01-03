@@ -1,8 +1,6 @@
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
-#include <Locks.h>
+#include <arch/Platform.h>
 
 namespace Npk::Memory
 {
@@ -16,33 +14,44 @@ namespace Npk::Memory
         size_t bitmapHint;
         uint8_t* bitmap;
         sl::TicketLock lock;
+
+        constexpr PmRegion(uintptr_t base, size_t length, uint8_t* bitmap)
+        : base(base), totalPages(length / PageSize), freePages(length / PageSize), next(nullptr),
+        bitmapHint(0), bitmap(bitmap), lock()
+        {}
+    };
+
+    struct PmZone
+    {
+        PmRegion* head;
+        PmRegion* tail;
+        size_t total;
+        size_t totalUsed;
+
+        constexpr PmZone() : head(nullptr), tail(nullptr), total(0), totalUsed(0)
+        {}
     };
     
     class PhysicalMemoryManager
     {
     private:
-        uint8_t* metaBuffer;
-        size_t metaBufferSize;
-        PmRegion* zoneLow;
-        PmRegion* zoneHigh;
-        PmRegion* lowTail;
-        PmRegion* highTail;
+        PmRegion* regionAlloc;
+        size_t remainingRegionAllocs;
+        uint8_t* bitmapAlloc;
+        size_t bitmapFreeSize;
 
-        struct 
-        {
-            uint32_t totalLow;
-            uint32_t totalHigh;
-            uint32_t usedLow;
-            uint32_t usedHigh;
-        } counts; //these are in pages, not bytes.
+        PmZone zones[2];
 
-        void InsertRegion(PmRegion** head, PmRegion** tail, uintptr_t base, size_t length);
+        void InsertRegion(PmZone& zone, uintptr_t base, size_t length);
         uintptr_t RegionAlloc(PmRegion& region, size_t count);
 
     public:
+        constexpr PhysicalMemoryManager() : regionAlloc(nullptr), remainingRegionAllocs(0),
+        bitmapAlloc(nullptr), bitmapFreeSize(0), zones()
+        {}
+
         static PhysicalMemoryManager& Global();
 
-        PhysicalMemoryManager() = default;
         PhysicalMemoryManager(const PhysicalMemoryManager&) = delete;
         PhysicalMemoryManager& operator=(const PhysicalMemoryManager&) = delete;
         PhysicalMemoryManager(PhysicalMemoryManager&&) = delete;
@@ -50,7 +59,6 @@ namespace Npk::Memory
 
         void Init();
         void IngestMemory(uintptr_t base, size_t length);
-        void DumpState();
 
         //allocates ONLY within the 32-bit physical address space (low zone).
         uintptr_t AllocLow(size_t count = 1);
