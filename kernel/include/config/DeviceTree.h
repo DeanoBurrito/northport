@@ -23,6 +23,11 @@ namespace Npk::Config
 
     struct DtNode
     {
+        constexpr DtNode() : ptr(0), childPtr(0), propPtr(0), propCount(0), 
+        childCount(0), addrCells(0), sizeCells(0), childAddrCells(0), 
+        childSizeCells(0), name(nullptr)
+        {}
+        
         DtbPtr ptr;
         DtbPtr childPtr;
         DtbPtr propPtr;
@@ -42,7 +47,7 @@ namespace Npk::Config
     {
     private:
         const uint32_t* cells;
-        size_t cellsCount = 0; //used to store init state, if this is non-zero, its been initialized.
+        size_t cellsCount; //used to store init state, if this is non-zero, its been initialized.
         const uint8_t* strings;
         DtNode rootNode;
 
@@ -52,6 +57,10 @@ namespace Npk::Config
         DtProperty CreateProperty(size_t start) const;
 
     public:
+        constexpr DeviceTree() : cells(nullptr), cellsCount(0), strings(nullptr),
+        rootNode()
+        {}
+
         static DeviceTree& Global();
         
         void Init(uintptr_t dtbAddr);

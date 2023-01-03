@@ -20,12 +20,12 @@ A brief summary of the current goals and features are listed below, check [the r
 Kernel:
 - Support for multiple architectures: riscv64, x86_64.
 - Memory management: Bitmap based PMM with zoned allocations, VMM inspired by SunOS design, and a swappable heap provided by slabs and a free-list for larger items.
-- Logging with support for various backends: serial/debugcon and built-in terminal (requires a framebuffer).
+- Fast logging infrastructure, with support for several early log outputs (uart chips, debugcon, builtin terminal). Post-init a number of hardware drivers are available to act as log sinks.
     - The terminal is based on gterm from the Limine Bootloader (see the individual files for the license).
-- Optional UB sanitizer, helpful for detecting bugs or increasing code size!
 - Support for various hardware timers, soft-timer interface on top.
 - SMP-aware scheduler: round robin with per-core queues, work stealing and DPCs.
-- Loadable drivers and device management.
+- Loadable drivers and device management, partially automated by a device tree parser and PCI enumeration.
+- Optional UB sanitizer, helpful for detecting bugs or increasing code size!
 
 Build System:
 - Uses stock core tools and GNU make, runs anywhere (tm).

@@ -15,6 +15,9 @@ namespace Npk::Devices
         void ScanSegment(uintptr_t segmentBase, uint16_t segId, bool ecamAvailable);
 
     public:
+        constexpr PciBridge() : addresses(), lock()
+        {}
+
         static PciBridge& Global();
 
         void Init();

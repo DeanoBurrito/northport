@@ -102,7 +102,6 @@ namespace Npk::Devices
 
         for (size_t i = 0; i < addresses.Size(); i++)
         {
-            //TODO: allocating and then passing this off to another thread, would be nice to have a cleaner design here.
             PciInitTag* initTag = new PciInitTag(addresses[i], nullptr);
 
             //look for a pci device (pcid) driver.

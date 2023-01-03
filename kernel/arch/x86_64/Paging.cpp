@@ -19,6 +19,7 @@ namespace Npk
     size_t physAddrMask;
     size_t maxTranslationLevel;
     bool nxSupported;
+    bool pgeSupported;
 
     void* kernelMasterTables;
     uint32_t kernelTablesGen;
@@ -31,6 +32,7 @@ namespace Npk
         pagingLevels = (cr4 & Cr4_La57) ? 5 : 4;
         maxTranslationLevel = (size_t)MaxSupportedPagingSize();
         nxSupported = CpuHasFeature(CpuFeature::NoExecute);
+        pgeSupported = CpuHasFeature(CpuFeature::GlobalPages);
 
         //determine bits needed ot extract a physical address from a PTE.
         physAddrMask = 1ul << (9 * pagingLevels + 12);
@@ -95,12 +97,15 @@ namespace Npk
 
         //set size bit if needed, or ensure its cleared if not.
         uint64_t actualFlags = ((uint64_t)flags & 0xFFF) | 1; //ensure present is always set
-        if (size > PageSizes::_4K)
+        if (size != PageSizes::_4K)
             actualFlags |= 1 << 7;
 
         //execute is backwards on x86: if we dont specify the execute flag, set nx
         if (nxSupported && (((uintptr_t)flags >> 63) & 1) == 0)
             actualFlags |= 1ul << 63;
+        //force global-flag bit clear if cpu doesn't support the feature.
+        if (!pgeSupported)
+            actualFlags &= ~(uintptr_t)(1 << 5);
         
         *entry = actualFlags | (phys & physAddrMask);
         if (flushEntry)

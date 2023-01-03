@@ -14,7 +14,7 @@ namespace Npk::Memory::Virtual
         
         //map the hhdm.
         for (uintptr_t i = 0; i < hhdmLength; i += GetPageSize(hhdmSize))
-            MapMemory(kernelMasterTables, hhdmBase + i, i, PageFlags::Write, hhdmSize, false);
+            MapMemory(kernelMasterTables, hhdmBase + i, i, PageFlags::Write | PageFlags::Global, hhdmSize, false);
         
         //map the kernel binary
         auto MapSection = [&](uintptr_t addr, size_t length, PageFlags flags)
@@ -28,9 +28,9 @@ namespace Npk::Memory::Virtual
         };
 
         //map the program segments from the kernel binary with appropriate permissions.
-        MapSection((uintptr_t)KERNEL_TEXT_BEGIN, (size_t)KERNEL_TEXT_SIZE, PageFlags::Execute);
-        MapSection((uintptr_t)KERNEL_RODATA_BEGIN, (size_t)KERNEL_RODATA_SIZE, PageFlags::None);
-        MapSection((uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_SIZE, PageFlags::Write);
+        MapSection((uintptr_t)KERNEL_TEXT_BEGIN, (size_t)KERNEL_TEXT_SIZE, PageFlags::Execute | PageFlags::Global);
+        MapSection((uintptr_t)KERNEL_RODATA_BEGIN, (size_t)KERNEL_RODATA_SIZE, PageFlags::None | PageFlags::Global);
+        MapSection((uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_SIZE, PageFlags::Write | PageFlags::Global);
 
         //update kernel tables generation
         __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
@@ -53,7 +53,7 @@ namespace Npk::Memory::Virtual
         //attachArg is the physical address to map.
         const PageFlags flags = (context.range.flags & VmFlags::Write) == VmFlags::Write ? PageFlags::Write : PageFlags::None;
         for (size_t i = 0; i < context.range.length; i += PageSize)
-            MapMemory(context.ptRoot, context.range.base + i, attachArg + i, flags, PageSizes::_4K, false);
+            MapMemory(context.ptRoot, context.range.base + i, attachArg + i, flags | PageFlags::Global, PageSizes::_4K, false);
         
         if (context.ptRoot == kernelMasterTables)
             __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);

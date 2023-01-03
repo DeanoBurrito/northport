@@ -1,8 +1,8 @@
 - Kernel:
     - [x] x86_64:
         - [x] Core (paging, interrupts).
-        - [ ] FPU, SSE, AVX.
         - [x] Timers (LAPIC, TSC, HPET, PIT).
+        - [ ] FPU, SSE, AVX.
     - [x] riscv64:
         - [x] Core (paging, interrupts).
         - [x] Timer (SBI, sstc).
@@ -22,13 +22,18 @@
             - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
     - [x] Core clock, software timers.
-        - [x] Configurable tickrate.
+        - [x] Configurable resolution.
+        - [x] Tickless.
     - [x] IPI mailbox.
     - [x] Scheduler.
         - [x] SMP-support.
+        - [x] DPCs.
         - [x] Work stealing.
         - [ ] Heterogenous cpu support.
     - [ ] Panic.
+    - [ ] Sanitizers.
+        - [x] Undefined behaviour.
+        - [ ] Address.
     - [x] Logging
         - [x] Ns16650 serial backend (mmio + port io variants).
         - [ ] PL011 serial backend.

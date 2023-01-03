@@ -23,6 +23,8 @@ namespace Npk::Memory::Virtual
             value |= PageFlags::Execute;
         if ((flags & VmFlags::User) != VmFlags::None)
             value |= PageFlags::User;
+        if ((flags & VmFlags::Global) != VmFlags::None)
+            value |= PageFlags::Global;
         
         return value;
     }

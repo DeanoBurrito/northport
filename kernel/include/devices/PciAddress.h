@@ -41,10 +41,10 @@ namespace Npk::Devices
         uintptr_t addr;
 
     public:
-        PciAddress() : addr(0) 
+        constexpr PciAddress() : addr(0) 
         {}
 
-        PciAddress(uintptr_t address) : addr(address)
+        constexpr PciAddress(uintptr_t address) : addr(address)
         {}
 
         static PciAddress CreateMmio(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t function);
