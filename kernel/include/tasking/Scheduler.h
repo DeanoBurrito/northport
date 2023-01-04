@@ -2,6 +2,7 @@
 
 #include <containers/Vector.h>
 #include <containers/LinkedList.h>
+#include <memory/Heap.h>
 #include <tasking/Thread.h>
 #include <tasking/Dpc.h>
 #include <Locks.h>
@@ -25,7 +26,7 @@ namespace Npk::Tasking
         Npk::InterruptLock lock;
         bool suspendScheduling;
 
-        sl::LinkedList<DeferredCall> dpcs;
+        sl::LinkedList<DeferredCall, Memory::CachingSlab<16>> dpcs;
         TrapFrame* dpcFrame;
         uintptr_t dpcStack;
         bool dpcFinished;

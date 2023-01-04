@@ -12,7 +12,6 @@ namespace Npk::Memory
         Write = 1 << 0,
         Execute = 1 << 1,
         User = 1 << 2,
-        Global = 1 << 3,
 
         //bits 48-63 are the type of memory to be requested
         Anon = 1ul << 48,

@@ -83,6 +83,10 @@ namespace Npk::Tasking
         core->dpcFrame = reinterpret_cast<TrapFrame*>(core->dpcStack);
         core->dpcFinished = true;
 
+        //Ensure the cache for DPC invocations is filled.
+        core->dpcs.EmplaceBack();
+        core->dpcs.PopBack();
+
         DisableInterrupts();
         core->lock.Lock();
         core->queue = core->queueTail = nullptr; //clear the work queue

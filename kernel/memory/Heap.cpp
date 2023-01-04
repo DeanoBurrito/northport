@@ -52,6 +52,9 @@ namespace Npk::Memory
 
     void* Heap::Alloc(size_t size, bool pinned)
     {
+        if (CoreLocalAvailable()) //TODO: what about DPCs? would be nice to allow dynamic memory access there.
+            ASSERT(CoreLocal().runLevel == RunLevel::Normal, "Heap allocations only allowed at normal run level.");
+
         if (size == 0)
             return nullptr;
         
@@ -84,6 +87,6 @@ namespace Npk::Memory
                 return;
         }
         if (!poolAlloc->Free(ptr))
-            Log("Kernel heap failed to free at 0x%lx (pinned=%u", LogLevel::Debug, (uintptr_t)ptr, pinned);
+            Log("Kernel heap %sfailed to free at 0x%lx ", LogLevel::Error, pinned ? "(pinned) " : "", (uintptr_t)ptr);
     }
 }

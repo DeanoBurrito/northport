@@ -30,6 +30,7 @@ extern "C"
     {
         using namespace Npk;
         Tasking::Scheduler::Global().SaveCurrentFrame(frame, CoreLocal().runLevel);
+        const RunLevel prevRunLevel = CoreLocal().runLevel;
         CoreLocal().runLevel = RunLevel::IntHandler;
 
         const bool isInterrupt = frame->vector & (1ul << 63);
@@ -78,6 +79,7 @@ extern "C"
             Log("Native CPU exception: 0x%lx, ec=0x%lx.", LogLevel::Fatal, frame->vector, frame->ec);
 
         Tasking::Scheduler::Global().RunNextFrame();
+        CoreLocal().runLevel = prevRunLevel;
         ExecuteTrapFrame(frame);
     }
 }

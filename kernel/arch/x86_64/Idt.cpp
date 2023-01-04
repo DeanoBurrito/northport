@@ -57,7 +57,9 @@ extern "C"
         using namespace Npk;
 
         Tasking::Scheduler::Global().SaveCurrentFrame(frame, CoreLocal().runLevel);
+        const RunLevel prevRunLevel = CoreLocal().runLevel;
         CoreLocal().runLevel = RunLevel::IntHandler;
+        
         LocalApic::Local().SendEoi();
 
         if (frame->vector == IntVectorPageFault)
@@ -91,6 +93,7 @@ extern "C"
         //before the scheduler is initialized (timekeeping for example) it will fail to find the
         //trap frame, so we return to where we were previously.
         Tasking::Scheduler::Global().RunNextFrame();
+        CoreLocal().runLevel = prevRunLevel;
         ExecuteTrapFrame(frame);
     }
 }
