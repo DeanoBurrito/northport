@@ -1,6 +1,7 @@
 #include <debug/Log.h>
 #include <arch/Platform.h>
 #include <debug/NanoPrintf.h>
+#include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Thread.h>
@@ -173,6 +174,9 @@ namespace Npk::Debug
                 earlyBuffer.buffer = earlyBufferStore;
             WriteLog(buffer, bufferLen, EarlyBufferSize, earlyBuffer);
         }
+
+        if (level == LogLevel::Fatal)
+            Panic(nullptr, buffer);
     }
 
     void InitCoreLogBuffers()
@@ -224,6 +228,9 @@ namespace Npk::Debug
 
     void Panic(TrapFrame* exceptionFrame, const char* reason)
     {
-        ASSERT_UNREACHABLE(); //lol
+        DisableInterrupts();
+        Interrupts::BroadcastPanicIpi();
+        Log("Panic done!", LogLevel::Info);
+        Halt();
     }
 }

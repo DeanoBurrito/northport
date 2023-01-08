@@ -52,6 +52,32 @@ namespace Npk
 
 extern "C"
 {
+    constexpr const char* exceptionNames[] = 
+    {
+        "divide error",
+        "debug exception",
+        "nmi",
+        "breakpoint",
+        "overflow",
+        "BOUND range exceeded",
+        "invalid opcode",
+        "no fpu",
+        "double fault",
+        "fpu segment overrun",
+        "invalid TSS",
+        "segment not present",
+        "stack-segment fault",
+        "general protection fault",
+        "page fault",
+        "you got the reserved fault vector, have fun debugging",
+        "fpu math fault",
+        "alignment check",
+        "machine check",
+        "SIMD exception",
+        "virtualization exception",
+        "control protection"
+    };
+    
     void TrapDispatch(Npk::TrapFrame* frame)
     {
         using namespace Npk;
@@ -83,7 +109,8 @@ extern "C"
                 VMM::Kernel().HandleFault(cr2, flags);
         }
         else if (frame->vector < 0x20)
-            Log("Native CPU exception: 0x%lx", LogLevel::Fatal, frame->vector);
+            Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
+                exceptionNames[frame->vector], frame->vector, frame->iret.rip, frame->iret.rip, frame->ec);
         else if (frame->vector == IntVectorIpi)
             Interrupts::ProcessIpiMail();
         else

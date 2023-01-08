@@ -22,10 +22,10 @@ This file is used to store any user-facing settings. If you need to override the
 
 ## Supported Configurations
 
-| Platform | GCC | Clang | Qemu | Hardware                  |
-|----------|-----|-------|------|---------------------------|
-| x86_64   | Yes | Yes   | Yes  | Partially working, 2 out of 3 tested computers will boot. |
-| riscv64  | Yes | Yes   | Yes  | Untested, awaiting hardware. |
+| Platform | Qemu | Hardware                  |
+|----------|------|---------------------------|
+| x86_64   | Yes  | Partially working, 2 out of 3 tested computers will boot. |
+| riscv64  | Yes  | Untested, awaiting hardware. |
 
 This table is updated on a best effort basis. Latest tests done with GCC 11 and clang 14 with qemu 7.0.0.
 

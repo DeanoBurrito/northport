@@ -78,4 +78,24 @@ namespace Npk::Interrupts
             Log("Mailbox queue for core %lu is full, mail dropped.", LogLevel::Error, dest);
         mailbox.fullErrorCount++;
     }
+
+    void PanicIpiHandler(void*)
+    {
+        Log("Core %lu received panic ipi, halting.", LogLevel::Info, CoreLocal().id);
+        Halt();
+    }
+    
+    void BroadcastPanicIpi()
+    {
+        for (size_t i = 0; i < mailboxes.Size(); i++)
+        {
+            if (mailboxes[i] == nullptr || i == CoreLocal().id)
+                continue;
+            
+            sl::ScopedLock coreLock(mailboxes[i]->lock);
+            for (size_t m = 0; m < MailboxQueueDepth; m++)
+                mailboxes[i]->callbacks[m].callback = PanicIpiHandler;
+            SendIpi(i);
+        }
+    }
 }

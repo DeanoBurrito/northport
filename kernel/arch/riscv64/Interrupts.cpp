@@ -26,6 +26,20 @@ namespace Npk
 
 extern "C"
 {
+    constexpr const char* exceptionNames[] = 
+    {
+        "instruction address misaligned",
+        "instruction access fault",
+        "illegal instruction",
+        "breakpoint",
+        "load address misaligned",
+        "load access fault",
+        "store/AMO address misaligned",
+        "store/AMO access fault",
+        "ecall from U-mode",
+        "ecall from S-mode"
+    };
+    
     void TrapDispatch(Npk::TrapFrame* frame)
     {
         using namespace Npk;
@@ -75,8 +89,13 @@ extern "C"
             else
                 VMM::Kernel().HandleFault(frame->ec, flags);
         }
+        else if (frame->vector < 12)
+        {
+            Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
+                exceptionNames[frame->vector], frame->vector, frame->sepc, frame->sp, frame->ec);
+        }
         else
-            Log("Native CPU exception: 0x%lx, ec=0x%lx.", LogLevel::Fatal, frame->vector, frame->ec);
+            Log("Unknown CPU exception: %lu", LogLevel::Fatal, frame->vector);
 
         Tasking::Scheduler::Global().RunNextFrame();
         CoreLocal().runLevel = prevRunLevel;

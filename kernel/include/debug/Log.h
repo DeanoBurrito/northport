@@ -2,10 +2,13 @@
 
 #include <stddef.h>
 
-namespace Npk::Debug
+namespace Npk
 {
     struct TrapFrame; //see arch/Platform.h
-    
+}
+
+namespace Npk::Debug
+{
     enum class LogLevel : size_t
     {
         Fatal = 0,
