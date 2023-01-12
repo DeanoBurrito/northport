@@ -1,0 +1,24 @@
+\section{Project Layout}
+At the root level, the kernel and initdisk sources are available as separate directories, alongside \verb|libs/| which contains project directories for any support libraries.
+
+The \verb|initdisk/| directory contains files used to build the initial ramdisk, which houses non-critical but nice-to-have files for the kernel. This subproject can contain all kinds of assets, not just source code.
+
+The \verb|kernel/| source tree roughly shows the various kernel subsystems. For example the \verb|kernel/cpp/| directory contains code required to support some C++ language features, like the stack protector implementation, program sanitizers or stub functions required to be implemented by the C++ standard. The \verb|kernel/config/| directory contains code used for detecting the configuration of the current system, and so on.
+
+The kernel also contains an \verb|kernel/arch/| directory, which is special. Only \textit{one} of the subdirectories is included when building the project. The name of the included subdirectory is derived from the target architecture of the compilation. As an example, if the kernel is being built for riscv64, only \verb|kernel/arch/riscv64| is included in the compilation process, not \verb|kernel/arch/x86_64| or any other architecture folder. This logic also applies to the include paths used for headers.
+
+All subprojects that provide header files will make them available under an \verb|include/| directory inside the subproject's root directory.
+
+Most projects will store build-artefacts under a \verb|build/| directory within their subproject folder. The \verb|build/| directory is purged on a clean build, and it's contents shouldn't be relied upon for anything other than potentially reducing compile times.
+
+\subsection{Documentation}
+As you might expect, the \verb|docs/| directory contains files related to documentation. The top level contains a handful of files like the project roadmap, and basic build instructions for those who don't want to (or cant) build the documentation.
+
+The \verb|docs/manual/| directory contains the \LaTeX \hspace{0.25em}source for building this document, organised into relevant chapters.
+
+Project imagery is also stashed in \verb|docs/images/|. This \textbf{does not} mean screenshots (which are stored external to the git repository) but rather banners and icons for use in the documentation.
+
+\subsection{Miscellanious}
+The \verb|misc/| directory contains a few things. Binary assets for the built-in terminal are stored here (\verb|misc/TerminalFont|, and optionally \verb|misc/TerminalBg.qoi|). Utility makefiles are also kept here (\verb|RunDebug.mk|, \verb|BuildPrep.mk|, and \verb|LibCommon.mk|), see \autoref{Build System} for how these are used.
+
+Target-specific compilation files are also stored here, under \verb|misc/cross/|. Each target is given a separate subdirectory containing a \verb|CrossConfig.mk| which is used to augment the build system when targetting this platform. Other platform-specific files may be stored here, like bootloader configuration (\verb|limine.cfg|).

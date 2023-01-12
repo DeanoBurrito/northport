@@ -4,7 +4,7 @@
 
 Northport is a monolithic kernel, with some supporting libraries and utilities. The kernel is booted via the limine protocol, and currently has support for x86_64 and riscv64 systems.
 
-Instructions for building it yourself are [available here](docs/Building.md). A proper manual is WIP and will be available under `docs/manual`.
+Instructions for building it yourself are [available here](docs/Building.md), and a more in-depth manual is available via github releases or by cloning this repository and running `make docs` (xelatex is required).
 
 A brief summary of the current goals and features are listed below, check [the roadmap](docs/Roadmap.md) for a more granular view.
 
@@ -14,13 +14,13 @@ A brief summary of the current goals and features are listed below, check [the r
 2) Support for multiple platforms. My plan is to develop for risc-v first, and use the x86_64 port as a sanity check. With limine now supporting aarch64, support for that may come later.
 3) To eventually be self-hosting, and have the system be able to cross-compile itself.
 4) Clean code and useful documentation.
-5) A comfortable (if limited) userspace experience.
+5) A comfortable (if limited) userspace experience: window manager, common applications like a text editor and file explorer. This is an extended goal.
 
 ## Project Features
 Kernel:
 - Support for multiple architectures: riscv64, x86_64.
 - Memory management: Bitmap based PMM with zoned allocations, VMM inspired by SunOS design, and a swappable heap provided by slabs and a free-list for larger items.
-- Fast logging infrastructure, with support for several early log outputs (uart chips, debugcon, builtin terminal). Post-init a number of hardware drivers are available to act as log sinks.
+- Fast logging infrastructure, with support for several early log outputs (uart chips, debugcon, built-in terminal). Post-init a number of hardware drivers are available to act as log sinks.
     - The terminal is based on gterm from the Limine Bootloader (see the individual files for the license).
 - Support for various hardware timers, soft-timer interface on top.
 - SMP-aware scheduler: round robin with per-core queues, work stealing and DPCs.

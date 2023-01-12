@@ -1,0 +1,74 @@
+\section{Preamble}
+First of all, thanks for taking an interest in the project! If you're somehow reading this without a copy of the source code, it's available at \url{https://github.com/deanoburrito/northport}.
+
+If you encounter any bugs, issues or otherwise just want to chat about the project, feel free to open an issue on github (at the link above) or message me on discord (\verb|r4#8873|).
+
+\section{Contributors}
+While git (and github) track project contributors, this project has undergone a few rewrites, so I've decided to keep track of the contributors here so ensure everyone is represented. 
+This list is current at the time of writing, but may lag behind the source repository.
+
+\begin{itemize}
+    \item Dean T, \url{https://github.com/deanoburrito}
+    \item Ivan G, \url{https://github.com/dreamos82}
+\end{itemize}
+
+\section{References \& Thanks}
+\textit{I wanted to say a personal thanks to the following projects and resources, and the authors behind them, as they've helped me at various points throughout the development of northport. Any code from these projects has been licensed as appropriate, while some have been useful as a point of comparison, or helpful in understanding new concepts. - Dean T.}
+
+\begin{itemize}
+    \item The Limine Bootloader: \url{https://github.com/limine-bootloader/limine}
+    \item Nanoprintf: \url{https://github.com/charlesnicholson/nanoprintf}
+    \item Qoi (Quite Ok Image) Format: \url{https://github.com/phoboslab/qoi}
+    \item Frigg Utils Library: \url{https://github.com/managarm/frigg}
+    \item Luna Hypervisor: \url{https://github.com/thomtl/Luna}
+    \item SCAL-UX: \url{https://github.com/NetaScale/SCAL-UX}
+\end{itemize}
+
+The builtin terminal font is \href{https://github.com/viler-int10h/vga-text-mode-fonts/blob/master/FONTS/NON-PC/APRIXENC.F14}{APRIXENC.F14} from \href{https://github.com/viler-int10h/vga-text-mode-fonts}{this collection} of x86 text mode fonts.
+
+\section{License}
+
+The source for this manual and all compiled copies fall under the same MIT license as the rest of the project. For completeness, a copy is embedded below:
+
+\begin{verbatim}
+MIT License
+
+Copyright (c) Dean T.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+\end{verbatim}
+
+\section{Target Audience}
+If you're reading this, you're probably the target audience. An intermediate level of C++ knowledge is expected, as is familiarity with working in a freestanding environment.
+
+The purpose of this manual is document northport's design, code and structure; not any of the hardware or protocols it may interact with. Descriptions of things external to the project will only be provided if necessary for another explanation.
+Having said that, if you find something lacking or that could use clarification, feel free to let me know, or open a PR!
+
+\section{Roadmap}
+An up-to-date roadmap is kept in the source directory, at \verb|docs/roadmap.md|. This is where overall progress is tracked, broken down into individual features. Plans for future features are here too, but these will likely change over time.
+
+A quick summary of the current features is also available in the project's readme, available in the root directory.
+
+\section{Terminology}
+Where possible, standard terminology is used to keep things accessible, but there are some less-standard terms and concepts used. For completeness they're described here:
+
+\begin{itemize}
+    \item \textbf{HHDM}: Higher Half Direct Map, a term borrowed from the Limine bootloader, this refers to an identity map of all physical memory that has been offset into the higher half. An identity map allows you to access physical memory at the same virtual address, and the HHDM works in a similar way but a fixed offset is added to the virtual address. This allows a full memory of physical memory to be accessible without impacting the lower half. The two fields used to manage this in the kernel (\verb|hhdmBase| and \verb|hhdmLength|) are determined once when the kernel is booted and are constant through the kernel's lifecycle. These values will only change when the kernel is booted, and are otherwise constant throughout it's lifetime. 
+    \item \textbf{SUMAC}: A portmanteau of SUM (a riscv term) and SMAP (an x86 term), retconned to mean Supervisor/User Memory Access Control. SUMAC is enabled by default on systems where it's supported, and prevents the kernel from unintentionally accessing user memory. This feature is temporarily disabled when copying data in/out of the kernel address space during system calls, and otherwise is on at all times.
+\end{itemize}

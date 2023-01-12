@@ -30,7 +30,7 @@
         - [x] DPCs.
         - [x] Work stealing.
         - [ ] Heterogenous cpu support.
-    - [ ] Panic.
+    - [x] Panic.
     - [ ] Sanitizers.
         - [x] Undefined behaviour.
         - [ ] Address.

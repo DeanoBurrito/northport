@@ -39,3 +39,4 @@ All build commands should be run from the project root directory. Currently the 
 - `make debug`: Builds the project, launches it in qemu. Qemu will launch a gdb server with default args (port 1234) and stop the cpu before running any code.
 - `make attach`: Launches gdb with the kernel symbols loaded, connects to a gdb remote server, like one launched using `make debug`.
 - `make docs`: Builds the documentation and renders it as a pdf.
+- `make docs-clean`: Cleans build files related to documentation.
