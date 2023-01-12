@@ -1,13 +1,15 @@
-name: Build Tests
+name: All-Platforms Builds
 
 on:
   push:
     branches: [ master ]
+    paths: [ !docs/** ]
   pull_request:
     branches: [ master ]
+    paths: [ !docs/** ]
 
 jobs:
-  main-tests:
+  build-all-platforms:
     runs-on: ubuntu-latest
 
     steps:

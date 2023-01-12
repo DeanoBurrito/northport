@@ -1,0 +1,41 @@
+name: Build and Publish Documentation
+
+on:
+  push:
+    branches: [ master ]
+    paths: [ docs/** ]
+  pull_request:
+    branches: [ master ]
+    paths: [ docs/** ]
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install Texlive
+      run: sudo apt install texlive
+    
+    - uses: actions/checkout@v3
+
+    - name: Compile Documentation
+      run: make docs
+    
+    - name: Remove Previous Release
+      uses: dev-drprasad/delete-older-releases@v0.2.0
+      with:
+        keep_latest: 0
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Update Latest Tag
+      uses: EndBug/latest-tag@latest
+
+    - name: Publish New Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: docs/manual/build/*.pdf
+        tag_name: latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
