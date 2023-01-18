@@ -1,0 +1,60 @@
+\section{Limine Protocol Shim}
+The northport kernel is booted via the limine boot protocol (LBP), normally provided by the Limine Bootloader. Unfortunately the bootloader only supports aarch64 and x86 platforms for now, for a solution is needed for booting on riscv: a boot shim that understands the boot protocol.
+
+The shim is an optional chunk of code that is only compiled in when \verb|NP_INCLUDE_LIMINE_BOOTSTRAP| is defined. Some parts of the protocol are also platform-specific, like the SMP feature response and entry machine state and therefore have no official definition for riscv. A tentative version of these is documented down below, as implemented by the boot shim, but please remember these are extentions to the original protocol and only supported by the boot shim, not the original bootloader.
+
+\paragraph{Disclaimer}
+The boot shim is a combination of generic and \textit{some} hardware specific code. It's not guarenteed to work on any particular riscv hardware, and currently only has support for the qemu virt board.
+
+In reality this shim is intended as a temporary solution until EFI on riscv is more usable, and a proper bootloader can be written or ported over. 
+
+\subsection{Supported Features}
+While the shim supports the limine boot protocol, it targets the northport kerenl in particular. The kernel only *requires* the kernel address, memory map and hhdm feature responses, but *can* make use of others. The shim knows this and may not support any other features depending on the particular hardware. 
+
+This is allowed in the original LBP specification, as bootloaders are recommended to ignore feature tags they don't recognise.
+
+\subsection{Why Use LBP At All?}
+Since early boot code was going to need to be written for a new platform anyway, there were considerations of coupling it directly to the kernel; removing limine from the boot sequence entirely.
+
+Ultimately this was decided against as the protocol provides a nice abstraction to the parts of the kernel that use it. A quick test of the protocol resulted in duplicating a lot of the work already done, and that was messy.
+
+In a more altruistic light, hopefully this early work on LBP on riscv can be useful to porting the official bootloader in the future.
+
+\subsection{Internals}
+\textit{For now, the internals of the boot shim remain undocumented as it's quite messy and will likely undergo a huge rewrite soon. If you have questions it's best to contact me directly.}
+
+\subsection{Current Protocol Extensions}
+As previously mentioned, architecture specific parts of the specificiation are undefined for riscv platforms and we've synthesized our interpretation of a sane entry machine state and SMP feature response. Again please note that this is not official, and may change if the original protocol is ported.
+
+\paragraph{Risc-V Entry Machine State}
+The \verb|pc| register will point to the declared entry function, unless an entry point feature is requested then the value of \verb|pc| is taken from there. \textit{Authors note: the shim currently ignores this and instead always jumps to KernelEntry(), which would normally be the entry point for the kernel.} The kernel is entered from supervisor mode.
+
+Supervisor interrupts are mased in \verb|sstatus.sie| and \verb|sie| (appropriate bits are cleared). The contents of \verb|stvec| are undefined. Supervisor access to user memory is disabled (\verb|sstatus.sum| is cleared), make-executable-readable is also disabled (\verb|sstatus.mxr| is cleared).
+
+Paging is enabled, with mappings compatible with the page map described earlier. The contents of \verb|satp| and the page tables are undefined, but the page tables are guarenteed to be in bootloader-reclaimable memory. \textit{TODO: satp.mode? what guarentees do we make about that?}
+
+A stack is setup, located in bootloader-reclaimable memory, of at least 64KiB in size, or the value specified in a stack size request. All general integer registers are zero. If they exist, extension registers (floating point, vector) and related CSRs are in an undefined state.
+
+EFI boot services are exited.
+
+\paragraph{Risc-V SMP Feature Response}
+The request for this feature is identical to the base version, how the response struct and per-core structs differ. Their definitions are below.
+
+\begin{verbatim}
+struct limine_smp_info {
+    uint64_t hart_id;
+    uint32_t context_id;
+    uint32_t reserved;
+    limine_goto_address goto_address;
+    uint64_t extra_argument;
+};
+
+struct limine_smp_response {
+    uint64_t revision;
+    uint64_t bsp_hart_id;
+    uint64_t cpu_count;
+    limine_smp_info** cpus;
+};
+\end{verbatim}
+
+Most of the fields should be familiar except the \verb|context_id|, which contains the integer used by interrupt devices to represent supervisor interrupts on a particular hart. This is required to properly use devices like the PLIC or IMSIC. 

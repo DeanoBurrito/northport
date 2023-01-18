@@ -1,0 +1,43 @@
+\section{Heap Allocation}
+The kernel heap is provided by a series of aggregate slab allocators and a pool allocator. All of this is hidden behind the heap API, which consists of familiar free/alloc functions, and the C-style \verb|malloc()| and \verb|free()| global functions are provided as well (see \verb|memory/New.cpp|) if they're needed. The C functions are simple wrappers around the main heap functions.
+
+The global \verb|new| and \verb|delete| C++ operators have also been defined, making them available for kernel code. This is the ideal way to manage dynamically allocated memory.
+
+\subsection{Concepts}
+
+\paragraph{Pinned Allocations} By default the kernel heap uses memory that can be swapped (purged from main memory to disk to free memory for use parts of the system) and demand-paged. Allocations can optionally be made \textit{pinned}. Pinned allocations are immediately backed with physical memory and non-swappable, which is useful for critical parts of the kernel infrastructure that can't be swapped out. The container used by the VMM to track allocated VMRanges is an example of when pinned memory is needed. Pinning allocations means that the physical memory used can't be used elsewhere if the system needs it, so they should be used sparingly and only when necessary.
+
+\subsection{Slab Allocators}
+For small heap allocations the kernel uses a series of slab allocators, with each slab being 2x the size of the pervious. The smallest slab allocator starts at 32 bytes, and the largest is 512 bytes by default, although this is easily configurable. 
+
+Each slab consists of a number of \textit{slab segments}, which contains a base address and bitmap to track which slabs have allocated relative to the base. A segment also contains some extra metadata to speed up allocations, like hinting at where the last successfull allocation was.
+
+When a segment is full, a new segment is created with identical parameters to the initial segment (slab size and number of slabs). These segments are stored as a linked list, effectively allowing infinite expansion if needed. As each slab tracks the number of free slabs, full segments can quickly be skipped when searching for free space.
+
+\subsubsection{Pinned vs Non-Pinned}
+Each slab allocator also tracks if it's pinned or not. Non-pinned slabs operate as you would expect, but pinned slabs are a special exception in how virtual memory is managed in the kernel. There is a circular dependency between pinned slabs and the VMM: since the VMM uses pinned allocations to store its management structures, the slab cannot use the VMM to allocate more virtual address space for itself as this would cause a pinned allocation, and so on. 
+
+The current solution is to reserve an area of virtual memory above the HHDM but below the area the kernel VMM is allowed to allocate in. This area is the same size as the HHDM. A pointer within this area is stored, and is treated like a bump allocator: everytime a pinned slab expands it increments this pointer by the amount of virtual memory the new segment will consume. When it comes to back the new segment with physical memory, the slab modifies the kernel's master page tables directly.
+
+\subsection{Pool Allocators}
+The pool allocator is similar to the design of \hyperlink{https://github.com/blanham/liballoc}{liballoc} v1.1. It consists of a number of segments, and each segment is a freelist for a single contiguous block of virtual memory. Over time as the pool allocator expands more segments may be added. 
+
+There are no major differences between the pinned pool vs the non-pinned pool, except for the flags passed to the VMM when requesting virtual memory. The VMM handles the specifics of pinning memory.
+
+\subsection{Example Code}
+Like other singleton classes the global kernel heap can be accessed as \verb|Heap::Global()|. All heap declarations are available in the header \verb|memory/Heap.h|. The examples below are for documentation but the built-in C++ operators should be used where possible.
+
+\begin{verbatim}
+void* _100Bytes = Heap::Global().Alloc(100);
+
+Heap::Global().Free(_100Bytes);
+\end{verbatim}
+
+To use pinned allocations is similar, although you must tell \textit{both} alloc and free that this is pinned memory. This can be done by setting the optional argument to \verb|true|. A \verb|PinnedAllocator| class is also available for use as the allocator argument in template containers.
+
+\begin{verbatim}
+void* _40BytesPinned = Heap::Global().Alloc(40, true);
+
+Heap::Global().Free(_40BytesPinned);        //an error
+Heap::Global().Free(_40BytesPinned, true);  //okay
+\end{verbatim}

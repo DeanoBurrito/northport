@@ -1,0 +1,45 @@
+\section{Supported Platforms}
+This version of the kernel was written with support for multiple platforms in mind from the beginning, and it was one of the earliest features of the kernel. Currently only two platforms are supported (x86\_64 and riscv64) but it would be nice to add more in the future, namely aarch64 and perhaps something more exotic.
+
+The current platforms and their status are listed below.
+
+\begin{tabular}{|r|l|p{0.3\linewidth}|p{0.4\linewidth}|}
+    \hline
+    \textbf{Platform} & \textbf{Qemu} & \textbf{Hardware} & \textbf{Notes} \\
+    \hline
+    x86\_64 & Yes & 3 machines tested, 2 work. & \\
+    riscv64 & Yes & No & Support for a visionfive-2 port is planned once some bugs are ironed out in the virtio machine.\\
+    \hline
+\end{tabular}
+
+\subsection{Platform Abstraction Layer}
+The kernel maintains a strict boundary between platform-specific code and platform-independent code. The platform specific code is contained within the \verb|kernel/arch/xyz| and \verb|kernel/include/arch/xyz| directories, where \verb|xyz| is the target architecture. Each platform is given it's own directory, and the layout inside this directory can be considered freeform.
+
+Each platform \textbf{must} implement the functions defined in each header file under \verb|kernel/include/arch|. These headers contain functions required by the rest of the kernel. Code within an arch directory is allowed to include headers from within it's own \verb|include/arch/xyz/| directory, however all other kernel code is only permitted to use the generic headers found in \verb|include/arch/|.
+
+\subsubsection{Platform.h}
+This file is a special case, as the platform agnostic \verb|kernel/include/arch/Platform.h| provides some complete definitions (like the core-local data struct), some utility functions and also some function declarations. These declarations serve as a guide for what a platform would need to implement to support a port of the kernel. 
+
+Most of the declared functions can be implemented by simple inline assembly, and often these functions are made \verb|inline| (often with \verb|[[gnu::always_inline]]| too). There are some additional constants that must be defined within an implementation of this header:
+
+\begin{itemize}
+    \item \verb|size_t PageSize|: The native page size of the target platform, in bytes. Most platforms will have this as 4K (0x1000) bytes.
+    \item \verb|size_t IntVectorAllocBase|: Used by the interrupt vector allocator, this sets the lowest vector number available for general use. Vectors will never be allocated below this.
+    \item \verb|size_t IntVectorAllocLimit|: Largest interrupt vector allowed to be allocated (inclusive). Set this and \verb|IntVectorAllocBase| to 0 to disable the vector allocator and the ability to install interrupt handlers.
+\end{itemize}
+
+Of course platforms are free to define their own internal constants here too, for example x86\_64 defines a number of MSR and port values.
+
+\subsection{Platform Requirements}
+The northport kernel is inteded to run on mobile or desktop class processors, and currently there is no intent to support embedded processors.
+
+The hardware requirements for adding a new platform are described below.
+
+\begin{itemize}
+    \item An MMU for managing the virtual address space, with the ability to distinguish between supervisor and user levels, and r/w/x access control.
+    \item Basic interrupt architecture: sending device interrupts to specific processors, or at least limiting which processors can receive them. The ability to send IPIs is also required on multi-core systems.
+    \item A single timer capable of sending an interrupt on a terminal count (one-shot operation), and a timer that can be used for polling. There are no strict timing requirements, but the kernel internally tracks time as nanoseconds, and so it can make use of more precise timers if available. The kernel doesn't care if these two functions are provided by the same piece of or hardware or two separate pieces. Only one of each type of timer is needed, and they both need to be accessible from the same processor. The system must provide a way to calibrate each timer.
+    \item The kernel expects to be booted in accordance with the Limine Boot Protocol. If a compatible bootloader exists for the target platform that's easy, but if not the boot shim included in the kernel may need to be modified.
+\end{itemize}
+
+The kernel also has a soft requirement of being running on a 64-bit processor. Although it should be possible to port to a 32-bit system, this isn't a goal of the project and is yet to be tested.

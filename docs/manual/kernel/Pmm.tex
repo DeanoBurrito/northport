@@ -1,0 +1,128 @@
+\section{Physical Memory Manager}
+The kernel uses a relatively simple physical memory manager design, with a focus on keeping allocations fast and using granular locking to reduce contention between multiple cpus trying to allocate at the same time.
+
+A bitmap allocator is not the fastest, but it is accountable. This is an important feature in the PMM design: bad attempts to free physical memory won't result in corrupt state. While other allocator designs can offer this, a bitmap is simple to implement.
+
+\subsection{Concepts}
+\paragraph{PM Zone}
+Zones are used to arbitrarily section-off parts of physical memory. In northport two zones are used: the low zone (32-bit addressable memory), and the high zone (addresses > 4GiB).
+This is done in an attempt to preserve 32-bit addressable memory for older devices that only support these 32-bit addresses. While these devices are less common, they are not extinct.
+
+\paragraph{PM Range}
+A range represents a number of contiguous physical pages, and tracks the state of each page (used/free) in a bitmap. A range also contains some metadata like where the next free page is, the total number of free and used pages, etc. Each range is responsible for a fixed number of pages, but the PMM's view of physical memory can be modified by adding or removing ranges.
+
+As the ideas of a range or zone are used elsewhere in the kernel, these are referred to as \textbf{PM}Ranges or \textbf{PM}Zones to indicate they represent physical memory.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+    \begin{scope}
+    \node (1) [rectangle, minimum width=3cm, minimum height=2cm, draw=black, fill=gray!10] {
+        \begin{tabular}{c}
+            \textbf{PMZone} \\
+            bounds = $\lbrace$low, high$\rbrace$
+        \end{tabular}};
+    \node (2) [rectangle, minimum width=3cm, minimum height=1cm, draw=black, fill=gray!20!blue!20, right = of 1] {
+        \begin{tabular}{l}
+            \textbf{PMRange} \\
+            base = ... \\
+            length = ... \\
+        \end{tabular}};
+    \draw [->] (1) -- node[above] {head} (2);
+    \node (3) [rectangle, minimum width=3cm, minimum height=1cm, draw=black, fill=gray!20!blue!20, right = of 2] {
+        \begin{tabular}{l}
+            \textbf{PMRange} \\
+            base = ... \\
+            length = ...
+        \end{tabular}};
+    \draw [->] (2) -- node[above] {next} (3);
+    \node (4) [right = of 3] {};
+    \draw [->] (3) -- node[above] {next} (4);
+    \end{scope}
+    \begin{scope}[node distance=6mm]
+        \node (bitmap0) [rectangle, minimum width=4cm, minimum height=1cm, draw=black, fill=gray!20!red!10, below = of 2] {bitmap};
+        \node (bitmap1) [rectangle, minimum width=4cm, minimum height=1cm, draw=black, fill=gray!20!red!10, right = of bitmap0] {bitmap};
+        \draw [->] (2) -- (bitmap0);
+        \draw [->] (3) -- (bitmap1);
+    \end{scope}
+\end{tikzpicture}
+\caption{Relationship between PMZones and PMRanges.}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+    \node (pmm) [rectangle, minimum width=4cm, minimum height=4cm, draw=black, fill=gray!40] {
+        \textbf{PMM}
+    };
+    \node (placeholder) [minimum width=4cm, minimum height=0cm, right = 2cm of pmm]{};
+    \node (lowzone) [rectangle, minimum width=2cm, minimum height=1cm, draw=black, fill=gray!10, above = 0mm of placeholder] {
+        \begin{tabular}{c} 
+            \textbf{Low Zone} \\
+            bounds = $\lbrace$0, 4GiB$\rbrace$
+        \end{tabular}
+    };
+    \node (highzone) [rectangle, minimum width=2cm, minimum height=1cm, draw=black, fill=gray!10, below = 0mm of placeholder] {
+        \begin{tabular}{c} 
+            \textbf{High Zone} \\
+            bounds = $\lbrace$4GiB, $\infty\rbrace$
+        \end{tabular}
+    };
+    \draw [->] (pmm) -- (lowzone.west);
+    \draw [->] (pmm) -- (highzone.west);
+\end{tikzpicture}
+\caption{PMM zone configuration.}
+\end{figure}
+
+\subsection{Initialization}
+The northport PMM uses a bitmap to store the state of page of physical memory. A page is considered the basic unit of the PMM, and it's exact size depends on the target platform and is represented by the constexpr variable \verb|PageSize|.
+
+The first problem the PMM is presented with is finding space for the bitmaps required to manage each region. For memory effeciency these bitmaps are packed together, since the next bitmap can begin inside of the slack space following the previous bitmap. This slack space refers to the space following the end of the bitmap, but before the next page begins. Since the PMM operates in page-sized units, this space is wasted.
+
+The downside to this approach is that a single large space is required for the bitmaps to exist in, rather than many smaller spaces. This is fine on most systems, but may break down on a sufficiency fragmented physical memory map.
+
+The buffer used for the bitmaps is called the \textit{metabuffer} and is also used for allocating the space needed for the PM regions. Each PM region roughly represents a single usable memory map entry. Once the space required for the metabuffer has been calculated, it's length is rounded up to the nearest page and subtracted from the largest memory map entry available before having the hhdm offset added.
+
+The address and length of the metabuffer is stashed, and the PMM begins ingesting each usable memory region from the memory map.
+
+\subsection{Ingesting Memory}
+Ingesting physical memory makes it available for use by the rest of the system. Memory can be ingested at any time, although this can become a very expensive operation once more processes are started. While adding memory at runtime is supported, removing memory from the system is currently not.
+
+When memory is ingested it may be split into two separate regions if it crosses a PM zone border. Otherwise the ingested memory is represented by a single PM region. 
+
+The PM regions and their bitmaps are allocated from the metabuffer. Each region is the inserted into the linked list of regions representing the PM zone it's assigned to. This list is sorted by base address (ascending).
+
+At this point the new PM region is live and can be accessed by the rest of the PMM, and can now be used to satify allocations.
+
+\subsection{Allocating Pages}
+Allocating memory is very straightforward, each PM region tracks how many free pages it contains. If the region lacks enough free pages to satisfy an allocation request, it's skipped.
+
+Once a region with enough free pages is found, the region's bitmap is scanned until a run of contiguous free pages is found. If this run is not found, the search for a new region with enough free pages continues.
+
+If an allocation request cannot be satisified, the PMM panics the kernel. There are plans to allow the PMM to communicate memory pressure to users of physical memory and request to purge some allocations, allowing physical memory to freed to satisfy other allocations. This (and some other ideas) currently only exist as experiments.
+
+It should be noted that there are two main allocation functions:
+\begin{itemize}
+    \item \verb|AllocLow()|: This function tries to allocate exlusively from the low zone (< 4GiB), and panics on failure.
+    \item \verb|Alloc()|: This function tries to allocate from the higher zone, and on failure calls \verb|AllocLow|. Ultimately this may cause a panic on failure.
+\end{itemize}
+
+The intention is for developers to use \verb|Alloc| for general physical memory allocations, and only use \verb|AllocLow| for memory that must be 32-bit addressable.
+
+\subsection{Freeing Pages}
+Freeing memory is also straightforward. First the appropriate zone for the allocation is selected, and then the freed address is compared against the base address and length of each PM region in the zone until the matching region is found. If the zone or region could not be determined, an error is logged and the freeing call fails. In this event no bitmap state is modified.
+
+Once the PM region has been located, the corresponding bit is cleared, and the free operation is complete.
+
+Contrary to allocation, there is only a single free function \verb|Free()|.
+
+\subsection{Example Code}
+The PMM operates as a singleton, and the global instance is available as \verb|PMM::Global()|. The alloc/free functions will assume a page-count of 1 unless otherwise specified. All the functions used below are declared in \verb|memory/Pmm.h|.
+
+\begin{verbatim}
+uintptr_t singlePage = PMM::Global().Alloc();
+uintptr_t sixPages = PMM::Global().Alloc(6);
+
+PMM::Global().Free(singlePage);
+PMM::Global().Free(sixPages, 6);
+\end{verbatim}

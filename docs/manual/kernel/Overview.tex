@@ -1,0 +1,112 @@
+\section{Overview}
+Northport is a monolithic kernel, with some modularity planned for later drivers. The kernel is booted via the limine boot protocol, and begins with some platform specific initialization. After this the clock and scheduler are started, and then the kernel operates as series of \textit{mostly} independent subsystems. The exceptions being the scheduler and virtual memory subsystem as most parts of the kernel will interact with these.
+
+The kernel makes full use of multi-processor systems, and can run with minimal memory requirements.
+
+\subsection{Kernel Subsystems}
+\begin{itemize}
+    \item Memory: physical memory manager, virtual memory managers, kernel heap.
+    \item Tasking: software clock, scheduler, threads and processes.
+    \item Hardware abstraction: functionality required from the underlying hardware that cannot be provided by a driver. Things like the IPI mechanism used and interrupt management are handled here.
+    \item Debugging: logging facilities, built-in graphical terminal.
+    \item Hardware discovery: ACPI table parsing, PCI device enumeration, device tree parsing.
+    \item Driver and Device management: Loading, starting and stopping drivers in response to system events like hardware discovery.
+\end{itemize}
+
+There are some other minor subsystems like interrupt vector allocation and IPI mailboxes for communicating on multi-core systems.
+
+\subsection{Init Sequence}
+The philosophy of the entry sequence for the kernel is to allow the platform core to contain the messy parts required to interface with hardware, and call various hooks for generic parts of the init sequence when appropriate for the platform. Each architecture contains a \verb|arch/xyz/Init.cpp| file with a few common functions. These functions are not required, but are named this way for consistency.
+
+\begin{itemize}
+    \item \verb|KernelEntry()|: This is where the first core starts executing the kernel. This function is usually the ELF entry point, unless the limine boot shim is active. This function does any early set up the platform might require, and then enables the memory subsystems, early platform subsystems (logging), timing subsystem and then performs any core-local set up for BSP (a term borrowed from x86). 
+    \item \verb|ApEntry()|: APs (borrowed from x86) require a different codepath to the BSP, and this function is where they begin executing. Most of the time this is just calling \verb|InitCore()|.
+    \item \verb|InitCore()|: This function is either called by \verb|KernelEntry()| or \verb|ApEntry()| and performs any initialization required for each processor core in the system. This includes allocating and populating the core-local block, and setting any supported feature flags.
+\end{itemize}
+
+\subsubsection{Platform-Independent Init}
+The file \verb|CommonInit.cpp| contains initialization code that needs to happen across all platforms. These are provided as hooks that the platform-specific init code can call when it's ready. These hook functions should be called in order.
+
+\begin{itemize}
+    \item \verb|InitEarlyPlatform()|: This should be called as early as possible. Here bootloader data is verified to be sane, and the HHDM base and length are determined. Early outputs for logging are detected here, namely a bootloader-provided framebuffer and serial devices.
+    \item \verb|InitMemory()|: Initializes the physical memory manager, virtual memory manager and the kernel heap.
+    \item \verb|InitPlatform()|: Hardware discovery methods are initialized here (ACPI tables and/or the DTB are parsed). Some global kernel state is also initialized like the core-independent part of the scheduler and interrupt vector allocator.
+    \item \verb|ExitBspInit()|: Starts the system clock and then calls \verb|ExitApInit()| (see below).
+    \item \verb|ExitApInit()|: Sets up the IPI mailbox for the core, decreases a reference count to bootloader data and then begins scheduled execution. If the reference count is decremented to 0, the core will launch a thread that reclaims bootloader memory and makes it available to the physical memory manager.
+\end{itemize}
+
+\begin{figure}[h]
+\begin{tikzpicture}
+    \node (ApEntry) [rectangle, minimum height=1.5cm, draw=black, fill=blue!10] {
+        \verb|ApEntry()|};
+    \node (KernelEntry) [rectangle, minimum height=1.5cm, draw=black, fill=blue!10, below = of ApEntry] {
+        \verb|KernelEntry()|};
+    \node (hidden) [left = 2cm of KernelEntry] {};
+    \node (InitCore) [rectangle, minimum height=1.5cm, draw=black, fill=blue!10, right = 3mm of ApEntry] {
+        \verb|InitCore()|};
+    \node (SchedulerExec) [rectangle, minimum height=1.5cm, draw=black, fill=gray!10, right = of InitCore] {
+        Scheduled execution
+    };
+    \node (InitEarlyPlatform) [rectangle, minimum height=1.5cm, draw=black, fill=gray!10, below = of KernelEntry] {
+        \verb|InitEarlyPlatform()|};
+    \node (InitMemory) [rectangle, minimum height=1.5cm, draw=black, fill=gray!10, right = 3mm of InitEarlyPlatform] {
+        \verb|InitMemory()|};
+    \node (InitPlatform) [rectangle, minimum height=1.5cm, draw=black, fill=gray!10, right = 3mm of InitMemory] {
+    \verb|InitPlatform()|};
+
+    \path [->, red, dashed] (hidden) edge (KernelEntry.west) node [label=above:Bootloader exit]{};
+    \path [->] (KernelEntry.south) edge (InitEarlyPlatform);
+    \path [->, in=150, out=-30] (KernelEntry.south) edge (InitMemory.north);
+    \path [->, in=140, out=-10] (KernelEntry.south) edge (InitPlatform.north);
+    \path [->, red, dashed] (KernelEntry) edge (ApEntry);
+    \path [->, bend right, blue!80] (KernelEntry) edge (InitCore);
+    \path [->, blue!80] (ApEntry) edge (InitCore);
+    \path [->] (InitCore) edge (SchedulerExec);
+\end{tikzpicture}
+
+\centering
+\begin{tabular}{c|c|l}
+    \begin{tikzpicture}
+        \path [->, red, dashed] (0, 0) edge (1, 0);
+    \end{tikzpicture} 
+    & 
+    & Platform-specific mechanism. \\
+
+    \begin{tikzpicture}
+        \path [->, blue!80] (0, 0) edge (1, 0);
+    \end{tikzpicture} 
+    & \begin{tikzpicture} \node (r)[rectangle, draw=black, fill=blue!10] (0, 0){}; \end{tikzpicture} 
+    & (Call to) platform specific code. \\
+
+    \begin{tikzpicture}
+        \path [->, black] (0, 0) edge (1, 0);
+    \end{tikzpicture} 
+    & \begin{tikzpicture} \node (r)[rectangle, draw=black, fill=gray!10] (0, 0){}; \end{tikzpicture}
+    & (Call to) common init code. \\
+\end{tabular}
+\caption{Kernel operation pre-scheduler.}
+\end{figure}
+
+\subsection{Multi-Core Systems}
+The kernel is written and tested with multi-core systems in mind, but it's also capable of running on single-core systems. 
+
+From the perspective of the kernel, each core operates independently of the others. The majority of the kernel subsystems are unaware of how many cores are present in the system. The scheduler and IPI mailboxes are the notable exceptions, as they operate on a per-core basis. The scheduler is covered in more in \autoref{Scheduler}.
+
+During initialization one core is considered the boot core (the BSP, to use the x86 term) and will set up the initial memory management structures used for the kernel, and perform other early init operations like discovering and initializing early log outputs (like serial devices or the bootloader framebuffer). The boot core is also responsible for starting the other cores in the system so they can initialize themselves. Once each core has finished initializing itself, it will begin scheduled execution. 
+
+At runtime one core is given the special duty of managing the system clock. This is often the boot core, but is not required to be. The clock core is responsible for managing the hardware timer(s) used to provide the clock functions to the rest of the kernel.
+
+If for some reason a function is required to run on a specific core, there are two options:
+\begin{itemize}
+    \item A thread can be created to run the function, and pinned to a specific core. This is the recommended approach for code without timing requirements.
+    \item Each core has an IPI mailbox. Each mail item consists of a function pointer and an argument to pass to the function when run. When mail is sent the target core is sent an IPI and the function will whenever the IPI is served. See the function \verb|SendIpiMail()| in \verb|interrupts/Ipi.h|.
+\end{itemize}
+
+\subsubsection{Example Code}
+To use the mailbox mechanism all that's required a pointer to the function to run on the remote core. In the example we'll assume core 5 exists and we want to run \verb|ExampleFunction()| on that core. The callback function can optionally have an argument passed to it at runtime, but it's not required so we'll use \verb|nullptr|. We omit the argument in this example. The function we'll use is defined in \verb|interrupts/Ipi.h|.
+
+\begin{verbatim}
+void ExampleFunction(void* ignored);
+
+SendIpiMail(5, ExampleFunction, nullptr);
+\end{verbatim}
