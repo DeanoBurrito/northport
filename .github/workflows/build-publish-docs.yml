@@ -2,19 +2,19 @@ name: Build and Publish Documentation
 
 on:
   push:
-    branches: [ master ]
-    paths: [ docs/**, .github/worksflows/build-publish-docs.yml ]
+    paths: [ 'docs/**', '.github/workflows/build-publish-docs.yml' ]
   pull_request:
-    branches: [ master ]
-    paths: [ docs/**, .github/worksflows/build-publish-docs.yml ]
+    paths: [ 'docs/**', '.github/workflows/build-publish-docs.yml' ]
 
 jobs:
   build-docs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Install Texlive
-      run: sudo apt install texlive
+    - name: Setup Latex tools
+      uses: teatimeguest/setup-texlive-action@v2.5.0
+      with:
+        packages: scheme-basic geometry parskip fontenc hyperref enumitem pgf titlesec fancyhdr etoolbox
     
     - uses: actions/checkout@v3
 

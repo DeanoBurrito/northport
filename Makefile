@@ -98,7 +98,7 @@ docs:
 	$(LOUD)cd $(PROJ_DIR_DOCS); $(MAKE) all $(SUBMAKE_FLAGS)
 
 .PHONY: docs-clean
-docs:
+docs-clean:
 	$(LOUD)cd $(PROJ_DIR_DOCS); $(MAKE) clean $(SUBMAKE_FLAGS)
 
 # Optional, run/debug/attach targets and qemu interactions.

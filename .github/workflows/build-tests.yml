@@ -2,11 +2,9 @@ name: All-Platforms Builds
 
 on:
   push:
-    branches: [ master ]
-    paths: [ !docs/** ]
+    paths-ignore: [ 'docs/**' ]
   pull_request:
-    branches: [ master ]
-    paths: [ !docs/** ]
+    paths-ignore: [ 'docs/**' ]
 
 jobs:
   build-all-platforms:
