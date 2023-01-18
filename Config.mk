@@ -27,6 +27,6 @@ CLOCK_TICK_MS = 1
 
 # ---- X86_64 Options ----
 # Use debugcon (port 0xE9) as a serial driver and early log output. Only enable this for virtual machines.
-X86_64_ENABLE_DEBUGCON_E9 = no
+X86_64_ENABLE_DEBUGCON_E9 = yes
 
 # ---- Riscv 64 Options ----

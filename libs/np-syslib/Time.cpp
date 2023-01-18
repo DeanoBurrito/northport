@@ -14,7 +14,7 @@ namespace sl
         return time;
     }
     
-    ScaledTime ScaledTime::ToScale(TimeScale newScale)
+    ScaledTime ScaledTime::ToScale(TimeScale newScale) const
     {
         const size_t ratio = (size_t)newScale / (size_t)scale;
         return { newScale, units * ratio };
