@@ -54,6 +54,7 @@ namespace Npk
         static LocalApic& Local();
 
         void Init();
+        size_t MaxTimerNanos();
 
         bool CalibrateTimer();
         void SetTimer(bool tsc, size_t nanos, size_t vector);

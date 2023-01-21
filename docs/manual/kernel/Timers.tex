@@ -10,7 +10,7 @@ Northport has very simple timing requirements, this was done with the intent of 
 A polling timer only needs to provide a software readable counter. The kernel assumes values returned from the counter increment as time passes, regardless of what the underlying timer does. If the timer counts down, you can return the inverted value (\verb|maxCount - currentCount|). The x86 PIT is one such example, which counts down: and when used for the system polling timer the returned value is inverted so the system sees an incrementing value.
 
 \paragraph{Interrupt Timers}
-Interrupt timers require the ability to set a deadline in the future, and generate an interrupt whenthe deadline is passed. Deadlines are often within the 1-1000ms range, but are not guarenteed to be. If a timer does not support the requested precision it should get as close as it can. Interrupt timers may also be referred to as \textit{sys timers} in the source code.
+Interrupt timers require the ability to set a deadline in the future, and generate an interrupt whenthe deadline is passed. Deadlines are often within the 1-1000ms range, but the kernel can take advantage of hardware that supports longer expiry times. Interrupt timers may also be referred to as \textit{sys timers} in the source code (the original term used).
 
 The kernel doesn't interact with the various timers directly, instead it uses the functions defined in \verb|arch/Timers.h| to interface with platform specific code that manages the underlying hardware. Anything beyond the functions in that header are considered implementation details of the platform. This includes calibrating any timers that might require it.
 
@@ -20,6 +20,9 @@ The clock is the main timing interface for the kernel. It works by keeping a lis
 It's important to note that the callback handler runs inside the interrupt handler. Recommended practice is to queue a DPC to perform as much of the work as possible rather than running inside the interrupt handler.
 
 In a multicore system the clock is managed by whichever core manages the hardware timers. This is usually the first core to boot (the BSP). The clock ensures that callbacks always run on the core they were queued from, regardless of which core manages the clock. For cores other than the BSP the callback is executed via the IPI mailbox mechanism.
+
+\paragraph{Infinite Expiry Times}
+If a clock event is set to expire at a time too far away for the hardware clock to encode, \textit{virtual clock events} are inserted at the clock's longest expiry time until the original event expiry time is reachable. This trades total clock duration for a little bit of memory, but allows for near-infinite expiry times (memory permitting).
 
 \subsection{Platform Specific Details}
 

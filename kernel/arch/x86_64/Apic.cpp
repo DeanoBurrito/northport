@@ -103,6 +103,13 @@ namespace Npk
         WriteReg(LApicReg::SpuriousVector, 0xFF | (1 << 8));
     }
 
+    size_t LocalApic::MaxTimerNanos()
+    {
+        if (ticksPerMs < 1'000'000)
+            return -1ul;
+        ASSERT_UNREACHABLE();
+    }
+
     bool LocalApic::CalibrateTimer()
     {
         if (!CpuHasFeature(CpuFeature::AlwaysRunningApic))
@@ -114,7 +121,6 @@ namespace Npk
 
         constexpr size_t CalibRuns = 8;
         constexpr size_t CalibMillis = 10;
-
         long calibTimes[CalibRuns];
 
         for (size_t i = 0; i < CalibRuns; i++)
@@ -130,7 +136,7 @@ namespace Npk
         WriteReg(LApicReg::LvtTimer, 1 << 16);
         WriteReg(LApicReg::TimerInitCount, 0);
 
-        auto finalTime = CoalesceTimerRuns(calibTimes, CalibRuns, 8);
+        auto finalTime = CoalesceTimerRuns(calibTimes, CalibRuns, 3);
         if (!finalTime)
             return false;
         
@@ -169,7 +175,7 @@ namespace Npk
     {
         //ensure any previous IPIs have finished sending first (jic we pump this)
         while (ReadReg(LApicReg::Icr0) & (1 << 12))
-        {}
+            HintSpinloop();
 
         if (inX2mode)
             WriteMsr(0x830, (dest << 32) | IntVectorIpi);

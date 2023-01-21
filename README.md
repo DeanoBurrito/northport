@@ -4,10 +4,9 @@
 
 Northport is a monolithic kernel, with some supporting libraries and utilities. The kernel is booted via the limine protocol, and currently has support for x86_64 and riscv64 systems.
 
-Instructions for building it yourself are [available here](docs/Building.md), and a more in-depth manual is available via github releases or by cloning this repository and running `make docs` (xelatex is required).
+Instructions for building it yourself are [available here](docs/Building.md), and a more in-depth manual is available via github releases or by cloning this repository and running `make docs`.
 
 A brief summary of the current goals and features are listed below, check [the roadmap](docs/Roadmap.md) for a more granular view.
-
 
 ## Project Goals
 1) To build a modern and relatively complete kernel: driver infrastructure, graphics/audio/network stacks, VFS, and smp-aware scheduler.

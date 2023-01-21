@@ -5,48 +5,6 @@
 
 namespace Npk
 {
-    sl::Opt<size_t> TryCalibrateTimer(const char* timerName, void (*Start)(), void (*Stop)(), size_t (*ReadTicks)())
-    {
-        ASSERT(ReadTicks != nullptr, "ReadTicks() is required");
-        
-        constexpr size_t CalibrationRuns = 5;
-        constexpr size_t RequiredRuns = 3;
-        constexpr size_t CalibrationMillis = 10;
-        constexpr size_t MaxCalibrationAttempts = 3;
-
-        long calibTimes[CalibrationRuns];
-        
-        if (Stop != nullptr)
-            Stop();
-        for (size_t attempt = 0; attempt < MaxCalibrationAttempts; attempt++)
-        {
-            for (size_t i = 0; i < CalibrationRuns; i++)
-            {
-                if (Start != nullptr) 
-                    Start();
-                size_t begin = ReadTicks();
-                PolledSleep(CalibrationMillis * 1'000'000);
-                size_t end = ReadTicks();
-                if (Stop != nullptr)
-                    Stop();
-
-                calibTimes[i] = (long)((end - begin) / CalibrationMillis);
-            }
-
-            auto maybeCalib = CoalesceTimerRuns(calibTimes, CalibrationRuns, CalibrationRuns - RequiredRuns);
-            if (maybeCalib)
-            {
-                sl::UnitConversion freqs = sl::ConvertUnits(*maybeCalib * 1000);
-                Log("Calibrated %s for %lu ticks/ms (%lu.%lu%shz).", LogLevel::Info, timerName,
-                    *maybeCalib, freqs.major, freqs.minor, freqs.prefix);
-                return *maybeCalib;
-            }
-        }
-
-        Log("Failed to calibrate %s, bad calibration data.", LogLevel::Warning, timerName);
-        return {};
-    }
-
     sl::Opt<size_t> CoalesceTimerRuns(long* timerRuns, size_t runCount, size_t allowedFails)
     {
         long mean = 0;

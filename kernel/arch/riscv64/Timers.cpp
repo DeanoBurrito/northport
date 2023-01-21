@@ -1,4 +1,5 @@
 #include <arch/Timers.h>
+#include <arch/Platform.h>
 #include <arch/riscv64/Sbi.h>
 #include <config/DeviceTree.h>
 #include <debug/Log.h>
@@ -32,18 +33,25 @@ namespace Npk
     void (*timerCallback)(size_t);
     void SetSysTimer(size_t nanoseconds, void (*callback)(size_t))
     {
-        const size_t triggerTime = RdTime() + (nanoseconds / timerPeriod.ToScale(sl::TimeScale::Nanos).units);
+        const size_t triggerTime = RdTime() + (nanoseconds / timerPeriod.ToNanos());
         if (callback != nullptr)
             timerCallback = callback;
         
         SbiSetTimer(triggerTime);
     }
 
+    size_t SysTimerMaxNanos()
+    {
+        if (timerPeriod.ToNanos() > 0)
+            return (size_t)-1ul; //more nanoseconds than we can count.
+        ASSERT_UNREACHABLE();
+    }
+
     void PolledSleep(size_t nanoseconds)
     {
-        const uint64_t target = RdTime() + (nanoseconds / timerPeriod.ToScale(sl::TimeScale::Nanos).units);
+        const uint64_t target = RdTime() + (nanoseconds / timerPeriod.ToNanos());
         while (RdTime() < target)
-        {}
+            HintSpinloop();
     }
 
     size_t PollTimer()
@@ -53,7 +61,7 @@ namespace Npk
 
     size_t PolledTicksToNanos(size_t ticks)
     {
-        return ticks * timerPeriod.ToScale(sl::TimeScale::Nanos).units;
+        return ticks * timerPeriod.ToNanos();
     }
     
     const char* SysTimerName()

@@ -88,8 +88,23 @@ dispatch_event:
             }
 
             it->nanosRemaining -= nanoseconds;
+
+            //TODO: what if we insert before the first event (which is timer expiry), 
+            //we should reset the timer expiry.
             events.Insert(it, { nanoseconds, payloadData, callback, periodic ? period : 0, core });
             return;
+        }
+
+        /* Handling an unlikely scenario: if a clock event is set *far* into the future,
+        beyond what the hardware timer can handle in one cycle, we add events just
+        below the limit of the timer. This trades clock counter length for memory usage,
+        and effectively allows for infinite expiry times (memory permitting).
+        */
+        const size_t maxTimerNanos = SysTimerMaxNanos();
+        while (nanoseconds >= maxTimerNanos)
+        {
+            events.EmplaceBack(maxTimerNanos, nullptr, nullptr, 0ul, 0ul);
+            nanoseconds -= maxTimerNanos;
         }
 
         events.EmplaceBack(nanoseconds, payloadData, callback, periodic ? period : 0, core);

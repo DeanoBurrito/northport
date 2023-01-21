@@ -24,6 +24,7 @@
     - [x] Core clock, software timers.
         - [x] Configurable resolution.
         - [x] Tickless.
+        - [x] Infinite Expiry
     - [x] IPI mailbox.
     - [x] Scheduler.
         - [x] SMP-support.

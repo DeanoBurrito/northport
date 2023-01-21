@@ -64,7 +64,7 @@ namespace Npk
         Out8(PortPitData, 0xFF);
 
         while (PitRead() > target)
-        {}
+            HintSpinloop();
     }
 
     void HpetSleep(size_t nanos)
@@ -75,7 +75,7 @@ namespace Npk
         const size_t target = counter.Read<uint64_t>() + ((nanos * FemtosPerNano) / hpetPeriod);
 
         while (counter.Read<uint64_t>() < target)
-            asm("pause");
+            HintSpinloop();
     }
 
     void InitTsc()
@@ -85,12 +85,25 @@ namespace Npk
         if (!CpuHasFeature(CpuFeature::InvariantTsc))
             Log("Invariant TSC not supported on this cpu.", LogLevel::Warning);
         
-        auto maybeTscCalib = TryCalibrateTimer(TimerStrs[(size_t)TimerName::Tsc], nullptr, nullptr, TscRead);
-        if (!maybeTscCalib)
+        constexpr size_t CalibRuns = 8;
+        constexpr size_t CalibMillis = 10;
+        long calibTimes[CalibRuns];
+
+        for (size_t i = 0; i < CalibRuns; i++)
+        {
+            const size_t begin = TscRead();
+            PolledSleep(CalibMillis * 1'000'000);
+            const size_t end = TscRead();
+
+            calibTimes[i] = (long)((end - begin) / CalibMillis);
+        }
+
+        auto finalTime = CoalesceTimerRuns(calibTimes, CalibRuns, 3);
+        if (!finalTime)
             return;
         
         selectedPollTimer = TimerName::Tsc;
-        tscTicksPerMs = *maybeTscCalib;
+        tscTicksPerMs = *finalTime;
 
         if (CpuHasFeature(CpuFeature::TscDeadline))
             selectedSysTimer = TimerName::Tsc;
@@ -213,6 +226,34 @@ namespace Npk
         
         default:
             ASSERT_UNREACHABLE();
+        }
+    }
+
+    size_t SysTimerMaxNanos()
+    {
+        return -1ul;
+        switch (selectedSysTimer)
+        {
+        case TimerName::Pit:
+            return PitPeriod * 0xFFFF;
+        case TimerName::Hpet:
+        {
+            //HPET period should always be >= 1ns, we assert this at init
+            const bool is64Bit = hpetRegs->Offset(HpetRegCaps).Read<uint64_t>() & (1 << 13);
+            if (is64Bit)
+                return (size_t)-1ul;
+            
+            //32bit counter, how much time can it encode?
+            return hpetPeriod * 0xFFFF'FFFF / 1000;
+        }
+        case TimerName::Lapic:
+            return LocalApic::Local().MaxTimerNanos();
+        case TimerName::Tsc:
+        {
+            if (tscTicksPerMs < 1'000'000)
+                return -1ul;
+            ASSERT_UNREACHABLE(); //TODO: maths, ugh
+        }
         }
     }
 
