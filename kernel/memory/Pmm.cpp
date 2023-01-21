@@ -66,7 +66,7 @@ namespace Npk::Memory
             prev->next = latest;
         }
 
-        __atomic_add_fetch(&zone.total, latest->totalPages, __ATOMIC_RELAXED);
+        zone.total.Add(latest->totalPages, sl::Relaxed);
 
         auto conversion = sl::ConvertUnits(latest->totalPages * PageSize, sl::UnitBase::Binary);
         Log("PMRegion inserted: base=0x%08lx, pages=%lu (%lu.%lu%sB).", LogLevel::Info, latest->base, latest->totalPages,
@@ -222,7 +222,7 @@ namespace Npk::Memory
             where = RegionAlloc(*region, count);
             if (where != 0)
             {
-                __atomic_add_fetch(&zones[0].totalUsed, count, __ATOMIC_RELAXED);
+                zones[0].totalUsed.Add(count, sl::Relaxed);
                 return where;
             }
             region = region->next;
@@ -243,7 +243,7 @@ namespace Npk::Memory
             where = RegionAlloc(*region, count);
             if (where != 0)
             {
-                __atomic_add_fetch(&zones[1].totalUsed, count, __ATOMIC_RELAXED);
+                zones[1].totalUsed.Add(count, sl::Relaxed);
                 return where;
             }
             region = region->next;
@@ -283,7 +283,7 @@ namespace Npk::Memory
                     Log("Double free attempted in PMM at address 0x%016lx.", LogLevel::Error, base + (i + index) * PageSize);
             }
             
-            __atomic_sub_fetch(&zone.totalUsed, count, __ATOMIC_RELAXED);
+            zone.totalUsed.Sub(count, sl::Relaxed);
             return;
         }
 

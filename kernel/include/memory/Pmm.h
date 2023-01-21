@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arch/Platform.h>
+#include <Atomic.h>
 
 namespace Npk::Memory
 {
@@ -25,8 +26,8 @@ namespace Npk::Memory
     {
         PmRegion* head;
         PmRegion* tail;
-        size_t total;
-        size_t totalUsed;
+        sl::Atomic<size_t> total;
+        sl::Atomic<size_t> totalUsed;
 
         constexpr PmZone() : head(nullptr), tail(nullptr), total(0), totalUsed(0)
         {}

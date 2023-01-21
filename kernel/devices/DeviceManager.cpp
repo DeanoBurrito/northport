@@ -5,7 +5,7 @@ namespace Npk::Devices
 {
     constexpr const char* DevTypeStrs[] = 
     {
-        "Keyboard", "Pointer", "Framebuffer"
+        "Keyboard", "Pointer", "Framebuffer", "Serial"
     };
     
     DeviceManager globalDeviceManager;
@@ -14,7 +14,7 @@ namespace Npk::Devices
 
     void DeviceManager::Init()
     {
-        __atomic_store_n(&nextId, 1, __ATOMIC_RELAXED);
+        nextId.Store(1);
         Log("Device manager initialized.", LogLevel::Info);
     }
 
@@ -23,8 +23,7 @@ namespace Npk::Devices
         if (instance == nullptr)
             return {};
         
-        const size_t id = __atomic_fetch_add(&nextId, 1, __ATOMIC_RELAXED);
-        instance->id = id;
+        instance->id = nextId++; //fetch-add
 
         VALIDATE(instance->status == DeviceStatus::Offline, {}, "Device must be offline.")
         if (!delayInit)
@@ -36,9 +35,9 @@ namespace Npk::Devices
         sl::ScopedLock scopeLock(listLock);
         devices.PushBack(instance);
 
-        Log("Device attached: %lu, type=%lu (%s)", LogLevel::Verbose, id, 
+        Log("Device attached: %lu, type=%lu (%s)", LogLevel::Verbose, instance->id, 
             (size_t)instance->Type(), DevTypeStrs[(size_t)instance->Type()]);
-        return id;
+        return instance->id;
     }
 
     sl::Opt<GenericDevice*> DeviceManager::DetachDevice(size_t id, bool force)

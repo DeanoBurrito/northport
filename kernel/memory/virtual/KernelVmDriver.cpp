@@ -33,7 +33,7 @@ namespace Npk::Memory::Virtual
         MapSection((uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_SIZE, PageFlags::Write | PageFlags::Global);
 
         //update kernel tables generation
-        __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
+        kernelTablesGen.Add(1, sl::Release);
     }
 
     VmDriverType KernelVmDriver::Type()
@@ -56,7 +56,7 @@ namespace Npk::Memory::Virtual
             MapMemory(context.ptRoot, context.range.base + i, attachArg + i, flags | PageFlags::Global, PageSizes::_4K, false);
         
         if (context.ptRoot == kernelMasterTables)
-            __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
+            kernelTablesGen.Add(1, sl::Release);
 
         return 0;
     }
@@ -78,7 +78,7 @@ namespace Npk::Memory::Virtual
         }
         
         if (context.ptRoot == kernelMasterTables)
-            __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
+            kernelTablesGen.Add(1, sl::Release);
 
         return true;
     }

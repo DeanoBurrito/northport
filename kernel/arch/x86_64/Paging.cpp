@@ -22,7 +22,7 @@ namespace Npk
     bool pgeSupported;
 
     void* kernelMasterTables;
-    uint32_t kernelTablesGen;
+    sl::Atomic<uint32_t> kernelTablesGen;
 
     void PagingSetup()
     {
@@ -53,7 +53,7 @@ namespace Npk
         void* ptRoot = reinterpret_cast<void*>(PMM::Global().Alloc());
         sl::memset(AddHhdm(ptRoot), 0, PageSize);
 
-        *gen = __atomic_load_n(&kernelTablesGen, __ATOMIC_ACQUIRE);
+        *gen = kernelTablesGen;
         SyncKernelTables(ptRoot);
         return ptRoot;
     }

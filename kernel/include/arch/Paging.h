@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <Optional.h>
 #include <CppUtils.h>
+#include <Atomic.h>
 
 namespace Npk
 {
@@ -55,7 +56,7 @@ namespace Npk
     { return src = (PageFlags)((uintptr_t)src | (uintptr_t)other); }
 
     extern void* kernelMasterTables;
-    extern uint32_t kernelTablesGen;
+    extern sl::Atomic<uint32_t> kernelTablesGen;
 
     void PagingSetup();
     void* InitPageTables(uint32_t* gen);

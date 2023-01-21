@@ -46,7 +46,7 @@ namespace Npk::Memory::Virtual
             MapMemory(context.ptRoot, pageAddr + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.range.flags), PageSizes::_4K, false);
         
         if (context.ptRoot == kernelMasterTables)
-            __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
+            kernelTablesGen.Add(1, sl::Release);
         
         return EventResult::Continue;
     }
@@ -64,7 +64,7 @@ namespace Npk::Memory::Virtual
             MapMemory(context.ptRoot, context.range.base + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.range.flags), PageSizes::_4K, false);
         
         if (context.ptRoot == kernelMasterTables)
-            __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
+            kernelTablesGen.Add(1, sl::Release);
         return attachArg;
     }
 

@@ -6,6 +6,7 @@
 #include <interrupts/Ipi.h>
 #include <memory/Heap.h>
 #include <Locks.h>
+#include <Atomic.h>
 
 namespace Npk::Tasking
 {
@@ -25,7 +26,7 @@ namespace Npk::Tasking
         {}
     };
 
-    volatile size_t uptimeMillis = 0;
+    volatile sl::Atomic<size_t> uptimeMillis;
     Npk::InterruptLock eventsLock;
     sl::LinkedList<ClockEvent, Memory::CachingSlab<32>> events;
 
@@ -61,7 +62,7 @@ dispatch_event:
 
     void UptimeEventCallback(void*)
     {
-        __atomic_add_fetch(&uptimeMillis, ClockTickMs, __ATOMIC_RELAXED);
+        uptimeMillis.Add(1, sl::Relaxed);
     }
 
     void StartSystemClock()

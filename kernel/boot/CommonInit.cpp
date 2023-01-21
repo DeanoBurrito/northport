@@ -21,7 +21,7 @@ namespace Npk
 {
     uintptr_t hhdmBase;
     uintptr_t hhdmLength;
-    size_t bootDataReferences;
+    sl::Atomic<size_t> bootloaderRefs;
     
     void InitEarlyPlatform()
     {
@@ -43,9 +43,9 @@ namespace Npk
             Log("Loaded by: %s v%s", LogLevel::Info, Boot::bootloaderInfoRequest.response->name, Boot::bootloaderInfoRequest.response->version);
 
         if (Boot::smpRequest.response == nullptr)
-            bootDataReferences = 1;
+            bootloaderRefs = 1;
         else
-            bootDataReferences = Boot::smpRequest.response->cpu_count;
+            bootloaderRefs = Boot::smpRequest.response->cpu_count;
     }
 
     void InitMemory()
@@ -185,19 +185,14 @@ namespace Npk
         Debug::InitCoreLogBuffers();
         Interrupts::InitIpiMailbox();
 
-        const size_t refsLeft = __atomic_sub_fetch(&bootDataReferences, 1, __ATOMIC_RELAXED);
-        if (refsLeft == 0)
-        {
-            DisableInterrupts();
-            
-            //The last core to finish initialization queues the reclaim thread on itself. Since all cores
-            //are using a stack within reclaimable memory we have to do this in a threaded context.
-            Tasking::Scheduler::Global().RegisterCore(false);
-            Tasking::Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr, nullptr, CoreLocal().id)->Start();
-            Tasking::Scheduler::Global().Yield();
-        }
+        using namespace Tasking;
+        if (--bootloaderRefs > 0)
+            Scheduler::Global().RegisterCore();
         else
-            Tasking::Scheduler::Global().RegisterCore(true);
+        {
+            auto reclaimThread = Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr);
+            Scheduler::Global().RegisterCore(reclaimThread);
+        }
         ASSERT_UNREACHABLE();
     }
 }

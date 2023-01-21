@@ -5,6 +5,7 @@
 #include <containers/Vector.h>
 #include <devices/GenericDevices.h>
 #include <Optional.h>
+#include <Atomic.h>
 
 namespace Npk::Devices
 {
@@ -12,8 +13,8 @@ namespace Npk::Devices
     {
     private:
         sl::TicketLock listLock;
-        sl::LinkedList<GenericDevice*> devices;
-        size_t nextId; //TODO: proper id allocator
+        sl::LinkedList<GenericDevice*> devices;\
+        sl::Atomic<size_t> nextId;
 
     public:
         static DeviceManager& Global();

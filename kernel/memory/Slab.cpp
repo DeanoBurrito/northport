@@ -25,7 +25,7 @@ namespace Npk::Memory
             //TODO: check we dont overflow our reserved space above the hhdm, and handle that.
             for (size_t i = 0; i < totalSize; i += PageSize)
                 MapMemory(kernelMasterTables, base + i, PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
-            __atomic_add_fetch(&kernelTablesGen, 1, __ATOMIC_RELEASE);
+            kernelTablesGen.Add(1, sl::Release);
         }
         else
         {
