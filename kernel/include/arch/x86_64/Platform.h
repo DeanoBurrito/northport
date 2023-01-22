@@ -145,7 +145,7 @@ namespace Npk
     inline uint8_t In8(uint16_t port)
     { 
         uint8_t value;
-        asm("inb %1, %0" : "=a"(value) : "Nd"(port) : "memory");
+        asm volatile("inb %1, %0" : "=a"(value) : "Nd"(port) : "memory");
         return value;
     }
 
@@ -153,7 +153,7 @@ namespace Npk
     inline uint16_t In16(uint16_t port)
     {
         uint16_t value;
-        asm("inw %1, %0" : "=a"(value) : "Nd"(port) : "memory");
+        asm volatile("inw %1, %0" : "=a"(value) : "Nd"(port) : "memory");
         return value;
     }
 
@@ -161,7 +161,7 @@ namespace Npk
     inline uint32_t In32(uint16_t port)
     {
         uint32_t value;
-        asm("inl %1, %0" : "=a"(value) : "Nd"(port) : "memory");
+        asm volatile("inl %1, %0" : "=a"(value) : "Nd"(port) : "memory");
         return value;
     }
 
@@ -237,7 +237,7 @@ namespace Npk
     inline uint64_t ReadMsr(uint32_t addr)
     {
         uint32_t high, low;
-        asm("rdmsr" : "=a"(low), "=d"(high) : "c"(addr) : "memory");
+        asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(addr) : "memory");
         return ((uint64_t)high << 32) | low;
     }
 

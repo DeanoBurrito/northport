@@ -20,7 +20,7 @@ namespace Npk::Tasking
         Thread* queue; //this is an intrusive list, see the thread.next field.
         Thread* queueTail;
         Thread* idleThread;
-        size_t threadCount;
+        sl::Atomic<size_t> threadCount;
 
         size_t coreId;
         Npk::InterruptLock lock;
@@ -57,14 +57,14 @@ namespace Npk::Tasking
         static Scheduler& Global();
 
         void Init();
-        void RegisterCore(bool yieldNow);
+        void RegisterCore(Thread* initThread = nullptr);
 
         Process* CreateProcess();
         Thread* CreateThread(ThreadMain entry, void* arg, Process* parent = nullptr, size_t coreAffinity = NoAffinity);
         void DestroyProcess(size_t id);
         void DestroyThread(size_t id, size_t errorCode);
         void EnqueueThread(size_t id);
-        //TODO: DequeueThread(), DestroyProcess()
+        // void DequeueThread(size_t id);
 
         void QueueDpc(ThreadMain function, void* arg = nullptr);
         void DpcExit();

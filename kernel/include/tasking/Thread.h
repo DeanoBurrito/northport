@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <arch/Platform.h>
+#include <Atomic.h>
 
 namespace Npk::Tasking
 {
@@ -32,8 +33,10 @@ namespace Npk::Tasking
         Process* parent;
         size_t id;
         size_t coreAffinity;
+        sl::TicketLock lock;
 
         Thread* next;
+        sl::Atomic<size_t> activeCore;
 
     public:
         static Thread* Create(void (*entry)(void*), void* arg, Process* parent = nullptr);

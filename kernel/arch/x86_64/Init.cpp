@@ -21,8 +21,9 @@ namespace Npk
         LoadIdt();
 
         uint64_t cr0 = ReadCr0();
-        cr0 |= 1 << 16;
-        WriteCr0(cr0); //set write-protect bit
+        cr0 |= 1 << 16; //set write-protect bit
+        cr0 &= ~0x6000'0000; //ensure CD/NW are cleared, enabling caching for this core.
+        WriteCr0(cr0);
 
         uint64_t cr4 = ReadCr4();
         if (CpuHasFeature(CpuFeature::Smap))

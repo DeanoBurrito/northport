@@ -36,7 +36,7 @@ namespace Npk::Drivers
         Log("Bochs VGA init done. Framebuffer device id=%lu", LogLevel::Debug, *maybeDeviceId);
 
         while (true)
-        {}
+            HintSpinloop();
     }
 
     void BochsFramebuffer::WriteVgaReg(uint16_t reg, uint16_t data) const

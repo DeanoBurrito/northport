@@ -1,5 +1,6 @@
 #include <tasking/Scheduler.h>
 #include <boot/CommonInit.h>
+#include <interrupts/Ipi.h>
 #include <tasking/Process.h>
 #include <tasking/ServiceThreads.h>
 #include <tasking/Clock.h>
@@ -45,7 +46,7 @@ namespace Npk::Tasking
         Scheduler::Global().DpcExit();
     }
 
-    void TimerCallback(void*)
+    void QueueRescheduleDpc(void*)
     {
         Scheduler::Global().QueueDpc(RescheduleDpc, nullptr);
     }
@@ -56,7 +57,7 @@ namespace Npk::Tasking
         ASSERT_UNREACHABLE();
     }
 
-    void Scheduler::RegisterCore(bool yieldNow)
+    void Scheduler::RegisterCore(Thread* initThread)
     {
         SchedulerCore* core = new SchedulerCore();
         core->coreId = CoreLocal().id;
@@ -104,10 +105,15 @@ namespace Npk::Tasking
 
         if (__atomic_add_fetch(&activeCores, 1, __ATOMIC_RELAXED) == 1)
             LateInit();
+        
+        if (initThread != nullptr)
+        {
+            initThread->coreAffinity = CoreLocal().id;
+            initThread->Start();
+        }
 
-        QueueClockEvent(10'000'000, nullptr, TimerCallback, true);
-        if (yieldNow)
-            RunNextFrame();
+        QueueClockEvent(10'000'000, nullptr, QueueRescheduleDpc, true);
+        Yield();
     }
 
     Process* Scheduler::CreateProcess()
@@ -129,27 +135,36 @@ namespace Npk::Tasking
             parent = CreateProcess();
         
         const size_t tid = __atomic_fetch_add(&nextTid, 1, __ATOMIC_RELAXED);
+        const bool isKernelThread = true; //TODO: userspace
 
         threadsLock.Lock();
         Thread* thread = threadLookup.EmplaceAt(tid, new Thread());
         thread->id = tid;
         threadsLock.Unlock();
 
-        auto maybeStack = parent->vmm.Alloc(DefaultStackSize, 0, VmFlags::Anon | VmFlags::Write);
-        // auto maybeStack = VMM::Kernel().Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write); //TODO: kernel processes (why does using the kernel vmm fail here?).
-        ASSERT(maybeStack, "No thread stack"); //TODO: critical junction here, do we fail or stall until memory is available?
+        VMM& vmm = (isKernelThread ? VMM::Kernel() : thread->parent->vmm);
+        auto maybeStack = vmm.Alloc(DefaultStackSize, isKernelThread ? 1 : 0, VmFlags::Anon | VmFlags::Write);
+        ASSERT(maybeStack, "No thread stack");
+        
+        sl::ScopedLock threadLock(thread->lock);
         thread->stack.base = maybeStack->base;
         thread->stack.length = maybeStack->length;
         thread->frame = reinterpret_cast<TrapFrame*>((thread->stack.base + thread->stack.length) - sizeof(TrapFrame));
 
-        //populate the frame in our own memory space, then copy it across.
-        //this is arch-specific, InitTrapFrame is defined in arch/xyz/Platform.h
-        TrapFrame frame;
-        InitTrapFrame(&frame, thread->stack.base + thread->stack.length, (uintptr_t)entry, arg, false);
-        parent->vmm.CopyIn((void*)thread->frame, &frame, sizeof(TrapFrame));
+        if (isKernelThread)
+            InitTrapFrame(thread->frame, thread->stack.base + thread->stack.length, (uintptr_t)entry, arg, false);
+        else
+        {
+            // populate the frame in our own memory space, then copy it across.
+            // this is arch-specific, InitTrapFrame is defined in arch/xyz/Platform.h
+            TrapFrame frame;
+            InitTrapFrame(&frame, thread->stack.base + thread->stack.length, (uintptr_t)entry, arg, false);
+            parent->vmm.CopyIn((void*)thread->frame, &frame, sizeof(TrapFrame));
+        }
 
         thread->parent = parent;
         thread->coreAffinity = coreAffinity;
+        thread->activeCore = NoAffinity;
         thread->state = ThreadState::Ready;
 
         return thread;
@@ -180,15 +195,19 @@ namespace Npk::Tasking
         ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
         Log("Thread %lu exited with code %lu", LogLevel::Debug, id, errorCode);
 
-        InterruptGuard guard;
+        InterruptGuard guard; //TODO: should be SchedulerLock, rather interrupts
+        // DequeueThread(id);
+
         threadsLock.Lock();
         Thread* t = threadLookup[id];
         threadLookup[id] = nullptr;
-        t->state = ThreadState::Dead;
         //TODO: free tid (implement IdA)
         threadsLock.Unlock();
 
-        //TODO: remove thread from runqueues if present.
+        t->lock.Lock();
+        t->state = ThreadState::Dead;
+        t->lock.Unlock();
+
         //TODO: if we're the last thread in a process, remove the whole process as well.
 
         schedCleanupData.lock.Lock();
@@ -205,6 +224,7 @@ namespace Npk::Tasking
         ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
 
         Thread* t = threadLookup[id];
+        sl::ScopedLock threadLock(t->lock);
         ASSERT(t->state == ThreadState::Ready, "Thread is not ready.");
         t->state = ThreadState::Runnable;
 
@@ -231,14 +251,10 @@ namespace Npk::Tasking
             for (auto it = cores.Begin(); it != cores.End(); ++it)
             {
                 SchedulerCore* core = *it;
-                if (core == nullptr)
+                if (core->threadCount >= smallestCount)
                     continue;
                 
-                const size_t threadCount = __atomic_load_n(&core->threadCount, __ATOMIC_RELAXED);
-                if (threadCount >= smallestCount)
-                    continue;
-                
-                smallestCount = threadCount;
+                smallestCount = core->threadCount;
                 selectedCore = core;
             }
         }
@@ -246,6 +262,7 @@ namespace Npk::Tasking
 
         sl::ScopedLock scopeLock(selectedCore->lock);
         t->next = nullptr;
+        t->activeCore = selectedCore->coreId;
         //single list append
         if (selectedCore->queueTail == nullptr)
             selectedCore->queue = t;
@@ -253,7 +270,7 @@ namespace Npk::Tasking
             selectedCore->queueTail->next = t;
         selectedCore->queueTail = t;
         
-        __atomic_add_fetch(&selectedCore->threadCount, 1, __ATOMIC_RELAXED);
+        selectedCore->threadCount.Add(1, sl::Relaxed);
     }
 
     void DpcQueue(void (*function)(void* arg), void* arg)
@@ -291,7 +308,7 @@ namespace Npk::Tasking
 
     void Scheduler::Reschedule()
     {
-        ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Run level too low.");
+        ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Bad run level");
         
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
         sl::ScopedLock coreLock(core.lock);
@@ -309,7 +326,10 @@ namespace Npk::Tasking
             core.queueTail = current;
         }
         else if (current != nullptr && current->id != 1)
-            __atomic_sub_fetch(&core.threadCount, 1, __ATOMIC_RELAXED);
+        {
+            core.threadCount--;
+            current->activeCore = 0;
+        }
 
         Thread* next = core.queue;
         if (next == nullptr && cores.Size() > 1)
@@ -341,6 +361,8 @@ namespace Npk::Tasking
                     target.queueTail = nullptr;
                 target.queue = next->next;
 
+                next->activeCore = CoreLocal().id;
+                target.threadCount--;
             }
         }
         else if (next == nullptr && cores.Size() == 1)

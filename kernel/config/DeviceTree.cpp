@@ -412,7 +412,7 @@ namespace Npk::Config
         size_t currIndex = 0;
         for (size_t scan = (prop.ptr + 3) * 4; scan < (prop.ptr + 3) * 4 + BS(property->length);)
         {
-            if (charCells + scan == 0)
+            if (*(charCells + scan) == 0)
                 break;
 
             if (currIndex == index)
