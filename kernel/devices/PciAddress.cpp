@@ -89,7 +89,7 @@ namespace Npk::Devices
 
             if (bar.is64Bit)
             {
-                bar.address = (uint64_t)ReadAt(offset + 4) << 32;
+                bar.address |= (uint64_t)ReadAt(offset + 4) << 32;
 
                 if (!noSize)
                 {

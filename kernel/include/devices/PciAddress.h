@@ -74,6 +74,10 @@ namespace Npk::Devices
         { return BitReadWrite(PciReg::CmdStatus, 10, set); }
 
         [[gnu::always_inline]]
+        inline bool MemorySpaceEnable(sl::Opt<bool> set = {}) const
+        { return BitReadWrite(PciReg::CmdStatus, 1, set); }
+
+        [[gnu::always_inline]]
         inline bool InterruptPending() const
         { return BitReadWrite(PciReg::CmdStatus, 19, {}); }
 

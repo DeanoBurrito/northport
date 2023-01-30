@@ -13,7 +13,7 @@ namespace Npk::Devices
     {
     private:
         sl::TicketLock listLock;
-        sl::LinkedList<GenericDevice*> devices;\
+        sl::LinkedList<GenericDevice*> devices;
         sl::Atomic<size_t> nextId;
 
     public:
