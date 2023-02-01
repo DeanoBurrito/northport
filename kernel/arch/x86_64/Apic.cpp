@@ -72,7 +72,7 @@ namespace Npk
         }
 
         auto maybeMadt = Config::FindAcpiTable(Config::SigMadt);
-        Config::Madt* madt = static_cast<Config::Madt*>(*maybeMadt);
+        const Config::Madt* madt = static_cast<const Config::Madt*>(*maybeMadt);
         const bool picsPresent = maybeMadt.HasValue() ? true : (uint32_t)madt->flags & (uint32_t)Config::MadtFlags::PcAtCompat;
         if (IsBsp() && picsPresent)
         {
@@ -231,7 +231,7 @@ namespace Npk
     {
         auto maybeMadt = Config::FindAcpiTable(Config::SigMadt);
         ASSERT(maybeMadt, "MADT not found: cannot initialize IO APIC.");
-        Config::Madt* madt = static_cast<Config::Madt*>(*maybeMadt);
+        const Config::Madt* madt = static_cast<const Config::Madt*>(*maybeMadt);
 
         sl::NativePtr scan = madt->sources;
         while (scan.raw < (uintptr_t)madt + madt->length)

@@ -56,7 +56,7 @@ namespace Npk::Devices
         
         if (auto maybeMcfg = Config::FindAcpiTable(Config::SigMcfg); maybeMcfg.HasValue())
         {
-            Config::Mcfg* mcfg = static_cast<Config::Mcfg*>(*maybeMcfg);
+            const Config::Mcfg* mcfg = static_cast<const Config::Mcfg*>(*maybeMcfg);
 
             //discover and scan all segment groups
             const size_t segmentCount = ((mcfg->length - sizeof(Config::Mcfg)) / sizeof(Config::McfgSegment));

@@ -14,6 +14,10 @@ namespace sl
         constexpr IntPtr() : raw(0) {}
         constexpr IntPtr(BackingType r) : raw(r) {}
         constexpr IntPtr(void* p) : ptr(p) {}
+        constexpr IntPtr(decltype(nullptr)) : ptr(nullptr) {}
+
+        [[gnu::deprecated("Potentially casting away 'const' from pointed-at value //TODO:")]]
+        constexpr IntPtr(const void* p) : raw((uintptr_t)p) {}
 
         //type safety is thrown to the wind here with reinterpret cast, but we've too cool for that.
         //NOTE: we are not.

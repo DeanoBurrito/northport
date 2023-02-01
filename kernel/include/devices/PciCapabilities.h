@@ -12,6 +12,9 @@ namespace Npk::Devices
     {
         PciAddress base;
         size_t offset;
+
+        constexpr PciCap() : base(0), offset(0)
+        {}
         
         PciCap(PciAddress base, size_t offset) : base(base), offset(offset)
         {}

@@ -1,60 +1,67 @@
 #include <config/AcpiTables.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
-#include <NativePtr.h>
+#include <memory/VmObject.h>
 #include <Memory.h>
+#include <containers/LinkedList.h>
 
 namespace Npk::Config
 {
-    Rsdp* rsdp = nullptr;
-    sl::NativePtr sdtPointers;
-    size_t sdtCount;
-    Sdt* (*GetSdt)(size_t i);
-
-    Sdt* GetSdt32(size_t i)
-    {
-        return AddHhdm(reinterpret_cast<Sdt*>(sdtPointers.As<uint32_t>()[i]));
-    }
-
-    Sdt* GetSdt64(size_t i)
-    {
-        //The SDT header used for acpi tables is 36 bytes long, meaning the xsdt addresses will always be mislaigned by 4 bytes (uint32_t).
-        //While we dont need to do this, a misaligned read is still technically UB, and I'd like to avoid that.
-        uint32_t low = sdtPointers.As<uint32_t>()[i * 2];
-        uint32_t high = sdtPointers.As<uint32_t>()[i * 2 + 1];
-        return AddHhdm(reinterpret_cast<Sdt*>(low | (uint64_t)high));
-    }
+    sl::LinkedList<VmObject> tables;
 
     void SetRsdp(void* providedRsdp)
     {
-        ASSERT(providedRsdp != nullptr, "RSDP was null.");
+        ASSERT(providedRsdp != nullptr, "RSDP is null.");
         
-        rsdp = static_cast<Rsdp*>(providedRsdp);
-        if ((uintptr_t)rsdp < hhdmBase)
-            rsdp = AddHhdm(rsdp);
-        
-        if (rsdp->revision > 1)
+        VmObject rsdpWindow(sizeof(Rsdp), (uintptr_t)providedRsdp, VmFlags::Mmio);
+        const Rsdp& rsdpAccess = *rsdpWindow->As<Rsdp>();
+
+        if (rsdpAccess.revision > 1)
         {
-            Xsdt* xsdt = AddHhdm(sl::NativePtr(rsdp->xsdt).As<Xsdt>());
-            sdtPointers = xsdt->entries;
-            sdtCount = (xsdt->length - sizeof(Sdt)) / 8;
-            GetSdt = GetSdt64;
+            //version 2.0+, use xsdt
+            VmObject xsdtWindow(sizeof(Xsdt), (uintptr_t)rsdpAccess.xsdt, VmFlags::Mmio);
+            VmObject fullXsdt(xsdtWindow->As<Xsdt>()->length, (uintptr_t)rsdpAccess.xsdt, VmFlags::Mmio);
+
+            const size_t tableCount = (fullXsdt->As<Xsdt>()->length - sizeof(Sdt)) / 8;
+
+            sl::NativePtr ptrs = fullXsdt->Offset(sizeof(Sdt));
+            for (size_t i = 0; i < tableCount; i++)
+            {
+                //these 64bit addresses are misaligned by 4-bytes, resulting in UB. :(
+                const uintptr_t addr = ptrs.As<uint32_t>()[i * 2] | (uint64_t)ptrs.As<uint32_t>()[i * 2 + 1];
+                VmObject tempWindow(sizeof(Sdt), addr, VmFlags::Mmio); //TODO: would be nice to have a sliding window, rather than trash virtual address space like this.
+
+                const size_t length = tempWindow->As<Sdt>()->length;
+                tables.EmplaceBack(length, addr, VmFlags::Mmio);
+            }
+
+            tables.EmplaceBack(fullXsdt.Size(), (uintptr_t)rsdpAccess.xsdt, VmFlags::Mmio);
         }
         else
         {
-            Rsdt* rsdt = AddHhdm(sl::NativePtr(rsdp->rsdt).As<Rsdt>());
-            sdtPointers = rsdt->entries;
-            sdtCount = (rsdt->length - sizeof(Sdt)) / 4;
-            GetSdt = GetSdt32;
+            //version 1 (stored as 0 sometimes), use rsdt
+            VmObject rsdtWindow(sizeof(Rsdt), (uintptr_t)rsdpAccess.rsdt, VmFlags::Mmio);
+            VmObject fullRsdt(rsdtWindow->As<Rsdt>()->length, (uintptr_t)rsdpAccess.rsdt, VmFlags::Mmio);
+
+            const size_t tableCount = (fullRsdt->As<Rsdt>()->length - sizeof(Sdt)) / 4;
+
+            sl::NativePtr ptrs = fullRsdt->Offset(sizeof(Sdt));
+            for (size_t i = 0; i < tableCount; i++)
+            {
+                const uintptr_t addr = ptrs.As<uint32_t>()[i];
+                VmObject tempWindow(sizeof(Sdt), addr, VmFlags::Mmio);
+                
+                const size_t length = tempWindow->As<Sdt>()->length;
+                tables.EmplaceBack(length, addr, VmFlags::Mmio);
+            }
+
+            tables.EmplaceBack(fullRsdt.Size(), (uintptr_t)rsdpAccess.rsdt, VmFlags::Mmio);
         }
-        Log("RSDP: revision=%u, rsdt=0x%x, xsdt=0x%lx, pointers=0x%lx", LogLevel::Info, rsdp->revision, rsdp->rsdt, rsdp->xsdt, sdtPointers.raw);
-        
-        for (size_t i = 0; i < sdtCount; i++)
-        {
-            LogAcpiTable(GetSdt(i));
-            if (VerifyChecksum(GetSdt(i)))
-                Log("Acpi table %.4s failed checksum verification.", LogLevel::Error, GetSdt(i)->signature);
-        }
+
+        Log("Rsdp set: 0x%lx, revision=%u, tables=%lu", LogLevel::Info, 
+            (uintptr_t)providedRsdp, rsdpAccess.revision, tables.Size());
+
+        for (auto it = tables.Begin(); it != tables.End(); ++it)
+            PrintSdt(it->Ptr().As<const Sdt>());
     }
 
     bool VerifyChecksum(const Sdt* table)
@@ -67,33 +74,26 @@ namespace Npk::Config
         return (checksum & 0xFF) != 0;
     }
 
-    sl::Opt<Sdt*> FindAcpiTable(const char* signature)
+    sl::Opt<const Sdt*> FindAcpiTable(const char* signature)
     {
-        if (rsdp == nullptr)
-            return {};
-
-        for (size_t i = 0; i < sdtCount; i++)
+        for (auto it = tables.Begin(); it != tables.End(); ++it)
         {
-            Sdt* test = GetSdt(i);
-            if (sl::memcmp(signature, test->signature, SdtSigLength) == 0)
-                return test;
+            const Sdt* sdt = it->Ptr().As<const Sdt>();
+            if (sl::memcmp(sdt->signature, signature, SdtSigLength) == 0)
+                return sdt;
         }
 
         return {};
     }
 
-    void LogAcpiTable(const Sdt* table)
+    void PrintSdt(const Sdt* table)
     {
-        char sig[5];
-        sl::memcopy(table->signature, sig, 4);
-        sig[4] = 0;
-
         char oem[7];
+        const size_t oemLength = sl::memfirst(table->oem, ' ', 6);
         sl::memset(oem, 0, 7);
-        const size_t oemLen = sl::memfirst(table->oem, ' ', 6);
-        sl::memcopy(table->oem, oem, oemLen != (size_t)-1 ? oemLen : 6);
-        
-        Log("Acpi table: signature=%s, oem=%s, addr=0x%lx, len=0x%x", LogLevel::Verbose, 
-            sig, oem, (uintptr_t)table - hhdmBase, table->length);
+        sl::memcopy(table->oem, oem, oemLength != (size_t)-1 ? oemLength : 6);
+
+        Log("Acpi Sdt: sig=%.4s, oem=%s, revision=%u, length=0x%u", LogLevel::Verbose,
+            table->signature, oem, table->revision, table->length);
     }
 }

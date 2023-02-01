@@ -1,6 +1,7 @@
 #include <devices/PciAddress.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
+#include <memory/Vmm.h>
 #include <NativePtr.h>
 
 namespace Npk::Devices
@@ -14,7 +15,15 @@ namespace Npk::Devices
 
     PciAddress PciAddress::CreateMmio(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t function)
     {
-        return segmentBase + ((bus << 20) | (device << 15) | (function << 12));
+        const uintptr_t physAddr = segmentBase + ((bus << 20) | (device << 15) | (function << 12));
+        
+        //NOTE: this incurs an overhead of allocating virtual address space with every PCI address
+        //discovered by the kernel system, space which is never released. I think this is fine as these objects
+        //are passed around quite frequently, but it may be worth looking into in the future.
+        //It's also worth noting that pci addreses are only created like this when a device is initially discovered.
+        auto accessWindow = VMM::Kernel().Alloc(0x1000, physAddr, VmFlags::Mmio | VmFlags::Write);
+        ASSERT(accessWindow, "VMM::Alloc()");
+        return accessWindow->base;
     }
 
     PciAddress PciAddress::CreateLegacy(uint8_t bus, uint8_t device, uint8_t function)
@@ -31,7 +40,7 @@ namespace Npk::Devices
             Out32(PortPciData, value);
         }
 #endif
-        sl::NativePtr(addr).Offset(AddHhdm(offset & 0xFFF)).Write<uint32_t>(value);
+        sl::NativePtr(addr).Offset(offset & 0xFFF).Write<uint32_t>(value);
     }
 
     uint32_t PciAddress::ReadAt(size_t offset) const
@@ -43,7 +52,7 @@ namespace Npk::Devices
             return In32(PortPciData);
         }
 #endif
-        return sl::NativePtr(addr).Offset(AddHhdm(offset & 0xFFF)).Read<uint32_t>();
+        return sl::NativePtr(addr).Offset(offset & 0xFFF).Read<uint32_t>();
     }
 
     bool PciAddress::IsLegacy() const

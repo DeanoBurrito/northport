@@ -62,7 +62,7 @@ namespace Npk
             Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
 
         if (Boot::rsdpRequest.response != nullptr && Boot::rsdpRequest.response != nullptr)
-            Config::SetRsdp(Boot::rsdpRequest.response->address);
+            Config::SetRsdp(SubHhdm(Boot::rsdpRequest.response->address));
         else
             Log("Bootloader did not provide RSDP (or it was null).", LogLevel::Warning);
         
