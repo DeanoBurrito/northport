@@ -81,39 +81,35 @@ namespace Npk::Devices
         return ((cap.ReadReg(1) >> 16) & 0x3FF) + 1;
     }
 
-    void MsixCap::SetEntry(size_t index, uintptr_t addr, uint32_t data, bool masked) const
+    size_t MsixCap::Bir() const
     {
-        const uint32_t bir = cap.ReadReg(1);
-        const size_t birOffset = bir & ~0b111u;
-        const PciBar bar = cap.base.ReadBar(bir & 0b111);
-        ASSERT(bar.isMemory, "BIR must be memory space.");
+        return cap.ReadReg(1) & 0b111;
+    }
 
-        sl::NativePtr entry { bar.address + birOffset + hhdmBase + (index * 4) };
+    void MsixCap::SetEntry(void* birAccess, size_t index, uintptr_t addr, uint32_t data, bool masked) const
+    {
+        const size_t birOffset = cap.ReadReg(1) & ~0b111u;
+        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 4));
+
         entry.Offset(0).Write<uint32_t>(addr);
         entry.Offset(4).Write<uint32_t>(addr >> 32);
         entry.Offset(8).Write<uint32_t>(data);
         entry.Offset(12).Write<uint32_t>(masked ? 0b1 : 0b0);
     }
 
-    void MsixCap::MaskEntry(size_t index, bool mask) const
+    void MsixCap::MaskEntry(void* birAccess, size_t index, bool mask) const
     {
-        const uint32_t bir = cap.ReadReg(1);
-        const size_t birOffset = bir & ~0b111u;
-        const PciBar bar = cap.base.ReadBar(bir & 0b111);
-        ASSERT(bar.isMemory, "BIR must be memory space.");
+        const size_t birOffset = cap.ReadReg(1) & ~0b111u;
+        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 4));
 
-        sl::NativePtr entry { bar.address + birOffset + hhdmBase + (index * 4) };
         entry.Offset(12).Write<uint32_t>(mask ? 0b1 : 0b0);
     }
 
-    void MsixCap::GetEntry(size_t index, uintptr_t& addr, uint32_t& data, bool& masked) const
+    void MsixCap::GetEntry(void* birAccess, size_t index, uintptr_t& addr, uint32_t& data, bool& masked) const
     {
-        const uint32_t bir = cap.ReadReg(1);
-        const size_t birOffset = bir & ~0b111u;
-        const PciBar bar = cap.base.ReadBar(bir & 0b111);
-        ASSERT(bar.isMemory, "BIR must be memory space.");
-
-        sl::NativePtr entry { bar.address + birOffset + hhdmBase + (index * 4) };
+        const size_t birOffset = cap.ReadReg(1) & ~0b111u;
+        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 4));
+        
         addr = entry.Read<uint32_t>();
         addr |= (uint64_t)entry.Offset(4).Read<uint32_t>() << 32;
         data = entry.Offset(8).Read<uint32_t>();

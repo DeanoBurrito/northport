@@ -277,7 +277,11 @@ namespace Npk::Drivers
             VALIDATE(maybeMsix, false, "No MSIX cap.");
 
             Devices::MsixCap msix(*maybeMsix);
-            msix.SetEntry(0, MsiAddress(CoreLocal().id, *maybeVector), MsiData(CoreLocal().id, *maybeVector), false);
+            Devices::PciBar bir = pciAddr.ReadBar(msix.Bir());
+            msixBirAccess = VmObject{ bir.size, bir.address, VmFlags::Mmio | VmFlags::Write };
+
+            msix.SetEntry(msixBirAccess->ptr, 0, MsiAddress(CoreLocal().id, *maybeVector), 
+                MsiData(CoreLocal().id, *maybeVector), false);
             msix.Enable(true);
             msix.GlobalMask(false);
             
@@ -383,7 +387,7 @@ namespace Npk::Drivers
             uintptr_t msixAddr;
             uint32_t msixData;
             bool msixEnabled;
-            msix.GetEntry(0, msixAddr, msixData, msixEnabled);
+            msix.GetEntry(msixBirAccess->ptr, 0, msixAddr, msixData, msixEnabled);
             
             size_t ignored;
             size_t msixVector;

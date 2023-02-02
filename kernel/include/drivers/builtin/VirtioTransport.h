@@ -45,6 +45,7 @@ namespace Npk::Drivers
         VmObject configAccess;
         VmObject notifyAccess;
         VmObject deviceCfgAccess;
+        VmObject msixBirAccess;
 
         sl::Vector<VirtioQueue> queues;
 
