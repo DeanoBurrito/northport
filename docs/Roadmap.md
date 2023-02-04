@@ -14,6 +14,7 @@
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
             - [x] Reclaim bootloader memory.
+            - [ ] Allocation strategies (single, contiguous, scatter).
             - [ ] Memory pressure feedback.
         - [x] VMM, split kernel/user instances.
             - [x] Move region-backing into specific VM drivers.
@@ -24,22 +25,24 @@
     - [x] Core clock, software timers.
         - [x] Configurable resolution.
         - [x] Tickless.
-        - [x] Infinite Expiry
+        - [x] Infinite expiry
     - [x] IPI mailbox.
     - [x] Scheduler.
         - [x] SMP-support.
         - [x] DPCs.
         - [x] Work stealing.
         - [ ] Heterogenous cpu support.
+        - [ ] Waitable objects.
     - [x] Panic.
     - [ ] Sanitizers.
         - [x] Undefined behaviour.
         - [ ] Address.
     - [x] Logging
-        - [x] Ns16650 serial backend (mmio + port io variants).
-        - [ ] PL011 serial backend.
-        - [x] Terminal backend.
-        - [ ] VFS file backend.
+        - [x] Early outputs:
+            - [x] Ns16650.
+            - [ ] PL011.
+            - [x] GTerm backend.
+        - [ ] Runtime sinks.
     - [x] Peripheral discovery:
         - [x] ACPI tables parser.
         - [x] Device tree parser.
@@ -60,13 +63,14 @@
         - [ ] PS/2 keyboard + mouse.
         - [ ] Virtio:
             - [x] Transport layer (PCI + MMIO).
+            - [x] Legacy transport support.
             - [x] GPU.
             - [ ] Block.
             - [ ] Network.
             - [ ] Input (kb + mouse).
         - [x] Bochs VGA.
         - [ ] AHCI.
-        - [ ] NVMe.
+        - [x] NVMe.
         - [ ] XHCI (USB 3).
         - [ ] E1000 NIC.
         - [ ] AC97 audio.
