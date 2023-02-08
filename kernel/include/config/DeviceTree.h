@@ -18,6 +18,7 @@ namespace Npk::Config
         uint32_t ReadNumber() const;
         size_t ReadRegs(const DtNode& parent, uintptr_t* bases, size_t* lengths) const;
         size_t ReadPairs(size_t aCells, size_t bCells, size_t* aStore, size_t* bStore) const;
+        size_t ReadRanges(const DtNode& parent, uintptr_t* parentBases, uintptr_t* childBases, size_t* lengths) const;
 
     };
 
@@ -77,6 +78,7 @@ namespace Npk::Config
         uint32_t ReadNumber(const DtProperty& prop) const;
         size_t ReadRegs(const DtNode& node, const DtProperty& prop, uintptr_t* bases, size_t* lengths) const;
         size_t ReadPairs(const DtProperty& prop, size_t aCells, size_t bCells, size_t* aStore, size_t* bStore) const;
+        size_t ReadRanges(const DtNode& node, const DtProperty& prop, uintptr_t* parentBases, uintptr_t* childBases, size_t* lengths) const;
     };
 
     //effectively these are just type-safe macros.
@@ -96,6 +98,10 @@ namespace Npk::Config
     [[gnu::always_inline]]
     inline size_t DtProperty::ReadPairs(size_t aCells, size_t bCells, size_t* aStore, size_t* bStore) const
     { return DeviceTree::Global().ReadPairs(*this, aCells, bCells, aStore, bStore); }
+
+    [[gnu::always_inline]]
+    inline size_t DtProperty::ReadRanges(const DtNode& parent, uintptr_t* parentBases, uintptr_t* childBases, size_t* lengths) const
+    { return DeviceTree::Global().ReadRanges(parent, *this, parentBases, childBases, lengths); }
 
     [[gnu::always_inline]]
     inline sl::Opt<const DtProperty> DtNode::GetProp(size_t index) const

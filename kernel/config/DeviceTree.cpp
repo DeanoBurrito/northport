@@ -475,4 +475,54 @@ namespace Npk::Config
         
         return count;
     }
+
+    size_t DeviceTree::ReadRanges(const DtNode& node, const DtProperty& prop, uintptr_t* parents, uintptr_t* children, size_t* lengths) const
+    {
+        if (cellsCount == 0)
+            return 0;
+
+        ASSERT(BS(cells[prop.ptr]) == FdtProp, "Invalid DtProperty pointer.");
+
+        auto Extract = [&](size_t where, size_t cellCount)
+        {
+            size_t value = 0;
+            for (size_t i = 0; i < cellCount; i++)
+                value |= (size_t)BS(cells[where + i]) << ((cellCount - 1 - i) * 32);
+            return value;
+        };
+
+        /*  This function is designed with PCI ranges prop in mind:
+            The address may be formed of 3 32bit ints, with the upper int
+            containing hint data about the device. We ignore the hint data
+            as we get it from the device itself.
+
+            When it comes to encoding within cells, the following is used:
+            - node.address_cells is used for child addresses
+            - node.size_cells is used for the length
+            - parent.address_cells is used for parent addresses
+        */
+
+        const size_t entryLength = node.childSizeCells + node.childAddrCells + node.addrCells;
+        const FdtProperty* property = reinterpret_cast<const FdtProperty*>(cells + prop.ptr + 1);
+        const size_t count = BS(property->length) / (entryLength * 4);
+        if (parents == nullptr && children == nullptr && lengths == nullptr)
+            return count;
+        
+        const uintptr_t data = prop.ptr + 3;
+        const size_t readOffset = node.childAddrCells - (sizeof(uintptr_t) / 4);
+        static_assert(sizeof(uintptr_t) % 4 == 0, "wot");
+
+        for (size_t i = 0; i < count; i++)
+        {
+            const size_t readBase = data + i * entryLength;
+            if (children != nullptr)
+                children[i] = Extract(readBase + readOffset, node.childAddrCells - readOffset);
+            if (parents != nullptr)
+                parents[i] = Extract(readBase + node.childAddrCells, node.addrCells);
+            if (lengths != nullptr)
+                lengths[i] = Extract(readBase + node.childAddrCells + node.addrCells, node.childSizeCells);
+        }
+
+        return count;
+    }
 }
