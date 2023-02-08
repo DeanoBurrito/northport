@@ -1,11 +1,13 @@
 #include <devices/DeviceManager.h>
 #include <debug/Log.h>
+#include <debug/TerminalDriver.h>
 
 namespace Npk::Devices
 {
     constexpr const char* DevTypeStrs[] = 
     {
-        "Keyboard", "Pointer", "Framebuffer", "Serial"
+        "Keyboard", "Pointer", "Framebuffer", "Serial",
+        "Block",
     };
     
     DeviceManager globalDeviceManager;

@@ -80,6 +80,7 @@ namespace Npk::Memory
         bool Free(uintptr_t base);
 
         bool RangeExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags);
+        sl::Opt<uintptr_t> GetPhysical(uintptr_t vaddr);
 
         size_t CopyIn(void* foreignBase, void* localBase, size_t length);
         size_t CopyOut(void* localBase, void* foreignBase, size_t length);

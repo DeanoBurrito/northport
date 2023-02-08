@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <Locks.h>
 #include <NativePtr.h>
+#include <Span.h>
 
 namespace Npk::Devices
 {
@@ -12,6 +13,8 @@ namespace Npk::Devices
         Keyboard = 0,
         Pointer = 1,
         Framebuffer = 2,
+        Serial = 3,
+        Block = 4,
     };
 
     enum class DeviceStatus
@@ -101,5 +104,32 @@ namespace Npk::Devices
         virtual sl::NativePtr LinearAddress() = 0;
         virtual void BeginDraw() = 0;
         virtual void EndDraw() = 0;
+    };
+
+    class GenericSerial : public GenericDevice
+    {
+    public:
+        GenericSerial() : GenericDevice(DeviceType::Serial)
+        {}
+
+        virtual ~GenericSerial() = default;
+        
+        virtual void Write(sl::Span<uint8_t> buffer) = 0;
+        virtual size_t Read(sl::Span<uint8_t> buffer) = 0;
+        virtual bool InputAvailable() = 0;
+    };
+
+    class GenericBlock : public GenericDevice
+    {
+    public:
+        GenericBlock() : GenericDevice(DeviceType::Block)
+        {}
+
+        virtual ~GenericBlock() = default;
+
+        virtual void* BeginRead(size_t startLba, size_t lbaCount, sl::NativePtr buffer) = 0;
+        virtual bool EndRead(void* token) = 0;
+        virtual void* BeginWrite(size_t startLba, size_t lbaCount, sl::NativePtr buffer) = 0;
+        virtual bool EndWrite(void* token) = 0;
     };
 }

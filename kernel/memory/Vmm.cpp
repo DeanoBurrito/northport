@@ -236,6 +236,11 @@ namespace Npk::Memory
         return false;
     }
 
+    sl::Opt<uintptr_t> VMM::GetPhysical(uintptr_t vaddr)
+    {
+        return GetPhysicalAddr(ptRoot, vaddr);
+    }
+
     size_t VMM::CopyIn(void* foreignBase, void* localBase, size_t length)
     {
         if (!RangeExists((uintptr_t)foreignBase, length, {}))
