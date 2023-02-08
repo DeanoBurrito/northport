@@ -12,7 +12,7 @@ namespace Npk::Devices
         sl::Vector<PciAddress> addresses;
         sl::TicketLock lock;
 
-        void ScanSegment(uintptr_t segmentBase, uint16_t segId, bool ecamAvailable);
+        void ScanSegment(uintptr_t segmentBase, uint8_t startBus, uint16_t segId, bool ecamAvailable);
 
     public:
         constexpr PciBridge() : addresses(), lock()

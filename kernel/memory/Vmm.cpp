@@ -187,16 +187,20 @@ namespace Npk::Memory
 
         //find the range, remove it from list
         VmRange range {};
+        bool foundRange = false;
         for (auto it = ranges.Begin(); it != ranges.End(); ++it)
         {
             if (base >= it->base && base < it->Top())
             {
                 range = sl::Move(*it);
                 ranges.Erase(it);
+                foundRange = true;
                 break;
             }
         }
         rangesLock.Unlock();
+        
+        VALIDATE(foundRange, false, "Couldn't free VM Range: it does not exist.");
 
         //detach range from driver
         using namespace Virtual;

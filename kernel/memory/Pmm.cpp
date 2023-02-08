@@ -262,7 +262,7 @@ namespace Npk::Memory
         if (base == 0 || count == 0)
             return;
         
-        PmZone& zone = (base >= 4 * GiB) ? zones[0] : zones[1];
+        PmZone& zone = (base >= 4 * GiB) ? zones[1] : zones[0];
         PmRegion* searchStart = zone.head;
         while (searchStart != nullptr)
         {

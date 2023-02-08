@@ -91,6 +91,11 @@ namespace Npk
             if (prevState)
                 EnableInterrupts();
         }
+
+        InterruptGuard(const InterruptGuard& other) = delete;
+        InterruptGuard& operator=(const InterruptGuard& other) = delete;
+        InterruptGuard(InterruptGuard&& other) = delete;
+        InterruptGuard& operator=(InterruptGuard&& other) = delete;
     };
 
     class InterruptLock

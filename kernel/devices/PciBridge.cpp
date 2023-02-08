@@ -6,17 +6,17 @@
 
 namespace Npk::Devices
 {
-    void PciBridge::ScanSegment(uintptr_t segmentBase, uint16_t segId, bool ecamAvail)
+    void PciBridge::ScanSegment(uintptr_t segmentBase, uint8_t startBus, uint16_t segId, bool ecamAvail)
     {
         //convinience wrapper
         auto MakeAddr = [=](uintptr_t base, uint8_t bus, uint8_t dev, uint8_t func)
         {
-            return ecamAvail ? PciAddress::CreateMmio(base, bus, dev, func) : PciAddress::CreateLegacy(bus, dev, func);
+            return ecamAvail ? PciAddress::CreateMmio(base, bus - startBus, dev, func) : PciAddress::CreateLegacy(bus, dev, func);
         };
         
         //we assume bus 0 exists, and only scan other busses if we know they exist.
         sl::Vector<uint8_t> busses;
-        busses.PushBack(0);
+        busses.PushBack(startBus);
 
         while (!busses.Empty())
         {
@@ -66,7 +66,7 @@ namespace Npk::Devices
                 Log("PCIe segment added: base=0x%lx, id=%u, firstBus=%u, lastBus=%u", LogLevel::Verbose, 
                     seg->base, seg->id, seg->firstBus, seg->lastBus);
 
-                ScanSegment(seg->base, seg->id, true);
+                ScanSegment(seg->base, seg->firstBus, seg->id, true);
             }
         }
         else if (auto maybeDtNode = Config::DeviceTree::Global().GetCompatibleNode("pci-host-ecam-generic"); maybeDtNode.HasValue())
@@ -75,16 +75,20 @@ namespace Npk::Devices
             uintptr_t base;
             size_t length;
             ASSERT(regProp->ReadRegs(*maybeDtNode, &base, &length) == 1, "Unexpected register count for PCI bridge");
-            Log("PCIe segment added: base=0x%lx, length=0x%lx", LogLevel::Verbose, base, length);
 
-            ScanSegment(base, 0, true);
+            auto busProp = maybeDtNode->GetProp("bus-range");
+            ASSERT(busProp, "No starting bus for DTB PCI bridge.");
+            const uint8_t firstBus = (uint8_t)busProp->ReadNumber();
+
+            Log("PCIe segment added: base=0x%lx, length=0x%lx, firstBus=%u", LogLevel::Verbose, base, length, firstBus);
+            ScanSegment(base, firstBus, 0, true);
         }
         else
 #ifdef __x86_64__
         {
             //fallback to legacy mechanism
             Log("PCIe ECAM not available, using x86 legacy mechanism.", LogLevel::Verbose);
-            ScanSegment(0, 0, false);
+            ScanSegment(0, 0, 0, false);
         }
 #else
         { 
