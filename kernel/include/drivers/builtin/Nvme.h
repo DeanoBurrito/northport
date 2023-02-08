@@ -2,7 +2,6 @@
 
 #include <drivers/builtin/NvmeDefs.h>
 #include <devices/GenericDevices.h>
-#include <devices/PciAddress.h>
 #include <devices/PciCapabilities.h>
 #include <memory/VmObject.h>
 #include <containers/Vector.h>
@@ -31,19 +30,26 @@ namespace Npk::Drivers
         size_t id;
         size_t lbaCount;
         size_t lbaSize;
+        size_t deviceId;
     };
 
-    struct NvmeCmdToken
+    union NvmeCmdToken
     {
-        uint16_t queueIndex;
-        uint16_t cmdId;
-        uint32_t cqHead; //head at time of posting command
+        struct [[gnu::packed]]
+        {
+            uint16_t queueIndex;
+            uint16_t cmdId;
+            uint32_t cqHead; //head at time of posting command
+        };
+        uint64_t squished;
     };
 
     using NvmeResult = uint16_t;
+    class NvmeBlockDevice;
     
     class NvmeController
     {
+    friend NvmeBlockDevice;
     private:
         Devices::PciAddress addr;
         Memory::VmObject propsAccess;
@@ -66,7 +72,7 @@ namespace Npk::Drivers
 
         bool CreateAdminQueue(size_t entries);
         bool DestroyAdminQueue();
-        bool CreateIoQueue(size_t index);
+        bool CreateIoQueue(size_t index, size_t entries);
         bool DestroyIoQueue(size_t index);
 
         bool IdentifyController();
@@ -80,4 +86,28 @@ namespace Npk::Drivers
         bool Init(Devices::PciAddress pciAddr);
         bool Deinit();
     };
+
+    class NvmeBlockDevice : public Devices::GenericBlock
+    {
+    private:
+        NvmeNamespace& info;
+        NvmeController& controller;
+
+    public:
+        NvmeBlockDevice(NvmeController& ctrlr, NvmeNamespace& info) 
+        : controller(ctrlr), info(info)
+        {}
+
+        bool Init() override;
+        bool Deinit() override;
+
+        void* BeginRead(size_t startLba, size_t lbaCount, sl::NativePtr buffer) override;
+        bool EndRead(void* token) override;
+        void* BeginWrite(size_t startLba, size_t lbaCount, sl::NativePtr buffer) override;
+        bool EndWrite(void* token) override;
+    };
+
+    //utility functions to assist with PRP list management
+    void BuildPrps(SqEntry& sqEntry, size_t length, sl::NativePtr buffer);
+    void CleanupPrps(SqEntry& sqEntry, size_t length);
 }

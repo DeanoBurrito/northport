@@ -1,11 +1,12 @@
 #include <drivers/builtin/Nvme.h>
 #include <drivers/InitTags.h>
+#include <devices/DeviceManager.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <interrupts/InterruptManager.h>
 #include <memory/Pmm.h>
+#include <memory/Vmm.h>
 #include <tasking/Thread.h>
-#include <Maths.h>
 
 namespace Npk::Drivers
 {
@@ -77,7 +78,7 @@ namespace Npk::Drivers
             const uintptr_t msiAddr = MsiAddress(0, *intVector);
             const uintptr_t msiData = MsiData(0, *intVector);
             for (size_t i = 0; i < msix.TableSize(); i++)
-                msix.SetEntry(msixBirAccess->ptr, i, msiAddr, msiData, true);
+                msix.SetEntry(msixBirAccess->ptr, i, msiAddr, msiData, false);
 
             msix.Enable(true);
             Log("NVMe controller using MSI-X, vector %lu", LogLevel::Verbose, *intVector);
@@ -125,16 +126,19 @@ namespace Npk::Drivers
         queue.cqHead = 0;
 
         const size_t sqBytes = entries * sizeof(SqEntry);
-        const uintptr_t sqPhys = PMM::Global().Alloc(sl::AlignUp(sqBytes, PageSize));
+        const uintptr_t sqPhys = PMM::Global().Alloc(sl::AlignUp(sqBytes, PageSize) / PageSize);
         if (sqPhys == 0)
             return false;
         queue.sq = sl::NativePtr(sqPhys + hhdmBase).As<volatile SqEntry>();
         queue.sqDoorbell = doorbellBase.As<volatile uint32_t>();
 
         const size_t cqBytes = entries * sizeof(CqEntry);
-        const uintptr_t cqPhys = PMM::Global().Alloc(sl::AlignUp(cqBytes, PageSize));
+        const uintptr_t cqPhys = PMM::Global().Alloc(sl::AlignUp(cqBytes, PageSize) / PageSize);
         if (cqPhys == 0)
+        {
+            PMM::Global().Free(sqPhys, sl::AlignUp(sqBytes, PageSize) / PageSize);
             return false;
+        }
         queue.cq = sl::NativePtr(cqPhys + hhdmBase).As<CqEntry>();
         queue.cqDoorbell = doorbellBase.As<uint32_t>(doorbellStride);
         
@@ -167,10 +171,72 @@ namespace Npk::Drivers
         return true;
     }
 
-    bool NvmeController::CreateIoQueue(size_t index)
+    bool NvmeController::CreateIoQueue(size_t index, size_t entries)
     {
-        ASSERT_UNREACHABLE()
-        //dont forget to unmask msix vector if we're using that
+        VALIDATE(queues.Size() > 0, false, "No admin queue");
+        entries -= 1; //0-based value, so we subtract 1 for encoding
+        
+        queuesLock.Lock();
+        NvmeQ& queue = queues.Emplace(index);
+        sl::ScopedLock queueLock(queue.lock);
+        queuesLock.Unlock();
+
+        queue.entries = entries;
+        queue.nextCmdId = 1;
+        queue.sqTail = 0;
+        queue.sqHead = 0;
+        queue.cqHead = 0;
+
+        sl::NativePtr doorbellBase(propsAccess->raw + 0x1000 + (2 * index) * doorbellStride);
+        const size_t cqPages = sl::AlignUp(entries * sizeof(CqEntry), PageSize) / PageSize;
+        const uintptr_t cqPhys = PMM::Global().Alloc(cqPages);
+        if (cqPhys == 0)
+            return false;
+        queue.cq = sl::NativePtr(cqPhys + hhdmBase).As<volatile CqEntry>();
+        queue.cqDoorbell = doorbellBase.As<volatile uint32_t>(doorbellStride);
+
+        const size_t sqPages = sl::AlignUp(entries * sizeof(SqEntry), PageSize) / PageSize;
+        const uintptr_t sqPhys = PMM::Global().Alloc(sqPages);
+        if (sqPhys == 0)
+        {
+            PMM::Global().Free(cqPhys, cqPages);
+            return false;
+        }
+        queue.sq = sl::NativePtr(sqPhys + hhdmBase).As<volatile SqEntry>();
+        queue.sqDoorbell = doorbellBase.As<volatile uint32_t>();
+        
+        SqEntry cmd {}; //TODO: would be nice to support non-contiguous queues
+        cmd.fields.opcode = 0x5;
+        cmd.fields.prp1 = cqPhys;
+        cmd.dw[10] = (entries << 16) | index;
+        //use MSIX vector 0, enable interrupts, and tell the controller pages are allocated contiguously
+        cmd.dw[11] = (0 << 16) | (1 << 1) | (1 << 0);
+
+        if (auto result = EndCmd(BeginCmd(0, cmd), true); *result != 0)
+        {
+            LogResult(*result);
+            PMM::Global().Free(cqPhys, cqPages);
+            PMM::Global().Free(sqPhys, sqPages);
+            return false;
+        }
+
+        cmd.fields.opcode = 0x1;
+        cmd.fields.prp1 = sqPhys;
+        cmd.dw[10] = (entries << 16) | index;
+        //set index of cq, and indicate queue is physically contiguous
+        cmd.dw[11] = (index << 16) | (1 << 0);
+
+        if (auto result = EndCmd(BeginCmd(0, cmd), true); *result != 0)
+        {
+            LogResult(*result);
+            PMM::Global().Free(cqPhys, cqPages);
+            PMM::Global().Free(sqPhys, sqPages);
+            return false;
+        }
+        
+        Log("NVMe IO queue created: sq=0x%lx, cq=0x%lx, size=%lu", LogLevel::Verbose,
+            sqPhys, cqPhys, entries + 1);
+        return true;
     }
 
     bool NvmeController::DestroyIoQueue(size_t index)
@@ -186,9 +252,7 @@ namespace Npk::Drivers
         cmd.dw[10] = 1; //CNS = 1 (identify controller)
         //all other fields are fine as blank.
 
-        auto token = BeginCmd(0, cmd);
-        auto result = EndCmd(token, true);
-        if (*result != 0)
+        if (auto result = EndCmd(BeginCmd(0, cmd), true); *result != 0)
         {
             LogResult(*result);
             return false;
@@ -252,9 +316,7 @@ namespace Npk::Drivers
         cmd.fields.prp1 = PMM::Global().Alloc();
         cmd.dw[10] = 2; //CNS = 2 (active namespace list)
 
-        auto token = BeginCmd(0, cmd);
-        auto result = EndCmd(token, true);
-        if (*result != 0)
+        if (auto result = EndCmd(BeginCmd(0, cmd), true); *result != 0)
         {
             LogResult(*result);
             return;
@@ -268,6 +330,7 @@ namespace Npk::Drivers
         {
             NvmeNamespace& ns = namespaces.EmplaceBack();
             ns.id = activeNamespaces[i];
+            ns.deviceId = 0;
         }
 
         //run identify on each namespace, gather details like format and lba count
@@ -278,9 +341,7 @@ namespace Npk::Drivers
             cmd.dw[10] = 0; //CNS = 0 (single namespace)
             cmd.fields.namespaceId = ns.id;
 
-            auto token = BeginCmd(0, cmd);
-            auto result = EndCmd(token, true);
-            if (*result != 0)
+            if (auto result = EndCmd(BeginCmd(0, cmd), true); *result != 0)
             {
                 Log("Failed to identify NVMe namespace %lu", LogLevel::Error, ns.id);
                 ns.id = 0; //TODO: clean these up
@@ -367,6 +428,7 @@ namespace Npk::Drivers
             HintSpinloop();
         }
 
+        //TODO: CleanupPrps() - requires access to prp1/prp2 from SQ
         //TODO: we should update cqDoorbell here to tell the controller we've read a new entry
         return targetQ.cq[foundAt].fields.status >> 1;
     }
@@ -466,7 +528,7 @@ namespace Npk::Drivers
         doorbellStride = 4 << ((props.capabilities >> 32) & 0xF);
         ioQueueMaxSize = (props.capabilities & 0xFFFF) + 1;
 
-        const size_t adminEntries = sl::Min(PageSize / sizeof(SqEntry), 4096ul);
+        const size_t adminEntries = sl::Min(PageSize / sizeof(SqEntry), 4096ul) - 1;
         VALIDATE(CreateAdminQueue(adminEntries), false, "CreateAdminQueue()");
         props.aqa = adminEntries | (adminEntries << 16);
         props.acq = reinterpret_cast<uintptr_t>(queues[0].cq) - hhdmBase;
@@ -486,8 +548,23 @@ namespace Npk::Drivers
 
         VALIDATE(IdentifyController(), false, "IdentifyController()");
         DiscoverNamespaces();
-        //TODO: create IO queues
-        //TODO: attach namespaces as block devices
+
+        //TODO: would be nice to allocate multiple IO queues, depending on system capabilities.
+        //When we do this: we'll need to be more careful about allocating MSIX vectors.
+        CreateIoQueue(1, ioQueueMaxSize);
+
+        namespacesLock.Lock();
+        for (size_t i = 0; i < namespaces.Size(); i++)
+        {
+            NvmeBlockDevice* blockDev = new NvmeBlockDevice(*this, namespaces[i]);
+            auto maybeDevId = Devices::DeviceManager::Global().AttachDevice(blockDev);
+            ASSERT(maybeDevId, "NVMe block device attach failed");
+
+            namespaces[i].deviceId = *maybeDevId;
+            Log("NVMe namespace %lu attached as device %lu", LogLevel::Info, 
+                namespaces[i].id, namespaces[i].deviceId);
+        }
+        namespacesLock.Unlock();
 
         return true;
     }
@@ -495,5 +572,125 @@ namespace Npk::Drivers
     bool NvmeController::Deinit()
     {
         ASSERT_UNREACHABLE();
+    }
+
+    bool NvmeBlockDevice::Init()
+    {
+        status = Devices::DeviceStatus::Online;
+        return true;
+    }
+
+    bool NvmeBlockDevice::Deinit()
+    {
+        return false;
+    }
+
+    void* NvmeBlockDevice::BeginRead(size_t startLba, size_t lbaCount, sl::NativePtr buffer)
+    {
+        ASSERT(lbaCount <= 0xFFFF, "LbaCount is limited to 16-bits");
+        ASSERT(startLba + lbaCount <= info.lbaCount, "Read attempt goes beyond namespace limits");
+        ASSERT(lbaCount * info.lbaSize < controller.maxTransferSize, "Attempted to read more than controller MTU.")
+        
+        SqEntry cmd {};
+        cmd.fields.opcode = 0x2;
+        cmd.fields.namespaceId = info.id;
+        BuildPrps(cmd, lbaCount * info.lbaSize, buffer);
+        cmd.dw[10] = startLba;
+        cmd.dw[11] = startLba >> 32;
+        cmd.dw[12] = lbaCount & 0xFFFF;
+
+        return reinterpret_cast<void*>(controller.BeginCmd(1, cmd).squished);
+    }
+
+    bool NvmeBlockDevice::EndRead(void* token)
+    {
+        NvmeCmdToken nvmeToken { .squished = reinterpret_cast<uint64_t>(token) };
+        NvmeResult result = *controller.EndCmd(nvmeToken, true);
+
+        if (result != 0)
+            controller.LogResult(result);
+        return result != 0;
+    }
+
+    void* NvmeBlockDevice::BeginWrite(size_t startLba, size_t lbaCount, sl::NativePtr buffer)
+    {
+        ASSERT(lbaCount <= 0xFFFF, "LbaCount is limited to 16-bits");
+        ASSERT(startLba + lbaCount <= info.lbaCount, "Write attempt goes beyond namespace limits");
+        ASSERT(lbaCount * info.lbaSize < controller.maxTransferSize, "Attempted to write more than controller MTU.")
+
+        SqEntry cmd {};
+        cmd.fields.opcode = 0x1;
+        cmd.fields.namespaceId = info.id;
+        BuildPrps(cmd, lbaCount * info.lbaSize, buffer);
+        cmd.dw[10] = startLba;
+        cmd.dw[11] = startLba >> 32;
+        cmd.dw[12] = lbaCount & 0xFFFF;
+
+        return reinterpret_cast<void*>(controller.BeginCmd(1, cmd).squished);
+    }
+
+    bool NvmeBlockDevice::EndWrite(void* token)
+    {
+        NvmeCmdToken nvmeToken { .squished = reinterpret_cast<uint64_t>(token) };
+        NvmeResult result = *controller.EndCmd(nvmeToken, true);
+        
+        if (result != 0)
+            controller.LogResult(result);
+        return result != 0;
+    }
+
+    void BuildPrps(SqEntry& sqEntry, size_t length, sl::NativePtr buffer)
+    {
+        size_t prpsNeeded = sl::AlignUp(length, PageSize) / PageSize;
+        uintptr_t prp = buffer.raw;
+        if ((buffer.raw % PageSize) != 0)
+        {
+            //prp1 is not page aligned
+            prp = sl::AlignUp(prp, PageSize);
+            prpsNeeded++;
+        }
+        
+        auto phys = VMM::Kernel().GetPhysical(buffer.raw);
+        ASSERT(phys, "Attempt to use NVMe with non-backed buffer.");
+        sqEntry.fields.prp1 = *phys;
+        if (prpsNeeded == 1)
+            return;
+        length -= buffer.raw % PageSize;
+
+        if (prpsNeeded == 2)
+        {
+            phys = VMM::Kernel().GetPhysical(prp);
+            ASSERT(phys, "Attempt to use NVMe with non-backed buffer.");
+            sqEntry.fields.prp2 = *phys;
+            return;
+        }
+
+        uint64_t* prpList = sl::NativePtr(PMM::Global().Alloc() + hhdmBase).As<uint64_t>();
+        sqEntry.fields.prp2 = (uintptr_t)prpList - hhdmBase;
+
+        size_t listIndex = 0;
+        while (length > 0)
+        {
+            if (listIndex == 511 && length > PageSize)
+            {
+                //data requires another list in the chain, do it
+                uintptr_t newList = PMM::Global().Alloc();
+                prpList[511] = newList;
+                listIndex = 0;
+                prpList = reinterpret_cast<uint64_t*>(newList + hhdmBase);
+            }
+            
+            auto phys = VMM::Kernel().GetPhysical(prp);
+            ASSERT(phys, "Attempt to use NVMe with non-backed buffer.");
+            prpList[listIndex++] = *phys;
+
+            prp += PageSize;
+            length = length < PageSize ? 0 : length - PageSize;
+        }
+    }
+
+    void CleanupPrps(SqEntry& sqEntry, size_t length)
+    {
+        ASSERT_UNREACHABLE(); //TODO: cleanup PRPs
     }
 }
