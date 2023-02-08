@@ -52,7 +52,7 @@ The following make targets are available in the root makefile (i.e. from the pro
 While GNUmake is used for the build system, northport \textbf{does not} make use of dependency files (\verb|.d|) currently, so changes to \verb|.cpp| source files will trigger a rebuild of that file, changes to a \verb|.h| header file will not trigger rebuilds in affected source files. To test changes made to a header file, the recommended approach is to run \verb|make clean| followed by \verb|make| to perform a clean rebuild.
 
 \begin{itemize}
-    \item \verb|make|: Runs the default target \verb|all|, see below.
+    \item \verb|make|: Prints the help text, showing a summary of available make targets and notable files.
     \item \verb|make all|: Performs an incremental build of everything, and then performs a platform-specific packaging step. This might include burning a bootloader to an iso file, or leaving the kernel binary as is.
     \item \verb|make clean|: Completely removes all build files, resulting in the next build starting from scratch.
     \item \verb|make run|: Creates a platform-specific package, and launches it in qemu for the target architecture. By default this tries to use KVM.

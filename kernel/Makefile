@@ -28,26 +28,28 @@ CXX_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 AS_OBJS = $(patsubst %.S, $(BUILD_DIR)/%.S.o, $(AS_SRCS))
 OBJS = $(AS_OBJS) $(CXX_OBJS)
 
+include $(PROJ_ROOT_DIR)/misc/Formatting.mk
+
 .PHONY: all
 all: $(KERNEL_FULL_FILEPATH)
 
 $(KERNEL_FULL_FILEPATH): $(OBJS) $(LD_SCRIPT)
-	@echo "[Kernel] Linking ..."
+	@echo -e "$(C_BLUE)[Kernel]$(C_RST) Linking ..."
 	$(LOUD)$(X_LD_BIN) $(OBJS) $(KERNEL_LD_FLAGS) -T $(LD_SCRIPT) -o $(KERNEL_FULL_FILEPATH)
-	@echo "[Kernel] Done linking."
+	@echo -e "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)"
 
 .PHONY: clean
 clean:
-	@echo "[Kernel] Cleaning build files ..."
+	@echo -e "$(C_BLUE)[Kernel]$(C_RST) Cleaning build files ..."
 	$(LOUD)-rm -r $(BUILD_DIR)
-	@echo "[Kernel] Done."
+	@echo -e "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)"
 
 $(BUILD_DIR)/%.S.o: %.S
-	@echo "[Kernel] Assembling: $<"
+	@echo -e "$(C_BLUE)[Kernel]$(C_RST) Assembling: $<"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_AS_BIN) $(KERNEL_AS_FLAGS) $< -o $@
 
 $(BUILD_DIR)/%.cpp.o: %.cpp
-	@echo "[Kernel] Compiling C++ source: $<"
+	@echo -e "$(C_BLUE)[Kernel]$(C_RST) Compiling: $<"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@

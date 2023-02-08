@@ -6,7 +6,7 @@ CXX_FLAGS = -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-table
 
 CXX_SRCS = Memory.cpp String.cpp UnitConverter.cpp Time.cpp Random.cpp
 
-include $(LIB_COMMON_MK)
+include $(PROJ_ROOT_DIR)/misc/LibCommon.mk
 
 # Syslib is a bit special in that we also build a version for the kernel.
 # We have separate build + clean recipes for this, and it gets an alternate 
@@ -19,18 +19,18 @@ K_OBJS = $(patsubst %.cpp, $(K_BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 all-kernel: $(K_TARGET)
 
 $(K_TARGET): $(K_OBJS)
-	@echo "[$(TARGET)-k] Creating static library ..."
+	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) Creating static library ..."
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_AR_BIN) -rcs $(K_TARGET) $(K_OBJS)
-	@echo "[$(TARGET)] Done."
+	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) $(C_GREEN)Done.$(C_RST)"
 
 clean-kernel:
-	@echo "[$(TARGET)-k] Cleaning build files ..."
+	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) Cleaning build files ..."
 	$(LOUD)-rm -r $(K_BUILD_DIR)
 	$(LOUD)-rm -r $(K_TARGET)
-	@echo "[$(TARGET)] Done."
+	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) $(C_GREEN)Done.$(C_RST)"
 
 $(K_BUILD_DIR)/%.cpp.o: %.cpp
-	@echo "[$(TARGET)-k] Compiling C++ source: $<"
+	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) Compiling: $<"
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@

@@ -7,24 +7,26 @@
 OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 TARGET_STATIC = $(LIBS_OUTPUT_DIR)/lib$(TARGET).a
 
+include $(PROJ_ROOT_DIR)/misc/Formatting.mk
+
 .PHONY: clean all
 
 all: $(TARGET_STATIC)
 
 $(TARGET_STATIC): $(OBJS)
-	@echo "[$(TARGET)] Creating static library ..."
+	@echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) Creating static library ..."
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_AR_BIN) -rcs $(TARGET_STATIC) $(OBJS)
-	$(LOUD)echo "[$(TARGET)] Done."
+	$(LOUD)echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) $(C_GREEN)Done.$(C_RST)"
 
 clean:
-	@echo "[$(TARGET)] Cleaning build dir ..."
+	@echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) Cleaning build files ..."
 	$(LOUD)-rm -r $(BUILD_DIR)
 	$(LOUD)-rm -r $(TARGET_STATIC)
-	@echo "[$(TARGET)] Done."
+	@echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) $(C_GREEN)Done.$(C_RST)"
 
 $(BUILD_DIR)/%.cpp.o: %.cpp
-	@echo "[$(TARGET)] Compiling C++ source: $<"
+	@echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) Compiling C++ source: $<"
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(CXX_FLAGS) -c $< -o $@
 

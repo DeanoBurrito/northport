@@ -2,6 +2,10 @@
 include Config.mk
 # Translate Config.mk variables into build flags.
 include misc/BuildPrep.mk
+# Things to make the output nicer on the eyes
+include misc/Formatting.mk
+# Help text, provides `make help` target which runs by default
+include misc/HelpText.mk
 
 # Toolchain selection
 ifeq ($(TOOLCHAIN), gcc)
@@ -17,7 +21,7 @@ else ifeq ($(TOOLCHAIN), clang)
 	export X_AR_BIN = llvm-ar
 	export KERNEL_AS_FLAGS = -c
 else
-	UNKNOWN_TOOLCHAIN = true
+$(error "Unknown toolchain: $(TOOLCHAIN), build aborted.")
 endif
 
 # Arch-specific flags + targets.
@@ -45,25 +49,25 @@ export INITDISK_FULL_FILEPATH = $(abspath $(PROJ_DIR_INITDISK)/$(BUILD_DIR)/nort
 export KERNEL_FILENAME = northport-kernel-$(CPU_ARCH).elf
 export KERNEL_FULL_FILEPATH = $(abspath $(PROJ_DIR_KERNEL)/$(BUILD_DIR)/$(KERNEL_FILENAME))
 export LIBS_OUTPUT_DIR = $(abspath $(PROJ_DIR_LIBS)/$(BUILD_DIR))
-export LIB_COMMON_MK = $(abspath misc/LibCommon.mk)
 export SUBMAKE_FLAGS = --no-print-directory -j $(shell nproc)
+export PROJ_ROOT_DIR = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 ISO_TEMP_DIR = iso/build
 ISO_FILENAME = iso/northport-$(CPU_ARCH).iso
 export ISO_FULL_FILEPATH = $(abspath $(ISO_FILENAME))
+
+.PHONY: help
+help: help-text
 
 .PHONY: all
 all: $(ARCH_DEFAULT_TARGET)
 
 .PHONY: binaries
 binaries:
-ifeq ($(UNKNOWN_TOOLCHAIN), true)
-	$(error "Unknown toolchain: $(TOOLCHAIN), build aborted.")
-endif
-	@echo "Toolchain: $(TOOLCHAIN), Arch: $(CPU_ARCH), Quiet: $(QUIET_BUILD)"
-	@echo "Sysroot: $(abspath $(TOOLCHAIN_SYSROOT))"
-	@echo "Kernel C++ flags: $(KERNEL_CXX_FLAGS)"
-	@echo "Kernel LD flags: $(KERNEL_LD_FLAGS)"
+	@echo -e "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST) $(CPU_ARCH), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)"
+	@echo -e "$(C_CYAN)Sysroot:$(C_RST) $(abspath $(TOOLCHAIN_SYSROOT))"
+	@echo -e "$(C_CYAN)Kernel C++ flags:$(C_RST) $(KERNEL_CXX_FLAGS)"
+	@echo -e "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)"
 	@echo
 	$(LOUD)cd $(PROJ_DIR_LIBS)/np-syslib; $(MAKE) all-kernel $(SUBMAKE_FLAGS)
 	$(LOUD)cd $(PROJ_DIR_LIBS); $(MAKE) all $(SUBMAKE_FLAGS)
@@ -84,14 +88,15 @@ iso: binaries
 		--efi-boot-image --protective-msdos-label $(ISO_TEMP_DIR) -o $(ISO_FULL_FILEPATH) $(LOUD_REDIRECT)
 	$(LOUD)$(LIMINE_DIR)/limine-deploy $(ISO_FULL_FILEPATH) $(LOUD_REDIRECT)
 	$(LOUD)rm -r $(ISO_TEMP_DIR)
-	@echo "Bootable iso generated @ $(ISO_FULL_FILEPATH)"
-	@echo "If qemu is installed, try it out with 'make run'!"
+	@echo -e "$(C_CYAN)[Build]$(C_RST) Bootable iso generated @ $(ISO_FULL_FILEPATH)"
+	@echo -e "$(C_CYAN)[Build]$(C_RST) If qemu is installed, try it out with 'make run'!"
 
 .PHONY: clean
 clean:
 	$(LOUD)-cd $(PROJ_DIR_LIBS)/np-syslib; $(MAKE) clean-kernel $(SUBMAKE_FLAGS)
 	$(LOUD)-cd $(PROJ_DIR_LIBS); $(MAKE) clean $(SUBMAKE_FLAGS)
 	$(LOUD)-cd $(PROJ_DIR_KERNEL); $(MAKE) clean $(SUBMAKE_FLAGS)
+	$(LOUD)-cd $(PROJ_DIR_INITDISK); $(MAKE) clean $(SUBMAKE_FLAGS)
 
 .PHONY: docs
 docs:

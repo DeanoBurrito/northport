@@ -32,7 +32,7 @@ This table is updated on a best effort basis. Latest tests done with GCC 11 and 
 ## Make Targets
 
 All build commands should be run from the project root directory. Currently the following make targets are available:
-- `make`, `make all`: Builds everything, will pack everything into an output specific to the platform. For x86_64 this means generating an iso with the kernel, and limine installed. For riscv this just builds the kernel.
+- `make all`: Builds everything, will pack everything into an output specific to the platform. For x86_64 this means generating an iso with the kernel, and limine installed. For riscv this just builds the kernel.
 - `make clean`: Removes any binaries and temporary build files. Forces the next build from to start from a clean slate.
 - `make run`: Builds the project, and launches it in qemu for the target arch.
 - `make run-kvmless`: Same as above, but will use software emulator instead of kvm.
