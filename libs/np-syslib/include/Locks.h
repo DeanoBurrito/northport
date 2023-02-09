@@ -54,6 +54,11 @@ namespace sl
             }
         }
 
+        inline bool TryLock()
+        {
+            return !__atomic_test_and_set(&lock, __ATOMIC_ACQUIRE);
+        }
+
         inline void Unlock()
         {
             __atomic_clear(&lock, __ATOMIC_RELEASE);
