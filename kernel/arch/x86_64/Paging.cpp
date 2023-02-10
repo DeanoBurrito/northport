@@ -190,4 +190,9 @@ namespace Npk
     {
         return CpuHasFeature(CpuFeature::Pml3Translation) ? PageSizes::_1G : PageSizes::_2M;
     }
+
+    extern "C" void HatHandlePanic()
+    {
+        LoadTables(kernelMasterTables);
+    }
 }

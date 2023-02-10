@@ -80,10 +80,7 @@ namespace Npk::Interrupts
     }
 
     void PanicIpiHandler(void*)
-    {
-        Log("Core %lu received panic ipi, halting.", LogLevel::Info, CoreLocal().id);
-        Halt();
-    }
+    { Halt(); }
     
     void BroadcastPanicIpi()
     {
@@ -93,6 +90,9 @@ namespace Npk::Interrupts
                 continue;
             
             sl::ScopedLock coreLock(mailboxes[i]->lock);
+
+            //because of the severity of a panic, we overwrite *every* mailbox entry in the destination core.
+            //this does cause other mail to be lost, but this ensures that the panic is received asap.
             for (size_t m = 0; m < MailboxQueueDepth; m++)
                 mailboxes[i]->callbacks[m].callback = PanicIpiHandler;
             SendIpi(i);

@@ -29,8 +29,6 @@ namespace Npk::Debug
     void DetachLogDriver(size_t deviceId);
 
     void LogWriterServiceMain(void*); //service thread for push logs to drivers
-
-    void Panic(TrapFrame* exceptionFrame, const char* reason);
 }
 
 using Npk::Debug::LogLevel;

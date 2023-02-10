@@ -174,4 +174,9 @@ namespace Npk
     {
         return (PageSizes)maxTranslationLevel;
     }
+
+    extern "C" void HatHandlePanic()
+    {
+        LoadTables(kernelMasterTables);
+    }
 }

@@ -5,6 +5,7 @@
 #include <memory/Pmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Thread.h>
+#include <containers/Queue.h>
 #include <Locks.h>
 #include <Memory.h>
 
@@ -12,7 +13,8 @@ namespace Npk::Debug
 {
     constexpr size_t MaxEarlyLogOuts = 4;
     constexpr size_t CoreLogBufferSize = 4 * PageSize;
-    constexpr size_t EarlyBufferSize = 0x4000;
+    constexpr size_t EarlyBufferSize = 4 * PageSize;
+    constexpr size_t MaxEloItemsPrinted = 20;
 
     constexpr const char* LevelStrs[] = 
     {
@@ -30,84 +32,118 @@ namespace Npk::Debug
     constexpr size_t LevelStrLength = 10;
     constexpr size_t LevelColourLength = 5;
 
-    struct CoreLogBuffer
+    struct LogBuffer
     {
         char* buffer;
+        size_t length;
         size_t head;
-        size_t reserveHead;
-        size_t eloLastHead;
-        size_t lock;
     };
 
+    struct LogMessage
+    {
+        LogBuffer* buff;
+        size_t begin;
+        size_t length;
+    };
+
+    sl::QueueMpSc<LogMessage> msgQueue {};
     char earlyBufferStore[EarlyBufferSize];
-    CoreLogBuffer earlyBuffer;
+    LogBuffer earlyBuffer = 
+    { 
+        .buffer = earlyBufferStore, 
+        .length = EarlyBufferSize, 
+        .head = 0
+    };
 
     EarlyLogWrite earlyOuts[MaxEarlyLogOuts];
     size_t eloCount = 0;
-    sl::TicketLock eloLock;
+    sl::SpinLock eloLock;
 
-    void WriteToEarlyOuts(const char* buffer, size_t length)
+    void WriteElos(const LogMessage& msg)
     {
-        if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) != 0)
-        {
-            sl::ScopedLock scopeLock(eloLock);
-            for (size_t i = 0; i < MaxEarlyLogOuts; i++)
-            {
-                if (earlyOuts[i] != nullptr)
-                    earlyOuts[i](buffer, length);
-            }
-        }
-    }
-
-    void WriteBufferToEarlyOuts(const char* buffer, size_t base, size_t length)
-    {
-        if (length == 0)
+        if (msg.length == 0)
             return;
 
-        base = base % (CoreLogBufferSize);
         size_t runover = 0;
-        if (base + length >= CoreLogBufferSize)
+        size_t length = msg.length;
+        if (msg.begin + msg.length >= msg.buff->length)
         {
-            runover = base + length - (CoreLogBufferSize);
-            length  -= runover;
+            runover = msg.begin + msg.length - msg.buff->length;
+            length -= runover;
         }
 
-        WriteToEarlyOuts(&buffer[base], length);
-        if (runover > 0)
-            WriteToEarlyOuts(buffer, runover);
+        for (size_t i = 0; i < MaxEarlyLogOuts; i++)
+        {
+            if (earlyOuts[i] != nullptr)
+                earlyOuts[i](&msg.buff->buffer[msg.begin], length);
+            if (runover > 0)
+                earlyOuts[i](msg.buff->buffer, runover);
+        }
     }
 
-    void WriteLog(const char* msg, size_t msgLength, size_t bufferLength, CoreLogBuffer& buffer)
+    void WriteLog(const char* message, size_t messageLen, LogBuffer* buffer)
     {
-        __atomic_add_fetch(&buffer.lock, 1, __ATOMIC_ACQUIRE); //acquire lock
-        const size_t beginWrite = __atomic_fetch_add(&buffer.reserveHead, msgLength, __ATOMIC_RELAXED);
+        using QueueItem = sl::QueueMpSc<LogMessage>::Item;
 
-        size_t overrunLength = 0;
-        if (beginWrite + msgLength >=- bufferLength)
+        //we allocate space for message data and the queue item in the same go
+        const size_t allocLength = messageLen + 2 * sizeof(QueueItem);
+        const size_t beginWrite = __atomic_fetch_add(&buffer->head, allocLength, __ATOMIC_SEQ_CST) % buffer->length;
+        
+        //TODO: we should suspend scheduling here until the list append, so we dont leak buffer space.
+        uintptr_t itemAddr = 0;
+        size_t messageBegin = beginWrite;
+        if (beginWrite + allocLength > buffer->length)
         {
-            overrunLength = (beginWrite + msgLength) - bufferLength;
-            msgLength -= overrunLength;
+            //we're going to wrap around, this is fine for message text but not for the queue struct,
+            //as it needs to be contiguous in memory.
+            size_t startLength = (beginWrite + allocLength) - buffer->length;
+            size_t endLength = allocLength - startLength;
+
+            //place struct before message if there's space
+            if (startLength >= 2 * sizeof(QueueItem))
+            {
+                itemAddr = beginWrite;
+                startLength -= 2 * sizeof(QueueItem);
+                messageBegin += 2 * sizeof(QueueItem);
+            }
+            else //otherwise place it after the message
+            {
+                endLength -= 2 * sizeof(QueueItem);
+                itemAddr = endLength;
+            }
+            
+            sl::memcopy(message, 0, buffer->buffer, messageBegin, startLength);
+            sl::memcopy(message, startLength, buffer->buffer, 0, endLength);
+        }
+        else
+        {
+            //no wraparound, this is very easy
+            itemAddr = beginWrite;
+            messageBegin += 2 * sizeof(QueueItem);
+            sl::memcopy(message, 0, buffer->buffer, messageBegin, messageLen);
         }
 
-        sl::memcopy(msg, 0, buffer.buffer, beginWrite, msgLength);
-        if (overrunLength > 0)
-            sl::memcopy(msg, msgLength, buffer.buffer, 0, overrunLength);
-        
-        const size_t releaseCount = __atomic_sub_fetch(&buffer.lock, 1, __ATOMIC_RELEASE); //release lock
+        QueueItem* item = new(sl::AlignUp(&buffer->buffer[itemAddr], sizeof(QueueItem))) QueueItem();
+        item->data.begin = messageBegin;
+        item->data.buff = buffer;
+        item->data.length = messageLen;
 
-        //if we were the last to unlock, update the public head with the reserved space head
-        if (releaseCount == 0)
+        //at this point we just need to add this log message to the queue
+        msgQueue.Push(item);
+
+        //if we're in the early state (eloCount > 0), try to flush the message queue to the outputs
+        if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) > 0 && eloLock.TryLock())
         {
-            const size_t newHead = __atomic_load_n(&buffer.reserveHead, __ATOMIC_RELAXED);
-            __atomic_store_n(&buffer.head, newHead, __ATOMIC_RELAXED);
-
-            if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) != 0)
+            for (size_t printed = 0; printed < MaxEloItemsPrinted; printed++)
             {
-                //we're in early init, write to the early log outputs
-                const size_t beginRead = __atomic_exchange_n(&buffer.eloLastHead, newHead, __ATOMIC_RELAXED);
-                WriteBufferToEarlyOuts(buffer.buffer, beginRead, newHead - beginRead);
+                QueueItem* item = msgQueue.Pop();
+                if (item == nullptr)
+                    break;
+                
+                WriteElos(item->data);
             }
-            //else: ELOs are not present, meaning service thread is active and will flush buffers for us.
+
+            eloLock.Unlock();
         }
     }
     
@@ -132,7 +168,7 @@ namespace Npk::Debug
 
         //create buffer on stack, +2 to allow space for "\r\n".
         const size_t bufferLen = uptimeLen + LevelStrLength + headerLen + 
-            (LevelColourLength * 2) + strLen + 2;
+            (LevelColourLength * 2) + strLen + 2; //TODO: limit buffer length
         char buffer[bufferLen];
         size_t bufferStart = 0;
 
@@ -164,16 +200,9 @@ namespace Npk::Debug
         buffer[bufferStart++] = '\n';
 
         if (CoreLocalAvailable() && CoreLocal().logBuffers != nullptr)
-        {
-            CoreLogBuffer& localBuffer = *reinterpret_cast<CoreLogBuffer*>(CoreLocal().logBuffers);
-            WriteLog(buffer, bufferLen, CoreLogBufferSize, localBuffer);
-        }
+            WriteLog(buffer, bufferLen, reinterpret_cast<LogBuffer*>(CoreLocal().logBuffers));
         else
-        {
-            if (earlyBuffer.buffer == nullptr)
-                earlyBuffer.buffer = earlyBufferStore;
-            WriteLog(buffer, bufferLen, EarlyBufferSize, earlyBuffer);
-        }
+            WriteLog(buffer, bufferLen, &earlyBuffer);
 
         if (level == LogLevel::Fatal)
             Panic(nullptr, buffer);
@@ -181,13 +210,12 @@ namespace Npk::Debug
 
     void InitCoreLogBuffers()
     {
-        CoreLogBuffer* coreLog = new CoreLogBuffer();
-        coreLog->head = coreLog->reserveHead = coreLog->lock = coreLog->eloLastHead = 0;
-        
-        uintptr_t bufferAddr = PMM::Global().Alloc(CoreLogBufferSize / PageSize) + hhdmBase;
-        coreLog->buffer = reinterpret_cast<char*>(bufferAddr);
+        LogBuffer* buffer = new LogBuffer;
+        buffer->head = 0;
+        buffer->length = CoreLogBufferSize;
+        buffer->buffer = reinterpret_cast<char*>(PMM::Global().Alloc(CoreLogBufferSize / PageSize) + hhdmBase);
 
-        CoreLocal().logBuffers = coreLog;
+        CoreLocal().logBuffers = buffer;
     }
 
     void AddEarlyLogOutput(EarlyLogWrite callback)
@@ -212,11 +240,13 @@ namespace Npk::Debug
 
     void AttachLogDriver(size_t deviceId)
     {
+        (void)deviceId;
         ASSERT_UNREACHABLE();
     }
 
     void DetachLogDriver(size_t deviceId)
     {
+        (void)deviceId;
         ASSERT_UNREACHABLE();
     }
 
@@ -225,12 +255,37 @@ namespace Npk::Debug
         //TODO: if ELOs are active, flush those, otherwise update each driver with the new
         //read head.
     }
+}
 
-    void Panic(TrapFrame* exceptionFrame, const char* reason)
+extern "C"
+{
+    static_assert(Npk::Debug::EarlyBufferSize > 0x2000, "Early buffer is too small to used as a panic stack");
+    void* panicStack = &Npk::Debug::earlyBufferStore[Npk::Debug::EarlyBufferSize];
+
+    void PanicWrite(const char* message)
     {
-        DisableInterrupts();
+        using namespace Npk::Debug;
+
+        const size_t messageLength = sl::memfirst(message, 0, 0);
+        for (size_t i = 0; i < MaxEarlyLogOuts; i++)
+        {
+            if (earlyOuts[i] != nullptr)
+                earlyOuts[i](message, messageLength);
+        }
+    }
+
+    void PanicLanding(Npk::TrapFrame* exceptionFrame, const char* reason)
+    {
+        using namespace Npk;
+        using namespace Npk::Debug;
+
         Interrupts::BroadcastPanicIpi();
-        Log("Panic done!", LogLevel::Info);
+        eloLock.TryLock();
+
+        PanicWrite("\r\n\r\n");
+        PanicWrite("Kernel Panic :(\r\n");
+        PanicWrite("System has halted indefinitely, manual reset required.\r\n");
+
         Halt();
     }
 }

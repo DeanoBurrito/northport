@@ -11,7 +11,9 @@ TrapEntry:
     csrr sp, sstatus
     andi sp, sp, 1 << 8
     bne sp, zero, 1f
-    ld sp, 80(x1) # we came from u-mode, use kernel stack.
+wtf_why_did_we_come_from_umode:
+    j wtf_why_did_we_come_from_umode
+    ld sp, 88(x1) # we came from u-mode, use kernel stack.
     j 2f
 1:
     ld sp, 0(x1) # we came from s-mode, use existing stack.

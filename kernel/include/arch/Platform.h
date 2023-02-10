@@ -58,6 +58,7 @@ namespace Npk
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
     void ExecuteTrapFrame(TrapFrame* frame) asm("ExecuteTrapFrame");
+    void Panic(TrapFrame* exceptionFrame, const char* reason) asm("Panic");
 
     void SendIpi(size_t dest);
     uintptr_t MsiAddress(size_t core, size_t vector);

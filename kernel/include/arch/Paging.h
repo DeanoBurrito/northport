@@ -70,3 +70,5 @@ namespace Npk
 
     PageSizes MaxSupportedPagingSize();
 }
+
+extern "C" void HatHandlePanic();
