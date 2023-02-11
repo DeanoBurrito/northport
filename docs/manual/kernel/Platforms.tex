@@ -1,5 +1,5 @@
 \section{Supported Platforms}
-This version of the kernel was written with support for multiple platforms in mind from the beginning, and it was one of the earliest features of the kernel. Currently only two platforms are supported (x86\_64 and riscv64) but it would be nice to add more in the future, namely aarch64 and perhaps something more exotic.
+This version of the kernel was written with support for multiple platforms in mind from the beginning. Getting a hello world running on multiple platforms was one of the earliest goals of this rewrite. Currently only two platforms are supported (x86\_64 and riscv64), but it would be nice to add more in the future, namely aarch64 and perhaps something more exotic.
 
 The current platforms and their status are listed below.
 
@@ -31,7 +31,7 @@ Most of the declared functions can be implemented by simple inline assembly, and
 Of course platforms are free to define their own internal constants here too, for example x86\_64 defines a number of MSR and port values.
 
 \subsection{Platform Requirements}
-The northport kernel is inteded to run on mobile or desktop class processors, and currently there is no intent to support embedded processors.
+The northport kernel is inteded to run on mobile or desktop class processors, and currently there is no intent to support embedded class processors.
 
 The hardware requirements for adding a new platform are described below.
 
@@ -43,3 +43,8 @@ The hardware requirements for adding a new platform are described below.
 \end{itemize}
 
 The kernel also has a soft requirement of being running on a 64-bit processor. Although it should be possible to port to a 32-bit system, this isn't a goal of the project and is yet to be tested.
+
+\subsection{Implementation Notes}
+
+\subsubsection{Riscv64}
+The riscv ISA does not have a \verb|pause| instruction by default. It was originally added as a custom instruction by si-five and later ratified into an ISA extension. A problem arises though with the way riscv is structed: if this instruction is not specicified to your toolchain you won't be able to use the instruction mnemonic. Fortunately any good assembler can emit raw bytes into the instruction stream, so we are able to use \verb|pause|. If you see \verb|.int 0x0100000F| in any riscv code, that's the encoding for \verb|pause| (which is actually an alias for \verb|fence r, 0|). Why not use the aliased form? Well that form is actually illegal under the base spec as you cannot encode null (as in neither \verb|r| nor |verb|w|) in either the pre or post fields. An amusing oversight, which is why it's been done this way.

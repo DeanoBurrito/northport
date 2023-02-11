@@ -18,7 +18,7 @@ SmpEntry:
     mv t0, a0
     addi t0, t0, 16
 1:
-    # TODO: look into an riscv equivilent of 'pause'.
+    .int 0x0100000F # this is a 'pause' instruction, without the assembler support for mnemonic.
     ld t1, (t0)
     beqz t1, 1b
 

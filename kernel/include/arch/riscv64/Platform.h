@@ -107,7 +107,9 @@ namespace Npk
 
     [[gnu::always_inline]]
     inline void HintSpinloop()
-    {}
+    {
+        asm(".int 0x0100000F");
+    }
 
     inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
     {
