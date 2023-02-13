@@ -177,40 +177,46 @@ namespace Npk::Boot
 
         //find all free physical memory
         {
+            //I'm using brackets here to reduce pressure on the stack with all
+            //the local variables allocated.
             auto memoryNode = DeviceTree::Global().GetNode("/memory");
             ASSERT(memoryNode.HasValue(), "No '/memory' node in device tree");
             auto memoryRegs = memoryNode->GetProp("reg");
             ASSERT(memoryRegs.HasValue(), "DTB memory node has no reg property");
 
-            const size_t regsCount = memoryRegs->ReadRegs(*memoryNode, nullptr, nullptr);
-            uintptr_t addrs[regsCount];
-            size_t lengths[regsCount];
-            memoryRegs->ReadRegs(*memoryNode, addrs, lengths);
+            const size_t regsCount = memoryRegs->ReadRegs(*memoryNode, nullptr);
+            DtReg regs[regsCount];
+            memoryRegs->ReadRegs(*memoryNode, regs);
 
             for (size_t i = 0; i < regsCount; i++)
-                new (&freeBlocks[freeCount++]) MemBlock{ addrs[i], lengths[i], LIMINE_MEMMAP_USABLE };
+            {
+                new (&freeBlocks[freeCount++]) MemBlock
+                { regs[i].base, regs[i].length, LIMINE_MEMMAP_USABLE };
+            }
         }
 
         //find any reserved regions
         {
-            auto reservedNode = DeviceTree::Global().GetNode("/reserved-memory");
-            ASSERT(reservedNode.HasValue(), "DTB has no '/reserved-memory' node.");
+        auto reservedNode = DeviceTree::Global().GetNode("/reserved-memory");
+        ASSERT(reservedNode.HasValue(), "DTB has no '/reserved-memory' node.");
 
-            for (size_t i = 0; i < reservedNode->childCount; i++)
+        for (size_t i = 0; i < reservedNode->childCount; i++)
+        {
+            DtNode child = *DeviceTree::Global().GetChild(*reservedNode, i);
+
+            //TODO: we should also support unit address + size property
+            auto regsProp = child.GetProp("reg");
+            ASSERT(regsProp.HasValue(), "reserved memory node has not 'regs' property.");
+            const size_t regsCount = regsProp->ReadRegs(child, nullptr);
+            DtReg regs[regsCount];
+            regsProp->ReadRegs(child, regs);
+
+            for (size_t i = 0; i < regsCount; i++)
             {
-                DtNode child = *DeviceTree::Global().GetChild(*reservedNode, i);
-
-                //TODO: we should also support unit address + size property
-                auto regsProp = child.GetProp("reg");
-                ASSERT(regsProp.HasValue(), "reserved memory node has not 'regs' property.");
-                const size_t regsCount = regsProp->ReadRegs(child, nullptr, nullptr);
-                uintptr_t addrs[regsCount];
-                size_t lengths[regsCount];
-                regsProp->ReadRegs(child, addrs, lengths);
-
-                for (size_t i = 0; i < regsCount; i++)
-                    new (&reservedBlocks[reservedCount++]) MemBlock{ addrs[i], lengths[i], LIMINE_MEMMAP_RESERVED };
+                new (&reservedBlocks[reservedCount++]) MemBlock
+                { regs[i].base, regs[i].length, LIMINE_MEMMAP_RESERVED };
             }
+        }
         }
 
         //sort both lists by their base address (bubble sort).

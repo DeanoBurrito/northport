@@ -90,8 +90,8 @@ namespace Npk::Drivers
     class NvmeBlockDevice : public Devices::GenericBlock
     {
     private:
-        NvmeNamespace& info;
         NvmeController& controller;
+        NvmeNamespace& info;
 
     public:
         NvmeBlockDevice(NvmeController& ctrlr, NvmeNamespace& info) 

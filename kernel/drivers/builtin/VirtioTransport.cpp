@@ -35,10 +35,10 @@ namespace Npk::Drivers
 
         auto maybeReg = dtTag->node.GetProp("reg");
         VALIDATE(maybeReg,, "No regs");
-        uintptr_t addr = 0;
-        maybeReg->ReadRegs(dtTag->node, &addr, nullptr);
+        Config::DtReg reg;
+        maybeReg->ReadRegs(dtTag->node, &reg);
 
-        VmObject mmio(PageSize, addr, VmFlags::Mmio);
+        VmObject mmio(PageSize, reg.base, VmFlags::Mmio);
         VALIDATE(mmio->Read<uint32_t>() == VirtioMmioMagic,, "Bad magic.");
         const uint32_t deviceType = mmio->Offset((size_t)VirtioReg::DeviceId).Read<uint32_t>();
         if (deviceType == 0)
@@ -132,10 +132,9 @@ namespace Npk::Drivers
                 auto maybeRegs = initTag->node.GetProp("reg");
                 VALIDATE(maybeRegs, false, "No regs prop");
 
-                uintptr_t address = 0;
-                size_t length = 0;
-                maybeRegs->ReadRegs(initTag->node, &address, &length);
-                InitMmio(address, length);
+                Config::DtReg reg;
+                maybeRegs->ReadRegs(initTag->node, &reg);
+                InitMmio(reg.base, reg.length);
                 foundTag = true;
             }
             else if (tags->type == InitTagType::Pci)

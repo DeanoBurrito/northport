@@ -15,7 +15,6 @@ namespace Npk::Config
     constexpr uint32_t FdtEndNode = 0x2;
     constexpr uint32_t FdtProp = 0x3;
     constexpr uint32_t FdtNop = 0x4;
-    constexpr uint32_t FdtEnd = 0x9;
 
     struct FdtHeader
     {
@@ -47,7 +46,7 @@ namespace Npk::Config
 //This is what I will call your standard if you make it big-endian by default.
 #define BS(x) sl::ByteSwap(x)
 
-    sl::Opt<const DtNode> DeviceTree::FindCompatibleHelper(const DtNode& scan, const char* compatStr, size_t compatStrLen, size_t start) const
+    sl::Opt<const DtNode> DeviceTree::FindCompatHelper(const DtNode& scan, const char* compatStr, size_t compatStrLen, size_t start) const
     {
         //NOTE: two loops are used because I want to search width-first.
         for (size_t i = 0; i < scan.childCount; i++)
@@ -74,7 +73,7 @@ namespace Npk::Config
 
         for (size_t i = 0; i < scan.childCount; i++)
         {
-            auto found = FindCompatibleHelper(*GetChild(scan, i), compatStr, compatStrLen, start);
+            auto found = FindCompatHelper(*GetChild(scan, i), compatStr, compatStrLen, start);
             if (found)
                 return *found;
         }
@@ -280,7 +279,7 @@ namespace Npk::Config
             return {};
 
         const size_t compatStrLen = sl::memfirst(compatStr, 0, 0);
-        return FindCompatibleHelper(rootNode, compatStr, compatStrLen, start ? start->ptr : rootNode.ptr);
+        return FindCompatHelper(rootNode, compatStr, compatStrLen, start ? start->ptr : rootNode.ptr);
     }
 
     sl::Opt<const DtNode> DeviceTree::GetChild(const DtNode& parent, const char* name) const
@@ -435,15 +434,15 @@ namespace Npk::Config
         return BS(*(cells + prop.ptr + 3));
     }
 
-    size_t DeviceTree::ReadRegs(const DtNode& node, const DtProperty& prop, uintptr_t* bases, size_t* lengths) const
+    size_t DeviceTree::ReadRegs(const DtNode& node, const DtProperty& prop, DtReg* regs) const
     { 
         if (cellsCount == 0)
             return {};
         
-        return ReadPairs(prop, node.addrCells, node.sizeCells, bases, lengths);
+        return ReadPairs(prop, node.addrCells, node.sizeCells, regs);
     }
 
-    size_t DeviceTree::ReadPairs(const DtProperty& prop, size_t aCells, size_t bCells, size_t* aStore, size_t* bStore) const
+    size_t DeviceTree::ReadPairs(const DtProperty& prop, size_t aCells, size_t bCells, DtPair* pairs) const
     {
         if (cellsCount == 0)
             return {};
@@ -460,23 +459,21 @@ namespace Npk::Config
 
         const FdtProperty* property = reinterpret_cast<const FdtProperty*>(cells + prop.ptr + 1);
         const size_t count = BS(property->length) / ((aCells + bCells) * 4);
-        if (aStore == nullptr && bStore == nullptr)
-            return count;
+        if (pairs == nullptr)
+            return count; //we're just getting the length, early exit
 
         const uintptr_t propertyData = prop.ptr + 3;
         for (size_t i = 0; i < count; i++)
         {
             const size_t readBase = propertyData + i * (aCells + bCells);
-            if (aStore != nullptr)
-                aStore[i] = Extract(readBase, aCells);
-            if (bStore != nullptr)
-                bStore[i] = Extract(readBase + aCells, bCells);
+            pairs[i].a = Extract(readBase, aCells);
+            pairs[i].b = Extract(readBase + aCells, bCells);
         }
         
         return count;
     }
 
-    size_t DeviceTree::ReadRanges(const DtNode& node, const DtProperty& prop, uintptr_t* parents, uintptr_t* children, size_t* lengths) const
+    size_t DeviceTree::ReadRanges(const DtNode& node, const DtProperty& prop, DtRange* ranges) const
     {
         if (cellsCount == 0)
             return 0;
@@ -505,22 +502,21 @@ namespace Npk::Config
         const size_t entryLength = node.childSizeCells + node.childAddrCells + node.addrCells;
         const FdtProperty* property = reinterpret_cast<const FdtProperty*>(cells + prop.ptr + 1);
         const size_t count = BS(property->length) / (entryLength * 4);
-        if (parents == nullptr && children == nullptr && lengths == nullptr)
+        if (ranges == nullptr)
             return count;
         
-        const uintptr_t data = prop.ptr + 3;
-        const size_t readOffset = node.childAddrCells - (sizeof(uintptr_t) / 4);
         static_assert(sizeof(uintptr_t) % 4 == 0, "wot");
+        const uintptr_t data = prop.ptr + 3;
+        const size_t metadataSize = node.childAddrCells - (sizeof(uintptr_t) / 4);
 
         for (size_t i = 0; i < count; i++)
         {
             const size_t readBase = data + i * entryLength;
-            if (children != nullptr)
-                children[i] = Extract(readBase + readOffset, node.childAddrCells - readOffset);
-            if (parents != nullptr)
-                parents[i] = Extract(readBase + node.childAddrCells, node.addrCells);
-            if (lengths != nullptr)
-                lengths[i] = Extract(readBase + node.childAddrCells + node.addrCells, node.childSizeCells);
+            if (metadataSize > 0)
+                ranges[i].metadata = Extract(readBase, metadataSize);
+            ranges[i].childBase = Extract(readBase + metadataSize, node.childAddrCells - metadataSize);
+            ranges[i].parentBase = Extract(readBase + node.childAddrCells, node.addrCells);
+            ranges[i].length = Extract(readBase + node.childAddrCells + node.addrCells, node.childSizeCells);
         }
 
         return count;

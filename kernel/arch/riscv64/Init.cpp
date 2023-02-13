@@ -24,7 +24,6 @@ namespace Npk
         clb->selfAddr = (uintptr_t)clb;
         clb->interruptControl = plicContext;
         clb->runLevel = RunLevel::Normal;
-        // clb->nextKernelStack = (new uint8_t[0x800]) + 0x800; //TODO: not this
         WriteCsr("sscratch", (uintptr_t)clb);
 
         EnableInterrupts();
@@ -58,9 +57,9 @@ namespace Npk
         if (!regsProp)
             return;
         
-        uintptr_t base;
-        regsProp->ReadRegs(*maybeUart, &base, nullptr);
-        uartRegs = base + Npk::hhdmBase;
+        Config::DtReg reg;
+        regsProp->ReadRegs(*maybeUart, &reg);
+        uartRegs = reg.base + Npk::hhdmBase;
 
         Debug::AddEarlyLogOutput(UartWrite);
     }
