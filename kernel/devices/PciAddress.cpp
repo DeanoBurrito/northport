@@ -1,4 +1,5 @@
 #include <devices/PciAddress.h>
+#include <devices/PciBridge.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
@@ -13,7 +14,7 @@ namespace Npk::Devices
 #endif
     constexpr uintptr_t PciLegacyPoison = 0x8888'8888;
 
-    PciAddress PciAddress::CreateMmio(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t function)
+    PciAddress PciAddress::CreateEcam(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t function)
     {
         const uintptr_t physAddr = segmentBase + ((bus << 20) | (device << 15) | (function << 12));
         
@@ -77,6 +78,7 @@ namespace Npk::Devices
             //io bar
             bar.isMemory = bar.is64Bit = bar.isPrefetchable = false;
             bar.address = original & ~(uint32_t)0b11;
+            bar.address = *PciBridge::Global().PciToHost(bar.address, PciSpaceType::BarIo);
             
             if (!noSize)
             {
@@ -99,6 +101,7 @@ namespace Npk::Devices
             if (bar.is64Bit)
             {
                 bar.address |= (uint64_t)ReadAt(offset + 4) << 32;
+                bar.address = *PciBridge::Global().PciToHost(bar.address, PciSpaceType::Bar64);
 
                 if (!noSize)
                 {
@@ -108,6 +111,8 @@ namespace Npk::Devices
                     WriteAt(offset + 4, originalUpper);
                 }
             }
+            else
+                bar.address = *PciBridge::Global().PciToHost(bar.address, PciSpaceType::Bar32);
 
             if (!noSize)
             {

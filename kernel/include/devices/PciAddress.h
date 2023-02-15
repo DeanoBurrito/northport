@@ -47,7 +47,8 @@ namespace Npk::Devices
         constexpr PciAddress(uintptr_t address) : addr(address)
         {}
 
-        static PciAddress CreateMmio(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t function);
+        //TODO: dtor needs to free allocated window from VMM!
+        static PciAddress CreateEcam(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t function);
         static PciAddress CreateLegacy(uint8_t bus, uint8_t device, uint8_t function);
 
         void WriteAt(size_t offset, uint32_t value) const;
