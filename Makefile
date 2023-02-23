@@ -13,12 +13,14 @@ ifeq ($(TOOLCHAIN), gcc)
 	export X_AS_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-as)
 	export X_LD_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-ld)
 	export X_AR_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-ar)
+	export X_READELF_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-readelf)
 	export KERNEL_AS_FLAGS = 
 else ifeq ($(TOOLCHAIN), clang)
 	export X_CXX_BIN = clang++ --target=$(ARCH_TARGET) --sysroot=$(abspath $(TOOLCHAIN_SYSROOT))
 	export X_AS_BIN = clang --target=$(ARCH_TARGET)
 	export X_LD_BIN = ld.lld
 	export X_AR_BIN = llvm-ar
+	export X_READELF_BIN = llvm-readelf
 	export KERNEL_AS_FLAGS = -c
 else
 $(error "Unknown toolchain: $(TOOLCHAIN), build aborted.")
@@ -64,7 +66,8 @@ all: $(ARCH_DEFAULT_TARGET)
 
 .PHONY: binaries
 binaries:
-	@echo -e "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST) $(CPU_ARCH), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)"
+	@echo -e "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST)\
+	 $(CPU_ARCH), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)"
 	@echo -e "$(C_CYAN)Sysroot:$(C_RST) $(abspath $(TOOLCHAIN_SYSROOT))"
 	@echo -e "$(C_CYAN)Kernel C++ flags:$(C_RST) $(KERNEL_CXX_FLAGS)"
 	@echo -e "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)"
@@ -73,6 +76,11 @@ binaries:
 	$(LOUD)cd $(PROJ_DIR_LIBS); $(MAKE) all $(SUBMAKE_FLAGS)
 	$(LOUD)cd $(PROJ_DIR_KERNEL); $(MAKE) all $(SUBMAKE_FLAGS)
 	$(LOUD)cd $(PROJ_DIR_INITDISK); $(MAKE) all $(SUBMAKE_FLAGS)
+ifeq ($(COUNT_TODOS), yes)
+	@echo -e "$(C_CYAN)[Build]$(C_RST) $(shell grep -o "TODO:" $$(find -name "*.cpp"\
+	 -o -name "*.h" -o -name "*.S") | wc -l) TODOs found in code, $(shell grep -o \
+	 "TODO:" $$(find -name "*.tex" -o -name "*.md") | wc -l) TODOs found in docs."
+endif
 
 .PHONY: iso
 iso: binaries

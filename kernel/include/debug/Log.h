@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 namespace Npk
 {
@@ -9,6 +10,13 @@ namespace Npk
 
 namespace Npk::Debug
 {
+    struct KernelSymbol
+    {
+        uintptr_t address;
+        size_t size;
+        const char* name;
+    };
+    
     enum class LogLevel : size_t
     {
         Fatal = 0,

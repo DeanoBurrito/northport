@@ -10,7 +10,6 @@ Panic:
     csrc sstatus, t0
 
     # Jump to known good stack, ensure MMU is happy
-    mv fp, zero
     lui sp, %hi(panicStack)
     addi sp, sp, %lo(panicStack)
     jal HatHandlePanic

@@ -115,6 +115,29 @@ namespace Npk
     }
 
     [[gnu::always_inline]]
+    inline uintptr_t GetReturnAddr(size_t level)
+    {
+        struct Frame
+        {
+            Frame* next;
+            uintptr_t retAddr;
+        };
+
+        Frame* current = static_cast<Frame*>(__builtin_frame_address(0));
+        // asm ("mov %%rbp, %0" : "=r"(current) :: "memory");
+        for (size_t i = 0; i <= level; i++)
+        {
+            if (current == nullptr)
+                return 0;
+            if (i == level)
+                return current->retAddr;
+            current = current->next;
+        }
+
+        return 0;
+    }
+
+    [[gnu::always_inline]]
     inline void SendIpi(size_t dest)
     {
         LocalApic::Local().SendIpi(dest);
@@ -124,7 +147,7 @@ namespace Npk
     inline uintptr_t MsiAddress(size_t core, size_t vector)
     {
         (void)vector;
-        return ((core & 0xFF) << 12) | 0xFEE'0000;
+        return ((core & 0xFF) << 12) | 0xFEE0'0000;
     }
 
     [[gnu::always_inline]]

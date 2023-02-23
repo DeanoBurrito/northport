@@ -15,6 +15,7 @@ namespace Npk::Debug
     constexpr size_t CoreLogBufferSize = 4 * PageSize;
     constexpr size_t EarlyBufferSize = 4 * PageSize;
     constexpr size_t MaxEloItemsPrinted = 20;
+    constexpr size_t MaxMessageLength = 128;
 
     constexpr const char* LevelStrs[] = 
     {
@@ -89,7 +90,6 @@ namespace Npk::Debug
         const size_t allocLength = messageLen + 2 * sizeof(QueueItem);
         const size_t beginWrite = __atomic_fetch_add(&buffer->head, allocLength, __ATOMIC_SEQ_CST) % buffer->length;
         
-        //TODO: we should suspend scheduling here until the list append, so we dont leak buffer space.
         uintptr_t itemAddr = 0;
         size_t messageBegin = beginWrite;
         if (beginWrite + allocLength > buffer->length)
@@ -163,12 +163,12 @@ namespace Npk::Debug
         //get formatted message length
         va_list argsList;
         va_start(argsList, level);
-        const size_t strLen = npf_vsnprintf(nullptr, 0, str, argsList) + 1;
+        const size_t strLen = sl::Min<size_t>(npf_vsnprintf(nullptr, 0, str, argsList) + 1, MaxMessageLength);
         va_end(argsList);
 
         //create buffer on stack, +2 to allow space for "\r\n".
         const size_t bufferLen = uptimeLen + LevelStrLength + headerLen + 
-            (LevelColourLength * 2) + strLen + 2; //TODO: limit buffer length
+            (LevelColourLength * 2) + strLen + 2;
         char buffer[bufferLen];
         size_t bufferStart = 0;
 
@@ -191,6 +191,7 @@ namespace Npk::Debug
         bufferStart += LevelColourLength;
 
         //format and print log message
+        const size_t textStart = bufferStart;
         va_start(argsList, level);
         npf_vsnprintf(&buffer[bufferStart], strLen, str, argsList);
         va_end(argsList);
@@ -199,13 +200,13 @@ namespace Npk::Debug
         buffer[bufferStart++] = '\r';
         buffer[bufferStart++] = '\n';
 
+        if (level == LogLevel::Fatal)
+            Panic(nullptr, &buffer[textStart]);
+
         if (CoreLocalAvailable() && CoreLocal().logBuffers != nullptr)
             WriteLog(buffer, bufferLen, reinterpret_cast<LogBuffer*>(CoreLocal().logBuffers));
         else
             WriteLog(buffer, bufferLen, &earlyBuffer);
-
-        if (level == LogLevel::Fatal)
-            Panic(nullptr, buffer);
     }
 
     void InitCoreLogBuffers()
@@ -255,24 +256,35 @@ namespace Npk::Debug
         //TODO: if ELOs are active, flush those, otherwise update each driver with the new
         //read head.
     }
+
+    void PanicWrite(const char* message, ...)
+    {
+        using namespace Npk::Debug;
+
+        va_list args;
+        va_start(args, message);
+        const size_t messageLen = npf_vsnprintf(nullptr, 0, message, args) + 1;
+        va_end(args);
+
+        char messageBuffer[messageLen];
+        va_start(args, message);
+        npf_vsnprintf(messageBuffer, messageLen, message, args);
+        va_end(args);
+
+        for (size_t i = 0; i < MaxEarlyLogOuts; i++)
+        {
+            if (earlyOuts[i] != nullptr)
+                earlyOuts[i](messageBuffer, messageLen);
+        }
+    }
+
+    extern KernelSymbol kernelSymbols[];
 }
 
 extern "C"
 {
     static_assert(Npk::Debug::EarlyBufferSize > 0x2000, "Early buffer is too small to used as a panic stack");
     void* panicStack = &Npk::Debug::earlyBufferStore[Npk::Debug::EarlyBufferSize];
-
-    void PanicWrite(const char* message)
-    {
-        using namespace Npk::Debug;
-
-        const size_t messageLength = sl::memfirst(message, 0, 0);
-        for (size_t i = 0; i < MaxEarlyLogOuts; i++)
-        {
-            if (earlyOuts[i] != nullptr)
-                earlyOuts[i](message, messageLength);
-        }
-    }
 
     void PanicLanding(Npk::TrapFrame* exceptionFrame, const char* reason)
     {
@@ -283,9 +295,30 @@ extern "C"
         eloLock.TryLock();
 
         PanicWrite("\r\n\r\n");
-        PanicWrite("Kernel Panic :(\r\n");
-        PanicWrite("System has halted indefinitely, manual reset required.\r\n");
+        PanicWrite("---==####==--- Kernel Panic ---==####==---\r\n\r\n");
+        PanicWrite(reason);
 
+        PanicWrite("\r\nCall stack (latest call first):\r\n");
+        for (size_t i = 0; i < 20; i++)
+        {
+            const uintptr_t addr = GetReturnAddr(i);
+            if (addr == 0)
+                break;
+            
+            const char* symbolName = "<unknown>";
+            for (size_t i = 0; kernelSymbols[i].address != -1ul; i++)
+            {
+                if (addr < kernelSymbols[i].address)
+                    continue;
+                if (addr > kernelSymbols[i].address + kernelSymbols[i].size)
+                    continue;
+                symbolName = kernelSymbols[i].name;
+                break;
+            }
+            PanicWrite("%3u: 0x%lx %s\r\n", i, addr, symbolName);
+        }
+
+        PanicWrite("\r\nSystem has halted indefinitely, manual reset required.\r\n");
         Halt();
     }
 }

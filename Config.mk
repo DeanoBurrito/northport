@@ -9,24 +9,38 @@ TOOLCHAIN_SYSROOT = ../cross-tools/lib/gcc/$(ARCH_TARGET)
 LIMINE_DIR = ../cross-tools/limine
 
 # ---- Emulator Options ----
+# If available, will launch qemu with UEFI firmware instead of the
+# default for the platform. This may require EDK2 to be installed, 
+# and paths to be setup in the target platform's CrossConfig.mk.
 BOOT_WITH_UEFI = yes
 
 # ---- Build System Options ----
-# 'yes' will suppress output of build commands to stdout, 'no' will output everything.
+# By default build commands are not echoed to stdout as there is a lot
+# of information. Set this to 'no' if you are debugging the build system or 
+# are interested in exactly what's being run.
 QUIET_BUILD = yes
+# Display the total count of TODOs within codebase after compile, 
+# maybe shame me into fixing them oneday. Note this adds to compile times
+# slightly, and can be worth disabling on less powerful machines.
+COUNT_TODOS = yes
+# Whether to include a copy of the kernel symbol table in the final executable.
+# This is separate to the debug information `-g` adds.
+KERNEL_SYMBOL_TABLE = yes
 
 # ---- Compiler Options ----
 # ISA to compile for: 'x86_64' or 'riscv64'
 export CPU_ARCH = x86_64
 # KERNEL_CXX_FLAGS += -fsanitize=undefined
 KERNEL_CXX_FLAGS += -O0 -g
-# Include a nice background for the terminal or not.
+# Set to 'yes' to embed a nice terminal background into the kernel,
+# this does significantly increase kernel size and build times. 
 INCLUDE_TERMINAL_BG = no
-# Time (in milliseconds) between core clock ticks, range is 1 - 20 (1000hz - 50hz).
+# Resolution of the kernel clock in milliseconds. Range is 1-20ms (1000hz - 50hz).
 CLOCK_TICK_MS = 1
 
 # ---- X86_64 Options ----
-# Use debugcon (port 0xE9) as a serial driver and early log output. Only enable this for virtual machines.
+# Enable use of debugcon (port 0xE9) as a serial driver and early log output. 
+# Only enable this for virtual machines.
 X86_64_ENABLE_DEBUGCON_E9 = yes
 
 # ---- Riscv 64 Options ----

@@ -7,10 +7,11 @@
         - [x] Core (paging, interrupts).
         - [x] Timer (SBI, sstc).
         - [ ] F/D/Q and V extension support.
+        - [ ] AIA (imsic, aplic).
     - [x] Limine protocol boot shim (for riscv):
         - [x] Memory map, hhdm and kernel address.
         - [x] SMP feature.
-        - [ ] EFI entry point, ACPI tables.
+    - [ ] EFI entry stub.
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
             - [x] Reclaim bootloader memory.
@@ -34,6 +35,7 @@
         - [ ] Heterogenous cpu support.
         - [ ] Waitable objects.
     - [x] Panic.
+        - [x] Stack frame walker.
     - [ ] Sanitizers.
         - [x] Undefined behaviour.
         - [ ] Address.
