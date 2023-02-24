@@ -41,12 +41,15 @@ namespace Npk::Devices
     bool PciCap::BitReadWrite(size_t regIndex, size_t bitIndex, sl::Opt<bool> setValue) const
     {
         uint32_t regValue = ReadReg(regIndex);
-        const bool prevState = regValue & (1 << bitIndex);
+        const uint32_t bitmask = 1u << bitIndex;
+        const bool prevState = regValue & bitmask;
         
         if (setValue)
         {
-            regValue = *setValue ? regValue | (1 << bitIndex) : regValue & ~((uint32_t)1 << bitIndex);
-            WriteReg(regIndex, regValue);
+            if (*setValue)
+                WriteReg(regIndex, regValue | bitmask);
+            else
+                WriteReg(regIndex, regValue & ~bitmask);
         }
         return prevState;
     }
@@ -89,7 +92,7 @@ namespace Npk::Devices
     void MsixCap::SetEntry(void* birAccess, size_t index, uintptr_t addr, uint32_t data, bool masked) const
     {
         const size_t birOffset = cap.ReadReg(1) & ~0b111u;
-        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 4));
+        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 16));
 
         entry.Offset(0).Write<uint32_t>(addr);
         entry.Offset(4).Write<uint32_t>(addr >> 32);
@@ -100,7 +103,7 @@ namespace Npk::Devices
     void MsixCap::MaskEntry(void* birAccess, size_t index, bool mask) const
     {
         const size_t birOffset = cap.ReadReg(1) & ~0b111u;
-        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 4));
+        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 16));
 
         entry.Offset(12).Write<uint32_t>(mask ? 0b1 : 0b0);
     }
@@ -108,7 +111,7 @@ namespace Npk::Devices
     void MsixCap::GetEntry(void* birAccess, size_t index, uintptr_t& addr, uint32_t& data, bool& masked) const
     {
         const size_t birOffset = cap.ReadReg(1) & ~0b111u;
-        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 4));
+        sl::NativePtr entry = sl::NativePtr(birAccess).Offset(birOffset + (index * 16));
         
         addr = entry.Read<uint32_t>();
         addr |= (uint64_t)entry.Offset(4).Read<uint32_t>() << 32;

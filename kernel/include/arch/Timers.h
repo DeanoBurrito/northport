@@ -12,7 +12,7 @@ namespace Npk
     
     void InitTimers();
 
-    void SetSysTimer(size_t nanoseconds, void (*callback)(size_t));
+    void SetSysTimer(size_t nanoseconds, void (*callback)());
     size_t SysTimerMaxNanos();
     void PolledSleep(size_t nanoseconds);
     size_t PollTimer();

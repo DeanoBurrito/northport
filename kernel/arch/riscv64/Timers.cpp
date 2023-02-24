@@ -30,8 +30,8 @@ namespace Npk
         Log("Platform timer: freq=%lu.%lu%shz", LogLevel::Info, freqUnits.major, freqUnits.minor, freqUnits.prefix);
     }
 
-    void (*timerCallback)(size_t);
-    void SetSysTimer(size_t nanoseconds, void (*callback)(size_t))
+    void (*timerCallback)();
+    void SetSysTimer(size_t nanoseconds, void (*callback)())
     {
         const size_t triggerTime = RdTime() + (nanoseconds / timerPeriod.ToNanos());
         if (callback != nullptr)

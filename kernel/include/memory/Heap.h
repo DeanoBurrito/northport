@@ -91,7 +91,7 @@ namespace Npk::Memory
                 overdueList = overdueList->next;
                 cache[cachedItems++] = item;
                 
-                if (cachedItems == CacheDepth)
+                if (cachedItems > 0)
                     return cache[--cachedItems];
             }
 

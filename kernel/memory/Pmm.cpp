@@ -21,13 +21,33 @@ namespace Npk::Memory
 
         //allocate the bitmap and clear it
         const size_t bitmapBytes = ((length / PageSize) / 8) + 1;
-        ASSERT(bitmapBytes <= bitmapFreeSize, "TODO: expand bitmap");
+        if (bitmapBytes > bitmapFreeSize)
+        {
+            ASSERT(length > bitmapBytes, "Not enough space");
+            Log("Expanding PMM bitmap at 0x%lx", LogLevel::Info, base);
+
+            const size_t allocSize = sl::AlignUp(bitmapBytes, PageSize);
+            bitmapAlloc = reinterpret_cast<uint8_t*>(base + hhdmBase);
+            bitmapFreeSize = allocSize;
+            base += allocSize;
+            length -= allocSize;
+        }
+
         uint8_t* regionBitmap = bitmapAlloc;
         bitmapFreeSize += bitmapBytes;
         sl::memset(regionBitmap, 0, bitmapBytes);
 
         //allocate the region, initialize it
-        ASSERT(remainingRegionAllocs > 0, "PMRegion slab full. TODO: expand into new region.")
+        if (remainingRegionAllocs == 0)
+        {
+            ASSERT(length > PageSize, "Not enough space");
+            Log("Expanding PmRegion slab by 1 page.", LogLevel::Info);
+            regionAlloc = reinterpret_cast<PmRegion*>(base + hhdmBase);
+            remainingRegionAllocs = PageSize / sizeof(PmRegion);
+            base += PageSize;
+            length -= PageSize;
+        }
+
         PmRegion* latest = new(regionAlloc++) PmRegion(base, length, regionBitmap);
         remainingRegionAllocs -= 1;
         bitmapAlloc += bitmapBytes;
@@ -160,7 +180,6 @@ namespace Npk::Memory
         size_t totalInitBytes = totalBitmapSize + regionCount * sizeof(PmRegion);
         if (selectedIndex == (size_t)-1 || mmapEntries[selectedIndex]->length < totalInitBytes)
             Log("PMM init failed: no region big enough for management data.", LogLevel::Fatal);
-        //TODO: we could actually allocate this as two separate buffers if necessary, less restrictive.
 
         auto conv = sl::ConvertUnits(totalInitBytes, sl::UnitBase::Binary);
         Log("PMM requires %lu.%lu%sB for management data. Allocating at 0x%lx, slack of %lu bytes.", LogLevel::Info, 

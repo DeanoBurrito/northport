@@ -179,15 +179,18 @@ namespace Npk
         }
     }
 
-    void SetSysTimer(size_t nanoseconds, void (*callback)(size_t))
+    void SetSysTimer(size_t nanoseconds, void (*callback)())
     {
         if ((size_t)selectedSysTimer == -1ul)
             InitSysTimer();
 
         if (callback != nullptr)
         {
+            using AbsoluteMadness = void (*)(size_t, void*);
+            AbsoluteMadness madness = (AbsoluteMadness)callback;
+            
             Interrupts::InterruptManager::Global().Detach(timerIntVector);
-            Interrupts::InterruptManager::Global().Attach(timerIntVector, callback);
+            Interrupts::InterruptManager::Global().Attach(timerIntVector, madness, nullptr);
         }
         
         switch (selectedSysTimer)

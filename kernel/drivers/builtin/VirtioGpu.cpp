@@ -256,7 +256,12 @@ namespace Npk::Drivers
 
     bool VirtioGpuDriver::Deinit()
     {
-        ASSERT_UNREACHABLE(); //TODO: ensure all resources released, free each queue
+        //free any active framebuffers
+        for (size_t i = 0; i < framebuffers.Size(); i++)
+            framebuffers[i]->Deinit();
+        
+        //let the transport layer take care of itself
+        return transport.Deinit();
     }
 
     bool VirtioFramebuffer::Init()

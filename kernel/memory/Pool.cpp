@@ -68,7 +68,7 @@ namespace Npk::Memory
     void PoolAlloc::Expand(size_t minSize, bool takeLock)
     {
         const size_t expandSize = sl::Max(minSize, minAllocSize * PoolMinExpansionScale) + sizeof(PoolRegion) + sizeof(PoolNode);
-        auto maybeRegion = VMM::Kernel().Alloc(expandSize, pinned ? 0b11 : 0, VmFlags::Anon | VmFlags::Write); //VmObject instead of direct access here? TODO:
+        auto maybeRegion = VMM::Kernel().Alloc(expandSize, pinned ? 0b11 : 0, VmFlags::Anon | VmFlags::Write);
         ASSERT(maybeRegion, "Failed to expand kernel pool.");
 
         PoolRegion* region = new((void*)maybeRegion->base) PoolRegion();

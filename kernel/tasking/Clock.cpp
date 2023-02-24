@@ -30,7 +30,7 @@ namespace Npk::Tasking
     Npk::InterruptLock eventsLock;
     sl::LinkedList<ClockEvent, Memory::CachingSlab<32>> events;
 
-    void ClockEventDispatch(size_t)
+    void ClockEventDispatch()
     {
 dispatch_event:
         const size_t startTick = PollTimer();

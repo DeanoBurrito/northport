@@ -28,7 +28,7 @@ namespace Npk::Config
             {
                 //these 64bit addresses are misaligned by 4-bytes, resulting in UB. :(
                 const uintptr_t addr = ptrs.As<uint32_t>()[i * 2] | (uint64_t)ptrs.As<uint32_t>()[i * 2 + 1];
-                VmObject tempWindow(sizeof(Sdt), addr, VmFlags::Mmio); //TODO: would be nice to have a sliding window, rather than trash virtual address space like this.
+                VmObject tempWindow(sizeof(Sdt), addr, VmFlags::Mmio);
 
                 const size_t length = tempWindow->As<Sdt>()->length;
                 tables.EmplaceBack(length, addr, VmFlags::Mmio);

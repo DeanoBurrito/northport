@@ -18,6 +18,8 @@ namespace Npk::Devices
     {
         nextId.Store(1);
         Log("Device manager initialized.", LogLevel::Info);
+
+        AttachDevice(new Debug::TerminalSerialDriver);
     }
 
     sl::Opt<size_t> DeviceManager::AttachDevice(GenericDevice* instance, bool delayInit)

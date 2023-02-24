@@ -30,6 +30,18 @@ namespace Npk::Tasking
         return rng->Next();
     }
 
+    SchedulerCore* Scheduler::GetCore(size_t id)
+    {
+        if (id == CoreLocal().id)
+            return reinterpret_cast<SchedulerCore*>(CoreLocal().schedData);
+        for (auto it = cores.Begin(); it != cores.End(); ++it)
+        {
+            if ((**it).coreId == id)
+                return *it;
+        }
+        return nullptr;
+    }
+
     Scheduler globalScheduler;
     Scheduler& Scheduler::Global()
     { return globalScheduler; }
@@ -273,6 +285,65 @@ namespace Npk::Tasking
         selectedCore->threadCount.Add(1, sl::Relaxed);
     }
 
+    void Scheduler::DequeueThread(size_t id)
+    {
+        ASSERT(id <= threadLookup.Size(), "Invalid thread id");
+        ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
+
+        Thread* t = threadLookup[id];
+        InterruptLock intGuard;
+        t->lock.Lock();
+        ASSERT(t->state == ThreadState::Runnable, "Thread is not runnable");
+        t->state = ThreadState::Ready;
+        t->lock.Unlock();
+
+        //find core thread is queued on
+        SchedulerCore* core = GetCore(t->activeCore);
+        ASSERT(core != nullptr, "Thread not queued");
+        sl::ScopedLock coreLock(core->lock);
+
+        Thread* prev = nullptr;
+        for (Thread* scan = core->queue; scan != nullptr; prev = scan, scan = scan->next)
+        {
+            if (scan->id != id)
+                continue;
+            
+            if (prev != nullptr)
+                prev->next = scan->next;
+            else
+                core->queue = scan->next;
+            t->activeCore = NoAffinity;
+            return;
+        }
+
+        /*  There are a few possible scenarios here:
+            - thread was in a core's run-queue, in which case we already returned (see above).
+            - thread is active on another core, then we trigger a reschedule via IPI.
+            - thread is active on local core, then we do nothing as that would
+            exit this function prematurely. This is the caller's responsibility to handle.
+        */
+        if (t->activeCore != CoreLocal().id)
+            Interrupts::SendIpiMail(t->activeCore, QueueRescheduleDpc, nullptr);
+    }
+
+    sl::Opt<Thread*> Scheduler::GetThread(size_t id)
+    {
+        if (id >= threadLookup.Size() || id < 2)
+            return {};
+        if (threadLookup[id] == nullptr)
+            return {};
+        return threadLookup[id];
+    }
+
+    sl::Opt<Process*> Scheduler::GetProcess(size_t id)
+    {
+        if (id >= processes.Size() || id < 2)
+            return {};
+        if (processes[id] == nullptr)
+            return {};
+        return processes[id];
+    }
+
     void DpcQueue(void (*function)(void* arg), void* arg)
     { Scheduler::Global().QueueDpc(function, arg); }
 
@@ -296,13 +367,17 @@ namespace Npk::Tasking
 
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
         core.dpcFinished = true;
-        RunNextFrame();
+        Yield(false);
     }
 
-    void Scheduler::Yield()
+    void Scheduler::Yield(bool willReturn)
     {
+        //determine what runlevel we're at: then load trapframe location.
+        //determine what run-level to target: find target trapframe (dpc > thread > idle).
+        //switch trap frame
+
         DisableInterrupts();
-        //TODO: SaveCurrentContext(); so that we can return here if the thread isn't exiting
+        // //TODO: SaveCurrentContext(); so that we can return here if the thread isn't exiting
         RunNextFrame();
     }
 
@@ -313,11 +388,12 @@ namespace Npk::Tasking
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
         sl::ScopedLock coreLock(core.lock);
         if (core.suspendScheduling)
-            return;
+            return; //TODO: we should track a 'reschedule pending' flag, and check this in RunNextFrame.
 
         Thread* current = static_cast<Thread*>(CoreLocal().schedThread);
         if (current != nullptr && current->state == ThreadState::Runnable && current->id != 1)
         {
+            //place current thread back into queue
             current->next = nullptr;
             if (core.queue == nullptr)
                 core.queue = current;
@@ -327,11 +403,13 @@ namespace Npk::Tasking
         }
         else if (current != nullptr && current->id != 1)
         {
+            //drop current thread from queue
             core.threadCount--;
             current->activeCore = 0;
+            current->state = ThreadState::Ready;
         }
 
-        Thread* next = core.queue;
+        Thread* next = core.queue; //TODO: check thread is Runnable before selecting it
         if (next == nullptr && cores.Size() > 1)
         {
             //work stealing: pick a core at random, take from it's work queue.
@@ -375,6 +453,17 @@ namespace Npk::Tasking
         }
         
         CoreLocal().schedThread = next;
+    }
+
+    bool Scheduler::Suspend(bool yes)
+    {
+        InterruptGuard intGuard;
+        
+        SchedulerCore* core = reinterpret_cast<SchedulerCore*>(CoreLocal().schedData);
+        const bool prevSuspend = core->suspendScheduling;
+        core->suspendScheduling = yes;
+        return prevSuspend;
+        // return core->suspendScheduling.Exchange(yes);
     }
 
     void Scheduler::SaveCurrentFrame(TrapFrame* current, RunLevel prevRunLevel)

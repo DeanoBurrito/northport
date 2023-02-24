@@ -21,7 +21,7 @@ namespace Npk
         SetCsrBits("sie", 0x222);
     }
 
-    extern void (*timerCallback)(size_t);
+    extern void (*timerCallback)();
 }
 
 extern "C"
@@ -59,7 +59,7 @@ extern "C"
                 break;
             case 5:
                 if (timerCallback != nullptr)
-                    timerCallback(5);
+                    timerCallback();
                 break;
             case 9:
                 Log("Got riscv external interrupt.", LogLevel::Fatal);
