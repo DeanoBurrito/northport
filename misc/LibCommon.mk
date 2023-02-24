@@ -14,19 +14,19 @@ include $(PROJ_ROOT_DIR)/misc/Formatting.mk
 all: $(TARGET_STATIC)
 
 $(TARGET_STATIC): $(OBJS)
-	@echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) Creating static library ..."
+	@printf "$(C_BLUE)[$(TARGET)]$(C_RST) Creating static library ...\r\n"
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_AR_BIN) -rcs $(TARGET_STATIC) $(OBJS)
-	$(LOUD)echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) $(C_GREEN)Done.$(C_RST)"
+	$(LOUD)printf "$(C_BLUE)[$(TARGET)]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 clean:
-	@echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) Cleaning build files ..."
+	@printf "$(C_BLUE)[$(TARGET)]$(C_RST) Cleaning build files ...\r\n"
 	$(LOUD)-rm -r $(BUILD_DIR)
 	$(LOUD)-rm -r $(TARGET_STATIC)
-	@echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) $(C_GREEN)Done.$(C_RST)"
+	@printf "$(C_BLUE)[$(TARGET)]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 $(BUILD_DIR)/%.cpp.o: %.cpp
-	@echo -e "$(C_BLUE)[$(TARGET)]$(C_RST) Compiling C++ source: $<"
+	@printf "$(C_BLUE)[$(TARGET)]$(C_RST) Compiling C++ source: $<\r\n"
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(CXX_FLAGS) -c $< -o $@
 

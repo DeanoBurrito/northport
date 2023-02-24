@@ -19,18 +19,18 @@ K_OBJS = $(patsubst %.cpp, $(K_BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 all-kernel: $(K_TARGET)
 
 $(K_TARGET): $(K_OBJS)
-	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) Creating static library ..."
+	@printf "$(C_BLUE)[$(TARGET)-k]$(C_RST) Creating static library ...\r\n"
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_AR_BIN) -rcs $(K_TARGET) $(K_OBJS)
-	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) $(C_GREEN)Done.$(C_RST)"
+	@printf "$(C_BLUE)[$(TARGET)-k]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 clean-kernel:
-	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) Cleaning build files ..."
+	@printf "$(C_BLUE)[$(TARGET)-k]$(C_RST) Cleaning build files ...\r\n"
 	$(LOUD)-rm -r $(K_BUILD_DIR)
 	$(LOUD)-rm -r $(K_TARGET)
-	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) $(C_GREEN)Done.$(C_RST)"
+	@printf "$(C_BLUE)[$(TARGET)-k]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 $(K_BUILD_DIR)/%.cpp.o: %.cpp
-	@echo -e "$(C_BLUE)[$(TARGET)-k]$(C_RST) Compiling: $<"
+	@printf "$(C_BLUE)[$(TARGET)-k]$(C_RST) Compiling: $<\r\n"
 	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@

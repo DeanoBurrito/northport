@@ -66,20 +66,19 @@ all: $(ARCH_DEFAULT_TARGET)
 
 .PHONY: binaries
 binaries:
-	@echo -e "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST)\
-	 $(CPU_ARCH), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)"
-	@echo -e "$(C_CYAN)Sysroot:$(C_RST) $(abspath $(TOOLCHAIN_SYSROOT))"
-	@echo -e "$(C_CYAN)Kernel C++ flags:$(C_RST) $(KERNEL_CXX_FLAGS)"
-	@echo -e "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)"
-	@echo
+	@printf "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST)\
+	 $(CPU_ARCH), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)\r\n"
+	@printf "$(C_CYAN)Sysroot:$(C_RST) $(abspath $(TOOLCHAIN_SYSROOT))\r\n"
+	@printf "$(C_CYAN)Kernel C++ flags:$(C_RST) $(KERNEL_CXX_FLAGS)\r\n"
+	@printf "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)\r\n\r\n"
 	$(LOUD)cd $(PROJ_DIR_LIBS)/np-syslib; $(MAKE) all-kernel $(SUBMAKE_FLAGS)
 	$(LOUD)cd $(PROJ_DIR_LIBS); $(MAKE) all $(SUBMAKE_FLAGS)
 	$(LOUD)cd $(PROJ_DIR_KERNEL); $(MAKE) all $(SUBMAKE_FLAGS)
 	$(LOUD)cd $(PROJ_DIR_INITDISK); $(MAKE) all $(SUBMAKE_FLAGS)
 ifeq ($(COUNT_TODOS), yes)
-	@echo -e "$(C_CYAN)[Build]$(C_RST) $(shell grep -o "TODO:" $$(find -name "*.cpp"\
+	@printf "$(C_CYAN)[Build]$(C_RST) $(shell grep -o "TODO:" $$(find -name "*.cpp"\
 	 -o -name "*.h" -o -name "*.S") | wc -l) TODOs found in code, $(shell grep -o \
-	 "TODO:" $$(find -name "*.tex" -o -name "*.md") | wc -l) TODOs found in docs."
+	 "TODO:" $$(find -name "*.tex" -o -name "*.md") | wc -l) TODOs found in docs.\r\n"
 endif
 
 .PHONY: iso
@@ -96,8 +95,8 @@ iso: binaries
 		--efi-boot-image --protective-msdos-label $(ISO_TEMP_DIR) -o $(ISO_FULL_FILEPATH) $(LOUD_REDIRECT)
 	$(LOUD)$(LIMINE_DIR)/limine-deploy $(ISO_FULL_FILEPATH) $(LOUD_REDIRECT)
 	$(LOUD)rm -r $(ISO_TEMP_DIR)
-	@echo -e "$(C_CYAN)[Build]$(C_RST) Bootable iso generated @ $(ISO_FULL_FILEPATH)"
-	@echo -e "$(C_CYAN)[Build]$(C_RST) If qemu is installed, try it out with 'make run'!"
+	@printf "$(C_CYAN)[Build]$(C_RST) Bootable iso generated @ $(ISO_FULL_FILEPATH)\r\n"
+	@printf "$(C_CYAN)[Build]$(C_RST) If qemu is installed, try it out with 'make run'!\r\n"
 
 .PHONY: clean
 clean:

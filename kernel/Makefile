@@ -45,32 +45,32 @@ include $(PROJ_ROOT_DIR)/misc/Formatting.mk
 all: $(KERNEL_FULL_FILEPATH)
 
 $(KERNEL_FULL_FILEPATH): $(OBJS) $(LD_SCRIPT)
-	@echo -e "$(C_BLUE)[Kernel]$(C_RST) Linking ..."
-	@echo -e "#include <debug/Log.h> \r\n namespace Npk::Debug {\r\n \
+	@printf "$(C_BLUE)[Kernel]$(C_RST) Linking ...\r\n"
+	@printf "#include <debug/Log.h> \r\n namespace Npk::Debug {\r\n \
 		KernelSymbol kernelSymbols[] = { { -1ul, 0, \"\"} }; }" > $(SYMS_DUMMY_SRC)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $(SYMS_DUMMY_SRC) -o $(SYMS_DUMMY_OBJ)
 	$(LOUD)$(X_LD_BIN) $(OBJS) $(SYMS_DUMMY_OBJ) $(KERNEL_LD_FLAGS) -T $(LD_SCRIPT) -o $(KERNEL_FULL_FILEPATH)
 ifeq ($(INCLUDE_KERNEL_SYMBOLS), yes)
-	@echo -e "$(C_BLUE)[kernel]$(C_RST) Generating symbol table ..."
+	@printf "$(C_BLUE)[kernel]$(C_RST) Generating symbol table ...\r\n"
 	$(LOUD)$(X_READELF_BIN) -s --demangle --wide $(KERNEL_FULL_FILEPATH) | \
 		awk $(SYMS_AWK_CMD) > $(SYMS_SRC)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $(SYMS_SRC) -o $(SYMS_OBJ)
 	$(LOUD)$(X_LD_BIN) $(OBJS) $(SYMS_OBJ) $(KERNEL_LD_FLAGS) -T $(LD_SCRIPT) -o $(KERNEL_FULL_FILEPATH)
 endif
-	@echo -e "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)"
+	@printf "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 .PHONY: clean
 clean:
-	@echo -e "$(C_BLUE)[Kernel]$(C_RST) Cleaning build files ..."
+	@printf "$(C_BLUE)[Kernel]$(C_RST) Cleaning build files ...\r\n"
 	$(LOUD)-rm -r $(BUILD_DIR)
-	@echo -e "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)"
+	@printf "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 $(BUILD_DIR)/%.S.o: %.S
-	@echo -e "$(C_BLUE)[Kernel]$(C_RST) Assembling: $<"
+	@printf "$(C_BLUE)[Kernel]$(C_RST) Assembling: $<\r\n"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_AS_BIN) $(KERNEL_AS_FLAGS) $< -o $@
 
 $(BUILD_DIR)/%.cpp.o: %.cpp
-	@echo -e "$(C_BLUE)[Kernel]$(C_RST) Compiling: $<"
+	@printf "$(C_BLUE)[Kernel]$(C_RST) Compiling: $<\r\n"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@

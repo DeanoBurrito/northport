@@ -11,13 +11,13 @@ include $(PROJ_ROOT_DIR)/misc/Formatting.mk
 all: $(INITDISK_FULL_FILEPATH)
 
 $(INITDISK_FULL_FILEPATH): $(FILES)
-	@echo -e "$(C_BLUE)[Initdisk]$(C_RST) Generating ..."
+	@printf "$(C_BLUE)[Initdisk]$(C_RST) Generating ...\r\n"
 	$(LOUD)mkdir -p $(BUILD_DIR)
 	$(LOUD)tar $(TAR_FLAGS) $(FILES) -f $(INITDISK_FULL_FILEPATH)
-	@echo -e "$(C_BLUE)[Initdisk]$(C_RST) $(C_GREEN)Done.$(C_RST)"
+	@printf "$(C_BLUE)[Initdisk]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 .PHONY: clean
 clean:
-	@echo -e "$(C_BLUE)[Initdisk]$(C_RST) Cleaning build files ..."
+	@printf "$(C_BLUE)[Initdisk]$(C_RST) Cleaning build files ...\r\n"
 	$(LOUD)rm -r $(BUILD_DIR)
-	@echo -e "$(C_BLUE)[Initdisk]$(C_RST) $(C_GREEN)Done.$(C_RST)"
+	@printf "$(C_BLUE)[Initdisk]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
