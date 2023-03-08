@@ -1,6 +1,5 @@
 .global VectorStub0
 .global TrapEntry
-.global ExecuteTrapFrame
 
 .extern TrapDispatch
 
@@ -37,44 +36,12 @@ TrapEntry:
     mov %rsp, %rdi
     call TrapDispatch
 
-ExecuteTrapFrame:
-    mov %rdi, %rsp
-    
-    # Load data segments + swapgs if needed
-    mov 0xA8(%rsp), %eax
-    mov %ax, %ds
-    mov %ax, %es
-    mov %ax, %fs
-    
-    cmp $0x10, %ax
-    je 1f
-    swapgs
-1:
-    pop %r15
-    pop %r14
-    pop %r13
-    pop %r12
-    pop %r11
-    pop %r10
-    pop %r9
-    pop %r8
-    pop %rbp
-    pop %rdi
-    pop %rsi
-    pop %rdx
-    pop %rcx
-    pop %rbx
-    pop %rax
-
-    add $0x10, %rsp
-    iretq
-
 .altmacro
 .macro CreateStubs first, last, ec=1
     .align 0x10
     VectorStub\first:
     .if \ec
-        push $0xc0de
+        push $0x0
     .endif
     push $\first
     jmp TrapEntry

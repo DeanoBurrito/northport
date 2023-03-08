@@ -16,17 +16,27 @@ namespace Npk::Tasking
     
     using ThreadMain = void (*)(void* arg);
 
+    //core-local information for the scheduler.
     struct SchedulerCore
     {
-        Thread* queue; //this is an intrusive list, see the thread.next field.
-        Thread* queueTail;
-        Thread* idleThread;
-        sl::Atomic<size_t> threadCount;
-
         size_t coreId;
-        Npk::InterruptLock lock;
-        sl::Atomic<bool> suspendScheduling;
+        Thread* idleThread;
 
+        //control flags for this core's scheduling
+        sl::Atomic<bool> suspendScheduling;
+        sl::Atomic<bool> reschedulePending;
+
+        //this core's runqueue.
+        struct 
+        {
+            Thread* head;
+            Thread* tail;
+            sl::Atomic<size_t> size;
+            InterruptLock lock;
+        } queue;
+
+        //deferred procedure call management
+        InterruptLock dpcLock;
         sl::LinkedList<DeferredCall, Memory::CachingSlab<16>> dpcs;
         TrapFrame* dpcFrame;
         uintptr_t dpcStack;
@@ -49,13 +59,16 @@ namespace Npk::Tasking
         size_t nextTid; //TODO: id allocators for these
         size_t nextPid;
         Process* idleProcess;
-        size_t activeCores = 0;
+        sl::Atomic<size_t> registeredCores { 0 };
 
         sl::TicketLock rngLock;
         sl::Lazy<sl::XoshiroRng> rng;
 
         void LateInit();
         size_t NextRand();
+
+        void QueuePush(SchedulerCore& core, Thread* item) const;
+        Thread* QueuePop(SchedulerCore& core) const;
 
         SchedulerCore* GetCore(size_t id);
 
@@ -79,10 +92,9 @@ namespace Npk::Tasking
 
         void Yield(bool willReturn = true);
         void Reschedule();
+        void QueueReschedule();
         bool Suspend(bool yes);
-
-        void SaveCurrentFrame(TrapFrame* current, RunLevel prevRunLevel);
-        void RunNextFrame();
+        void SavePrevFrame(TrapFrame* current, RunLevel prevRunLevel);
     };
 
     class ScheduleGuard

@@ -57,7 +57,7 @@ namespace Npk
     void HintSpinloop();
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
-    void ExecuteTrapFrame(TrapFrame* frame) asm("ExecuteTrapFrame");
+    void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
     void Panic(TrapFrame* exceptionFrame, const char* reason) asm("Panic");
     uintptr_t GetReturnAddr(size_t level);
 

@@ -82,9 +82,9 @@ extern "C"
     {
         using namespace Npk;
 
-        Tasking::Scheduler::Global().SaveCurrentFrame(frame, CoreLocal().runLevel);
         const RunLevel prevRunLevel = CoreLocal().runLevel;
         CoreLocal().runLevel = RunLevel::IntHandler;
+        Tasking::Scheduler::Global().SavePrevFrame(frame, prevRunLevel);
         
         LocalApic::Local().SendEoi();
 
@@ -110,7 +110,7 @@ extern "C"
         }
         else if (frame->vector < 0x20)
             Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
-                exceptionNames[frame->vector], frame->vector, frame->iret.rip, frame->iret.rip, frame->ec);
+                exceptionNames[frame->vector], frame->vector, frame->iret.rip, frame->iret.rsp, frame->ec);
         else if (frame->vector == IntVectorIpi)
             Interrupts::ProcessIpiMail();
         else
@@ -119,8 +119,8 @@ extern "C"
         //RunNextFrame() wont return under most circumstances, but if we're handling an interrupt
         //before the scheduler is initialized (timekeeping for example) it will fail to find the
         //trap frame, so we return to where we were previously.
-        Tasking::Scheduler::Global().RunNextFrame();
+        Tasking::Scheduler::Global().Yield();
         CoreLocal().runLevel = prevRunLevel;
-        ExecuteTrapFrame(frame);
+        SwitchFrame(nullptr, frame);
     }
 }

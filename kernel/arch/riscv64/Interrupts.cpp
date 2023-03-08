@@ -43,9 +43,9 @@ extern "C"
     void TrapDispatch(Npk::TrapFrame* frame)
     {
         using namespace Npk;
-        Tasking::Scheduler::Global().SaveCurrentFrame(frame, CoreLocal().runLevel);
         const RunLevel prevRunLevel = CoreLocal().runLevel;
         CoreLocal().runLevel = RunLevel::IntHandler;
+        Tasking::Scheduler::Global().SavePrevFrame(frame, prevRunLevel);
 
         const bool isInterrupt = frame->vector & (1ul << 63);
         frame->vector &= ~(1ul << 63);
@@ -97,8 +97,8 @@ extern "C"
         else
             Log("Unknown CPU exception: %lu", LogLevel::Fatal, frame->vector);
 
-        Tasking::Scheduler::Global().RunNextFrame();
+        Tasking::Scheduler::Global().Yield();
         CoreLocal().runLevel = prevRunLevel;
-        ExecuteTrapFrame(frame);
+        SwitchFrame(nullptr, frame);
     }
 }

@@ -39,6 +39,8 @@ namespace Npk
         } iret;
     };
 
+    static_assert(sizeof(TrapFrame) == 176, "x86_64 TrapFrame size changed, update assembly sources.");
+
     constexpr inline size_t PageSize = 0x1000;
     constexpr inline size_t IntVectorAllocBase = 0x30;
     constexpr inline size_t IntVectorAllocLimit = 0xFD;

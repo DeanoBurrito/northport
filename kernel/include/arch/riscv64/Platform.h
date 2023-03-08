@@ -53,6 +53,8 @@ namespace Npk
         } flags;
     };
 
+    static_assert(sizeof(TrapFrame) == 280, "Riscv64 TrapFrame size changed, update assembly sources.");
+
     constexpr inline size_t PageSize = 0x1000;
     constexpr inline size_t IntVectorAllocBase = 0x10;
     constexpr inline size_t IntVectorAllocLimit = 0xFF; //we can theoritically have up to SXLEN/2 interrupts.

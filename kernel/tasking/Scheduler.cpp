@@ -4,7 +4,6 @@
 #include <tasking/Process.h>
 #include <tasking/ServiceThreads.h>
 #include <tasking/Clock.h>
-#include <memory/Vmm.h>
 #include <debug/Log.h>
 
 namespace Npk::Tasking
@@ -28,6 +27,40 @@ namespace Npk::Tasking
         sl::ScopedLock scopeLock(rngLock);
 
         return rng->Next();
+    }
+
+    void Scheduler::QueuePush(SchedulerCore& core, Thread* item) const
+    {
+        //TODO: would be nice to go lockless here oneday :)
+        sl::ScopedLock scopeLock(core.queue.lock);
+
+        item->next = nullptr;
+
+        if (core.queue.tail == nullptr)
+            core.queue.head = item;
+        else
+            core.queue.tail->next = item;
+        core.queue.tail = item;
+
+        ++core.queue.size;
+    }
+
+    Thread* Scheduler::QueuePop(SchedulerCore& core) const
+    {
+        sl::ScopedLock scopeLock(core.queue.lock);
+
+        Thread* found = core.queue.head;
+        if (found != nullptr)
+        {
+            core.queue.head = found->next;
+            --core.queue.size;
+        }
+        else
+        {
+            core.queue.head = core.queue.tail = nullptr;
+            core.queue.size = 0;
+        }
+        return found;
     }
 
     SchedulerCore* Scheduler::GetCore(size_t id)
@@ -60,7 +93,8 @@ namespace Npk::Tasking
 
     void QueueRescheduleDpc(void*)
     {
-        Scheduler::Global().QueueDpc(RescheduleDpc, nullptr);
+        //this function runs inside the timer interrupt handler
+        Scheduler::Global().QueueReschedule();
     }
 
     void IdleMain(void*)
@@ -97,17 +131,20 @@ namespace Npk::Tasking
         core->dpcFinished = true;
 
         //Ensure the cache for DPC invocations is filled.
+        core->dpcLock.Lock();
         core->dpcs.EmplaceBack();
         core->dpcs.PopBack();
+        core->dpcLock.Unlock();
 
         DisableInterrupts();
-        core->lock.Lock();
-        core->queue = core->queueTail = nullptr; //clear the work queue
-        core->suspendScheduling = false; //enable scheduling by default
+        core->queue.lock.Lock();
+        core->queue.head = core->queue.tail = nullptr; //clear the runqueue
+        core->suspendScheduling = false;
+        core->reschedulePending = false;
 
         CoreLocal().schedThread = core->idleThread;
         CoreLocal().schedData = core;
-        core->lock.Unlock(); //lock is used as a memory barrier here.
+        core->queue.lock.Unlock(); //this lock also doubles as a memory barrier
         
         coresListLock.Lock();
         cores.PushBack(core);
@@ -115,9 +152,9 @@ namespace Npk::Tasking
 
         Log("Scheduler registered core %lu.", LogLevel::Verbose, CoreLocal().id);
 
-        if (__atomic_add_fetch(&activeCores, 1, __ATOMIC_RELAXED) == 1)
-            LateInit();
-        
+        if (registeredCores.FetchAdd(1) == 0)
+            LateInit(); //first core to register triggers some late init
+
         if (initThread != nullptr)
         {
             initThread->coreAffinity = CoreLocal().id;
@@ -125,7 +162,7 @@ namespace Npk::Tasking
         }
 
         QueueClockEvent(10'000'000, nullptr, QueueRescheduleDpc, true);
-        Yield();
+        Yield(false);
     }
 
     Process* Scheduler::CreateProcess()
@@ -263,26 +300,17 @@ namespace Npk::Tasking
             for (auto it = cores.Begin(); it != cores.End(); ++it)
             {
                 SchedulerCore* core = *it;
-                if (core->threadCount >= smallestCount)
+                if (core->queue.size >= smallestCount)
                     continue;
                 
-                smallestCount = core->threadCount;
+                smallestCount = core->queue.size;
                 selectedCore = core;
             }
         }
-        ASSERT(selectedCore != nullptr, "Failed to allocate processor.");
 
-        sl::ScopedLock scopeLock(selectedCore->lock);
-        t->next = nullptr;
+        ASSERT(selectedCore != nullptr, "Failed to allocate processor.");
+        QueuePush(*selectedCore, t);
         t->activeCore = selectedCore->coreId;
-        //single list append
-        if (selectedCore->queueTail == nullptr)
-            selectedCore->queue = t;
-        else
-            selectedCore->queueTail->next = t;
-        selectedCore->queueTail = t;
-        
-        selectedCore->threadCount.Add(1, sl::Relaxed);
     }
 
     void Scheduler::DequeueThread(size_t id)
@@ -291,7 +319,7 @@ namespace Npk::Tasking
         ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
 
         Thread* t = threadLookup[id];
-        InterruptLock intGuard;
+        InterruptGuard intGuard;
         t->lock.Lock();
         ASSERT(t->state == ThreadState::Runnable, "Thread is not runnable");
         t->state = ThreadState::Ready;
@@ -300,10 +328,10 @@ namespace Npk::Tasking
         //find core thread is queued on
         SchedulerCore* core = GetCore(t->activeCore);
         ASSERT(core != nullptr, "Thread not queued");
-        sl::ScopedLock coreLock(core->lock);
 
         Thread* prev = nullptr;
-        for (Thread* scan = core->queue; scan != nullptr; prev = scan, scan = scan->next)
+        sl::ScopedLock queueLock(core->queue.lock);
+        for (Thread* scan = core->queue.head; scan != nullptr; prev = scan, scan = scan->next)
         {
             if (scan->id != id)
                 continue;
@@ -311,7 +339,7 @@ namespace Npk::Tasking
             if (prev != nullptr)
                 prev->next = scan->next;
             else
-                core->queue = scan->next;
+                core->queue.head = scan->next;
             t->activeCore = NoAffinity;
             return;
         }
@@ -350,9 +378,9 @@ namespace Npk::Tasking
     void Scheduler::QueueDpc(ThreadMain function, void* arg)
     {
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
-        core.lock.Lock();
+        core.dpcLock.Lock();
         core.dpcs.EmplaceBack(function, arg);
-        core.lock.Unlock();
+        core.dpcLock.Unlock();
 
         if (CoreLocal().runLevel == RunLevel::Normal)
             Yield();
@@ -372,13 +400,59 @@ namespace Npk::Tasking
 
     void Scheduler::Yield(bool willReturn)
     {
-        //determine what runlevel we're at: then load trapframe location.
-        //determine what run-level to target: find target trapframe (dpc > thread > idle).
-        //switch trap frame
+        if (!CoreLocalAvailable() || CoreLocal().schedData == nullptr)
+            return;
+        
+        InterruptGuard intGuard;
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
 
-        DisableInterrupts();
-        // //TODO: SaveCurrentContext(); so that we can return here if the thread isn't exiting
-        RunNextFrame();
+        TrapFrame** current = nullptr;
+        //there's no point in returning to a DPC or interrupt handler that yielded.
+        willReturn = willReturn && (CoreLocal().runLevel == RunLevel::Normal);
+        if (willReturn && CoreLocal().schedThread != nullptr)
+            current = &(static_cast<Thread*>(CoreLocal().schedThread)->frame);
+
+        Thread* activeThread = static_cast<Thread*>(CoreLocal().schedThread);
+        ASSERT(activeThread != nullptr, "Current thread is null.");
+        //we may be yielding because the current thread was dequeued: in which case
+        //we try queue a reschedule (assuming one isnt already pending).
+        if (activeThread->state != ThreadState::Runnable)
+            QueueReschedule();
+
+        //select the next trap frame to load and execute, depending on priority:
+        // - if we interrupted a DPC, resume it so it can finish,
+        // - otherwise execute the next queued dpc,
+        // - and otherwise we just run the current thread if there's one,
+        // - fall back to running the idle thread if all that fails.
+        TrapFrame* next = nullptr;
+        if (!core.dpcFinished)
+        {
+            CoreLocal().runLevel = RunLevel::Dispatch;
+            next = core.dpcFrame; //run the unfinished DPC
+        }
+        else if (core.dpcs.Size() > 0)
+        {
+            CoreLocal().runLevel = RunLevel::Dispatch;
+
+            //run the next queued DPC
+            const DeferredCall dpc = core.dpcs.PopFront();
+            InitTrapFrame(core.dpcFrame, core.dpcStack, (uintptr_t)dpc.function, dpc.arg, false);
+            core.dpcFinished = false;
+            next = core.dpcFrame;
+        }
+        else
+        {
+            Thread* thread = static_cast<Thread*>(CoreLocal().schedThread);
+            next = thread->frame;
+            CoreLocal().runLevel = RunLevel::Normal;
+
+            thread->parent->vmm.MakeActive();
+        }
+
+        if (current != nullptr && (*current == next))
+            return; //dont bother saving/reloading if its the same task, just return.
+
+        SwitchFrame(current, next);
     }
 
     void Scheduler::Reschedule()
@@ -386,73 +460,71 @@ namespace Npk::Tasking
         ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Bad run level");
         
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
-        sl::ScopedLock coreLock(core.lock);
         if (core.suspendScheduling)
-            return; //TODO: we should track a 'reschedule pending' flag, and check this in RunNextFrame.
+            return;
 
+        //decide what to do with the current thread: requeue or drop it
         Thread* current = static_cast<Thread*>(CoreLocal().schedThread);
-        if (current != nullptr && current->state == ThreadState::Runnable && current->id != 1)
-        {
-            //place current thread back into queue
-            current->next = nullptr;
-            if (core.queue == nullptr)
-                core.queue = current;
-            else
-                core.queueTail->next = current;
-            core.queueTail = current;
-        }
-        else if (current != nullptr && current->id != 1)
-        {
-            //drop current thread from queue
-            core.threadCount--;
-            current->activeCore = 0;
-            current->state = ThreadState::Ready;
-        }
+        ASSERT(current != nullptr, "Current thread is null?");
 
-        Thread* next = core.queue; //TODO: check thread is Runnable before selecting it
-        if (next == nullptr && cores.Size() > 1)
+        if (current->state != ThreadState::Runnable || current->id < 2)
         {
-            //work stealing: pick a core at random, take from it's work queue.
-            size_t targetOffset = sl::Max(NextRand() % cores.Size(), 1ul);
+            //drop the thread from the run queue:
+            //- if its not in a runnable state, it doesnt belong here.
+            //- id 0 means 'no thread' and is a reserved value, id 1 is the idle
+            //  thread for this core.
+            current->activeCore = 0;
+        }
+        else
+            QueuePush(core, current);
+
+        //get the next runnable thread. A thread is always runnable when added to the queue,
+        //but this can change while it waits in the queue.
+        Thread* next = QueuePop(core);
+        while (next != nullptr && next->state != ThreadState::Runnable)
+            next = QueuePop(core);
+
+        //work stealing: if the queue was empty, try pop from another core's queue.
+        if (next == nullptr && registeredCores > 1)
+        {
+            //select a random processor as an offset from the current one.
+            size_t targetOffset = sl::Max(NextRand() % registeredCores, 1ul);
             auto scan = cores.Begin();
             while ((**scan).coreId != CoreLocal().id)
-                ++scan;
-
-            ASSERT(scan != cores.End(), "Core not registered.");
+                ++scan; //find our starting position in the list
+            
+            ASSERT(scan != cores.End(), "Current core is not registered");
             while (targetOffset > 0)
             {
                 ++scan;
                 if (scan == cores.End())
                     scan = cores.Begin();
-                targetOffset--;
+                --targetOffset;
             }
 
+            //we found our target core, try to pop from their runqueue.
             SchedulerCore& target = **scan;
-            sl::ScopedLock targetLock(target.lock);
-            next = target.queue; //TODO: we dont honour thread/core affinities here
-            if (next == nullptr)
-                next = core.idleThread; //failed, target has nothing to steal
-            else
-            {
-                //success, update target queue like it was our own.
-                if (target.queue == target.queueTail)
-                    target.queueTail = nullptr;
-                target.queue = next->next;
+            next = QueuePop(target); //TODO: we don't honour core affinities here.
+            next->activeCore = core.coreId; //thread has migrated processors
+        }
 
-                next->activeCore = CoreLocal().id;
-                target.threadCount--;
-            }
-        }
-        else if (next == nullptr && cores.Size() == 1)
-            next = core.idleThread; //no work stealing on single core systems.
-        else
-        {
-            if (core.queue == core.queueTail)
-                core.queueTail = nullptr;
-            core.queue = next->next;
-        }
-        
+        //we failed to get another thread to run, just idle.
+        if (next == nullptr)
+            next = core.idleThread;
+
         CoreLocal().schedThread = next;
+        core.reschedulePending = false;
+    }
+
+    void Scheduler::QueueReschedule()
+    {
+        InterruptGuard intGuard;
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        
+        if (core.reschedulePending)
+            return;
+        core.dpcs.EmplaceBack(RescheduleDpc, nullptr);
+        core.reschedulePending = true;
     }
 
     bool Scheduler::Suspend(bool yes)
@@ -466,52 +538,17 @@ namespace Npk::Tasking
         // return core->suspendScheduling.Exchange(yes);
     }
 
-    void Scheduler::SaveCurrentFrame(TrapFrame* current, RunLevel prevRunLevel)
+    void Scheduler::SavePrevFrame(TrapFrame* current, RunLevel prevRunLevel)
     {
         if (!CoreLocalAvailable() || CoreLocal().schedData == nullptr)
             return;
         
+        ASSERT(CoreLocal().runLevel == RunLevel::IntHandler, "Bad run level");
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
-        sl::ScopedLock scopeLock(core.lock);
 
         if (prevRunLevel == RunLevel::Dispatch)
             core.dpcFrame = current;
         else if (CoreLocal().schedThread != nullptr && prevRunLevel == RunLevel::Normal)
             static_cast<Thread*>(CoreLocal().schedThread)->frame = current;
-    }
-
-    void Scheduler::RunNextFrame()
-    {
-        if (!CoreLocalAvailable() || CoreLocal().schedData == nullptr)
-            return; //we're super early in init, missing critical data so just return.
-
-        auto RunNext = [](SchedulerCore& core, RunLevel level, TrapFrame* frame) 
-        {
-            CoreLocal().runLevel = level;
-            core.lock.Unlock();
-            ExecuteTrapFrame(frame);
-            __builtin_unreachable();
-        };
-        
-        DisableInterrupts();
-
-        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
-        core.lock.Lock();
-        if (!core.dpcFinished)
-            RunNext(core, RunLevel::Dispatch, core.dpcFrame);
-        
-        if (core.dpcs.Size() > 0)
-        {
-            const DeferredCall dpc = core.dpcs.PopFront();
-            InitTrapFrame(core.dpcFrame, core.dpcStack, (uintptr_t)dpc.function, dpc.arg, false);
-            core.dpcFinished = false;
-
-            RunNext(core, RunLevel::Dispatch, core.dpcFrame);
-        }
-
-        //no dpcs, resume the current thread.
-        Thread* target = static_cast<Thread*>(CoreLocal().schedThread);
-        target->parent->vmm.MakeActive(); //TODO: we could be smarter about when we switch address spaces (ASIDS?)
-        RunNext(core, RunLevel::Normal, target->frame);
     }
 }
