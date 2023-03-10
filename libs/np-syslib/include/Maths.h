@@ -14,25 +14,25 @@ namespace sl
     template<typename T>
     constexpr inline T AlignDown(T addr, size_t alignment)
     {
-        return addr / alignment * alignment;
+        return (addr / alignment) * alignment;
     }
 
     template<typename T>
     constexpr inline T AlignUp(T addr, size_t alignment)
     {
-        return (addr + alignment - 1) / alignment * alignment;
+        return ((addr + alignment - 1) / alignment) * alignment;
     }
 
     template<typename T>
     constexpr inline T* AlignDown(T* addr, size_t alignment)
     {
-        return reinterpret_cast<T*>((uintptr_t)addr / alignment * alignment);
+        return reinterpret_cast<T*>(((uintptr_t)addr / alignment) * alignment);
     }
 
     template<typename T>
     constexpr inline T* AlignUp(T* addr, size_t alignment)
     {
-        return reinterpret_cast<T*>(((uintptr_t)addr + alignment - 1) / alignment * alignment);
+        return reinterpret_cast<T*>(((uintptr_t)(addr + alignment - 1) / alignment) * alignment);
     }
 
     template<typename T>
