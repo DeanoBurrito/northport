@@ -72,7 +72,6 @@ namespace Npk::Memory
         void* cache[CacheDepth];
         OverdueItem* overdueList;
         size_t cachedItems = 0;
-        size_t itemSize = 0;
 
     public:
         [[nodiscard]]
@@ -80,9 +79,6 @@ namespace Npk::Memory
         {
             if (cachedItems > 0)
                 return cache[--cachedItems];
-
-            if (itemSize == 0) //deferred init
-                itemSize = length;
             
             //check if we can refill cache from free list
             while (overdueList != nullptr)
@@ -98,8 +94,8 @@ namespace Npk::Memory
             //we need to refill the cache
             ASSERT(CoreLocal().runLevel != RunLevel::IntHandler, "Empty allocator cache but malloc not allowed.")
             for (; cachedItems < CacheDepth; cachedItems++)
-                cache[cachedItems] = Heap::Global().Alloc(itemSize);
-            return Heap::Global().Alloc(itemSize);
+                cache[cachedItems] = Heap::Global().Alloc(length);
+            return Heap::Global().Alloc(length);
         }
 
         inline void Deallocate(void* ptr, size_t length)

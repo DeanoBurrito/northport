@@ -79,4 +79,5 @@ wtf_why_did_we_come_from_umode:
     sd x1, 0x0(sp)
 
     mv a0, sp
+    mv fp, zero
     jal TrapDispatch

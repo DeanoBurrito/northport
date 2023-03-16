@@ -81,7 +81,7 @@ namespace Npk::Devices
 
     size_t MsixCap::TableSize() const
     {
-        return ((cap.ReadReg(1) >> 16) & 0x3FF) + 1;
+        return ((cap.ReadReg(0) >> 16) & 0x7FF) + 1;
     }
 
     size_t MsixCap::Bir() const

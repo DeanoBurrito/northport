@@ -3,6 +3,7 @@
 #include <debug/NanoPrintf.h>
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
+#include <memory/Vmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Thread.h>
 #include <containers/Queue.h>
@@ -75,8 +76,10 @@ namespace Npk::Debug
 
         for (size_t i = 0; i < MaxEarlyLogOuts; i++)
         {
-            if (earlyOuts[i] != nullptr)
-                earlyOuts[i](&msg.buff->buffer[msg.begin], length);
+            if (earlyOuts[i] == nullptr)
+                continue;
+
+            earlyOuts[i](&msg.buff->buffer[msg.begin], length);
             if (runover > 0)
                 earlyOuts[i](msg.buff->buffer, runover);
         }
@@ -86,6 +89,7 @@ namespace Npk::Debug
     {
         using QueueItem = sl::QueueMpSc<LogMessage>::Item;
 
+        //TODO: disable scheduler pre-emption here while we have reserved buffer space, but havent added it to the message queue.
         //we allocate space for message data and the queue item in the same go
         const size_t allocLength = messageLen + 2 * sizeof(QueueItem);
         const size_t beginWrite = __atomic_fetch_add(&buffer->head, allocLength, __ATOMIC_SEQ_CST) % buffer->length;
@@ -96,11 +100,11 @@ namespace Npk::Debug
         {
             //we're going to wrap around, this is fine for message text but not for the queue struct,
             //as it needs to be contiguous in memory.
-            size_t startLength = (beginWrite + allocLength) - buffer->length;
-            size_t endLength = allocLength - startLength;
+            size_t endLength = (beginWrite + allocLength) - buffer->length;
+            size_t startLength = allocLength - endLength;
 
             //place struct before message if there's space
-            if (startLength >= 2 * sizeof(QueueItem))
+            if (startLength >= 2 * sizeof(QueueItem)) //TODO: check **where** the free space is available, otherwise make it.
             {
                 itemAddr = beginWrite;
                 startLength -= 2 * sizeof(QueueItem);
@@ -297,7 +301,27 @@ extern "C"
         PanicWrite("\r\n\r\n");
         PanicWrite("---==####==--- Kernel Panic ---==####==---\r\n\r\n");
         PanicWrite(reason);
+        PanicWrite("\r\n");
 
+        //print core-local info (this is always available)
+        constexpr const char* RunLevelStrs[] = { "Normal", "Dispatch", "IntHandler" };
+        static_assert((size_t)RunLevel::Normal == 0, "RunLevel integer representation updated.");
+        static_assert((size_t)RunLevel::IntHandler == 2, "RunLevel integer representation updated.");
+        
+        CoreLocalInfo& clb = CoreLocal();
+        PanicWrite("Processor %lu: runLevel=%s, logBuffer=0x%lx\r\n", 
+            clb.id, RunLevelStrs[(size_t)clb.runLevel], (uintptr_t)clb.logBuffers);
+
+        //print thread-local info
+        if (CoreLocalAvailable() && CoreLocal().schedThread != nullptr)
+        {
+            Tasking::Thread& thread = *static_cast<Tasking::Thread*>(CoreLocal().schedThread);
+            PanicWrite("Thread: %lu, name=<unimplemented>\r\n", thread.Id());
+        }
+        else
+            PanicWrite("Thread information not available.\r\n");
+
+        //print the stack trace
         PanicWrite("\r\nCall stack (latest call first):\r\n");
         for (size_t i = 0; i < 20; i++)
         {
@@ -317,6 +341,10 @@ extern "C"
             }
             PanicWrite("%3u: 0x%lx %s\r\n", i, addr, symbolName);
         }
+        
+        //dump the VMM ranges
+        // PanicWrite("\r\nKernel VM Ranges:\r\n");
+        // VMM::Kernel().PrintRanges(PanicWrite);
 
         PanicWrite("\r\nSystem has halted indefinitely, manual reset required.\r\n");
         Halt();

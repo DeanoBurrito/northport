@@ -34,6 +34,7 @@ TrapEntry:
     mov %ax, %fs
 
     mov %rsp, %rdi
+    mov $0, %rbp
     call TrapDispatch
 
 .altmacro

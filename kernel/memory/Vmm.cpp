@@ -102,6 +102,29 @@ namespace Npk::Memory
         Log("Good page fault: 0x%lx, ec=0x%lx", LogLevel::Debug, addr, (size_t)flags);
     }
 
+    void VMM::PrintRanges(void (*PrintFunc)(const char*, ...))
+    {
+        ASSERT(PrintFunc != nullptr, "Tried to print VMM ranges with null function pointer");
+
+        constexpr char VmFlagChars[] = { 'w', 'x', 'u' };
+        constexpr const char* VmTypeStrs[] = { "Unknown", "Anon", "Mmio" };
+
+        constexpr size_t FlagsCount = 3;
+        char flagsBuff[FlagsCount + 1];
+        
+        sl::ScopedLock scopeLock(rangesLock);
+        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
+        {
+            for (size_t i = 0; i < FlagsCount; i++)
+                flagsBuff[i] = ((size_t)it->flags & (1 << i)) ? VmFlagChars[i] : '-';
+            flagsBuff[FlagsCount] = 0;
+            
+            const size_t type = (size_t)it->flags >> 48;
+            PrintFunc("0x%016lx 0x%016lx 0x%06lx %s %s\r\n", it->base, it->Top(), it->length,
+                flagsBuff, VmTypeStrs[type]);
+        }
+    }
+
     sl::Opt<VmRange> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
     {
         using namespace Virtual;

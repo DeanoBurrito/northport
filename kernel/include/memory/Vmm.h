@@ -75,6 +75,7 @@ namespace Npk::Memory
 
         void MakeActive();
         void HandleFault(uintptr_t addr, VmFaultFlags flags);
+        void PrintRanges(void (*PrintFunc)(const char* format, ...));
         
         sl::Opt<VmRange> Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
         bool Free(uintptr_t base);
