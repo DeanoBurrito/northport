@@ -64,13 +64,16 @@ help: help-text
 .PHONY: all
 all: $(ARCH_DEFAULT_TARGET)
 
-.PHONY: binaries
-binaries:
+.PHONY: options
+options:
 	@printf "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST)\
 	 $(CPU_ARCH), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)\r\n"
 	@printf "$(C_CYAN)Sysroot:$(C_RST) $(abspath $(TOOLCHAIN_SYSROOT))\r\n"
 	@printf "$(C_CYAN)Kernel C++ flags:$(C_RST) $(KERNEL_CXX_FLAGS)\r\n"
-	@printf "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)\r\n\r\n"
+	@printf "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)\r\n"
+
+.PHONY: binaries
+binaries: options
 	$(LOUD)cd $(PROJ_DIR_LIBS)/np-syslib; $(MAKE) all-kernel $(SUBMAKE_FLAGS)
 	$(LOUD)cd $(PROJ_DIR_LIBS); $(MAKE) all $(SUBMAKE_FLAGS)
 	$(LOUD)cd $(PROJ_DIR_KERNEL); $(MAKE) all $(SUBMAKE_FLAGS)
