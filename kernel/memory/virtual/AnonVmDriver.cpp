@@ -43,11 +43,8 @@ namespace Npk::Memory::Virtual
         sl::ScopedLock scopeLock(context.lock);
 
         for (size_t i = 0; i < loadCount; i++)
-            MapMemory(context.ptRoot, pageAddr + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.range.flags), PageSizes::_4K, false);
-        
-        if (context.ptRoot == kernelMasterTables)
-            kernelTablesGen.Add(1, sl::Release);
-        
+            Map(context.map, pageAddr + i * PageSize, PMM::Global().Alloc(), 0, ConvertFlags(context.range.flags), false);
+
         return EventResult::Continue;
     }
 
@@ -57,33 +54,33 @@ namespace Npk::Memory::Virtual
         if ((attachArg & 0b1) == 0 && CoreLocalAvailable())
             return attachArg;
         
-        InterruptGuard guard;
+        InterruptGuard guard; //TODO: do we need this?
         sl::ScopedLock scopeLock(context.lock);
 
         for (size_t i = 0; i < context.range.length / PageSize; i++)
-            MapMemory(context.ptRoot, context.range.base + i * PageSize, PMM::Global().Alloc(), ConvertFlags(context.range.flags), PageSizes::_4K, false);
-        
-        if (context.ptRoot == kernelMasterTables)
-            kernelTablesGen.Add(1, sl::Release);
+            Map(context.map, context.range.base + i * PageSize, PMM::Global().Alloc(), 0, ConvertFlags(context.range.flags), false);
         return attachArg;
     }
 
     bool AnonVmDriver::DetachRange(VmDriverContext& context)
     {
+        const HatLimits& hatLimits = GetHatLimits();
+        
         InterruptGuard guard;
         sl::ScopedLock scopeLock(context.lock);
 
         for (size_t i = 0; i < context.range.length;)
         {
             uintptr_t phys;
-            PageSizes size;
-            if (UnmapMemory(context.ptRoot, context.range.base + i, phys, size, true))
+            size_t mode;
+            if (Unmap(context.map, context.range.base, phys, mode, true))
             {
-                PMM::Global().Free(phys, GetPageSize(size) / PageSize);
-                i += GetPageSize(size);
+                const size_t length = hatLimits.modes[mode].granularity;
+                PMM::Global().Free(phys, length / PageSize);
+                i += length;
             }
             else
-                i += PageSize; //nothing to unmap, move to the next page.
+                i += hatLimits.modes[0].granularity; //nothing was mapped, try the next area.
         }
         
         return true;

@@ -37,6 +37,17 @@ namespace Npk
 
     HatMap kernelMap;
 
+    HatLimits limits 
+    {
+        .modeCount = 3,
+        .modes = 
+        {
+            { .granularity = GetPageSize(PageSizes::_4K) },
+            { .granularity = GetPageSize(PageSizes::_2M) },
+            { .granularity = GetPageSize(PageSizes::_1G) },
+        }
+    };
+
     void HatInit()
     {
         //Note that we only read the paging mode, the system should have set the appropriate
@@ -45,6 +56,8 @@ namespace Npk
         pagingLevels = (cr4 & (1 << 12)) ? 5 : 4; //bit 12 is LA57 (5-level paging).
 
         maxTranslationLevel = CpuHasFeature(CpuFeature::Pml3Translation) ? 3 : 2;
+        if (!CpuHasFeature(CpuFeature::Pml3Translation))
+            limits.modeCount = 2; //if the cpu doesn't support gigabyte pages, don't advertise it.
         nxSupported = CpuHasFeature(CpuFeature::NoExecute);
         globalPagesSupported = CpuHasFeature(CpuFeature::GlobalPages);
 
@@ -58,10 +71,29 @@ namespace Npk
         kernelMap.ptroot = reinterpret_cast<PageTable*>(PMM::Global().Alloc());
         sl::memset(AddHhdm(kernelMap.ptroot), 0, PageSize);
 
+        //mapping the HHDM would be more appropriate for the kernel VM driver to do, but
+        //we can optimize quite a bit by doing it in the HAT layer.
+        //Start with some sanity checks, then determining what page size to use.
+        ASSERT(hhdmLength > PageSize, "Why is the HHDM < 4K?");
+        size_t hhdmPageSize = maxTranslationLevel;
+        while (GetPageSize((PageSizes)hhdmPageSize) > hhdmLength)
+            hhdmPageSize--;
+        
+        //now map the hhdm
+        constexpr HatFlags hhdmFlags = HatFlags::Write | HatFlags::Global;
+        for (uintptr_t i = 0; i < hhdmLength; i += GetPageSize((PageSizes)hhdmPageSize))
+            Map(KernelMap(), hhdmBase + i, i, hhdmPageSize - 1, hhdmFlags, false);
+
         constexpr const char* SizeStrs[] = { "", "4KiB", "2MiB", "1GiB" };
+        Log("HHDM mapped with %s pages", LogLevel::Verbose, SizeStrs[hhdmPageSize]);
         Log("Hat init (paging): levels=%lu, maxTranslation=%s, nx=%s, globalPages=%s", LogLevel::Info,
             pagingLevels, SizeStrs[maxTranslationLevel],
             nxSupported ? "yes" : "no", globalPagesSupported ? "yes" : "no");
+    }
+
+    const HatLimits& GetHatLimits()
+    {
+        return limits;
     }
 
     HatMap* InitNewMap()
@@ -91,11 +123,11 @@ namespace Npk
         indices[1] = (vaddr >> 12) & 0x1FF;
     }
     
-    bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t length, HatFlags flags, bool flush)
+    bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
     {
         ASSERT(map != nullptr, "HatMap is nullptr");
-        if (length > MaxMapLength())
-            return false;
+        if (mode > limits.modeCount)
+            return false; //invalid mode
         
         size_t indices[pagingLevels + 1];
         GetAddressIndices(vaddr, indices);
@@ -110,13 +142,14 @@ namespace Npk
         */
         uint64_t* entry = nullptr;
         PageTable* pt = AddHhdm(map->ptroot);
-        PageSizes selectedSize = PageSizes::_4K;
+        PageSizes selectedSize = (PageSizes)(mode + 1);
 
         //TODO: use length param to map runs of multiple pages
-        for (size_t i = pagingLevels; i > 0; i++)
+        for (size_t i = pagingLevels; i > 0; i--)
         {
             entry = &pt->entries[indices[i]];
-            //TODO: would be nice to transparently use larger pages here
+            if (i == (size_t)selectedSize)
+                break;
 
             if (!(*entry & PresentFlag))
             {
@@ -146,11 +179,15 @@ namespace Npk
         *entry = realFlags | (paddr & addrMask);
         if (flush)
             asm volatile("invlpg %0" :: "m"(vaddr) : "memory");
+        
+        //if we modified the kernel map, update the generation count
+        if (map == &kernelMap)
+            kernelMap.generation++;
         return true;
 
     }
 
-    bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& length, bool flush)
+    bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
     {
         ASSERT(map != nullptr, "HatMap is nullptr");
 
@@ -160,7 +197,7 @@ namespace Npk
         uint64_t* entry = nullptr;
         PageTable* pt = AddHhdm(map->ptroot);
 
-        for (size_t i = pagingLevels; i > 0; i++)
+        for (size_t i = pagingLevels; i > 0; i--)
         {
             entry = &pt->entries[indices[i]];
             if ((*entry & PresentFlag) == 0)
@@ -173,7 +210,7 @@ namespace Npk
             //a fault by now if we'd set a reserved bit.
             if ((i > 1 && *entry & (1 << 7)) || i == 1)
             {
-                length = GetPageSize((PageSizes)i);
+                mode = i - 1;
                 break;
             }
 
@@ -182,9 +219,12 @@ namespace Npk
 
         paddr = *entry & addrMask;
         *entry = 0; //this removes the mapping from the in-memory page tables
-
         if (flush)
             asm volatile("invlpg %0" :: "m"(vaddr) : "memory");
+
+        //if we modified the kernel map, update the generation count
+        if (map == &kernelMap)
+            kernelMap.generation++;
         return true;
     }
 
@@ -203,7 +243,7 @@ namespace Npk
         uint64_t* entry = nullptr;
         PageTable* pt = AddHhdm(map->ptroot);
 
-        for (size_t i = pagingLevels; i > 0; i++)
+        for (size_t i = pagingLevels; i > 0; i--)
         {
             entry = &pt->entries[indices[i]];
 

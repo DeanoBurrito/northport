@@ -8,6 +8,11 @@
 #include <memory/Heap.h>
 #include <memory/VmObject.h>
 
+namespace Npk
+{
+    struct HatMap; //see arch/Hat.h for details, this struct is deliberately opaque.
+}
+
 namespace Npk::Memory
 {
     struct VmRange
@@ -53,8 +58,7 @@ namespace Npk::Memory
         sl::LinkedList<VmRange, PinnedAllocator> ranges;
         sl::TicketLock rangesLock;
         sl::TicketLock ptLock;
-        void* ptRoot;
-        uint32_t localKernelGen;
+        HatMap* hatMap;
 
         uintptr_t globalLowerBound;
         uintptr_t globalUpperBound;

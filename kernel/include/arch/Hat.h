@@ -50,8 +50,22 @@ namespace Npk
     static_assert(HatFlags::Global == HatFlags::Global, "HatFlags::Global not defined");
     static_assert(HatFlags::Execute == HatFlags::Execute, "HatFlags::Execute not defined");
 
+    //This struct is used to communicate the limits of the underlying MMU to the
+    //rest of the kernel.
+    struct HatLimits
+    {
+        size_t modeCount;
+        struct 
+        {
+            size_t granularity;
+        } modes[];
+    };
+
     //hook to perform some init based on the MMU's capabilities if needed.
     void HatInit();
+
+    //returns the modes supported by the current MMU.
+    const HatLimits& GetHatLimits();
 
     //creates a new address space (without loading it).
     HatMap* InitNewMap();
@@ -60,11 +74,11 @@ namespace Npk
     HatMap* KernelMap();
 
     //creates a virt <-> phys mapping in an address space.
-    bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t length, HatFlags flags, bool flush);
+    bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush);
 
     //attempts to remove an existing mapping from an address space.
-    //NOTE: paddr and length are references and return the previously mapped values.
-    bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& length, bool flush);
+    //NOTE: paddr and mode are references and return the previously used values.
+    bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush);
 
     //attempts to return the physical address of 
     sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr);

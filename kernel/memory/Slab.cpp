@@ -1,6 +1,6 @@
 #include <memory/Slab.h>
 #include <arch/Platform.h>
-#include <arch/Paging.h>
+#include <arch/Hat.h>
 #include <debug/Log.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
@@ -24,8 +24,11 @@ namespace Npk::Memory
         {
             //TODO: check we dont overflow our reserved space above the hhdm, and handle that.
             for (size_t i = 0; i < totalSize; i += PageSize)
-                MapMemory(kernelMasterTables, base + i, PMM::Global().Alloc(), PageFlags::Write, PageSizes::_4K, false);
-            kernelTablesGen.Add(1, sl::Release);
+                Map(KernelMap(), base + i, PMM::Global().Alloc(), 0, HatFlags::Write, false);
+            // kernelTablesGen.Add(1, sl::Release); 
+
+            //TODO: signal that we've modified the kernel map, we should avoid this hack altogether
+            //As part of this rewrite let's revamp how this works, maybe go with the vmem approach.
         }
         else
         {

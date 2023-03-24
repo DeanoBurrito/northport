@@ -56,8 +56,8 @@ namespace Npk::Memory::Virtual
 
     struct VmDriverContext
     {
-        void* ptRoot;
         sl::TicketLock& lock;
+        HatMap* map;
         VmRange range;
     };
     

@@ -2,7 +2,7 @@
 #include <memory/virtual/VmDriver.h>
 #include <memory/Heap.h>
 #include <arch/Platform.h>
-#include <arch/Paging.h>
+#include <arch/Hat.h>
 #include <boot/LinkerSyms.h>
 #include <debug/Log.h>
 #include <Memory.h>
@@ -15,10 +15,9 @@ namespace Npk::Memory
     sl::Lazy<VMM> kernelVmm;
     void VMM::InitKernel()
     {
-        PagingSetup(); //arch-specific paging setup (enable NX, etc)
+        HatInit(); //arch-specific setup of the MMU.
         Virtual::VmDriver::InitEarly(); //bring up basic VM drivers, including kernel driver.
-
-        kernelVmm.Init(VmmKey{});
+        kernelVmm.Init(VmmKey{}); //VmmKey calls the constructor for the kernel vmm.
         Heap::Global().Init();
     }
 
@@ -34,8 +33,8 @@ namespace Npk::Memory
 
         globalLowerBound = PageSize; //dont allocate in page 0.
         globalUpperBound = ~hhdmBase;
-        ptRoot = InitPageTables(&localKernelGen);
-        
+        hatMap = InitNewMap();
+
         Log("User VMM initialized.", LogLevel::Info);
     }
 
@@ -44,13 +43,12 @@ namespace Npk::Memory
         sl::ScopedLock scopeLock(rangesLock);
 
         //protect hhdm from allocations, we also reserve a region right after hhdm for early slab allocation.
-        globalLowerBound = hhdmBase + (hhdmLength * 2);
+        globalLowerBound = hhdmBase + (hhdmLength * 2); //TODO: remove reserved region for early slabs
         globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GiB);
-        ptRoot = kernelMasterTables;
 
-        LoadTables(ptRoot);
-        Log("Kernel VMM initiailized: ptRoot=0x%lx, allocSpace=0x%lx - 0x%lx", LogLevel::Info, 
-            (uintptr_t)ptRoot, globalLowerBound, globalUpperBound);
+        hatMap = KernelMap();
+        MakeActiveMap(hatMap);
+        Log("Kernel VMM initialized: bounds=0x%lx - 0x%lx", LogLevel::Info, globalLowerBound, globalUpperBound);
     }
 
     VMM::~VirtualMemoryManager()
@@ -58,14 +56,9 @@ namespace Npk::Memory
 
     void VMM::MakeActive()
     {
-        //ensure this VMM's kernel mappings match the master set
-        if (kernelTablesGen != localKernelGen)
-        {
-            localKernelGen = kernelTablesGen;
-            SyncKernelTables(ptRoot);
-        }
-
-        LoadTables(ptRoot);
+        if (hatMap != KernelMap())
+            SyncWithMasterMap(hatMap);
+        MakeActiveMap(hatMap);
     }
 
     void VMM::HandleFault(uintptr_t addr, VmFaultFlags flags)
@@ -77,7 +70,7 @@ namespace Npk::Memory
         VmRange* range = nullptr;
         for (auto it = ranges.Begin(); it != ranges.End(); ++it)
         {
-            if (addr < it->base)
+            if (addr < it->base) //TODO: use an acceleration structure for lookups here
                 break;
             if (addr > it->Top())
                 continue;
@@ -94,7 +87,7 @@ namespace Npk::Memory
         VmDriver* driver = VmDriver::GetDriver((VmDriverType)((size_t)range->flags >> 48));
         ASSERT(driver != nullptr, "Active range with no driver");
 
-        VmDriverContext context{ ptRoot, ptLock, *range };
+        VmDriverContext context { ptLock, hatMap, *range };
         EventResult result = driver->HandleEvent(context, EventType::PageFault, addr, (uintptr_t)flags);
         
         if (result != EventResult::Continue)
@@ -192,7 +185,7 @@ namespace Npk::Memory
             range = *ranges.Insert(insertBefore, { allocAt, length, flags, 0ul });
         rangesLock.Unlock();
 
-        VmDriverContext context{ ptRoot, ptLock, range };
+        VmDriverContext context { ptLock, hatMap, range };
         auto maybeToken = driver->AttachRange(context, initArg);
         if (!maybeToken)
         {
@@ -232,7 +225,7 @@ namespace Npk::Memory
         ASSERT(driver != nullptr, "Attempted to free range with no associated driver");
         
         constexpr size_t DetachTryCount = 3;
-        VmDriverContext context { ptRoot, ptLock, range };
+        VmDriverContext context { ptLock, hatMap, range };
         bool success = driver->DetachRange(context);
         for (size_t i = 0; i < DetachTryCount && !success; i++)
         {
@@ -261,7 +254,7 @@ namespace Npk::Memory
 
     sl::Opt<uintptr_t> VMM::GetPhysical(uintptr_t vaddr)
     {
-        return GetPhysicalAddr(ptRoot, vaddr);
+        return GetMap(hatMap, vaddr);
     }
 
     size_t VMM::CopyIn(void* foreignBase, void* localBase, size_t length)
@@ -274,11 +267,11 @@ namespace Npk::Memory
 
         while (count < length)
         {
-            auto maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
+            auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count);
             if (!maybePhys.HasValue())
             {
                 HandleFault((uintptr_t)foreignBase + count, VmFaultFlags::Write);
-                maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
+                maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count);
             }
             
             size_t copyLength = sl::Min(PageSize, length - count);
@@ -300,7 +293,7 @@ namespace Npk::Memory
 
         while (count < length)
         {
-            auto maybePhys = GetPhysicalAddr(ptRoot, (uintptr_t)foreignBase + count);
+            auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count);
             if (!maybePhys)
                 return count;
             
