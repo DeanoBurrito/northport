@@ -16,7 +16,7 @@
 #if defined(__x86_64__)
     #include <arch/x86_64/Hat.h>
 #elif __riscv_xlen == 64
-    #include <arch/x86_64/Hat.h>
+    #include <arch/riscv64/Hat.h>
 #else
     #error "Compiling for unsupported ISA."
 #endif
@@ -92,8 +92,4 @@ namespace Npk
 
     //hook for getting the MMU into a known-good state during the panic sequence.
     void HatHandlePanic() asm("HatHandlePanic");
-
-    //returns the maximum length of a single mapping, often this is the size of
-    //the address space.
-    size_t MaxMapLength();
 }
