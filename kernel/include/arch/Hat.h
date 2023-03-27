@@ -50,6 +50,7 @@ namespace Npk
     static_assert(HatFlags::Global == HatFlags::Global, "HatFlags::Global not defined");
     static_assert(HatFlags::Execute == HatFlags::Execute, "HatFlags::Execute not defined");
 
+    constexpr size_t MaxHatModes = 8;
     //This struct is used to communicate the limits of the underlying MMU to the
     //rest of the kernel.
     struct HatLimits
@@ -58,7 +59,7 @@ namespace Npk
         struct 
         {
             size_t granularity;
-        } modes[];
+        } modes[MaxHatModes];
     };
 
     //hook to perform some init based on the MMU's capabilities if needed.
