@@ -5,6 +5,14 @@
 
 namespace Npk::Memory
 {
+    constexpr size_t PmZonesCount = 2;
+    
+    struct PageInfo
+    {
+        sl::Atomic<uintptr_t> flags;
+        uintptr_t link;
+    };
+    
     struct PmRegion
     {
         uintptr_t base;
@@ -12,13 +20,14 @@ namespace Npk::Memory
         size_t freePages;
         PmRegion* next;
 
+        PageInfo* infoBuffer;
         size_t bitmapHint;
         uint8_t* bitmap;
         sl::TicketLock lock;
 
-        constexpr PmRegion(uintptr_t base, size_t length, uint8_t* bitmap)
+        constexpr PmRegion(uintptr_t base, size_t length, uint8_t* bitmap, PageInfo* pfnDb)
         : base(base), totalPages(length / PageSize), freePages(length / PageSize), next(nullptr),
-        bitmapHint(0), bitmap(bitmap), lock()
+        infoBuffer(pfnDb), bitmapHint(0), bitmap(bitmap), lock()
         {}
     };
 
@@ -36,19 +45,22 @@ namespace Npk::Memory
     class PhysicalMemoryManager
     {
     private:
-        PmRegion* regionAlloc;
-        size_t remainingRegionAllocs;
+        PmRegion* regionAlloc; //these are just bumpy slabs allocators
+        size_t remainingRegionAllocs; //TODO: this is getting a bit crazy, use a single allocator instead?
         uint8_t* bitmapAlloc;
-        size_t bitmapFreeSize;
+        size_t remainingBitmapAllocs;
+        PageInfo* pageInfoAlloc;
+        size_t remainingPageInfoAllocs;
 
-        PmZone zones[2];
+        PmZone zones[PmZonesCount];
 
         void InsertRegion(PmZone& zone, uintptr_t base, size_t length);
         uintptr_t RegionAlloc(PmRegion& region, size_t count);
 
     public:
         constexpr PhysicalMemoryManager() : regionAlloc(nullptr), remainingRegionAllocs(0),
-        bitmapAlloc(nullptr), bitmapFreeSize(0), zones()
+        bitmapAlloc(nullptr), remainingBitmapAllocs(0), pageInfoAlloc(nullptr), 
+        remainingPageInfoAllocs(0), zones()
         {}
 
         static PhysicalMemoryManager& Global();
@@ -60,6 +72,7 @@ namespace Npk::Memory
 
         void Init();
         void IngestMemory(uintptr_t base, size_t length);
+        PageInfo* Lookup(uintptr_t pfn);
 
         //allocates ONLY within the 32-bit physical address space (low zone).
         uintptr_t AllocLow(size_t count = 1);
