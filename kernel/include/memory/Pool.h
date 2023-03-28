@@ -40,7 +40,6 @@ namespace Npk::Memory
         PoolRegion* tail;
         size_t minAllocSize;
         sl::TicketLock listLock;
-        bool pinned;
 
         void MergePrev(PoolNode* node);
         void MergeNext(PoolNode* node);
@@ -54,7 +53,7 @@ namespace Npk::Memory
         PoolAlloc(PoolAlloc&&) = delete;
         PoolAlloc& operator=(PoolAlloc&&) = delete;
 
-        void Init(size_t minAllocBytes, bool isPinned);
+        void Init(size_t minAllocBytes);
 
         void* Alloc(size_t bytes);
         bool Free(void* ptr);
