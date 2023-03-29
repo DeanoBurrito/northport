@@ -2,10 +2,10 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <arch/Platform.h>
 #include <Locks.h>
 #include <Optional.h>
 #include <containers/LinkedList.h>
-#include <memory/Heap.h>
 #include <memory/VmObject.h>
 
 namespace Npk
@@ -15,16 +15,38 @@ namespace Npk
 
 namespace Npk::Memory
 {
-    struct VmRange
+    struct VmRange : public sl::Intrusive::ListNode<VmRange> //TODO: smaller structure than double LL
     {
         uintptr_t base;
         size_t length;
         VmFlags flags;
         size_t token;
+        uintptr_t reserved[2];
 
         constexpr inline uintptr_t Top() const
         { return base + length; }
     };
+
+    /*  The VMM needs to dynamically allocate a number of VmRanges to operate, which presents
+        a problem because the kernel heap depends on the VMM. These structs specifically are
+        allocated by the following allocator.
+        It's just a bitmap based slab allocator at heart, contained within a single page. A number 
+        of can be chained in a linked list, in no particular order.
+        We can easily create an instance of this allocator by getting a page from the PMM,
+        and then adding the HHDM offset to it, allowing it to be accessed from any view of
+        kernel memory.
+    */
+    constexpr size_t VmBitmapBytes = PageSize / sizeof(VmRange) / 8;
+    constexpr size_t VmSlabCount = PageSize / sizeof(VmRange) - 
+        (sl::AlignUp(VmBitmapBytes + sizeof(void*), sizeof(VmRange)) / sizeof(VmRange));
+    struct VmSlabAlloc
+    {
+        VmSlabAlloc* next;
+        uint8_t bitmap[VmBitmapBytes];
+        alignas(sizeof(VmRange)) VmRange slabs[VmSlabCount];
+    };
+
+    static_assert(sizeof(VmSlabAlloc) == PageSize);
 
     enum class VmFaultFlags : uintptr_t
     {
@@ -55,13 +77,19 @@ namespace Npk::Memory
     class VirtualMemoryManager
     {
     private:
-        sl::LinkedList<VmRange, PinnedAllocator> ranges;
         sl::TicketLock rangesLock;
-        sl::TicketLock ptLock;
+        sl::Intrusive::LinkedList<VmRange> ranges;
+        sl::TicketLock allocLock;
+        VmSlabAlloc* rangesAlloc;
+        
+        sl::TicketLock mapLock;
         HatMap* hatMap;
 
         uintptr_t globalLowerBound;
         uintptr_t globalUpperBound;
+
+        VmRange* AllocStruct();
+        void FreeStruct(VmRange* item);
 
     public:
         static void InitKernel();

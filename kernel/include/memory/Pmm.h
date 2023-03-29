@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+#include <stddef.h>
 #include <arch/Platform.h>
 #include <Atomic.h>
 
@@ -7,9 +9,15 @@ namespace Npk::Memory
 {
     constexpr size_t PmZonesCount = 2;
     
+    enum PmFlags : uintptr_t
+    {
+        Used = 1 << 0,
+        Busy = 1 << 1,
+    };
+    
     struct PageInfo
     {
-        sl::Atomic<uintptr_t> flags;
+        sl::Atomic<PmFlags> flags;
         uintptr_t link;
     };
     
@@ -21,13 +29,12 @@ namespace Npk::Memory
         PmRegion* next;
 
         PageInfo* infoBuffer;
-        size_t bitmapHint;
-        uint8_t* bitmap;
+        size_t searchHint;
         sl::TicketLock lock;
 
-        constexpr PmRegion(uintptr_t base, size_t length, uint8_t* bitmap, PageInfo* pfnDb)
+        constexpr PmRegion(uintptr_t base, size_t length, PageInfo* pfnDb)
         : base(base), totalPages(length / PageSize), freePages(length / PageSize), next(nullptr),
-        infoBuffer(pfnDb), bitmapHint(0), bitmap(bitmap), lock()
+        infoBuffer(pfnDb), searchHint(0), lock()
         {}
     };
 
@@ -46,9 +53,7 @@ namespace Npk::Memory
     {
     private:
         PmRegion* regionAlloc; //these are just bumpy slabs allocators
-        size_t remainingRegionAllocs; //TODO: this is getting a bit crazy, use a single allocator instead?
-        uint8_t* bitmapAlloc;
-        size_t remainingBitmapAllocs;
+        size_t remainingRegionAllocs;
         PageInfo* pageInfoAlloc;
         size_t remainingPageInfoAllocs;
 
@@ -59,8 +64,7 @@ namespace Npk::Memory
 
     public:
         constexpr PhysicalMemoryManager() : regionAlloc(nullptr), remainingRegionAllocs(0),
-        bitmapAlloc(nullptr), remainingBitmapAllocs(0), pageInfoAlloc(nullptr), 
-        remainingPageInfoAllocs(0), zones()
+        pageInfoAlloc(nullptr), remainingPageInfoAllocs(0), zones()
         {}
 
         static PhysicalMemoryManager& Global();
@@ -72,6 +76,7 @@ namespace Npk::Memory
 
         void Init();
         void IngestMemory(uintptr_t base, size_t length);
+        //bool EjectMemory(uintptr_t base, size_t length);
         PageInfo* Lookup(uintptr_t pfn);
 
         //allocates ONLY within the 32-bit physical address space (low zone).

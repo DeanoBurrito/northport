@@ -15,8 +15,8 @@
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
             - [x] Reclaim bootloader memory.
-            - [ ] Allocation strategies (single, contiguous, scatter).
-            - [ ] Memory pressure feedback.
+            - [x] PFN database.
+            - [ ] Split allocator design, buddy + freelist.
         - [x] VMM, split kernel/user instances.
             - [x] Move region-backing into specific VM drivers.
             - [x] Demand paging.
@@ -54,6 +54,7 @@
     - [x] Device manager.
         - [ ] Async command queues.
     - [ ] System calls.
+        - [ ] ABI documentation
     - [x] Reclaim bootloader memory.
     - [ ] IPC.
         - [ ] Shared memory.
@@ -89,6 +90,7 @@
     - [ ] Containers:
         - [x] Vector.
         - [ ] Deque.
+        - [x] Queue (+ lockfree variants).
         - [x] Linked list.
         - [ ] Map.
         - [x] Custom allocator support.
@@ -100,3 +102,4 @@
         - [ ] Integer <-> string conversions.
     - [x] Basic locks.
     - [x] Psuedo-RNG.
+    - [x] 2D primitives (vectors, rects).

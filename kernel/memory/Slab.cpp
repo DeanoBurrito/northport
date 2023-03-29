@@ -1,8 +1,5 @@
 #include <memory/Slab.h>
-#include <arch/Platform.h>
-#include <arch/Hat.h>
 #include <debug/Log.h>
-#include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <Bitmap.h>
 #include <Memory.h>

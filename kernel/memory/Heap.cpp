@@ -1,7 +1,6 @@
 #include <memory/Heap.h>
 #include <debug/Log.h>
 #include <arch/Platform.h>
-#include <memory/Vmm.h>
 
 namespace Npk::Memory
 {

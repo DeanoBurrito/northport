@@ -1,7 +1,6 @@
 #include <memory/Pmm.h>
 #include <boot/LimineTags.h>
 #include <Memory.h>
-#include <Bitmap.h>
 #include <Maths.h>
 #include <debug/Log.h>
 #include <UnitConverter.h>
@@ -19,23 +18,20 @@ namespace Npk::Memory
         ASSERT(base % PageSize == 0, "PMRegion base not page-aligned.");
         ASSERT(length % PageSize == 0, "PMRegion length not page-aligned.");
 
-        //allocate the bitmap and clear it
-        const size_t bitmapBytes = ((length / PageSize) / 8) + 1;
-        if (bitmapBytes > remainingBitmapAllocs)
+        //allocate space for this region to store PageInfos
+        if (remainingPageInfoAllocs < length / PageSize)
         {
-            ASSERT(length > bitmapBytes, "Not enough space");
-            Log("Expanding PMM bitmap at 0x%lx", LogLevel::Info, base);
-
-            const size_t allocSize = sl::AlignUp(bitmapBytes, PageSize);
-            bitmapAlloc = reinterpret_cast<uint8_t*>(base + hhdmBase);
-            remainingBitmapAllocs = allocSize;
-            base += allocSize;
-            length -= allocSize;
+            const size_t requiredPages = sl::AlignUp(length / PageSize, PageSize) / PageSize;
+            ASSERT(length > requiredPages, "Not enough space");
+            Log("Expanding PageInfo slab by %lu pages.", LogLevel::Info, requiredPages);
+            pageInfoAlloc = reinterpret_cast<PageInfo*>(base + hhdmBase);
+            remainingPageInfoAllocs = (requiredPages * PageSize) / sizeof(PageInfo);
+            base += requiredPages * PageSize;
+            length -= requiredPages * PageSize;
         }
-
-        uint8_t* regionBitmap = bitmapAlloc;
-        remainingBitmapAllocs += bitmapBytes;
-        sl::memset(regionBitmap, 0, bitmapBytes);
+        PageInfo* infoStore = pageInfoAlloc; //TODO: expand pageInfo store if needed
+        pageInfoAlloc += length / PageSize;
+        sl::memset(infoStore, 0, length / PageSize);
 
         //allocate the region, initialize it
         if (remainingRegionAllocs == 0)
@@ -48,14 +44,8 @@ namespace Npk::Memory
             length -= PageSize;
         }
 
-        PageInfo* infoStore = pageInfoAlloc;
-        pageInfoAlloc += length / PageSize;
-        sl::memset(infoStore, 0, length / PageSize);
-
-        PmRegion* latest = new(regionAlloc++) PmRegion(base, length, regionBitmap, infoStore);
+        PmRegion* latest = new(regionAlloc++) PmRegion(base, length, infoStore);
         remainingRegionAllocs -= 1;
-        bitmapAlloc += bitmapBytes;
-        remainingBitmapAllocs -= bitmapBytes;
 
         sl::ScopedLock latestLock(latest->lock);
 
@@ -103,7 +93,7 @@ namespace Npk::Memory
             return 0;
         
         sl::ScopedLock scopeLock(region.lock);
-        size_t start = region.bitmapHint;
+        size_t start = region.searchHint;
         size_t end = region.totalPages;
 
     try_region_alloc_search:
@@ -115,7 +105,7 @@ namespace Npk::Memory
             bool usable = true;
             for (size_t mod = 0; mod < count; mod++)
             {
-                if (sl::BitmapGet(region.bitmap, i + mod))
+                if (region.infoBuffer[i + mod].flags.HasBits(PmFlags::Used))
                 {
                     i += mod;
                     usable = false;
@@ -127,20 +117,17 @@ namespace Npk::Memory
                 continue;
             
             for (size_t j = 0; j < count; j++)
-            {
-                sl::BitmapSet(region.bitmap, i + j);
-                region.infoBuffer[i + j].flags |= 0b1;
-            }
+                region.infoBuffer[i + j].flags.SetBits(PmFlags::Used);
             
             region.freePages -= count;
-            region.bitmapHint = (i + count) % region.totalPages;
+            region.searchHint = (i + count) % region.totalPages;
             return region.base + (i * PageSize);
         }
 
-        if (start == region.bitmapHint && region.bitmapHint != 0)
+        if (start == region.searchHint && region.searchHint != 0)
         {
             start = 0;
-            end = region.bitmapHint;
+            end = region.searchHint;
             goto try_region_alloc_search;
         }
         return 0;
@@ -155,7 +142,7 @@ namespace Npk::Memory
         //these variables *should* be default initialized via the .bss, but
         //*just in case* lets initialize them ourselves.
         remainingRegionAllocs = 0;
-        remainingBitmapAllocs = 0;
+        remainingPageInfoAllocs = 0;
         new(&zones[0]) PmZone(); //low zone (addresses < 4GiB)
         new(&zones[1]) PmZone(); //high zone (addresses >= 4GiB)
 
@@ -170,7 +157,6 @@ namespace Npk::Memory
         //but we have the benefit of operating in bulk during init.
         size_t selectedIndex = (size_t)-1;
         size_t regionCount = 0;
-        size_t totalBitmapSize = 0;
         size_t pageInfoSize = sizeof(PageInfo); //space for aligning the start of this allocator later on.
         for (size_t i = 0; i < mmapEntryCount; i++)
         {
@@ -183,7 +169,6 @@ namespace Npk::Memory
             }
 
             pageInfoSize += (entry->length / PageSize) * sizeof(PageInfo);
-            totalBitmapSize += ((entry->length / PageSize) / 8) + 1;
 
             //if mmap region crosses a zone boundary, we'll need to allocate space for an extra PmRegion
             regionCount++;
@@ -195,7 +180,7 @@ namespace Npk::Memory
                 selectedIndex = i;
         }
         
-        size_t totalInitBytes = totalBitmapSize + regionCount * sizeof(PmRegion) + pageInfoSize;
+        size_t totalInitBytes = regionCount * sizeof(PmRegion) + pageInfoSize;
         if (selectedIndex == (size_t)-1 || mmapEntries[selectedIndex]->length < totalInitBytes)
             Log("PMM init failed: no region big enough for management data.", LogLevel::Fatal);
 
@@ -207,9 +192,8 @@ namespace Npk::Memory
         totalInitBytes = sl::AlignUp(totalInitBytes, PageSize);
         regionAlloc = reinterpret_cast<PmRegion*>(mmapEntries[selectedIndex]->base + hhdmBase);
         remainingRegionAllocs = regionCount;
-        bitmapAlloc = reinterpret_cast<uint8_t*>(regionAlloc + regionCount);
-        remainingBitmapAllocs = totalBitmapSize;
-        pageInfoAlloc = reinterpret_cast<PageInfo*>(bitmapAlloc + remainingBitmapAllocs);
+        
+        pageInfoAlloc = reinterpret_cast<PageInfo*>(regionAlloc + remainingRegionAllocs);
         pageInfoAlloc = sl::AlignUp(pageInfoAlloc, sizeof(PageInfo));
         remainingPageInfoAllocs = pageInfoSize / sizeof(PageInfo);
         
@@ -266,7 +250,6 @@ namespace Npk::Memory
         if (zone == nullptr)
             return nullptr;
 
-        //TODO: we dont need to lock here, but we should probably use a hazard pointer
         for (PmRegion* region = zone->head; region != nullptr; region = region->next)
         {
             if (pfn < region->base || pfn >= region->base + region->totalPages * PageSize)
@@ -349,10 +332,10 @@ namespace Npk::Memory
             const size_t index = (base - searchStart->base) / PageSize;
             for (size_t i = 0; i < count; i++)
             {
-                if (!sl::BitmapClear(searchStart->bitmap, index + i))
+                if (!searchStart->infoBuffer[index + i].flags.HasBits(PmFlags::Used))
                     Log("Double free attempted in PMM at address 0x%016lx.", LogLevel::Error, base + (i + index) * PageSize);
                 else
-                    searchStart->infoBuffer[index + i].flags &= ~0b1ul;
+                    searchStart->infoBuffer[index + i].flags.ClearBits(PmFlags::Used);
             }
             
             zone.totalUsed.Sub(count, sl::Relaxed);

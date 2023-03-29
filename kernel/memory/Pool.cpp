@@ -1,7 +1,5 @@
 #include <memory/Pool.h>
-#include <memory/Pmm.h>
 #include <memory/Vmm.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <Memory.h>
 
