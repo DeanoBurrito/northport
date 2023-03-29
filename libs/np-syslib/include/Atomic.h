@@ -186,5 +186,23 @@ namespace sl
 
         void Xor(T incoming, MemoryOrder order = MemoryOrder::SeqCst) volatile
         { __atomic_fetch_xor(&value, incoming, (int)order); }
+
+        void ClearBits(T mask, MemoryOrder order = MemoryOrder::SeqCst)
+        { __atomic_and_fetch(&value, ~mask, (int)order); }
+        
+        void ClearBits(T mask, MemoryOrder order = MemoryOrder::SeqCst) volatile
+        { __atomic_and_fetch(&value, ~mask, (int)order); }
+
+        void SetBits(T mask, MemoryOrder order = MemoryOrder::SeqCst)
+        { __atomic_or_fetch(&value, mask, (int)order); }
+
+        void SetBits(T mask, MemoryOrder order = MemoryOrder::SeqCst) volatile
+        { __atomic_or_fetch(&value, mask, (int)order); }
+
+        bool HasBits(T mask, MemoryOrder order = MemoryOrder::SeqCst)
+        { return (__atomic_load_n(&value, (int)order) & mask) != (T)0; }
+
+        bool HasBits(T mask, MemoryOrder order = MemoryOrder::SeqCst) volatile
+        { return (__atomic_load_n(&value, (int)order) & mask) != (T)0; }
     };
 }
