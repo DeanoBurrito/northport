@@ -55,6 +55,7 @@
         - [ ] Async command queues.
     - [ ] System calls.
         - [ ] ABI documentation
+    - [ ] VFS.
     - [x] Reclaim bootloader memory.
     - [ ] IPC.
         - [ ] Shared memory.

@@ -1,12 +1,12 @@
 ![Huge stylish northport banner](docs/images/banner.png)
 
-![All Builds](https://github.com/DeanoBurrito/northport/actions/workflows/build-tests.yml/badge.svg) ![](https://tokei.rs/b1/github/DeanoBurrito/northport?category=code)
+![All builds CI badge](https://github.com/DeanoBurrito/northport/actions/workflows/build-tests.yml/badge.svg) ![](https://tokei.rs/b1/github/DeanoBurrito/northport?category=code)
 
-Northport is a monolithic kernel, with some supporting libraries and utilities. The kernel is booted via the limine protocol, and currently has support for x86_64 and riscv64 systems.
+Northport is a monolithic kernel written in C++ and booted via the Limine protocol. It currently supports x86_64 and riscv64 (via a custom boot shim). This repo also contains some supporting libraries, docs and source for the associated manual.
 
-Instructions for building it yourself are [available here](docs/Building.md), and a more in-depth manual is available via github releases or by cloning this repository and running `make docs`.
+Instructions for building it yourself are [available here](docs/Building.md), and a more in-depth manual can be found under the releases tab or by cloning this repository and running `make docs`.
 
-A brief summary of the current goals and features are listed below, check [the roadmap](docs/Roadmap.md) for a more granular view.
+A brief summary of the current goals and features are listed below, or check [the roadmap](docs/Roadmap.md) for a more granular view.
 
 ## Project Goals
 1) To build a modern and relatively complete kernel: driver infrastructure, graphics/audio/network stacks, VFS, and smp-aware scheduler.
@@ -19,13 +19,12 @@ A brief summary of the current goals and features are listed below, check [the r
 Kernel:
 - Support for multiple architectures: riscv64, x86_64.
 - Memory management:
-    - Bitmap-based PMM with zoned allocations.
-    - VMM inspired by old SunOS design.
-    - General purpose heap provided by slabs for smaller objects and a freelist for larger objects. Both are demand-paged and potentially swappable.
-- Logging infrastructure: fast and lock-free with support for several early outputs (uart chips, debugcon) and a built-in graphical terminal. 
-    - The terminal renderer is based on gterm from the Limine Bootloader (see the individual files for the license).
-    - Stack frame walker and symbol name lookup.
-- Support for various hardware timers, soft-timer interface on top.
+    - PMM with zoned allocations and support for adding additional memory at runtime.
+    - Modular VMM (inspired by old SunOS design) with demand paging, and separate MMU layer.
+    - General purpose heap provided by slabs for smaller objects and a freelist for larger objects.
+- Logging infrastructure: fast and lock-free with support for several early outputs (uart chips, debugcon) and a built-in graphical terminal (based on gterm from the Limine bootloader).
+    - Panic sequence with stack walker and symbol lookup.
+- Global software clock, driven by a number of supported hardware timers: LAPIC, TSC, HPET, PIT, SBI timer.
 - SMP-aware scheduler: round robin with per-core queues, work stealing and DPCs.
 - Loadable drivers and device management, partially automated by a device tree parser and PCI enumeration.
     - Notable drivers include: NVMe, virtio devices.
