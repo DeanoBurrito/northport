@@ -238,6 +238,7 @@ namespace Npk::Memory
     PageInfo* PMM::Lookup(uintptr_t pfn)
     {
         PmZone* zone = nullptr;
+
         for (size_t i = 0; i < PmZonesCount; i++)
         {
             if (pfn < zones[i].head->base)
@@ -247,6 +248,7 @@ namespace Npk::Memory
             zone = &zones[i];
             break;
         }
+        
         if (zone == nullptr)
             return nullptr;
 

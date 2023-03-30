@@ -13,9 +13,11 @@ namespace Npk
         _1G = 3,
     };
 
+    constexpr size_t PageTableEntries = 512;
+
     struct PageTable
     {
-        uint64_t entries[512];
+        uint64_t entries[PageTableEntries];
     };
 
     struct HatMap
@@ -268,7 +270,7 @@ namespace Npk
         const PageTable* source = AddHhdm(kernelMap.root);
         PageTable* dest = AddHhdm(map->root);
 
-        for (size_t i = 256; i < 512; i++)
+        for (size_t i = PageTableEntries / 2; i < PageTableEntries; i++)
             dest->entries[i] = source->entries[i];
         map->generation = kernelMap.generation.Load();
     }
