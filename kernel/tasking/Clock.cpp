@@ -62,7 +62,7 @@ dispatch_event:
 
     void UptimeEventCallback(void*)
     {
-        uptimeMillis.Add(1, sl::Relaxed);
+        uptimeMillis.Add(ClockTickMs, sl::Relaxed);
     }
 
     void StartSystemClock()

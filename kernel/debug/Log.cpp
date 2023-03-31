@@ -136,6 +136,7 @@ namespace Npk::Debug
         msgQueue.Push(item);
 
         //if we're in the early state (eloCount > 0), try to flush the message queue to the outputs
+        //TODO: we could be more efficient by locking the scheduler to this thread while writing.
         if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) > 0 && eloLock.TryLock())
         {
             for (size_t printed = 0; printed < MaxEloItemsPrinted; printed++)
@@ -297,6 +298,8 @@ extern "C"
 
         Interrupts::BroadcastPanicIpi();
         eloLock.TryLock();
+
+        //TODO: we should drain the core-local buffers, in case something was missed.
 
         PanicWrite("\r\n\r\n");
         PanicWrite("---==####==--- Kernel Panic ---==####==---\r\n\r\n");

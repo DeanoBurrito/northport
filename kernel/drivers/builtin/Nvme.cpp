@@ -7,6 +7,7 @@
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <tasking/Thread.h>
+#include <tasking/Dpc.h>
 
 namespace Npk::Drivers
 {
@@ -42,7 +43,7 @@ namespace Npk::Drivers
             config |= 4 << 20; //IOCQES: completion queue entry size as power of 2. 4 ^ 2 = 16 bytes.
             props.config = config;
 
-            while ((props.status & 1) == 0)
+            while ((props.status & 0b11) == 0)
                 HintSpinloop(); //wait for controller to signal it's initialized
             
             ASSERT((props.status & 0b10) == 0, "NVMe controller fatal error");
@@ -58,11 +59,27 @@ namespace Npk::Drivers
         }
     }
 
+    void NvmeDpcStub(void* instance)
+    {
+        Log("NVME DPC", LogLevel::Debug); //TODO: 
+        // static_cast<NvmeController*>(instance)->UpdateQueues(0b11, 0);
+        Tasking::DpcExit();
+    }
+
+    void NvmeInterruptStub(size_t vector, void* instance)
+    {
+        //updating queue completion heads can safely be done in a DPC.
+        //TODO: lookup which queue corresponds to this vector, mark it as 'needs processing'.
+        Tasking::DpcQueue(NvmeDpcStub, instance);
+    }
+
     bool NvmeController::InitInterrupts()
     {
         using namespace Devices;
-        auto intVector = Interrupts::InterruptManager::Global().Alloc();
+        using Interrupts::InterruptManager;
+        auto intVector = InterruptManager::Global().Alloc();
         VALIDATE(intVector, false, "Interrupt vector allocation failed.");
+        InterruptManager::Global().Attach(*intVector, NvmeInterruptStub, this);
 
         //check for MSI-X first, since it's the method preferred by the spec.
         auto maybeMsix = PciCap::Find(addr, PciCapMsix);
@@ -209,7 +226,8 @@ namespace Npk::Drivers
         cmd.fields.opcode = 0x5;
         cmd.fields.prp1 = cqPhys;
         cmd.dw[10] = (entries << 16) | index;
-        //use MSIX vector 0, enable interrupts, and tell the controller pages are allocated contiguously
+        //use MSIX vector 0, enable interrupts, and tell the controller 
+        //pages are allocated contiguously
         cmd.dw[11] = (0 << 16) | (1 << 1) | (1 << 0);
 
         if (auto result = EndCmd(BeginCmd(0, cmd), true); *result != 0)
@@ -323,6 +341,9 @@ namespace Npk::Drivers
         }
 
         sl::ScopedLock scopeLock(namespacesLock);
+        if (!namespaces.Empty())
+            return;
+
         volatile uint32_t* activeNamespaces = sl::NativePtr(cmd.fields.prp1 + hhdmBase).As<volatile uint32_t>();
 
         //fixed number of namespaces per identify response, id=0 means no namespace.
@@ -344,7 +365,7 @@ namespace Npk::Drivers
             if (auto result = EndCmd(BeginCmd(0, cmd), true); *result != 0)
             {
                 Log("Failed to identify NVMe namespace %lu", LogLevel::Error, ns.id);
-                ns.id = 0; //TODO: clean these up
+                ns.id = 0;
                 continue;
             }
 
@@ -370,9 +391,24 @@ namespace Npk::Drivers
             }
             ASSERT((activeFormat & 0xFFFF) == 0, "NVMe driver doesn't support metadata use.");
 
-            constexpr const char* PerfStrs[] = { "best (0)", "better (1)", "good (2)", "degraded (3)" };
+            constexpr const char* PerfStrs[] = 
+                { "best (0)", "better (1)", "good (2)", "degraded (3)" };
             Log("Discovered NVMe NS %lu: lbaSize=%lu, lbaCount=%lu, performance=%s",
                 LogLevel::Info, ns.id, ns.lbaSize, ns.lbaCount, PerfStrs[(activeFormat >> 24) & 0b11]);
+        }
+
+        //remove any namespaces that failed to identify themselves for whatever reason.
+        for (bool reachedEnd = false; !reachedEnd;)
+        {
+            reachedEnd = true;
+            for (size_t i = 0; i < namespaces.Size(); i++)
+            {
+                if (namespaces[i].id != 0)
+                    continue;
+                reachedEnd = false;
+                namespaces.Erase(i);
+                break;
+            }
         }
 
         PMM::Global().Free(cmd.fields.prp1);
@@ -386,8 +422,12 @@ namespace Npk::Drivers
         NvmeQ& targetQ = queues[queueIndex];
         queuesLock.Unlock();
 
+        //ensure we don't overwrite messages the controller is still processing
+        while ((targetQ.sqTail + 1) % targetQ.entries == targetQ.sqHead)
+            HintSpinloop();
+
         sl::ScopedLock queueLock(targetQ.lock);
-        volatile SqEntry& slot = targetQ.sq[targetQ.sqTail++]; //TODO: check that sqTail hasn't caught up to sqHead (implying queue is full)
+        volatile SqEntry& slot = targetQ.sq[targetQ.sqTail++];
         for (size_t i = 0; i < 16; i++)
             slot.dw[i] = cmd.dw[i];
         
@@ -399,7 +439,7 @@ namespace Npk::Drivers
             targetQ.sqTail = 0;
         *targetQ.sqDoorbell = targetQ.sqTail;
 
-        return { (uint16_t)queueIndex, cmdId, cqHead };
+        return {{ (uint16_t)queueIndex, cmdId, cqHead }}; //yes the double braces are intentional
     }
 
     sl::Opt<NvmeResult> NvmeController::EndCmd(NvmeCmdToken token, bool block)
@@ -574,6 +614,40 @@ namespace Npk::Drivers
         ASSERT_UNREACHABLE();
     }
 
+    void NvmeController::UpdateQueues(size_t mask, size_t offset)
+    {
+        for (; mask != 0; mask >>= 1, offset++)
+        {
+            if (offset >= queues.Size())
+                return;
+            if ((mask & 1) == 0)
+                continue;
+            
+            queuesLock.Lock();
+            NvmeQ& q = queues[offset];
+            sl::ScopedLock queueLock(q.lock);
+            queuesLock.Unlock();
+
+            //check the current phase of the CQ head, see if there more 
+            //entries with the same phase (and handle wraparound).
+            uint16_t phase = q.cq[q.cqHead].fields.status & 0b1;
+            while (true)
+            {
+                size_t test = q.cqHead + 1;
+                if (test == q.entries)
+                {
+                    test = 0;
+                    phase = (phase == 0) ? 1 : 0;
+                }
+
+                if ((q.cq[test].fields.status & 0b1) != phase)
+                    break;
+                q.cqHead = test;
+                Log("CQ head updated; %lu", LogLevel::Debug, q.cqHead);
+            }
+        }
+    }
+
     bool NvmeBlockDevice::Init()
     {
         status = Devices::DeviceStatus::Online;
@@ -691,6 +765,22 @@ namespace Npk::Drivers
 
     void CleanupPrps(SqEntry& sqEntry, size_t length)
     {
-        ASSERT_UNREACHABLE(); //TODO: cleanup PRPs
+        size_t prps = sl::AlignUp(length, PageSize) / PageSize;
+        if (sqEntry.fields.prp1 % PageSize != 0)
+            prps++;
+        
+        if (prps < 3)
+            return;
+        prps -= 1;
+        
+        uintptr_t list = sqEntry.fields.prp2 + hhdmBase;
+        while (prps > 511)
+        {
+            const uintptr_t nextList = sl::NativePtr(list).As<uint64_t>()[511];
+            PMM::Global().Free(list);
+            list = nextList;
+            prps -= 511;
+        }
+        PMM::Global().Free(list);
     }
 }

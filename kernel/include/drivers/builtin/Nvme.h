@@ -19,8 +19,8 @@ namespace Npk::Drivers
         volatile uint32_t* cqDoorbell;
         size_t entries;
         size_t nextCmdId;
-        size_t sqTail; //where we submit new entries at
-        size_t sqHead; //where the controller has processed until
+        size_t sqTail; //where we submit new entries at TODO: this should be atomic?
+        size_t sqHead; //where the controller has processed up to.
         size_t cqHead; //where to look for new completions
         sl::TicketLock lock;
     };
@@ -85,6 +85,8 @@ namespace Npk::Drivers
     public:
         bool Init(Devices::PciAddress pciAddr);
         bool Deinit();
+
+        void UpdateQueues(size_t mask, size_t offset);
     };
 
     class NvmeBlockDevice : public Devices::GenericBlock

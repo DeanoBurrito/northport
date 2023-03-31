@@ -35,7 +35,6 @@ namespace Npk::Tasking
         sl::ScopedLock scopeLock(core.queue.lock);
 
         item->next = nullptr;
-
         if (core.queue.tail == nullptr)
             core.queue.head = item;
         else
@@ -49,17 +48,12 @@ namespace Npk::Tasking
     {
         sl::ScopedLock scopeLock(core.queue.lock);
 
+        if (core.queue.head == nullptr)
+            return nullptr;
         Thread* found = core.queue.head;
-        if (found != nullptr)
-        {
-            core.queue.head = found->next;
-            --core.queue.size;
-        }
-        else
-        {
-            core.queue.head = core.queue.tail = nullptr;
-            core.queue.size = 0;
-        }
+        core.queue.head = found->next;
+        core.queue.size--;
+
         return found;
     }
 
@@ -105,22 +99,26 @@ namespace Npk::Tasking
 
     void Scheduler::RegisterCore(Thread* initThread)
     {
-        SchedulerCore* core = new SchedulerCore();
-        core->coreId = CoreLocal().id;
-
         //we create the idle thread manually, since it shouldn't be in the normal thread pool.
-        core->idleThread = new Thread();
-        core->idleThread->id = 1;
-        core->idleThread->parent = idleProcess;
-        core->idleThread->state = ThreadState::Dead;
+        Thread* idle = new Thread();
+        idle->id = 1;
+        idle->parent = idleProcess;
+        idle->state = ThreadState::Runnable;
+        idle->coreAffinity = CoreLocal().id;
 
         //setup the idle thread stack
         constexpr size_t IdleStackSize = PageSize;
-        core->idleThread->stack.base = VMM::Kernel().Alloc(IdleStackSize, 1, VmFlags::Anon | VmFlags::Write)->base;
-        core->idleThread->stack.length = IdleStackSize;
-        core->idleThread->frame = reinterpret_cast<TrapFrame*>((core->idleThread->stack.base + IdleStackSize) - sizeof(TrapFrame));
-        core->idleThread->frame = sl::AlignDown(core->idleThread->frame, sizeof(TrapFrame));
-        InitTrapFrame(core->idleThread->frame, core->idleThread->stack.base + core->idleThread->stack.length, (uintptr_t)IdleMain, nullptr, false);
+        idle->stack.base = VMM::Kernel().Alloc(IdleStackSize, 1, VmFlags::Anon | VmFlags::Write)->base;
+        idle->stack.length = IdleStackSize;
+        const uintptr_t stackTop = idle->stack.base + idle->stack.length;
+
+        idle->frame = reinterpret_cast<TrapFrame*>(stackTop - sizeof(TrapFrame));
+        idle->frame = sl::AlignDown(idle->frame, sizeof(TrapFrame));
+        InitTrapFrame(idle->frame, stackTop, (uintptr_t)IdleMain, nullptr, false);
+
+        SchedulerCore* core = new SchedulerCore();
+        core->coreId = CoreLocal().id;
+        core->idleThread = idle;
 
         //DPC (deferred procedure call) setup
         auto dpcStack = VMM::Kernel().Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write);
@@ -144,7 +142,7 @@ namespace Npk::Tasking
 
         CoreLocal().schedThread = core->idleThread;
         CoreLocal().schedData = core;
-        core->queue.lock.Unlock(); //this lock also doubles as a memory barrier
+        core->queue.lock.Unlock();
         
         coresListLock.Lock();
         cores.PushBack(core);
@@ -244,12 +242,12 @@ namespace Npk::Tasking
         ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
         Log("Thread %lu exited with code %lu", LogLevel::Debug, id, errorCode);
 
-        InterruptGuard guard; //TODO: should be SchedulerLock, rather interrupts
-        // DequeueThread(id);
+        ScheduleGuard schedGuard;
+        DequeueThread(id);
 
         threadsLock.Lock();
         Thread* t = threadLookup[id];
-        threadLookup[id] = nullptr;
+        // threadLookup[id] = nullptr;
         //TODO: free tid (implement IdA)
         threadsLock.Unlock();
 
@@ -261,6 +259,7 @@ namespace Npk::Tasking
 
         schedCleanupData.lock.Lock();
         schedCleanupData.threads.PushBack(t);
+        // schedCleanupData.updated.Trigger();
         schedCleanupData.lock.Unlock();
 
         if (CoreLocal().schedThread == t)
@@ -319,7 +318,7 @@ namespace Npk::Tasking
         ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
 
         Thread* t = threadLookup[id];
-        InterruptGuard intGuard;
+        ScheduleGuard schedGuard;
         t->lock.Lock();
         ASSERT(t->state == ThreadState::Runnable, "Thread is not runnable");
         t->state = ThreadState::Ready;
@@ -435,17 +434,20 @@ namespace Npk::Tasking
             CoreLocal().runLevel = RunLevel::Dispatch;
 
             //run the next queued DPC
+            core.dpcLock.Lock();
             const DeferredCall dpc = core.dpcs.PopFront();
+            core.dpcLock.Unlock();
+
             InitTrapFrame(core.dpcFrame, core.dpcStack, (uintptr_t)dpc.function, dpc.arg, false);
             core.dpcFinished = false;
             next = core.dpcFrame;
         }
         else
         {
-            Thread* thread = static_cast<Thread*>(CoreLocal().schedThread);
-            next = thread->frame;
             CoreLocal().runLevel = RunLevel::Normal;
 
+            Thread* thread = static_cast<Thread*>(CoreLocal().schedThread);
+            next = thread->frame;
             thread->parent->vmm.MakeActive();
         }
 
@@ -467,16 +469,11 @@ namespace Npk::Tasking
         Thread* current = static_cast<Thread*>(CoreLocal().schedThread);
         ASSERT(current != nullptr, "Current thread is null?");
 
+        //decide what to do with current thread
         if (current->state != ThreadState::Runnable || current->id < 2)
-        {
-            //drop the thread from the run queue:
-            //- if its not in a runnable state, it doesnt belong here.
-            //- id 0 means 'no thread' and is a reserved value, id 1 is the idle
-            //  thread for this core.
-            current->activeCore = 0;
-        }
+            current->activeCore = 0; //no longer runnable or idle thread, dont requeue
         else
-            QueuePush(core, current);
+            QueuePush(core, current); //otherwise requeue it for this core.
 
         //get the next runnable thread. A thread is always runnable when added to the queue,
         //but this can change while it waits in the queue.
@@ -505,7 +502,8 @@ namespace Npk::Tasking
             //we found our target core, try to pop from their runqueue.
             SchedulerCore& target = **scan;
             next = QueuePop(target); //TODO: we don't honour core affinities here.
-            next->activeCore = core.coreId; //thread has migrated processors
+            if (next != nullptr)
+                next->activeCore = core.coreId; //thread has migrated processors
         }
 
         //we failed to get another thread to run, just idle.
@@ -518,11 +516,11 @@ namespace Npk::Tasking
 
     void Scheduler::QueueReschedule()
     {
-        InterruptGuard intGuard;
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
-        
         if (core.reschedulePending)
             return;
+
+        sl::ScopedLock scopeLock(core.dpcLock);
         core.dpcs.EmplaceBack(RescheduleDpc, nullptr);
         core.reschedulePending = true;
     }
