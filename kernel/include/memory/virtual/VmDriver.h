@@ -5,24 +5,24 @@
 #include <Optional.h>
 #include <Locks.h>
 #include <memory/Vmm.h>
-#include <arch/Paging.h>
+#include <arch/Hat.h>
 
 namespace Npk::Memory
 { class VirtualMemoryManager; }
 
 namespace Npk::Memory::Virtual
 {
-    constexpr PageFlags ConvertFlags(VmFlags flags)
+    constexpr HatFlags ConvertFlags(VmFlags flags)
     {
-        /*  VMFlags are stable across platforms, while PageFlags have different meanings
+        /*  VMFlags are stable across platforms, while HatFlags have different meanings
             depending on the ISA. This provides source-level translation between the two. */
-        PageFlags value = PageFlags::None;
+        HatFlags value = HatFlags::None;
         if ((flags & VmFlags::Write) != VmFlags::None)
-            value |= PageFlags::Write;
+            value |= HatFlags::Write;
         if ((flags & VmFlags::Execute) != VmFlags::None)
-            value |= PageFlags::Execute;
+            value |= HatFlags::Execute;
         if ((flags & VmFlags::User) != VmFlags::None)
-            value |= PageFlags::User;
+            value |= HatFlags::User;
         
         return value;
     }
@@ -56,8 +56,8 @@ namespace Npk::Memory::Virtual
 
     struct VmDriverContext
     {
-        void* ptRoot;
         sl::TicketLock& lock;
+        HatMap* map;
         VmRange range;
     };
     

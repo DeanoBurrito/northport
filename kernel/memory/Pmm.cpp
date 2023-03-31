@@ -1,7 +1,6 @@
 #include <memory/Pmm.h>
 #include <boot/LimineTags.h>
 #include <Memory.h>
-#include <Bitmap.h>
 #include <Maths.h>
 #include <debug/Log.h>
 #include <UnitConverter.h>
@@ -19,23 +18,20 @@ namespace Npk::Memory
         ASSERT(base % PageSize == 0, "PMRegion base not page-aligned.");
         ASSERT(length % PageSize == 0, "PMRegion length not page-aligned.");
 
-        //allocate the bitmap and clear it
-        const size_t bitmapBytes = ((length / PageSize) / 8) + 1;
-        if (bitmapBytes > bitmapFreeSize)
+        //allocate space for this region to store PageInfos
+        if (remainingPageInfoAllocs < length / PageSize)
         {
-            ASSERT(length > bitmapBytes, "Not enough space");
-            Log("Expanding PMM bitmap at 0x%lx", LogLevel::Info, base);
-
-            const size_t allocSize = sl::AlignUp(bitmapBytes, PageSize);
-            bitmapAlloc = reinterpret_cast<uint8_t*>(base + hhdmBase);
-            bitmapFreeSize = allocSize;
-            base += allocSize;
-            length -= allocSize;
+            const size_t requiredPages = sl::AlignUp(length / PageSize, PageSize) / PageSize;
+            ASSERT(length > requiredPages, "Not enough space");
+            Log("Expanding PageInfo slab by %lu pages.", LogLevel::Info, requiredPages);
+            pageInfoAlloc = reinterpret_cast<PageInfo*>(base + hhdmBase);
+            remainingPageInfoAllocs = (requiredPages * PageSize) / sizeof(PageInfo);
+            base += requiredPages * PageSize;
+            length -= requiredPages * PageSize;
         }
-
-        uint8_t* regionBitmap = bitmapAlloc;
-        bitmapFreeSize += bitmapBytes;
-        sl::memset(regionBitmap, 0, bitmapBytes);
+        PageInfo* infoStore = pageInfoAlloc; //TODO: expand pageInfo store if needed
+        pageInfoAlloc += length / PageSize;
+        sl::memset(infoStore, 0, length / PageSize);
 
         //allocate the region, initialize it
         if (remainingRegionAllocs == 0)
@@ -48,10 +44,8 @@ namespace Npk::Memory
             length -= PageSize;
         }
 
-        PmRegion* latest = new(regionAlloc++) PmRegion(base, length, regionBitmap);
+        PmRegion* latest = new(regionAlloc++) PmRegion(base, length, infoStore);
         remainingRegionAllocs -= 1;
-        bitmapAlloc += bitmapBytes;
-        bitmapFreeSize -= bitmapBytes;
 
         sl::ScopedLock latestLock(latest->lock);
 
@@ -99,7 +93,7 @@ namespace Npk::Memory
             return 0;
         
         sl::ScopedLock scopeLock(region.lock);
-        size_t start = region.bitmapHint;
+        size_t start = region.searchHint;
         size_t end = region.totalPages;
 
     try_region_alloc_search:
@@ -111,7 +105,7 @@ namespace Npk::Memory
             bool usable = true;
             for (size_t mod = 0; mod < count; mod++)
             {
-                if (sl::BitmapGet(region.bitmap, i + mod))
+                if (region.infoBuffer[i + mod].flags.HasBits(PmFlags::Used))
                 {
                     i += mod;
                     usable = false;
@@ -123,17 +117,17 @@ namespace Npk::Memory
                 continue;
             
             for (size_t j = 0; j < count; j++)
-                sl::BitmapSet(region.bitmap, i + j);
+                region.infoBuffer[i + j].flags.SetBits(PmFlags::Used);
             
             region.freePages -= count;
-            region.bitmapHint = (i + count) % region.totalPages;
+            region.searchHint = (i + count) % region.totalPages;
             return region.base + (i * PageSize);
         }
 
-        if (start == region.bitmapHint && region.bitmapHint != 0)
+        if (start == region.searchHint && region.searchHint != 0)
         {
             start = 0;
-            end = region.bitmapHint;
+            end = region.searchHint;
             goto try_region_alloc_search;
         }
         return 0;
@@ -145,19 +139,25 @@ namespace Npk::Memory
     
     void PMM::Init()
     {
+        //these variables *should* be default initialized via the .bss, but
+        //*just in case* lets initialize them ourselves.
         remainingRegionAllocs = 0;
-        bitmapFreeSize = 0;
-        new(&zones[0]) PmZone();
-        new(&zones[1]) PmZone();
+        remainingPageInfoAllocs = 0;
+        new(&zones[0]) PmZone(); //low zone (addresses < 4GiB)
+        new(&zones[1]) PmZone(); //high zone (addresses >= 4GiB)
 
         const size_t mmapEntryCount = Boot::memmapRequest.response->entry_count;
         limine_memmap_entry** const mmapEntries = Boot::memmapRequest.response->entries;
 
-        //scan the memory map and determine how many PMRegions are needed, and how large
-        //the total bitmap size required is. We can expand this later at runtime if needed.
+        //We're going to allocate a PmRegion struct for each usable (and later reclaimable)
+        //region of the memory map, so determine how many we need.
+        //While iterating through the list we also keep track of the largest memory map
+        //entry, which we'll remove a portion of to use for pmm management data.
+        //If more memory is added at runtime we can allocate new management data elsewhere,
+        //but we have the benefit of operating in bulk during init.
         size_t selectedIndex = (size_t)-1;
         size_t regionCount = 0;
-        size_t totalBitmapSize = 0;
+        size_t pageInfoSize = sizeof(PageInfo); //space for aligning the start of this allocator later on.
         for (size_t i = 0; i < mmapEntryCount; i++)
         {
             const limine_memmap_entry* entry = mmapEntries[i];
@@ -168,16 +168,19 @@ namespace Npk::Memory
                 continue;
             }
 
+            pageInfoSize += (entry->length / PageSize) * sizeof(PageInfo);
+
+            //if mmap region crosses a zone boundary, we'll need to allocate space for an extra PmRegion
             regionCount++;
-            totalBitmapSize += ((entry->length / PageSize) / 8) + 1;
             if (entry->base < 4 * GiB && entry->base + entry->length > 4 * GiB)
                 regionCount++;
 
+            //check if new region is larger than previously selected one
             if (selectedIndex == (size_t)-1 || mmapEntries[selectedIndex]->length < entry->length)
                 selectedIndex = i;
         }
         
-        size_t totalInitBytes = totalBitmapSize + regionCount * sizeof(PmRegion);
+        size_t totalInitBytes = regionCount * sizeof(PmRegion) + pageInfoSize;
         if (selectedIndex == (size_t)-1 || mmapEntries[selectedIndex]->length < totalInitBytes)
             Log("PMM init failed: no region big enough for management data.", LogLevel::Fatal);
 
@@ -185,17 +188,20 @@ namespace Npk::Memory
         Log("PMM requires %lu.%lu%sB for management data. Allocating at 0x%lx, slack of %lu bytes.", LogLevel::Info, 
             conv.major, conv.minor, conv.prefix, mmapEntries[selectedIndex]->base, totalInitBytes % PageSize);
 
-        //populate buffer pointers
+        //populate the pointers for the management data buffers
         totalInitBytes = sl::AlignUp(totalInitBytes, PageSize);
         regionAlloc = reinterpret_cast<PmRegion*>(mmapEntries[selectedIndex]->base + hhdmBase);
         remainingRegionAllocs = regionCount;
-        bitmapAlloc = reinterpret_cast<uint8_t*>(regionAlloc + regionCount);
-        bitmapFreeSize = totalInitBytes - (sizeof(PmRegion) * regionCount);
+        
+        pageInfoAlloc = reinterpret_cast<PageInfo*>(regionAlloc + remainingRegionAllocs);
+        pageInfoAlloc = sl::AlignUp(pageInfoAlloc, sizeof(PageInfo));
+        remainingPageInfoAllocs = pageInfoSize / sizeof(PageInfo);
         
         //and adjust the region we just carved out the buffers from
         mmapEntries[selectedIndex]->base += totalInitBytes;
         mmapEntries[selectedIndex]->length -= totalInitBytes;
 
+        //add each usable region of the memory map to our own structures.
         for (size_t i = 0; i < mmapEntryCount; i++)
         {
             if (mmapEntries[i]->type != LIMINE_MEMMAP_USABLE)
@@ -227,6 +233,36 @@ namespace Npk::Memory
         }
         else
             InsertRegion(zones[1], base, length);
+    }
+
+    PageInfo* PMM::Lookup(uintptr_t pfn)
+    {
+        PmZone* zone = nullptr;
+
+        for (size_t i = 0; i < PmZonesCount; i++)
+        {
+            if (pfn < zones[i].head->base)
+                continue;
+            if (pfn >= zones[i].tail->base + zones[i].tail->totalPages * PageSize)
+                continue;
+            zone = &zones[i];
+            break;
+        }
+        
+        if (zone == nullptr)
+            return nullptr;
+
+        for (PmRegion* region = zone->head; region != nullptr; region = region->next)
+        {
+            if (pfn < region->base || pfn >= region->base + region->totalPages * PageSize)
+                continue;
+            
+            const size_t index = (pfn - region->base) / sizeof(PageInfo);
+            return &region->infoBuffer[index];
+        }
+
+        Log("Failed to get page info for physical address 0x%lx", LogLevel::Error, pfn);
+        return nullptr;
     }
 
     uintptr_t PMM::AllocLow(size_t count)
@@ -298,8 +334,10 @@ namespace Npk::Memory
             const size_t index = (base - searchStart->base) / PageSize;
             for (size_t i = 0; i < count; i++)
             {
-                if (!sl::BitmapClear(searchStart->bitmap, index + i))
+                if (!searchStart->infoBuffer[index + i].flags.HasBits(PmFlags::Used))
                     Log("Double free attempted in PMM at address 0x%016lx.", LogLevel::Error, base + (i + index) * PageSize);
+                else
+                    searchStart->infoBuffer[index + i].flags.ClearBits(PmFlags::Used);
             }
             
             zone.totalUsed.Sub(count, sl::Relaxed);

@@ -39,7 +39,7 @@
 
 namespace sl
 {
-    namespace Impl
+    namespace Intrusive
     {
         template<typename T>
         struct ListNode
@@ -82,10 +82,10 @@ namespace sl
                 {}
 
                 T& operator*()
-                { return entry->item; }
+                { return entry->Item(); }
 
                 T* operator->() const
-                { return &entry->item; }
+                { return &entry->Item(); }
 
                 void operator++()
                 {
@@ -231,7 +231,7 @@ namespace sl
     class LinkedList
     {
     private:
-        struct Item : public Impl::ListNode<Item>
+        struct Item : public Intrusive::ListNode<Item>
         {
             T entry;
 
@@ -243,7 +243,7 @@ namespace sl
             {}
         };
 
-        Impl::LinkedList<Item> list;
+        Intrusive::LinkedList<Item> list;
         Allocator alloc;
 
     public:
@@ -269,10 +269,10 @@ namespace sl
         {
         friend LinkedList;
         private:
-            typename Impl::LinkedList<Item>::Iterator it;
+            typename Intrusive::LinkedList<Item>::Iterator it;
 
         public:
-            Iterator(typename Impl::LinkedList<Item>::Iterator it) : it(it)
+            Iterator(typename Intrusive::LinkedList<Item>::Iterator it) : it(it)
             {}
 
             T& operator*()

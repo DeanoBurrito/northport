@@ -28,9 +28,8 @@ namespace Npk::Memory
         size_t slabSize;
         size_t slabsPerSeg;
         sl::TicketLock lock;
-        bool pinned;
 
-        SlabSegment* InitSegment(uintptr_t base);
+        SlabSegment* InitSegment();
 
     public:
         SlabAlloc() = default;
@@ -39,9 +38,9 @@ namespace Npk::Memory
         SlabAlloc(SlabAlloc&&) = delete;
         SlabAlloc& operator=(SlabAlloc&&) = delete;
 
-        void Init(uintptr_t firstSegment, size_t sizeSize, size_t slabCount);
+        void Init(size_t sizeSize, size_t slabCount);
 
-        void* Alloc(uintptr_t& expansionBase);
+        void* Alloc();
         bool Free(void* ptr);
 
         [[gnu::always_inline]]

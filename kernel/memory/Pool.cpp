@@ -1,7 +1,5 @@
 #include <memory/Pool.h>
-#include <memory/Pmm.h>
 #include <memory/Vmm.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <Memory.h>
 
@@ -68,7 +66,7 @@ namespace Npk::Memory
     void PoolAlloc::Expand(size_t minSize, bool takeLock)
     {
         const size_t expandSize = sl::Max(minSize, minAllocSize * PoolMinExpansionScale) + sizeof(PoolRegion) + sizeof(PoolNode);
-        auto maybeRegion = VMM::Kernel().Alloc(expandSize, pinned ? 0b11 : 0, VmFlags::Anon | VmFlags::Write);
+        auto maybeRegion = VMM::Kernel().Alloc(expandSize, 0, VmFlags::Anon | VmFlags::Write);
         ASSERT(maybeRegion, "Failed to expand kernel pool.");
 
         PoolRegion* region = new((void*)maybeRegion->base) PoolRegion();
@@ -111,15 +109,13 @@ namespace Npk::Memory
         }
     }
 
-    void PoolAlloc::Init(size_t minAllocBytes, bool isPinned)
+    void PoolAlloc::Init(size_t minAllocBytes)
     {
         sl::ScopedLock scopeLock(listLock);
         head = tail = nullptr;
         minAllocSize = minAllocBytes;
-        pinned = isPinned;
 
-        Log("Kpool initialized: minSize=0x%lx, pinned=%s", LogLevel::Verbose, minAllocSize, 
-            pinned ? "yes" : "no");
+        Log("Kpool initialized: minSize=0x%lx", LogLevel::Verbose, minAllocSize);
     }
 
     void* PoolAlloc::Alloc(size_t bytes)
@@ -203,7 +199,7 @@ namespace Npk::Memory
 
             if (scan == node)
             {
-                Log("Kernel pool %sdouble free @ 0x%016lx", LogLevel::Error, pinned ? "(pinned) " : "", (uintptr_t)ptr);
+                Log("Kernel pool double free @ 0x%016lx", LogLevel::Error, (uintptr_t)ptr);
                 return true;
             }
             
