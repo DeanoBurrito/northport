@@ -32,7 +32,7 @@ namespace Npk::Drivers
 
         Log("Virtio GPU init done.", LogLevel::Debug);
         while (true)
-            HintSpinloop();
+            sl::HintSpinloop();
         
         driver.Deinit();
         driver.transport.Deinit();

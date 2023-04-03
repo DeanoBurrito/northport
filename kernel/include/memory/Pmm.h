@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <arch/Platform.h>
+#include <Locks.h>
 #include <Atomic.h>
 
 namespace Npk::Memory

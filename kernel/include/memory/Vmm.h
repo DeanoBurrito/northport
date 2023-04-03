@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <arch/Platform.h>
 #include <Locks.h>
 #include <Optional.h>
 #include <containers/LinkedList.h>

@@ -1,8 +1,8 @@
 #include <arch/Timers.h>
-#include <arch/Platform.h>
 #include <arch/riscv64/Sbi.h>
 #include <config/DeviceTree.h>
 #include <debug/Log.h>
+#include <ArchHints.h>
 #include <UnitConverter.h>
 #include <Time.h>
 
@@ -51,7 +51,7 @@ namespace Npk
     {
         const uint64_t target = RdTime() + (nanoseconds / timerPeriod.ToNanos());
         while (RdTime() < target)
-            HintSpinloop();
+            sl::HintSpinloop();
     }
 
     size_t PollTimer()

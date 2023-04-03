@@ -1,5 +1,4 @@
 #include <interrupts/Ipi.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <containers/Vector.h>
 #include <Locks.h>
@@ -17,12 +16,12 @@ namespace Npk::Interrupts
     
     struct IpiMailbox
     {
-        InterruptLock lock;
+        sl::InterruptLock lock;
         size_t fullErrorCount;
         MailboxRpc callbacks[MailboxQueueDepth];
     };
 
-    InterruptLock mailboxContainerLock;
+    sl::InterruptLock mailboxContainerLock;
     sl::Vector<IpiMailbox*> mailboxes;
 
     void InitIpiMailbox()

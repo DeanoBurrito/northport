@@ -32,11 +32,11 @@ namespace Npk::Tasking
             Thread* head;
             Thread* tail;
             sl::Atomic<size_t> size;
-            InterruptLock lock;
+            sl::InterruptLock lock;
         } queue;
 
         //deferred procedure call management
-        InterruptLock dpcLock;
+        sl::InterruptLock dpcLock;
         sl::LinkedList<DeferredCall, Memory::CachingSlab<16>> dpcs;
         TrapFrame* dpcFrame;
         uintptr_t dpcStack;

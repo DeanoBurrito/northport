@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <Maths.h>
-#include <arch/x86_64/Apic.h>
 #include <arch/x86_64/Gdt.h>
 
 namespace Npk
@@ -98,12 +97,6 @@ namespace Npk
         asm("clac" ::: "cc");
     }
 
-    [[gnu::always_inline]]
-    inline void HintSpinloop()
-    {
-        asm("pause");
-    }
-
     inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
     {
         frame->iret.cs = user ? SelectorUserCode : SelectorKernelCode;
@@ -137,12 +130,6 @@ namespace Npk
         }
 
         return 0;
-    }
-
-    [[gnu::always_inline]]
-    inline void SendIpi(size_t dest)
-    {
-        LocalApic::Local().SendIpi(dest);
     }
 
     [[gnu::always_inline]]

@@ -1,6 +1,5 @@
 #include <devices/PciAddress.h>
 #include <devices/PciBridge.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
 #include <NativePtr.h>

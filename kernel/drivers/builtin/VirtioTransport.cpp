@@ -1,7 +1,6 @@
 #include <drivers/builtin/VirtioTransport.h>
 #include <drivers/builtin/VirtioDefs.h>
 #include <drivers/DriverManager.h>
-#include <arch/Platform.h>
 #include <devices/PciCapabilities.h>
 #include <debug/Log.h>
 #include <debug/NanoPrintf.h>
@@ -180,14 +179,14 @@ namespace Npk::Drivers
             cfg->deviceStatus = 0;
 
             while (cfg->deviceStatus != 0)
-                HintSpinloop();
+                sl::HintSpinloop();
         }
         else
         {
             WRITE_MMIO_REG(Status, 0);
 
             while (READ_MMIO_REG(Status) != 0)
-                HintSpinloop();
+                sl::HintSpinloop();
         }
     }
 
@@ -549,7 +548,7 @@ namespace Npk::Drivers
                 foundAt = i;
                 break;
             }
-            HintSpinloop();
+            sl::HintSpinloop();
         }
 
         if (removeDescriptors)

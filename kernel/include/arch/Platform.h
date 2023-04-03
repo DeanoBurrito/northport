@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <Locks.h>
 
 namespace Npk
 {
@@ -54,7 +53,6 @@ namespace Npk
     void DisableInterrupts();
     void AllowSumac();
     void BlockSumac();
-    void HintSpinloop();
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
     void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
@@ -76,51 +74,6 @@ namespace Npk
             Wfi(); 
         __builtin_unreachable();
     }
-
-    struct InterruptGuard
-    {
-    private:
-        bool prevState;
-    public:
-        InterruptGuard()
-        {
-            prevState = InterruptsEnabled();
-            DisableInterrupts();
-        }
-
-        ~InterruptGuard()
-        {
-            if (prevState)
-                EnableInterrupts();
-        }
-
-        InterruptGuard(const InterruptGuard& other) = delete;
-        InterruptGuard& operator=(const InterruptGuard& other) = delete;
-        InterruptGuard(InterruptGuard&& other) = delete;
-        InterruptGuard& operator=(InterruptGuard&& other) = delete;
-    };
-
-    class InterruptLock
-    {
-    private:
-        bool restoreInts;
-        sl::SpinLock lock;
-        
-    public:
-        inline void Lock()
-        {
-            restoreInts = InterruptsEnabled();
-            Npk::DisableInterrupts();
-            lock.Lock();
-        }
-
-        inline void Unlock()
-        {
-            lock.Unlock();
-            if (restoreInts)
-                Npk::EnableInterrupts();
-        }
-    };
 }
 
 #if defined(__x86_64__)

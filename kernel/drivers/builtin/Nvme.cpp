@@ -1,7 +1,6 @@
 #include <drivers/builtin/Nvme.h>
 #include <drivers/InitTags.h>
 #include <devices/DeviceManager.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <interrupts/InterruptManager.h>
 #include <memory/Pmm.h>
@@ -24,7 +23,7 @@ namespace Npk::Drivers
 
         Log("NVMe init done.", LogLevel::Debug);
         while (true)
-            HintSpinloop();
+            sl::HintSpinloop();
     }
 
     void NvmeController::Enable(bool yes)
@@ -44,7 +43,7 @@ namespace Npk::Drivers
             props.config = config;
 
             while ((props.status & 0b11) == 0)
-                HintSpinloop(); //wait for controller to signal it's initialized
+                sl::HintSpinloop(); //wait for controller to signal it's initialized
             
             ASSERT((props.status & 0b10) == 0, "NVMe controller fatal error");
             Log("NVMe controller enabled.", LogLevel::Verbose);
@@ -54,7 +53,7 @@ namespace Npk::Drivers
             //disable controller
             props.config = 0;
             while ((props.status & 1) == 1)
-                HintSpinloop();
+                sl::HintSpinloop();
             Log("NVMe controller disabled.", LogLevel::Verbose);
         }
     }
@@ -424,7 +423,7 @@ namespace Npk::Drivers
 
         //ensure we don't overwrite messages the controller is still processing
         while ((targetQ.sqTail + 1) % targetQ.entries == targetQ.sqHead)
-            HintSpinloop();
+            sl::HintSpinloop();
 
         sl::ScopedLock queueLock(targetQ.lock);
         volatile SqEntry& slot = targetQ.sq[targetQ.sqTail++];
@@ -465,7 +464,7 @@ namespace Npk::Drivers
 
             if (!block) //dont block, instead return that command hasn't completed
                 return {};
-            HintSpinloop();
+            sl::HintSpinloop();
         }
 
         //TODO: CleanupPrps() - requires access to prp1/prp2 from SQ

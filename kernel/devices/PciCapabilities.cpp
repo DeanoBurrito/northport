@@ -1,5 +1,4 @@
 #include <devices/PciCapabilities.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <NativePtr.h>
 

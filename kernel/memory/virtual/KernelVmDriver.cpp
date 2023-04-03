@@ -1,5 +1,4 @@
 #include <memory/virtual/KernelVmDriver.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <boot/LinkerSyms.h>
 #include <boot/LimineTags.h>
@@ -40,7 +39,7 @@ namespace Npk::Memory::Virtual
     
     sl::Opt<size_t> KernelVmDriver::AttachRange(VmDriverContext& context, uintptr_t attachArg)
     {
-        InterruptGuard guard; //TODO: is this needed?
+        sl::InterruptGuard guard; //TODO: is this needed?
         sl::ScopedLock ptLock(context.lock);
         
         HatFlags flags = HatFlags::Global;
@@ -57,7 +56,7 @@ namespace Npk::Memory::Virtual
     {
         const HatLimits& hatLimits = GetHatLimits();
 
-        InterruptGuard guard;
+        sl::InterruptGuard guard;
         sl::ScopedLock ptLock(context.lock);
 
         for (uintptr_t base = context.range.base; base < context.range.base + context.range.length;)

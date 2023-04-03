@@ -42,7 +42,7 @@ namespace Npk
         for (size_t i = 0; i < length; i++)
         {
             while ((uartRegs.Offset(5).Read<uint8_t>() & (1 << 5)) == 0)
-                HintSpinloop();
+                sl::HintSpinloop();
             uartRegs.Write<uint8_t>(str[i]);
         }
     }

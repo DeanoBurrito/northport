@@ -1,6 +1,5 @@
 #include <arch/x86_64/Apic.h>
 #include <arch/Cpu.h>
-#include <arch/Platform.h>
 #include <arch/Timers.h>
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
@@ -11,6 +10,12 @@
 
 namespace Npk
 {
+    //TODO: having this here (instead of Platform.h) is a bit of a hack.
+    void SendIpi(size_t dest)
+    {
+        LocalApic::Local().SendIpi(dest);
+    }
+    
     /*
         This version of northport is actually a rewrite of the original. A big chunk of
         the APIC code (especially the x2apic stuff) was written by Ivan (github.com/dreamos82).
@@ -150,7 +155,7 @@ namespace Npk
 
     void LocalApic::SetTimer(bool tsc, size_t nanos, size_t vector)
     {
-        InterruptGuard guard;
+        sl::InterruptGuard guard;
         sl::ScopedLock scopeLock(lock);
 
         if (tsc)
@@ -175,7 +180,7 @@ namespace Npk
     {
         //ensure any previous IPIs have finished sending first (jic we pump this)
         while (ReadReg(LApicReg::Icr0) & (1 << 12))
-            HintSpinloop();
+            sl::HintSpinloop();
 
         if (inX2mode)
             WriteMsr(0x830, (dest << 32) | IntVectorIpi);

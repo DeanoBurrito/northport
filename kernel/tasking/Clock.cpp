@@ -1,5 +1,4 @@
 #include <tasking/Clock.h>
-#include <arch/Platform.h>
 #include <arch/Timers.h>
 #include <containers/LinkedList.h>
 #include <debug/Log.h>
@@ -27,7 +26,7 @@ namespace Npk::Tasking
     };
 
     volatile sl::Atomic<size_t> uptimeMillis;
-    Npk::InterruptLock eventsLock;
+    sl::InterruptLock eventsLock;
     sl::LinkedList<ClockEvent, Memory::CachingSlab<32>> events;
 
     void ClockEventDispatch()

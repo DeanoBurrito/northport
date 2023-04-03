@@ -402,7 +402,7 @@ namespace Npk::Tasking
         if (!CoreLocalAvailable() || CoreLocal().schedData == nullptr)
             return;
         
-        InterruptGuard intGuard;
+        sl::InterruptGuard intGuard;
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
 
         TrapFrame** current = nullptr;
@@ -527,7 +527,7 @@ namespace Npk::Tasking
 
     bool Scheduler::Suspend(bool yes)
     {
-        InterruptGuard intGuard;
+        sl::InterruptGuard intGuard;
         
         SchedulerCore* core = reinterpret_cast<SchedulerCore*>(CoreLocal().schedData);
         const bool prevSuspend = core->suspendScheduling;

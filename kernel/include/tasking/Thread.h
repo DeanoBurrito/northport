@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-#include <arch/Platform.h>
+#include <Locks.h>
 #include <Atomic.h>
 
 namespace Npk::Tasking

@@ -1,6 +1,5 @@
 #include <memory/virtual/AnonVmDriver.h>
 #include <memory/Pmm.h>
-#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <Maths.h>
 
@@ -39,7 +38,7 @@ namespace Npk::Memory::Virtual
 
         //everything checks out, map it and back it.
         const size_t loadCount = sl::Min(FaultMaxLoadAhead, ((context.range.base + context.range.length) - pageAddr) / PageSize);
-        InterruptGuard guard;
+        sl::InterruptGuard guard;
         sl::ScopedLock scopeLock(context.lock);
 
         for (size_t i = 0; i < loadCount; i++)
@@ -54,7 +53,7 @@ namespace Npk::Memory::Virtual
         if ((attachArg & 0b1) == 0 && CoreLocalAvailable())
             return attachArg;
         
-        InterruptGuard guard; //TODO: do we need this?
+        sl::InterruptGuard guard; //TODO: do we need this?
         sl::ScopedLock scopeLock(context.lock);
 
         for (size_t i = 0; i < context.range.length / PageSize; i++)
@@ -66,7 +65,7 @@ namespace Npk::Memory::Virtual
     {
         const HatLimits& hatLimits = GetHatLimits();
         
-        InterruptGuard guard;
+        sl::InterruptGuard guard;
         sl::ScopedLock scopeLock(context.lock);
 
         for (size_t i = 0; i < context.range.length;)

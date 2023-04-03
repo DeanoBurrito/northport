@@ -64,7 +64,7 @@ namespace Npk
         Out8(PortPitData, 0xFF);
 
         while (PitRead() > target)
-            HintSpinloop();
+            sl::HintSpinloop();
     }
 
     void HpetSleep(size_t nanos)
@@ -75,7 +75,7 @@ namespace Npk
         const size_t target = counter.Read<uint64_t>() + ((nanos * FemtosPerNano) / hpetPeriod);
 
         while (counter.Read<uint64_t>() < target)
-            HintSpinloop();
+            sl::HintSpinloop();
     }
 
     void InitTsc()

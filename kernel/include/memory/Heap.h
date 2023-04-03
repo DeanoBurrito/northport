@@ -5,7 +5,6 @@
 #include <memory/Slab.h>
 #include <memory/Pool.h>
 #include <debug/Log.h>
-#include <arch/Platform.h>
 
 namespace Npk::Memory
 {

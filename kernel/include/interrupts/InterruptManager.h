@@ -1,6 +1,5 @@
 #pragma once
 
-#include <arch/Platform.h>
 #include <Optional.h>
 #include <Locks.h>
 
