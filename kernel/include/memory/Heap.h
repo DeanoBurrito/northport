@@ -44,7 +44,7 @@ namespace Npk::Memory
         continue to grow, at least temporarily.
         TODO: abstract the allowMalloc condition to be a templateFunction, not hardcoded.
     */
-    template<size_t CacheDepth>
+    template<size_t CacheDepth> //TODO: deprecate this, use general purpose caches
     struct CachingSlab
     {
     private:

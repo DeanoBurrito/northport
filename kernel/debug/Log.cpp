@@ -12,6 +12,7 @@
 
 namespace Npk::Debug
 {
+    constexpr size_t PanicLockAttempts = 4321'0000;
     constexpr size_t MaxEarlyLogOuts = 4;
     constexpr size_t CoreLogBufferSize = 4 * PageSize;
     constexpr size_t EarlyBufferSize = 4 * PageSize;
@@ -297,9 +298,15 @@ extern "C"
         using namespace Npk::Debug;
 
         Interrupts::BroadcastPanicIpi();
-        eloLock.TryLock();
+        //try to take the ELO lock a reasonable number of times. Don't wait on the lock though
+        //as it's possible to deadlock here. This also gives other cores time to finish accept 
+        //and handle the panic IPI, which helps prevent corrupting any attached outputs.
+        for (size_t i = 0; i < PanicLockAttempts; i++)
+            eloLock.TryLock();
 
-        //TODO: we should drain the core-local buffers, in case something was missed.
+        //drain the message queue, the last messages printed may contain critical info.
+        for (auto* msg = msgQueue.Pop(); msg != nullptr; msg = msgQueue.Pop())
+            WriteElos(msg->data); //TODO: dont rely on external logic like this during panic
 
         PanicWrite("\r\n\r\n");
         PanicWrite("---==####==--- Kernel Panic ---==####==---\r\n\r\n");

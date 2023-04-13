@@ -161,6 +161,7 @@ namespace Npk::Tasking
 
         QueueClockEvent(10'000'000, nullptr, QueueRescheduleDpc, true);
         Yield(false);
+        ASSERT_UNREACHABLE()
     }
 
     Process* Scheduler::CreateProcess()
@@ -242,12 +243,12 @@ namespace Npk::Tasking
         ASSERT(threadLookup[id] != nullptr, "Invalid thread id");
         Log("Thread %lu exited with code %lu", LogLevel::Debug, id, errorCode);
 
-        ScheduleGuard schedGuard;
+        sl::InterruptGuard intGuard;
         DequeueThread(id);
 
         threadsLock.Lock();
         Thread* t = threadLookup[id];
-        // threadLookup[id] = nullptr;
+        threadLookup[id] = nullptr;
         //TODO: free tid (implement IdA)
         threadsLock.Unlock();
 
@@ -259,11 +260,15 @@ namespace Npk::Tasking
 
         schedCleanupData.lock.Lock();
         schedCleanupData.threads.PushBack(t);
-        // schedCleanupData.updated.Trigger();
+        schedCleanupData.updated.Trigger();
         schedCleanupData.lock.Unlock();
 
         if (CoreLocal().schedThread == t)
-            QueueDpc(RescheduleDpc);
+        {
+            QueueReschedule();
+            Yield(false);
+            ASSERT_UNREACHABLE()
+        }
     }
 
     void Scheduler::EnqueueThread(size_t id)
@@ -395,6 +400,7 @@ namespace Npk::Tasking
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
         core.dpcFinished = true;
         Yield(false);
+        ASSERT_UNREACHABLE()
     }
 
     void Scheduler::Yield(bool willReturn)
@@ -517,12 +523,12 @@ namespace Npk::Tasking
     void Scheduler::QueueReschedule()
     {
         SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
-        if (core.reschedulePending)
+        const bool pending = core.reschedulePending.Exchange(true);
+        if (pending)
             return;
-
+        
         sl::ScopedLock scopeLock(core.dpcLock);
         core.dpcs.EmplaceBack(RescheduleDpc, nullptr);
-        core.reschedulePending = true;
     }
 
     bool Scheduler::Suspend(bool yes)
@@ -530,10 +536,7 @@ namespace Npk::Tasking
         sl::InterruptGuard intGuard;
         
         SchedulerCore* core = reinterpret_cast<SchedulerCore*>(CoreLocal().schedData);
-        const bool prevSuspend = core->suspendScheduling;
-        core->suspendScheduling = yes;
-        return prevSuspend;
-        // return core->suspendScheduling.Exchange(yes);
+        return core->suspendScheduling.Exchange(yes);
     }
 
     void Scheduler::SavePrevFrame(TrapFrame* current, RunLevel prevRunLevel)

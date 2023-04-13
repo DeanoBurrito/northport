@@ -23,8 +23,8 @@ namespace Npk::Tasking
         Thread* idleThread;
 
         //control flags for this core's scheduling
-        sl::Atomic<bool> suspendScheduling;
-        sl::Atomic<bool> reschedulePending;
+        sl::Atomic<size_t> suspendScheduling;
+        sl::Atomic<size_t> reschedulePending;
 
         //this core's runqueue.
         struct 

@@ -12,6 +12,7 @@
         - [x] Memory map, hhdm and kernel address.
         - [x] SMP feature.
     - [ ] EFI entry stub.
+    - [ ] Relocatable kernel.
     - [x] Memory Management:
         - [x] PMM, with 32bit/64bit zones.
             - [x] Reclaim bootloader memory.
@@ -32,8 +33,8 @@
         - [x] SMP-support.
         - [x] DPCs.
         - [x] Work stealing.
+        - [x] Waitable objects.
         - [ ] Heterogenous cpu support.
-        - [ ] Waitable objects.
     - [x] Panic.
         - [x] Stack frame walker.
     - [ ] Sanitizers.
@@ -56,6 +57,10 @@
     - [ ] System calls.
         - [ ] ABI documentation
     - [ ] VFS.
+        - [ ] TempFS, populated from initrd if present.
+        - [ ] Ext2 driver.
+        - [ ] FAT driver.
+        - [ ] NTFS driver?
     - [x] Reclaim bootloader memory.
     - [ ] IPC.
         - [ ] Shared memory.
@@ -72,12 +77,14 @@
             - [ ] Block.
             - [ ] Network.
             - [ ] Input (kb + mouse).
+            - [ ] Filesystem.
         - [x] Bochs VGA.
         - [ ] AHCI.
         - [x] NVMe.
         - [ ] XHCI (USB 3).
         - [ ] E1000 NIC.
         - [ ] AC97 audio.
+        - [ ] HD audio.
     - [ ] Graphics manager.
     - [ ] Audio manager.
     - [ ] Networking stack:
