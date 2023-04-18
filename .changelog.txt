@@ -1,3 +1,7 @@
 - Initial release using git tags.
+- Added new kernel features:
+    - VFS, follows a traditional unix design.
+    - File cache, caches chunk of file contents in memory.
+    - TempFS driver, operates like any other filesystem just with no backing storage.
 - Releases include a bootable x86_64 iso for use with your emulator of choice now.
-    - A risc-v version may follow soon.
+    - A risc-v version will follow soon.

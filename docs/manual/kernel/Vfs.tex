@@ -1,0 +1,91 @@
+\section{Virtual File System}
+The kernel provides a virtual filesystem (VFS) subsystem that allows other subsystems and user programs to access files (and file-like objects) in a uniform way, regardless of the underlying structure.
+
+The design follows a fairly typical pattern in that the VFS uses a single root graph, with each node on the graph representing a file-like object. File-like objects include regular files with content, but also directories and links.
+
+\subsection{Concepts}
+\paragraph{VFS Driver}
+A VFS driver represents a single instance of a filesystem. A driver can then be mounted within the global graph and be made available for global access (i.e. it's visible when calling \verb|driver->Resolve()| or \verb|VfsLookup()|). A VFS driver implements the required functions that allow the rest of the VFS subsystem to operate on nodes from this driver.
+
+\paragraph{VFS Node}
+A VFS node contains the bare minimum needed to represent a node within a filesystem: a reader-writer lock (to protect the node's data and properties - not the file contents!), reference count, responsible VFS driver and type. Each node also contains an opaque pointer for the driver to store internal data on the node. 
+
+Information like the file's size, name, child nodes (if it's a directory) is considered to be a property of the node and can be accessed by the \verb|GetProps()| and \verb|SetProps()| functions of a node.
+
+\paragraph{File Cache}
+While VFS nodes represent objects within VFS graph, the actual contents of a file is stored externally to the VFS. The contents of a file are usually stored on a slower medium like a HDD or SSD, or even across a network, which results in the VFS slowing down when accessing file contents directly. As you might expect, the file cache keeps a copy of accessed file contents in local memory for faster accesses. The file cache operates in fixed sized chunks, and only caches accessed chunks, meaning accessed parts of files are only loaded as they're used.
+
+\paragraph{Access Context}
+Most operations on a node require a \verb|context| argument. A context represents a particular view of the VFS, typically from the perspective of a program or user. A context contains the access rights allowed for an operation and the working directory to use for relative path lookups.
+
+When private mappings of files are implemented, the caches used for those views will be stored here.
+
+\subsection{Initializaton \& The Initdisk}
+The file cache is the first part of the vfs subsystem to be brought online. The file cache determines the cache unit size (how many bytes each chunk of cache contains), based on the MMU limits. On systems with paging, this is typically a multiple of the page size (or just the page size). This is done so that files can be easily memory mapped.
+
+Next the VFS itself is initialized, and begins by searching for the root filesystem. \textit{Currently no method of detecting the root FS is available, so this will always fail.} If no root filesystem is found, a tempFS instance is mounted as the root so that other filesystems may still mount themselves where they expect to be. The VFS will search any bootloader modules for one with the signature \verb|northport-initdisk|, indicating that this module is the initdisk.
+
+The initdisk is just a tar with no compression applied. If located a tempFS instance is created and mounted at \verb|/initdisk/| and all files within the tar are created in the tempFS. Unfortunately this now means the file content is duplicated between the file cache and the bootloader module, but the file cache version is writable. Reclaiming the memory used by the module may be investigated in the future.
+
+\subsection{File Cache}
+The file cache is a separate entity to the VFS. Currently only file content is cached, meaning metadata still requires accessing the backing media.
+
+File contents are cached in chunks of a fixed number of bytes, called a unit. The unit size can be queried at runtime via \verb|FileCacheUnit()|. Files are sparsely cached, meaning only the parts of a file that (rounded to the nearest cache unit) are kept in memory. Non-accessed parts of a file may also be tentatively loaded, but this is not guarenteed.
+
+The file cache is designed with memory mapping of files in mind, and all cache units are created in a way that satisifies the constraints of the MMU. During initialization the unit size is determined based on the data available from \verb|GetHatLimits()|.
+
+Currently cache units must use contiguous physical memory, but there may be scatter-gather support in the future.
+
+\subsection{Usage}
+All the necessary declarations for using the VFS are available in \verb|filesystem/Vfs.h|, global utility functions are available in \verb|filesystem/Filesystem.h|.
+
+Most operations on the VFS follow a similar pattern: find the VFS driver for the target filesystem, find the target node, call a function on the driver passing the node as an argument.
+
+Some operations apply directly to the VFS driver, like mounting and unmounting, or flushing the whole filesystem's cache. These operations don't require a node to be passed, and can be called on the vfs driver directly.
+
+VFS drivers also provide a \verb|Resolve()| function which traverses the VFS starting at the their own root node. This can be used to quickly lookup known files or check for their existence.
+
+Some global utility functions are also provided: \verb|RootFs()| returns the VFS driver for the root filesystem, and \verb|VfsLookup()| is a shortcut for looking up a node based on a path (it can be absolute, or use the working directory of the context).
+
+VFS nodes keep track of the driver that is responsible for them via the \verb|node.driver| field, which can be used to call driver functions. Common operations are also provided as member functions of the VFS node struct. As an example, to read or write a file you can use \verb|node.ReadWrite()| instead of \verb|node.driver.ReadWrite()|.
+
+\subsection{Example Code}
+For the following examples we'll assume you've obtained a handle to target node and it's called \verb|node|. We're also not going to populate any properties of new nodes, but this is something you should do in real usage.
+
+For the following examples we'll use a dummy FsContext called \verb|context|. In real usage this would either be the kernel context (\verb|KernelFsCtxt| or a context created for a specific user or program).
+
+Creating a child node, in this case a file called "childfile.txt":
+\begin{verbatim}
+NodeProps props { .name = "childfile.txt" };
+sl::Handle<Node> child = node->Create(NodeType::File, props, context);
+\end{verbatim}
+
+Directories can be enumerated in the following way:
+\begin{verbatim}
+size_t count = 0;
+while (true)
+{
+    sl::Handle<Node> child = node->GetChild(i, context);
+    if (!child.Valid())
+        break; //invalid handle = no more children
+
+    //do stuff here
+    count++;
+}
+Log("Node has %lu children.", LogLevel::Debug, count);
+\end{verbatim}
+
+Reading and writing are condensed into a single API function, as they share a lot of functionality. Only the direction the data travels changes. These operations are controlled by a \verb|RwPacket| which contains fields for enabling certain behaviours, as well as the source and destination. It should be noted that \textbf{you must provide your own buffer} for the operation, \verb|ReadWrite()| will not populate this buffer for you.
+
+As an example let's read 123 bytes from offset 456 in a file:
+\begin{verbatim}
+RwPacket packet 
+{
+    .write = false,
+    .offset = 456,
+    .length = 123,
+    .buffer = yourBufferHere
+};
+size_t length = node->ReadWrite(packet, context);
+Log("Read %lu bytes.", LogLevel::Debug, length);
+\end{verbatim}

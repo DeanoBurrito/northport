@@ -10,12 +10,15 @@
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
+#include <filesystem/Filesystem.h>
+#include <filesystem/FileCache.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Scheduler.h>
+#include <UnitConverter.h>
 
 namespace Npk
 {
@@ -31,7 +34,7 @@ namespace Npk
 
         hhdmBase = Boot::hhdmRequest.response->offset;
         auto lastEntry = Boot::memmapRequest.response->entries[Boot::memmapRequest.response->entry_count - 1];
-        hhdmLength = sl::AlignUp(lastEntry->base + lastEntry->length, GiB); //Hhdm is 1GiB aligned.
+        hhdmLength = sl::AlignUp(lastEntry->base + lastEntry->length, PageSize);
         Log("Hhdm: base=0x%lx, length=0x%lx", LogLevel::Info, hhdmBase, hhdmLength);
 
         ScanCpuFeatures();
@@ -40,7 +43,10 @@ namespace Npk
         if (CpuHasFeature(CpuFeature::VGuest))
             Log("Kernel is running as virtualized guest.", LogLevel::Info);
         if (Boot::bootloaderInfoRequest.response != nullptr)
-            Log("Loaded by: %s v%s", LogLevel::Info, Boot::bootloaderInfoRequest.response->name, Boot::bootloaderInfoRequest.response->version);
+        {
+            Log("Loaded by: %s v%s", LogLevel::Info, Boot::bootloaderInfoRequest.response->name, 
+                Boot::bootloaderInfoRequest.response->version);
+        }
 
         if (Boot::smpRequest.response == nullptr)
             bootloaderRefs = 1;
@@ -71,26 +77,34 @@ namespace Npk
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
         
+        Filesystem::InitFileCache();
+        Filesystem::InitVfs();
         Interrupts::InterruptManager::Global().Init();
         Tasking::Scheduler::Global().Init();
     }
 
     void ReclaimMemoryThread(void*)
     {
-        //since the memory map is contained within the memory we're going to reclaim, we'll need our own copy.
-        size_t reclaimCount = 0;
+        //since the memory map is contained within the memory we're going to reclaim,
+        //we'll need our own copy.
         limine_memmap_entry reclaimEntries[Boot::memmapRequest.response->entry_count];
+        size_t reclaimCount = 0;
+        size_t reclaimAmount = 0;
+
         for (size_t i = 0; i < Boot::memmapRequest.response->entry_count; i++)
         {
             if (Boot::memmapRequest.response->entries[i]->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
                 continue;
             reclaimEntries[reclaimCount++] = *Boot::memmapRequest.response->entries[i];
+            reclaimAmount += reclaimEntries[reclaimCount - 1].length;
         }
 
         for (size_t i = 0; i < reclaimCount; i++)
             PMM::Global().IngestMemory(reclaimEntries[i].base, reclaimEntries[i].length);
 
-        Log("Bootloader memory no-longer in use, reclaimed %lu entries.", LogLevel::Info, reclaimCount);
+        auto reclaimConv = sl::ConvertUnits(reclaimAmount, sl::UnitBase::Binary);
+        Log("Reclaimed %lu.%lu %sB (%lu entries) of bootloader memory.", LogLevel::Info, 
+            reclaimConv.major, reclaimConv.minor, reclaimConv.prefix, reclaimCount);
         Tasking::Thread::Current().Exit(0);
     }
 
