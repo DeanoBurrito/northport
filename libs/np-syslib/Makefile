@@ -4,7 +4,8 @@ TARGET = np-syslib
 CXX_FLAGS = -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -Iinclude -ffreestanding
 
-CXX_SRCS = Memory.cpp String.cpp UnitConverter.cpp Time.cpp Random.cpp
+CXX_SRCS = Memory.cpp String.cpp UnitConverter.cpp Time.cpp Random.cpp \
+	formats/Tar.cpp
 
 include $(PROJ_ROOT_DIR)/misc/LibCommon.mk
 
