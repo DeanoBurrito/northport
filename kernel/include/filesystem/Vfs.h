@@ -1,23 +1,28 @@
 #pragma once
 
+#include <Atomic.h>
 #include <Span.h>
 #include <Optional.h>
-#include <Atomic.h>
 #include <Time.h>
 #include <Locks.h>
 
 namespace Npk::Filesystem
 {
-    class Vfs;
-
     enum class NodeType
     {
         Unknown,
         File,
         Directory,
     };
+
+    struct RwBuffer
+    {
+        bool write;
+        size_t offset;
+        void* buffer;
+    };
     
-    struct NodeDetails
+    struct NodeProps
     {
         const char* name = nullptr;
         sl::TimePoint created {};
@@ -25,12 +30,44 @@ namespace Npk::Filesystem
         sl::TimePoint lastWrite {};
         //TODO: permissions, do we want to go unix style?
     };
+
+    struct Node;
     
-    class Node
+    class Vfs
+    {
+    private:
+        Node* mountedOn;
+    
+    protected:
+        Vfs() : mountedOn(nullptr)
+        {}
+
+    public:
+        [[gnu::always_inline]]
+        inline Node* Mountpoint()
+        { return mountedOn; }
+
+        virtual void FlushAll() = 0;
+        virtual Node* GetRoot() = 0;
+        virtual sl::Opt<Node*> GetNode(sl::StringSpan path) = 0;
+
+        virtual sl::Opt<Node*> Create(Node* dir, NodeType type, const NodeProps& props) = 0;
+        virtual bool Remove(Node* dir, Node* target) = 0;
+        virtual bool Open(Node* node) = 0;
+        virtual bool Close(Node* node) = 0;
+        virtual size_t ReadWrite(Node* node, const RwBuffer& buff) = 0;
+        virtual bool Flush(Node* node) = 0;
+        virtual sl::Opt<Node*> GetChild(Node* dir, size_t index) = 0;
+        virtual sl::Opt<Node*> FindChild(Node* dir, sl::StringSpan name) = 0;
+        virtual bool GetProps(Node* node, NodeProps& props) = 0;
+        virtual bool SetProps(Node* node, const NodeProps& props) = 0;
+    };
+
+    struct Node 
     {
     public:
         sl::RwLock lock;
-        sl::Atomic<size_t> references;
+        sl::Atomic<size_t> references; //TODO: RAII this (maybe we have sl::Handle<T> ?)
         Vfs& owner;
         NodeType type;
         void* fsData;
@@ -54,29 +91,47 @@ namespace Npk::Filesystem
         Node(Vfs& owner, NodeType type, void* fsData)
         : references(0), owner(owner), type(type), fsData(fsData)
         {}
-    };
-    
-    class Vfs
-    {
-    private:
-        Node* mountedOn;
-    
-    protected:
-        Vfs() : mountedOn(nullptr)
-        {}
 
-    public:
+        //below here are just typed macros
         [[gnu::always_inline]]
-        inline Node* Mountpoint()
-        { return mountedOn; }
+        inline sl::Opt<Node*> Create(NodeType type, const NodeProps& props)
+        { return owner.Create(this, type, props); }
 
-        virtual void Flush() = 0;
-        virtual Node* GetRoot() = 0;
-        virtual sl::Opt<Node*> GetNode(sl::StringSpan path) = 0;
+        [[gnu::always_inline]]
+        inline bool Remove(Node* target)
+        { return owner.Remove(this, target); }
+        
+        [[gnu::always_inline]]
+        inline bool Open()
+        { return owner.Open(this);}
 
-        virtual sl::Opt<Node*> Create(Node* dir, NodeType type, const NodeDetails& details) = 0;
-        virtual bool Open(Node* node) = 0;
-        virtual bool Close(Node* node) = 0;
+        [[gnu::always_inline]]
+        inline bool Close()
+        { return owner.Close(this); }
+
+        [[gnu::always_inline]]
+        inline size_t ReadWrite(const RwBuffer& buff)
+        { return owner.ReadWrite(this, buff); }
+
+        [[gnu::always_inline]]
+        inline bool Flush()
+        { return owner.Flush(this); }
+
+        [[gnu::always_inline]]
+        inline sl::Opt<Node*> GetChild(size_t index)
+        { return owner.GetChild(this, index); }
+
+        [[gnu::always_inline]]
+        inline sl::Opt<Node*> FindChild(sl::StringSpan name)
+        { return owner.FindChild(this, name); }
+
+        [[gnu::always_inline]]
+        inline bool GetProps(NodeProps& props)
+        { return owner.GetProps(this, props); }
+
+        [[gnu::always_inline]]
+        inline bool SetProps(const NodeProps& props)
+        { return owner.SetProps(this, props); }
     };
 
     void InitVfs();
