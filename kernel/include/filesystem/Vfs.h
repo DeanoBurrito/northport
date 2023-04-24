@@ -5,6 +5,7 @@
 #include <Optional.h>
 #include <Time.h>
 #include <Locks.h>
+#include <String.h>
 
 namespace Npk::Filesystem
 {
@@ -18,16 +19,20 @@ namespace Npk::Filesystem
     struct RwBuffer
     {
         bool write;
+        bool truncate;
+
         size_t offset;
+        size_t length;
         void* buffer;
     };
     
     struct NodeProps
     {
-        const char* name = nullptr;
+        sl::String name;
         sl::TimePoint created {};
         sl::TimePoint lastRead {};
         sl::TimePoint lastWrite {};
+        size_t size;
         //TODO: permissions, do we want to go unix style?
     };
 
@@ -58,7 +63,6 @@ namespace Npk::Filesystem
         virtual size_t ReadWrite(Node* node, const RwBuffer& buff) = 0;
         virtual bool Flush(Node* node) = 0;
         virtual sl::Opt<Node*> GetChild(Node* dir, size_t index) = 0;
-        virtual sl::Opt<Node*> FindChild(Node* dir, sl::StringSpan name) = 0;
         virtual bool GetProps(Node* node, NodeProps& props) = 0;
         virtual bool SetProps(Node* node, const NodeProps& props) = 0;
     };
@@ -120,10 +124,6 @@ namespace Npk::Filesystem
         [[gnu::always_inline]]
         inline sl::Opt<Node*> GetChild(size_t index)
         { return owner.GetChild(this, index); }
-
-        [[gnu::always_inline]]
-        inline sl::Opt<Node*> FindChild(sl::StringSpan name)
-        { return owner.FindChild(this, name); }
 
         [[gnu::always_inline]]
         inline bool GetProps(NodeProps& props)

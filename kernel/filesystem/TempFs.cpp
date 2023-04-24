@@ -6,10 +6,12 @@
 
 namespace Npk::Filesystem
 {
+    //internal per-node data stored by the tempfs
     struct TempFsData
     {
         NodeProps props;
         sl::Vector<Node*> children; //unused if node is a file.
+        uint8_t* buffer;
     };
 
     TempFs::TempFs()
@@ -20,9 +22,18 @@ namespace Npk::Filesystem
         root->references = 1;
     }
 
-    void TempFs::PopulateFromInitdisk(void* base, size_t length)
+    void LoadTarEntry(Node* root, const sl::TarHeader* header)
+    {
+        VALIDATE(root != nullptr,, "TempFs root is nullptr");
+        VALIDATE(header != nullptr,, "Tar for TempFs root is nullptr");
+
+        ASSERT_UNREACHABLE()
+    }
+
+    void TempFs::LoadInitdisk(void* base, size_t length)
     {
         VALIDATE(base != nullptr && length > sl::TarBlockSize,, "Initdisk has weird starting values.");
+
         ASSERT_UNREACHABLE()
     }
     
@@ -34,39 +45,49 @@ namespace Npk::Filesystem
 
     sl::Opt<Node*> TempFs::GetNode(sl::StringSpan path)
     {
+        while (*(path.End() - 1) == 0) //remove trailing NULL chars
+            path = path.Subspan(0, path.Size() - 1);
+
+        VALIDATE(path.Begin()[0] != '/', {}, "Absolute path passed to VFS driver");
+        VALIDATE(path.End()[-1] != '/', {}, "Path cannot end with separator");
+
         size_t tokenBegin = 0;
         Node* scan = root;
 
         scan->lock.ReaderLock();
         while (true)
         {
-            VALIDATE(scan != nullptr, {}, "Unexpected end of vfs path.");
-            VALIDATE(scan->type == NodeType::Directory, {}, "Mid-path node is not directory");
-            VALIDATE(scan->fsData != nullptr, {}, "No node data");
+            //TODO: we use mem* functions, what if text is not ASCII?
+            const size_t tokenEnd = sl::Min(path.Size(), 
+                sl::memfirst(&path[tokenBegin], '/', path.Size() - tokenBegin));
+            const size_t tokenLength = tokenEnd - tokenBegin;
 
-            //TODO: we're using mem* functions here, but these strings might not be ASCII
-            size_t tokenEnd = sl::memfirst(&path[tokenBegin], '/', path.Size() - tokenBegin);
-            if (tokenEnd == -1ul)
-                tokenEnd = path.Size();
-
+            if ((tokenEnd != path.Size() && scan->type != NodeType::Directory)
+                || scan->fsData == nullptr)
+            {
+                scan->lock.ReaderUnlock();
+                Log("Bad mid-patch node during vfs lookup.", LogLevel::Error);
+                return {};
+            }
+            
             const TempFsData* data = static_cast<TempFsData*>(scan->fsData);
             for (size_t i = 0; i < data->children.Size(); i++)
             {
                 data->children[i]->lock.ReaderLock();
                 const TempFsData* childData = static_cast<TempFsData*>(data->children[i]->fsData);
-                if (sl::memcmp(childData->props.name, &path[tokenBegin], tokenEnd - tokenBegin) != 0)
+                if (childData->props.name != path.Subspan(tokenBegin, tokenLength))
                 {
                     data->children[i]->lock.ReaderUnlock();
                     continue;
                 }
-                
+
                 scan->lock.ReaderUnlock();
                 scan = data->children[i];
                 break;
             }
 
-            tokenBegin = tokenEnd + 1;
-            if (tokenEnd == path.Size())
+            tokenBegin += tokenLength + 1;
+            if (tokenBegin >= path.Size())
             {
                 scan->lock.ReaderUnlock();
                 if (data == scan->fsData) //true if we didnt update scan, meaning no pathname match
@@ -82,30 +103,26 @@ namespace Npk::Filesystem
     {
         VALIDATE(dir != nullptr, {}, "Parent is null");
         VALIDATE(dir->type == NodeType::Directory, {}, "Parent not a directory");
-        VALIDATE(props.name != nullptr && props.name[0] != 0, {}, "Bad name");
 
         TempFsData* parentData = static_cast<TempFsData*>(dir->fsData);
-        const size_t nameLen = sl::memfirst(props.name, 0, 0);
-
-        //before adding the child, ensure the name isn't already in use.
         dir->lock.WriterLock();
+
+        //check that a child with the same name doesn't already exist
         for (size_t i = 0; i < parentData->children.Size(); i++)
         {
-            auto* childData = static_cast<const TempFsData*>(parentData->children[i]->fsData);
-            const size_t childNameLen = sl::memfirst(childData->props.name, 0, 0);
-
-            if (childNameLen != nameLen)
-                continue;
-            if (sl::memcmp(childData->props.name, props.name, nameLen) != 0)
+            const TempFsData* childData = static_cast<const TempFsData*>(parentData->children[i]->fsData);
+            if (childData->props.name != props.name)
                 continue;
             
-            //name matches an existing child of this node, reject it.
+            //name collision, abort operation.
             dir->lock.WriterUnlock();
             return {};
         }
-        
+
         TempFsData* childData = new TempFsData;
-        childData->props = props; //TODO: we'll want to make a copy of the name here, in case the original is destroyed
+        childData->props = props;
+        childData->props.size = 0;
+
         Node* child = new Node(*this, type, childData);
         parentData->children.PushBack(child);
 
@@ -119,28 +136,72 @@ namespace Npk::Filesystem
     }
 
     bool TempFs::Open(Node* node)
-    {
-        ASSERT_UNREACHABLE()
-    }
+    { return true; (void)node; } //no-op
 
     bool TempFs::Close(Node* node)
-    {
-        ASSERT_UNREACHABLE()
-    }
+    { return true; (void)node; } //no-op
 
     size_t TempFs::ReadWrite(Node* node, const RwBuffer& buff)
     {
-        ASSERT_UNREACHABLE()
+        VALIDATE(node != nullptr, 0, "Node is null");
+        VALIDATE(node->type == NodeType::File, 0, "Node is not a file");
+        VALIDATE(node->fsData != nullptr, 0, "Node fsdata is null");
+        VALIDATE(buff.buffer != nullptr, 0, "Buffer is null");
+
+        size_t opSize = 0;
+        if (buff.write)
+        {
+            node->lock.WriterLock();
+            TempFsData* data = static_cast<TempFsData*>(node->fsData);
+
+            //calculate new buffer size, this takes care of truncation and expansion for us.
+            size_t newBufferSize = buff.offset + buff.length;
+            if (!buff.truncate && data->props.size > newBufferSize)
+                newBufferSize = data->props.size;
+            
+            //if buffer size is changing, allocate a new one and migrate data
+            if (newBufferSize != data->props.size)
+            {
+                uint8_t* newBuffer = new uint8_t[newBufferSize];
+                //TODO: we could be smarter and only copy things we're not about to overwrite
+                //TODO: if we're expanding the file we probably want to zero dead space
+                sl::memcopy(data->buffer, newBuffer, sl::Min(data->props.size, newBufferSize));
+
+                if (data->props.size > 0)
+                    delete[] data->buffer; //delete buffer if we've previously allocated it
+                data->props.size = newBufferSize;
+                data->buffer = newBuffer;
+            }
+
+            //now actually write the data to the tempfs
+            sl::memcopy(buff.buffer, 0, data->buffer, buff.offset, buff.length);
+            node->lock.WriterUnlock();
+            opSize = buff.length;
+        }
+        else
+        {
+            node->lock.ReaderLock();
+            const TempFsData* data = static_cast<const TempFsData*>(node->fsData);
+
+            //ensure there's data to read, and then perform a bounds check on the buffer
+            if (data->props.size > 0)
+            {
+                opSize = sl::Min(buff.length, data->props.size - buff.offset);
+                sl::memcopy(data->buffer, buff.offset, buff.buffer, 0, opSize);
+            }
+            node->lock.ReaderUnlock();
+        }
+        
+        return opSize;
     }
 
     bool TempFs::Flush(Node* node)
-    {
-        ASSERT_UNREACHABLE()
-    }
+    { return false; (void)node; } //no-op
 
     sl::Opt<Node*> TempFs::GetChild(Node* dir, size_t index)
     {
         VALIDATE(dir != nullptr, {}, "Parent is null.");
+        VALIDATE(dir->fsData != nullptr, {}, "Parent fsdata is null.");
         VALIDATE(dir->type == NodeType::Directory, {}, "Parent is not a directory");
         
         Node* found = nullptr;
@@ -153,14 +214,10 @@ namespace Npk::Filesystem
         return found == nullptr ? sl::Opt<Node*>{} : found;
     }
 
-    sl::Opt<Node*> TempFs::FindChild(Node* dir, sl::StringSpan name)
-    {
-        ASSERT_UNREACHABLE()
-    }
-
     bool TempFs::GetProps(Node* node, NodeProps& props)
     {
         VALIDATE(node != nullptr, false, "Node is null");
+        VALIDATE(node->fsData != nullptr, false, "Node fsdata is null");
         
         node->lock.ReaderLock();
         const TempFsData* data = static_cast<const TempFsData*>(node->fsData);
@@ -173,10 +230,11 @@ namespace Npk::Filesystem
     bool TempFs::SetProps(Node* node, const NodeProps& props)
     {
         VALIDATE(node != nullptr, false, "Node is null");
+        VALIDATE(node->fsData != nullptr, false, "Node fsdata is null");
         
         node->lock.WriterLock();
         TempFsData* data = static_cast<TempFsData*>(node->fsData);
-        data->props = props; //TODO: handle copying string properly
+        data->props = props; //TODO: don't update the name if it hasn't changed, save some copying
         node->lock.WriterLock();
 
         return true;

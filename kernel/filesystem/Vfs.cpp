@@ -19,7 +19,7 @@ namespace Npk::Filesystem
         ASSERT(node->owner.GetProps(node, props), "GetProps() failed");
 
         Log("%s%s: %s%s", LogLevel::Debug, indent, TypeStrs[(size_t)node->type], 
-            props.name, node->type == NodeType::Directory ? "/" : "");
+            props.name.C_Str(), node->type == NodeType::Directory ? "/" : "");
         if (node->type != NodeType::Directory)
             return;
 
@@ -35,8 +35,7 @@ namespace Npk::Filesystem
     void InitVfs()
     {
         //TODO: detect and mount the root filesystem based on config data.
-        //For now we just mount a tmpfs as root.
-        //TODO: how do we want to handle no root? - empty tempfs?
+        //For now we just mount a tmpfs as root. 
         filesystems.EmplaceBack(new TempFs());
         Log("VFS initialized, tempfs mounted as root.", LogLevel::Info);
 
@@ -52,6 +51,13 @@ namespace Npk::Filesystem
         rfs->Create(*maybe1, NodeType::File, deets); //should fail: parent not a dir
         rfs->Create(*maybe2, NodeType::File, deets); //this should be fine.
 
+        Log("parent/file0.txt %s!", LogLevel::Debug, 
+            rfs->GetNode("parent/file0.txt") ? "found" : "not found");
+        Log("parent/somedir %s!", LogLevel::Debug, 
+            rfs->GetNode("parent/somedir") ? "found" : "not found");
+        Log("parent/somedir/ %s!", LogLevel::Debug, 
+            rfs->GetNode("parent/somedir/") ? "found" : "not found");
+        
         PrintNode(0, rfs->GetRoot());
 
         Log("Done!", LogLevel::Debug);
