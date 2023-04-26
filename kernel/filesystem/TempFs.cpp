@@ -67,7 +67,7 @@ namespace Npk::Filesystem
     Node* TempFs::GetRoot()
     { return root; }
 
-    sl::Opt<Node*> TempFs::GetNode(sl::StringSpan path)
+    sl::Handle<Node> TempFs::GetNode(sl::StringSpan path)
     {
         while (*(path.End() - 1) == 0) //remove trailing NULL chars
             path = path.Subspan(0, path.Size() - 1);
@@ -151,7 +151,7 @@ namespace Npk::Filesystem
         ASSERT_UNREACHABLE();
     }
     
-    sl::Opt<Node*> TempFs::Create(Node* dir, NodeType type, const NodeProps& props)
+    sl::Handle<Node> TempFs::Create(Node* dir, NodeType type, const NodeProps& props)
     {
         VALIDATE(dir != nullptr, {}, "Parent is null");
         VALIDATE(dir->type == NodeType::Directory, {}, "Parent not a directory");
@@ -282,7 +282,7 @@ namespace Npk::Filesystem
     bool TempFs::Flush(Node* node)
     { return false; (void)node; } //no-op
 
-    sl::Opt<Node*> TempFs::GetChild(Node* dir, size_t index)
+    sl::Handle<Node> TempFs::GetChild(Node* dir, size_t index)
     {
         VALIDATE(dir != nullptr, {}, "Parent is null.");
         VALIDATE(dir->fsData != nullptr, {}, "Parent fsdata is null.");
@@ -295,7 +295,7 @@ namespace Npk::Filesystem
             found = data->children[index];
 
         dir->lock.ReaderUnlock();
-        return found == nullptr ? sl::Opt<Node*>{} : found;
+        return found;
     }
 
     bool TempFs::GetProps(Node* node, NodeProps& props)

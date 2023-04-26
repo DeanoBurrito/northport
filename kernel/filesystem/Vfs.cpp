@@ -50,15 +50,15 @@ namespace Npk::Filesystem
                 filesystems.EmplaceBack(initdiskFs);
                 MountArgs mountArgs {};
                 const bool mounted = initdiskFs->Mount(*mountpoint, mountArgs);
+
                 if (!mounted)
                 {
                     Log("Mounting initdisk failed, freeing resources.", LogLevel::Debug);
                     initdiskFs->Unmount(); //try to unmount, since we dont know how far the mounting process got
                     filesystems.PopBack();
                     delete initdiskFs;
-                    delete *mountpoint; //TOOD: decrement ref count, not delete!
                 }
-                
+
                 //only load the first module with this name for now, since we dont support
                 //multiple init ramdisks.
                 break;

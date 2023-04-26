@@ -2,7 +2,7 @@
 
 #include <Atomic.h>
 #include <Span.h>
-#include <Optional.h>
+#include <Handle.h>
 #include <Time.h>
 #include <Locks.h>
 #include <String.h>
@@ -52,6 +52,8 @@ namespace Npk::Filesystem
         {}
 
     public:
+        virtual ~Vfs() = default;
+
         [[gnu::always_inline]]
         inline Node* Mountpoint()
         { return mountedOn; }
@@ -59,18 +61,18 @@ namespace Npk::Filesystem
         //vfs operations
         virtual void FlushAll() = 0;
         virtual Node* GetRoot() = 0;
-        virtual sl::Opt<Node*> GetNode(sl::StringSpan path) = 0;
+        virtual sl::Handle<Node> GetNode(sl::StringSpan path) = 0;
         virtual bool Mount(Node* mountpoint, const MountArgs& args) = 0;
         virtual bool Unmount() = 0;
 
         //node operations
-        virtual sl::Opt<Node*> Create(Node* dir, NodeType type, const NodeProps& props) = 0;
+        virtual sl::Handle<Node> Create(Node* dir, NodeType type, const NodeProps& props) = 0;
         virtual bool Remove(Node* dir, Node* target) = 0;
         virtual bool Open(Node* node) = 0;
         virtual bool Close(Node* node) = 0;
         virtual size_t ReadWrite(Node* node, const RwPacket& packet) = 0;
         virtual bool Flush(Node* node) = 0;
-        virtual sl::Opt<Node*> GetChild(Node* dir, size_t index) = 0;
+        virtual sl::Handle<Node> GetChild(Node* dir, size_t index) = 0;
         virtual bool GetProps(Node* node, NodeProps& props) = 0;
         virtual bool SetProps(Node* node, const NodeProps& props) = 0;
     };
@@ -79,7 +81,7 @@ namespace Npk::Filesystem
     {
     public:
         sl::RwLock lock;
-        sl::Atomic<size_t> references; //TODO: RAII this (maybe we have sl::Handle<T> ?)
+        sl::Atomic<size_t> references;
         Vfs& owner;
         NodeType type;
         void* fsData;
@@ -108,7 +110,7 @@ namespace Npk::Filesystem
 
         //below here are just typed macros
         [[gnu::always_inline]]
-        inline sl::Opt<Node*> Create(NodeType type, const NodeProps& props)
+        inline sl::Handle<Node> Create(NodeType type, const NodeProps& props)
         { return owner.Create(this, type, props); }
 
         [[gnu::always_inline]]
@@ -132,7 +134,7 @@ namespace Npk::Filesystem
         { return owner.Flush(this); }
 
         [[gnu::always_inline]]
-        inline sl::Opt<Node*> GetChild(size_t index)
+        inline sl::Handle<Node> GetChild(size_t index)
         { return owner.GetChild(this, index); }
 
         [[gnu::always_inline]]
