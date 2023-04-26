@@ -5,7 +5,7 @@ CXX_FLAGS = -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-table
 	-fno-asynchronous-unwind-tables -Iinclude -ffreestanding
 
 CXX_SRCS = Memory.cpp String.cpp UnitConverter.cpp Time.cpp Random.cpp \
-	formats/Tar.cpp
+	formats/Tar.cpp formats/Url.cpp
 
 include $(PROJ_ROOT_DIR)/misc/LibCommon.mk
 

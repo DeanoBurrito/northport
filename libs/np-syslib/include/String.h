@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <Span.h>
 
 namespace sl
 {
@@ -34,6 +35,7 @@ namespace sl
         String Concat(const String& other) const;
         String operator+(const String& other) const;
         String& operator+=(const String& other);
+        sl::StringSpan Span() const;
 
         size_t Find(const char token, size_t offset = 0) const;
         size_t FindLast(const char token) const;
@@ -49,6 +51,8 @@ namespace sl
 
         bool operator==(const String& other) const;
         bool operator!=(const String& other) const;
+        bool operator==(sl::StringSpan span) const;
+        bool operator!=(sl::StringSpan span) const;
     };
 
 }

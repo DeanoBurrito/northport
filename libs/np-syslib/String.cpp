@@ -261,4 +261,20 @@ namespace sl
 
         return sl::memcmp(buffer, other.buffer, length) != 0;
     }
+
+    bool String::operator==(sl::StringSpan span) const
+    {
+        if (span.Size() != length)
+            return false;
+        
+        return sl::memcmp(buffer, span.Begin(), length) == 0;
+    }
+
+    bool String::operator!=(sl::StringSpan span) const
+    {
+        if (span.Size() != length)
+            return true;
+        
+        return sl::memcmp(buffer, span.Begin(), length) != 0;
+    }
 }

@@ -48,6 +48,13 @@ namespace sl
 
         bool Empty() const
         { return size == 0; }
+
+        Span Subspan(size_t begin, size_t length) const
+        {
+            if (begin + length > size)
+                length = size - begin;
+            return Span(data + begin, length);
+        }
     };
 
     using StringSpan = Span<const char>;
