@@ -16,7 +16,7 @@ namespace Npk::Filesystem
         Directory,
     };
 
-    struct RwBuffer
+    struct RwPacket
     {
         bool write;
         bool truncate;
@@ -36,14 +36,18 @@ namespace Npk::Filesystem
         //TODO: permissions, do we want to go unix style?
     };
 
+    struct MountArgs
+    {
+        
+    };
+
     struct Node;
     
     class Vfs
     {
-    private:
-        Node* mountedOn;
-    
     protected:
+        Node* mountedOn;
+
         Vfs() : mountedOn(nullptr)
         {}
 
@@ -52,15 +56,19 @@ namespace Npk::Filesystem
         inline Node* Mountpoint()
         { return mountedOn; }
 
+        //vfs operations
         virtual void FlushAll() = 0;
         virtual Node* GetRoot() = 0;
         virtual sl::Opt<Node*> GetNode(sl::StringSpan path) = 0;
+        virtual bool Mount(Node* mountpoint, const MountArgs& args) = 0;
+        virtual bool Unmount() = 0;
 
+        //node operations
         virtual sl::Opt<Node*> Create(Node* dir, NodeType type, const NodeProps& props) = 0;
         virtual bool Remove(Node* dir, Node* target) = 0;
         virtual bool Open(Node* node) = 0;
         virtual bool Close(Node* node) = 0;
-        virtual size_t ReadWrite(Node* node, const RwBuffer& buff) = 0;
+        virtual size_t ReadWrite(Node* node, const RwPacket& packet) = 0;
         virtual bool Flush(Node* node) = 0;
         virtual sl::Opt<Node*> GetChild(Node* dir, size_t index) = 0;
         virtual bool GetProps(Node* node, NodeProps& props) = 0;
@@ -84,16 +92,18 @@ namespace Npk::Filesystem
         } link;
 
         Node(Vfs& owner, NodeType type)
-        : references(0), owner(owner), type(type), fsData(nullptr)
+        : references(1), owner(owner), type(type), fsData(nullptr),
+        link { .mounted = nullptr }
         {}
 
         Node(Vfs* mount, Vfs& owner, NodeType type)
-        : references(0), owner(owner), type(type), fsData(nullptr), 
+        : references(1), owner(owner), type(type), fsData(nullptr), 
         link { .mounted = mount }
         {}
 
         Node(Vfs& owner, NodeType type, void* fsData)
-        : references(0), owner(owner), type(type), fsData(fsData)
+        : references(1), owner(owner), type(type), fsData(fsData),
+        link { .mounted = nullptr }
         {}
 
         //below here are just typed macros
@@ -114,7 +124,7 @@ namespace Npk::Filesystem
         { return owner.Close(this); }
 
         [[gnu::always_inline]]
-        inline size_t ReadWrite(const RwBuffer& buff)
+        inline size_t ReadWrite(const RwPacket& buff)
         { return owner.ReadWrite(this, buff); }
 
         [[gnu::always_inline]]

@@ -1,67 +1,71 @@
 #include <filesystem/Vfs.h>
+#include <boot/LimineTags.h>
 #include <debug/Log.h>
-#include <containers/Vector.h>
 #include <filesystem/TempFs.h>
+#include <containers/Vector.h>
+#include <Memory.h>
 
 namespace Npk::Filesystem
 {
     sl::Vector<Vfs*> filesystems;
-
-    void PrintNode(size_t depth, Node* node)
-    {
-        constexpr const char* TypeStrs[] = { "Unknown", "File", "Dir" };
-        
-        char indent[depth + 1];
-        sl::memset(indent, ' ', depth);
-        indent[depth] = 0;
-
-        NodeProps props {};
-        ASSERT(node->owner.GetProps(node, props), "GetProps() failed");
-
-        Log("%s%s: %s%s", LogLevel::Debug, indent, TypeStrs[(size_t)node->type], 
-            props.name.C_Str(), node->type == NodeType::Directory ? "/" : "");
-        if (node->type != NodeType::Directory)
-            return;
-
-        for (size_t i = 0; true; i++)
-        {
-            auto child = node->owner.GetChild(node, i);
-            if (!child)
-                return;
-            PrintNode(depth + 2, *child);
-        }
-    }
+    sl::RwLock filesystemsLock;
     
     void InitVfs()
     {
-        //TODO: detect and mount the root filesystem based on config data.
-        //For now we just mount a tmpfs as root. 
-        filesystems.EmplaceBack(new TempFs());
-        Log("VFS initialized, tempfs mounted as root.", LogLevel::Info);
-
-        auto rfs = RootFilesystem();
-        NodeProps deets { .name = "parent" };
-        auto maybe0 = rfs->Create(rfs->GetRoot(), NodeType::Directory, deets);
+        const bool noRootFs = true; //TODO: set this if no config data for mounting the root fs is found.
         
-        deets.name = "file0.txt";
-        auto maybe1 = rfs->Create(*maybe0, NodeType::File, deets);
+        filesystemsLock.WriterLock();
+        if (noRootFs)
+        {
+            filesystems.EmplaceBack(new TempFs());
+            Log("VFS initialized: No root filesystem found, using tempfs.", LogLevel::Info);
+        }
+        else
+            ASSERT_UNREACHABLE()
 
-        deets.name = "somedir";
-        auto maybe2 = rfs->Create(*maybe0, NodeType::Directory, deets);
-        rfs->Create(*maybe1, NodeType::File, deets); //should fail: parent not a dir
-        rfs->Create(*maybe2, NodeType::File, deets); //this should be fine.
+        //scan through any bootloader modules, see if there's an initdisk to mount.
+        if (Boot::modulesRequest.response != nullptr)
+        {
+            const auto* resp = Boot::modulesRequest.response;
+            for (size_t i = 0; i < resp->module_count; i++)
+            {
+                const auto* module = resp->modules[i];
+                const size_t nameLen = sl::memfirst(module->cmdline, 0, 0);
+                if (sl::memcmp(module->cmdline, "northport-initdisk", nameLen) != 0)
+                    continue;
+                
+                Log("Found module \"%s\" (@ 0x%lx), loading as initdisk.", LogLevel::Info, 
+                    module->cmdline, (uintptr_t)module->address);
+                
+                //create a mountpoint for the initdisk under `/initdisk/`
+                NodeProps mountProps { .name = "initdisk" };
+                auto mountpoint = RootFilesystem()->GetRoot()->Create(NodeType::Directory, mountProps);
+                ASSERT(mountpoint, "Failed to create initdisk mountpoint");
 
-        Log("parent/file0.txt %s!", LogLevel::Debug, 
-            rfs->GetNode("parent/file0.txt") ? "found" : "not found");
-        Log("parent/somedir %s!", LogLevel::Debug, 
-            rfs->GetNode("parent/somedir") ? "found" : "not found");
-        Log("parent/somedir/ %s!", LogLevel::Debug, 
-            rfs->GetNode("parent/somedir/") ? "found" : "not found");
-        
-        PrintNode(0, rfs->GetRoot());
+                //create filesystem, load module as initdisk
+                TempFs* initdiskFs = new TempFs();
+                initdiskFs->LoadInitdisk(module->address, module->size);
 
-        Log("Done!", LogLevel::Debug);
-        Halt();
+                //mount it!
+                filesystems.EmplaceBack(initdiskFs);
+                MountArgs mountArgs {};
+                const bool mounted = initdiskFs->Mount(*mountpoint, mountArgs);
+                if (!mounted)
+                {
+                    Log("Mounting initdisk failed, freeing resources.", LogLevel::Debug);
+                    initdiskFs->Unmount(); //try to unmount, since we dont know how far the mounting process got
+                    filesystems.PopBack();
+                    delete initdiskFs;
+                    delete *mountpoint; //TOOD: decrement ref count, not delete!
+                }
+                
+                //only load the first module with this name for now, since we dont support
+                //multiple init ramdisks.
+                break;
+            }
+        }
+
+        filesystemsLock.WriterUnlock();
     }
 
     Vfs* RootFilesystem()

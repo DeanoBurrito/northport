@@ -10,16 +10,20 @@ namespace Npk::Filesystem
     struct TempFsData
     {
         NodeProps props;
+        Node* parent;
+        //TODO: this may waste a lot of memory with lots of children, switch to a list?
         sl::Vector<Node*> children; //unused if node is a file.
         uint8_t* buffer;
     };
 
     TempFs::TempFs()
     {
+        backingBase = backingLength = 0;
+        
         TempFsData* rootData = new TempFsData;
-        rootData->props.name = "/"; //TODO: this is a bit hacky - could we do better?
+        rootData->parent = nullptr;
+        rootData->props.size = 0;
         root = new Node(*this, NodeType::Directory, rootData);
-        root->references = 1;
     }
 
     void LoadTarEntry(Node* root, const sl::TarHeader* header)
@@ -27,14 +31,34 @@ namespace Npk::Filesystem
         VALIDATE(root != nullptr,, "TempFs root is nullptr");
         VALIDATE(header != nullptr,, "Tar for TempFs root is nullptr");
 
-        ASSERT_UNREACHABLE()
+        Log("Loading initdisk file: %s", LogLevel::Verbose, header->Filename().Begin());
     }
 
     void TempFs::LoadInitdisk(void* base, size_t length)
     {
         VALIDATE(base != nullptr && length > sl::TarBlockSize,, "Initdisk has weird starting values.");
+        backingBase = (uintptr_t)base;
+        backingLength = length;
 
-        ASSERT_UNREACHABLE()
+        size_t filesLoaded = 0;
+        const sl::TarHeader* scan = static_cast<sl::TarHeader*>(base);
+        while ((uintptr_t)scan < (uintptr_t)base + length)
+        {
+            if (scan->IsZero() && scan->Next()->IsZero())
+                break;
+            
+            if (scan->Type() != sl::TarEntryType::File)
+            {
+                scan = scan->Next();
+                continue;
+            }
+
+            LoadTarEntry(root, scan);
+            filesLoaded++;
+            scan = scan->Next();
+        }
+
+        Log("TempFs backed by initdisk, %lu files loaded.", LogLevel::Info, filesLoaded);
     }
     
     void TempFs::FlushAll()
@@ -57,7 +81,7 @@ namespace Npk::Filesystem
         scan->lock.ReaderLock();
         while (true)
         {
-            //TODO: we use mem* functions, what if text is not ASCII?
+            //TODO: we use mem* functions, what if text uses non-byte sized characters?
             const size_t tokenEnd = sl::Min(path.Size(), 
                 sl::memfirst(&path[tokenBegin], '/', path.Size() - tokenBegin));
             const size_t tokenLength = tokenEnd - tokenBegin;
@@ -69,6 +93,8 @@ namespace Npk::Filesystem
                 Log("Bad mid-patch node during vfs lookup.", LogLevel::Error);
                 return {};
             }
+
+            //TODO: handle special cases '.' and '..'
             
             const TempFsData* data = static_cast<TempFsData*>(scan->fsData);
             for (size_t i = 0; i < data->children.Size(); i++)
@@ -98,14 +124,40 @@ namespace Npk::Filesystem
         
         ASSERT_UNREACHABLE();
     }
+
+    bool TempFs::Mount(Node* mountpoint, const MountArgs& args)
+    {
+        VALIDATE(mountedOn == nullptr, false, "TempFS already mounted!");
+        VALIDATE(root != nullptr, false, "TempFS has no root!");
+        VALIDATE(mountpoint != nullptr, false, "Mountpoint is null.");
+        VALIDATE(mountpoint->type == NodeType::Directory, false, "Mountpoint must be a directory");
+
+        //TODO: ensure mountpoint is empty!
+        
+        mountpoint->lock.WriterLock();
+        mountpoint->link.mounted = this;
+
+        //access mountpoint properties while we have the lock.
+        const TempFsData* mountpointData = static_cast<TempFsData*>(mountpoint->fsData);
+        Log("Mounting new TempFs at %s", LogLevel::Info, mountpointData->props.name.C_Str());
+        mountpoint->lock.WriterUnlock();
+
+        mountedOn = mountpoint;
+        return true;
+    }
+
+    bool TempFs::Unmount()
+    {
+        ASSERT_UNREACHABLE();
+    }
     
     sl::Opt<Node*> TempFs::Create(Node* dir, NodeType type, const NodeProps& props)
     {
         VALIDATE(dir != nullptr, {}, "Parent is null");
         VALIDATE(dir->type == NodeType::Directory, {}, "Parent not a directory");
 
-        TempFsData* parentData = static_cast<TempFsData*>(dir->fsData);
         dir->lock.WriterLock();
+        TempFsData* parentData = static_cast<TempFsData*>(dir->fsData);
 
         //check that a child with the same name doesn't already exist
         for (size_t i = 0; i < parentData->children.Size(); i++)
@@ -122,6 +174,7 @@ namespace Npk::Filesystem
         TempFsData* childData = new TempFsData;
         childData->props = props;
         childData->props.size = 0;
+        childData->parent = dir;
 
         Node* child = new Node(*this, type, childData);
         parentData->children.PushBack(child);
@@ -132,7 +185,33 @@ namespace Npk::Filesystem
 
     bool TempFs::Remove(Node* dir, Node* target)
     {
-        ASSERT_UNREACHABLE()
+        VALIDATE(dir != nullptr, false, "Parent is null");
+        VALIDATE(dir->type == NodeType::Directory, false, "Parent is not directory");
+        VALIDATE(dir->fsData != nullptr, false, "Parent fsdata is null");
+        VALIDATE(target != nullptr, false, "Target is null.");
+        VALIDATE(target->fsData != nullptr, false, "Target fsdata is null.");
+        VALIDATE(dir != target, false, "Parent and target are the same node.");
+
+        dir->lock.WriterLock();
+        TempFsData* parentData = static_cast<TempFsData*>(dir->fsData);
+        for (size_t i = 0; i < parentData->children.Size(); i++)
+        {
+            if (parentData->children[i] != target)
+                continue;
+
+            parentData->children[i]->lock.WriterLock();
+            TempFsData* childData = static_cast<TempFsData*>(target->fsData);
+            childData->parent = nullptr;
+            parentData->children.Erase(i);
+            //NOTE: that we dont release the write lock on the target
+            delete target; //TODO: this should be decrementing the reference count, not outright deletion
+
+            dir->lock.WriterUnlock();
+            return true;
+        }
+
+        dir->lock.WriterUnlock();
+        return false; //we exited the loop without finding the target
     }
 
     bool TempFs::Open(Node* node)
@@ -141,30 +220,35 @@ namespace Npk::Filesystem
     bool TempFs::Close(Node* node)
     { return true; (void)node; } //no-op
 
-    size_t TempFs::ReadWrite(Node* node, const RwBuffer& buff)
+    size_t TempFs::ReadWrite(Node* node, const RwPacket& packet)
     {
         VALIDATE(node != nullptr, 0, "Node is null");
         VALIDATE(node->type == NodeType::File, 0, "Node is not a file");
         VALIDATE(node->fsData != nullptr, 0, "Node fsdata is null");
-        VALIDATE(buff.buffer != nullptr, 0, "Buffer is null");
+        VALIDATE(packet.buffer != nullptr, 0, "Buffer is null");
+        VALIDATE(packet.length > 0, 0, "Op length of zero.");
 
         size_t opSize = 0;
-        if (buff.write)
+        if (packet.write)
         {
             node->lock.WriterLock();
             TempFsData* data = static_cast<TempFsData*>(node->fsData);
 
             //calculate new buffer size, this takes care of truncation and expansion for us.
-            size_t newBufferSize = buff.offset + buff.length;
-            if (!buff.truncate && data->props.size > newBufferSize)
+            size_t newBufferSize = packet.offset + packet.length;
+            if (!packet.truncate && data->props.size > newBufferSize)
                 newBufferSize = data->props.size;
             
             //if buffer size is changing, allocate a new one and migrate data
             if (newBufferSize != data->props.size)
             {
                 uint8_t* newBuffer = new uint8_t[newBufferSize];
+
+                //if we're writing after the end of the current file, fill the dead space with zeroes
+                if (packet.offset > data->props.size)
+                    sl::memset(newBuffer + data->props.size, 0, packet.offset - data->props.size);
+
                 //TODO: we could be smarter and only copy things we're not about to overwrite
-                //TODO: if we're expanding the file we probably want to zero dead space
                 sl::memcopy(data->buffer, newBuffer, sl::Min(data->props.size, newBufferSize));
 
                 if (data->props.size > 0)
@@ -174,9 +258,9 @@ namespace Npk::Filesystem
             }
 
             //now actually write the data to the tempfs
-            sl::memcopy(buff.buffer, 0, data->buffer, buff.offset, buff.length);
+            sl::memcopy(packet.buffer, 0, data->buffer, packet.offset, packet.length);
             node->lock.WriterUnlock();
-            opSize = buff.length;
+            opSize = packet.length;
         }
         else
         {
@@ -186,8 +270,8 @@ namespace Npk::Filesystem
             //ensure there's data to read, and then perform a bounds check on the buffer
             if (data->props.size > 0)
             {
-                opSize = sl::Min(buff.length, data->props.size - buff.offset);
-                sl::memcopy(data->buffer, buff.offset, buff.buffer, 0, opSize);
+                opSize = sl::Min(packet.length, data->props.size - packet.offset);
+                sl::memcopy(data->buffer, packet.offset, packet.buffer, 0, opSize);
             }
             node->lock.ReaderUnlock();
         }
