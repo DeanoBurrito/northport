@@ -6,6 +6,8 @@
 #include <Time.h>
 #include <Locks.h>
 #include <String.h>
+#include <containers/LinkedList.h>
+#include <Optional.h>
 
 namespace Npk::Filesystem
 {
@@ -16,14 +18,31 @@ namespace Npk::Filesystem
         Directory,
     };
 
+    enum class NodePerms : size_t
+    {
+        None = 0,
+
+        UserExec = 1 << 0,
+        UserWrite = 1 << 1,
+        UserRead = 1 << 2,
+
+        GroupExec = UserExec << 4,
+        GroupWrite = UserWrite << 4,
+        GroupRead = UserRead << 4,
+        
+        OtherExec = GroupExec << 4,
+        OtherWrite = GroupWrite << 4,
+        OtherRead = GroupRead << 4,
+    };
+
     struct RwPacket
     {
-        bool write;
-        bool truncate;
+        bool write = false;
+        bool truncate = false;
 
-        size_t offset;
-        size_t length;
-        void* buffer;
+        size_t offset = 0;
+        size_t length = 0;
+        void* buffer = nullptr;
     };
     
     struct NodeProps
@@ -32,13 +51,25 @@ namespace Npk::Filesystem
         sl::TimePoint created {};
         sl::TimePoint lastRead {};
         sl::TimePoint lastWrite {};
-        size_t size;
-        //TODO: permissions, do we want to go unix style?
+        size_t size {};
+        NodePerms perms {};
     };
 
     struct MountArgs
     {
         
+    };
+
+    struct FileCachePart
+    {
+        void* page;
+        size_t offset;
+        sl::Atomic<size_t> references;
+    };
+
+    struct VfsContext
+    {
+        //TODO: cwd, rights, private views
     };
 
     struct Node;
@@ -82,6 +113,7 @@ namespace Npk::Filesystem
     public:
         sl::RwLock lock;
         sl::Atomic<size_t> references;
+        sl::LinkedList<FileCachePart> parts;
         Vfs& owner;
         NodeType type;
         void* fsData;
@@ -148,4 +180,5 @@ namespace Npk::Filesystem
 
     void InitVfs();
     Vfs* RootFilesystem();
+    sl::Handle<Node> VfsLookup(const VfsContext& context, sl::StringSpan path);
 }

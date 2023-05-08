@@ -9,13 +9,10 @@ namespace Npk::Filesystem
     private:
         Node* root;
 
-        uintptr_t backingBase;
-        size_t backingLength;
+        sl::Handle<Node> TraverseUp(Node* node) const;
 
     public:
         TempFs();
-
-        void LoadInitdisk(void* base, size_t length);
 
         void FlushAll() override;
         Node* GetRoot() override;
