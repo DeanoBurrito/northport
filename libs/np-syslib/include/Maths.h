@@ -129,4 +129,10 @@ namespace sl
 
         return SquareRoot(variance);
     }
+
+    template<typename T>
+    constexpr inline bool IsPowerOfTwo(T test)
+    {
+        return test && !(test & (test - 1));
+    }
 }

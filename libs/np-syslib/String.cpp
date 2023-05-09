@@ -47,6 +47,17 @@ namespace sl
         buffer[1] = 0;
     }
 
+    String::String(StringSpan span)
+    {
+        if (*(span.End() - 1) == 0)
+            span = span.Subspan(0, span.Size() - 1);
+        
+        length = span.Size();
+        buffer = new char[span.Size() + 1];
+        sl::memcopy(span.Begin(), buffer, length);
+        buffer[length] = 0;
+    }
+
     String::~String()
     {
         if (buffer && buffer != emptyString)

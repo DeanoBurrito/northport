@@ -32,4 +32,13 @@ namespace sl
         inline size_t ToNanos() const
         { return ToScale(TimeScale::Nanos).units; }
     };
+
+    struct TimePoint
+    {
+        size_t epoch;
+        //TODO: populate and we'll likely want sl::Duration
+
+        static TimePoint Now()
+        { return {}; }
+    };
 }

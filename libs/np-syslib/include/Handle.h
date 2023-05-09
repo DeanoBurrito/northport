@@ -14,13 +14,13 @@ namespace sl
 
         Handle(T* p) : ptr(p)
         {
-            if (ptr)
+            if (ptr != nullptr)
                 ptr->references++;
         }
 
         ~Handle()
         {
-            if (ptr)
+            if (ptr != nullptr)
             {
                 const unsigned count = (ptr->references--);
 
@@ -32,14 +32,17 @@ namespace sl
         Handle(const Handle& other)
         {
             ptr = other.ptr;
-            if (ptr)
+            if (ptr != nullptr)
                 ptr->references++;
         }
 
         Handle& operator=(const Handle& other)
         {
+            if (ptr != nullptr)
+                ptr->references--;
+
             ptr = other.ptr;
-            if (ptr)
+            if (ptr != nullptr)
                 ptr->references++;
             return *this;
         }
@@ -52,6 +55,9 @@ namespace sl
 
         Handle& operator=(Handle&& from)
         {
+            if (ptr != nullptr)
+                ptr->references--;
+            
             ptr = from.ptr;
             from.ptr = nullptr;
             return *this;

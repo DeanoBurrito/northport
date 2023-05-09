@@ -18,6 +18,7 @@ namespace sl
         String(const char* const cstr);
         String(char* const cstr, bool reuseBuffer);
         String(const char c);
+        String(StringSpan span);
         
         ~String();
         String(const String& other);
