@@ -10,7 +10,8 @@
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
-#include <filesystem/Vfs.h>
+#include <filesystem/Filesystem.h>
+#include <filesystem/FileCache.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
@@ -76,6 +77,7 @@ namespace Npk
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
         
+        Filesystem::InitFileCache();
         Filesystem::InitVfs();
         Interrupts::InterruptManager::Global().Init();
         Tasking::Scheduler::Global().Init();

@@ -4,7 +4,7 @@
 
 namespace Npk::Filesystem
 {
-    class TempFs : public Vfs
+    class TempFs : public VfsDriver
     {
     private:
         Node* root;
@@ -15,19 +15,19 @@ namespace Npk::Filesystem
         TempFs();
 
         void FlushAll() override;
-        Node* GetRoot() override;
-        sl::Handle<Node> GetNode(sl::StringSpan path) override;
+        Node* Root() override;
+        sl::Handle<Node> Resolve(sl::StringSpan path, const FsContext& context) override;
         bool Mount(Node* mountpoint, const MountArgs& args) override;
         bool Unmount() override;
 
-        sl::Handle<Node> Create(Node* dir, NodeType type, const NodeProps& props) override;
-        bool Remove(Node* dir, Node* target) override;
-        bool Open(Node* node) override;
-        bool Close(Node* node) override;
-        size_t ReadWrite(Node* node, const RwPacket& packet) override;
+        sl::Handle<Node> Create(Node* dir, NodeType type, const NodeProps& props, const FsContext& context) override;
+        bool Remove(Node* dir, Node* target, const FsContext& context) override;
+        bool Open(Node* node, const FsContext& context) override;
+        bool Close(Node* node, const FsContext& context) override;
+        size_t ReadWrite(Node* node, const RwPacket& packet, const FsContext& context) override;
         bool Flush(Node* node) override;
-        sl::Handle<Node> GetChild(Node* dir, size_t index) override;
-        bool GetProps(Node* node, NodeProps& props) override;
-        bool SetProps(Node* node, const NodeProps& props) override;
+        sl::Handle<Node> GetChild(Node* dir, size_t index, const FsContext& context) override;
+        bool GetProps(Node* node, NodeProps& props, const FsContext& context) override;
+        bool SetProps(Node* node, const NodeProps& props, const FsContext& context) override;
     };
 }

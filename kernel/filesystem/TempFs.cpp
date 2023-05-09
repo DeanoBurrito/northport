@@ -3,7 +3,7 @@
 #include <debug/Log.h>
 #include <Memory.h>
 #include <formats/Url.h>
-#include <memory/Pmm.h>
+#include <filesystem/FileCache.h>
 
 namespace Npk::Filesystem
 {
@@ -32,13 +32,14 @@ namespace Npk::Filesystem
     void TempFs::FlushAll()
     {} //no-op
 
-    Node* TempFs::GetRoot()
+    Node* TempFs::Root()
     { return root; }
 
-    sl::Handle<Node> TempFs::GetNode(sl::StringSpan path)
+    sl::Handle<Node> TempFs::Resolve(sl::StringSpan path, const FsContext& context)
     {
         VALIDATE(path.Begin()[0] != '/', {}, "Absolute path passed to VFS driver");
         VALIDATE(!path.Empty(), {}, "Empty path passed to VFS driver");
+        (void)context;
 
         while (*(path.End() - 1) == 0 || *(path.End() - 1) == '/') //cleanup end of path
             path = path.Subspan(0, path.Size() - 1);
@@ -76,7 +77,7 @@ namespace Npk::Filesystem
             //if the node is a mountpoint, use the root of the mounted vfs
             if (scan->link.mounted != nullptr)
             {
-                sl::Handle<Node> next = scan->link.mounted->GetRoot();
+                sl::Handle<Node> next = scan->link.mounted->Root();
                 next->lock.ReaderLock();
                 scan->lock.ReaderUnlock();
                 scan = next;
@@ -84,12 +85,12 @@ namespace Npk::Filesystem
 
             //now we can load the node's data, and check for a child with the matching name
             bool foundNext = false;
-            const TempFsData* data = static_cast<const TempFsData*>(scan->fsData);
+            const TempFsData* data = static_cast<const TempFsData*>(scan->driverData);
             for (size_t i = 0; i < data->children.Size(); i++)
             {
                 sl::Handle<Node> child { data->children[i] };
                 child->lock.ReaderLock();
-                auto childData = static_cast<const TempFsData*>(child->fsData);
+                auto childData = static_cast<const TempFsData*>(child->driverData);
                 if (childData->props.name != pathSeg)
                 {
                     child->lock.ReaderUnlock();
@@ -128,7 +129,7 @@ namespace Npk::Filesystem
         mountpoint->lock.WriterLock();
 
         //before attaching the vfs root here, check the directory is empty.
-        auto mountpointData = static_cast<const TempFsData*>(mountpoint->fsData);
+        auto mountpointData = static_cast<const TempFsData*>(mountpoint->driverData);
         if (mountpointData->children.Size() > 0)
         {
             Log("Mountpoint %s is not empty.", LogLevel::Error, mountpointData->props.name.C_Str());
@@ -149,18 +150,19 @@ namespace Npk::Filesystem
         ASSERT_UNREACHABLE();
     }
     
-    sl::Handle<Node> TempFs::Create(Node* dir, NodeType type, const NodeProps& props)
+    sl::Handle<Node> TempFs::Create(Node* dir, NodeType type, const NodeProps& props, const FsContext& context)
     {
         VALIDATE(dir != nullptr, {}, "Parent is null");
         VALIDATE(dir->type == NodeType::Directory, {}, "Parent not a directory");
+        (void)context;
 
         dir->lock.WriterLock();
-        TempFsData* parentData = static_cast<TempFsData*>(dir->fsData);
+        TempFsData* parentData = static_cast<TempFsData*>(dir->driverData);
 
         //check that a child with the same name doesn't already exist
         for (size_t i = 0; i < parentData->children.Size(); i++)
         {
-            auto* childData = static_cast<const TempFsData*>(parentData->children[i]->fsData);
+            auto* childData = static_cast<const TempFsData*>(parentData->children[i]->driverData);
             if (childData->props.name != props.name)
                 continue;
             
@@ -175,30 +177,43 @@ namespace Npk::Filesystem
         childData->props.size = 0;
 
         Node* child = new Node(*this, type, childData);
+        switch (type)
+        {
+        case NodeType::Directory:
+            child->link.mounted = nullptr;
+            break;
+        case NodeType::File:
+            child->link.cache = new FileCache();
+            break;
+        default:
+            Log("Unknown node type", LogLevel::Error);
+            break;
+        }
         parentData->children.PushBack(child);
 
         dir->lock.WriterUnlock();
         return child;
     }
 
-    bool TempFs::Remove(Node* dir, Node* target)
+    bool TempFs::Remove(Node* dir, Node* target, const FsContext& context)
     {
         VALIDATE(dir != nullptr, false, "Parent is null");
         VALIDATE(dir->type == NodeType::Directory, false, "Parent is not directory");
-        VALIDATE(dir->fsData != nullptr, false, "Parent fsdata is null");
+        VALIDATE(dir->driverData != nullptr, false, "Parent fsdata is null");
         VALIDATE(target != nullptr, false, "Target is null.");
-        VALIDATE(target->fsData != nullptr, false, "Target fsdata is null.");
+        VALIDATE(target->driverData != nullptr, false, "Target fsdata is null.");
         VALIDATE(dir != target, false, "Parent and target are the same node.");
+        (void)context;
 
         dir->lock.WriterLock();
-        TempFsData* parentData = static_cast<TempFsData*>(dir->fsData);
+        TempFsData* parentData = static_cast<TempFsData*>(dir->driverData);
         for (size_t i = 0; i < parentData->children.Size(); i++)
         {
             if (parentData->children[i] != target)
                 continue;
 
             parentData->children[i]->lock.WriterLock();
-            TempFsData* childData = static_cast<TempFsData*>(target->fsData);
+            TempFsData* childData = static_cast<TempFsData*>(target->driverData);
             childData->parent = nullptr;
             parentData->children.Erase(i);
             target->references--; //TODO: delete nodes with refcount == 0
@@ -211,46 +226,27 @@ namespace Npk::Filesystem
         return false; //we exited the loop without finding the target
     }
 
-    bool TempFs::Open(Node* node)
-    { return true; (void)node; } //no-op
+    bool TempFs::Open(Node* node, const FsContext& context)
+    { return true; (void)node; (void)context; } //no-op
 
-    bool TempFs::Close(Node* node)
-    { return true; (void)node; } //no-op
+    bool TempFs::Close(Node* node, const FsContext& context)
+    { return true; (void)node; (void)context; } //no-op
 
-    //TODO: replace with dedicated cache + constant time lookup (xarray/hashmap?)
-    FileCachePart* GetCache(Node* node, size_t offset)
-    {
-        offset = sl::AlignDown(offset, PageSize);
-        for (auto it = node->parts.Begin(); it != node->parts.End(); ++it)
-        {
-            if (offset == it->offset)
-                return &*it;
-        }
-
-        //cache not present, add it
-        FileCachePart* cache = &node->parts.EmplaceBack();
-        cache->references = 1;
-        cache->offset = offset;
-        cache->page = (void*)PMM::Global().Alloc();
-
-        return cache;
-    }
-
-    size_t TempFs::ReadWrite(Node* node, const RwPacket& packet)
+    size_t TempFs::ReadWrite(Node* node, const RwPacket& packet, const FsContext& context)
     {
         VALIDATE(node != nullptr, 0, "Node is null");
         VALIDATE(node->type == NodeType::File, 0, "Node is not a file");
-        VALIDATE(node->fsData != nullptr, 0, "Node fsdata is null");
+        VALIDATE(node->driverData != nullptr, 0, "Node fsdata is null");
         VALIDATE(packet.buffer != nullptr, 0, "Buffer is null");
         VALIDATE(packet.length > 0, 0, "Op length of zero.");
+        (void)context; //TODO: 
 
-        //TODO: replace PageSize with value obtained from FileCache (so it doesnt have to be page aligned).
-        size_t misalignment = packet.offset % PageSize;
+        size_t misalignment = packet.offset % FileCacheUnitSize();
         size_t opSize = 0;
         if (packet.write) //TODO: this function can probably be reduced
         {
             node->lock.WriterLock();
-            TempFsData* data = static_cast<TempFsData*>(node->fsData);
+            TempFsData* data = static_cast<TempFsData*>(node->driverData);
 
             //handle a change in the file size (expansion or truncation if requested)
             data->props.size = sl::Max(packet.offset + packet.length, data->props.size);
@@ -263,9 +259,10 @@ namespace Npk::Filesystem
             const size_t opSizeLimit = sl::Min(packet.offset + packet.length, data->props.size);
             while (opSize < opSizeLimit)
             {
-                const size_t copyLength = sl::Min(PageSize, opSizeLimit - opSize) - misalignment;
-                const FileCachePart* part = GetCache(node, packet.offset + opSize);
-                sl::memcopy(packet.buffer, opSize, AddHhdm(part->page), misalignment, copyLength);
+                const size_t copyLength = sl::Min(FileCacheUnitSize(), opSizeLimit - opSize) - misalignment;
+                auto cache = GetFileCache(node->link.cache, packet.offset + opSize, true);
+                ASSERT(cache.Valid(), "FileCache returned invalid handle.");
+                sl::memcopy(packet.buffer, opSize, AddHhdm(cache->physBase), misalignment, copyLength);
 
                 opSize += copyLength;
                 misalignment = 0; //only the first entry can be misaligned
@@ -277,14 +274,15 @@ namespace Npk::Filesystem
         {
             node->lock.ReaderLock();
             
-            const TempFsData* data = static_cast<TempFsData*>(node->fsData);
+            const TempFsData* data = static_cast<TempFsData*>(node->driverData);
             const size_t opSizeLimit = sl::Min(packet.offset + packet.length, data->props.size);
 
             while (opSize < opSizeLimit)
             {
-                const size_t copyLength = sl::Min(PageSize, opSizeLimit - opSize) - misalignment;
-                const FileCachePart* part = GetCache(node, packet.offset + opSize);
-                sl::memcopy(AddHhdm(part->page), misalignment, packet.buffer, opSize, copyLength);
+                const size_t copyLength = sl::Min(FileCacheUnitSize(), opSizeLimit - opSize) - misalignment;
+                auto cache = GetFileCache(node->link.cache, packet.offset + opSize, false);
+                ASSERT(cache.Valid(), "FileCache returned invalid handle.");
+                sl::memcopy(AddHhdm(cache->physBase), misalignment, packet.buffer, opSize, copyLength);
 
                 opSize += copyLength;
                 misalignment = 0; //only the first entry can be misaligned
@@ -299,15 +297,16 @@ namespace Npk::Filesystem
     bool TempFs::Flush(Node* node)
     { return false; (void)node; } //no-op
 
-    sl::Handle<Node> TempFs::GetChild(Node* dir, size_t index)
+    sl::Handle<Node> TempFs::GetChild(Node* dir, size_t index, const FsContext& context)
     {
         VALIDATE(dir != nullptr, {}, "Parent is null.");
-        VALIDATE(dir->fsData != nullptr, {}, "Parent fsdata is null.");
+        VALIDATE(dir->driverData != nullptr, {}, "Parent fsdata is null.");
         VALIDATE(dir->type == NodeType::Directory, {}, "Parent is not a directory");
+        (void)context;
         
         Node* found = nullptr;
         dir->lock.ReaderLock();
-        const TempFsData* data = static_cast<const TempFsData*>(dir->fsData);
+        const TempFsData* data = static_cast<const TempFsData*>(dir->driverData);
         if (index < data->children.Size())
             found = data->children[index];
 
@@ -315,26 +314,28 @@ namespace Npk::Filesystem
         return found;
     }
 
-    bool TempFs::GetProps(Node* node, NodeProps& props)
+    bool TempFs::GetProps(Node* node, NodeProps& props, const FsContext& context)
     {
         VALIDATE(node != nullptr, false, "Node is null");
-        VALIDATE(node->fsData != nullptr, false, "Node fsdata is null");
+        VALIDATE(node->driverData != nullptr, false, "Node fsdata is null");
+        (void)context;
         
         node->lock.ReaderLock();
-        const TempFsData* data = static_cast<const TempFsData*>(node->fsData);
+        const TempFsData* data = static_cast<const TempFsData*>(node->driverData);
         props = data->props;
         node->lock.ReaderUnlock();
 
         return true;
     }
 
-    bool TempFs::SetProps(Node* node, const NodeProps& props)
+    bool TempFs::SetProps(Node* node, const NodeProps& props, const FsContext& context)
     {
         VALIDATE(node != nullptr, false, "Node is null");
-        VALIDATE(node->fsData != nullptr, false, "Node fsdata is null");
+        VALIDATE(node->driverData != nullptr, false, "Node fsdata is null");
+        (void)context;
         
         node->lock.WriterLock();
-        TempFsData* data = static_cast<TempFsData*>(node->fsData);
+        TempFsData* data = static_cast<TempFsData*>(node->driverData);
         //TODO: select which props to update: not size!
         data->props = props; //TODO: don't update the name if it hasn't changed, save some copying
         node->lock.WriterLock();

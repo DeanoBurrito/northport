@@ -1,4 +1,4 @@
-#include <filesystem/Vfs.h>
+#include <filesystem/Filesystem.h>
 #include <boot/LimineTags.h>
 #include <debug/Log.h>
 #include <filesystem/TempFs.h>
@@ -9,7 +9,7 @@
 
 namespace Npk::Filesystem
 {
-    sl::Vector<Vfs*> filesystems;
+    sl::Vector<VfsDriver*> filesystems;
 
     void LoadInitdiskFile(Node* root, const sl::TarHeader* header)
     {
@@ -30,7 +30,7 @@ namespace Npk::Filesystem
                 break; //last segment is actually the filename, handle that outside the loop
 
             NodeProps props { .name = segment, .created = sl::TimePoint::Now() };
-            sl::Handle<Node> dir = root->Create(NodeType::Directory, props);
+            sl::Handle<Node> dir = root->Create(NodeType::Directory, props, KernelFsCtxt);
             if (!dir.Valid())
             {
                 Log("Initdisk file loading failed: %s", LogLevel::Error, header->Filename().Begin());
@@ -46,7 +46,7 @@ namespace Npk::Filesystem
             .created = sl::TimePoint::Now(), 
             .size = header->SizeBytes() 
         };
-        sl::Handle<Node> file = root->Create(NodeType::File, props);
+        sl::Handle<Node> file = root->Create(NodeType::File, props, KernelFsCtxt);
         if (!file.Valid())
         {
             Log("Initdisk file loading failed: %s", LogLevel::Error, header->Filename().Begin());
@@ -56,14 +56,14 @@ namespace Npk::Filesystem
         RwPacket writePacket { .write = true, .length = header->SizeBytes() };
         //NOTE: this is okay, since we're only reading from the buffer.
         writePacket.buffer = const_cast<void*>(header->Data());
-        if (size_t written = file->ReadWrite(writePacket) != header->SizeBytes())
+        if (size_t written = file->ReadWrite(writePacket, KernelFsCtxt) != header->SizeBytes())
         {
             Log("Initdisk file wrote %lu (out of %lu) bytes.", LogLevel::Error, 
                 written, header->SizeBytes());
         }
     }
 
-    void LoadInitdisk(Vfs* mountpoint, void* base, size_t length)
+    void LoadInitdisk(VfsDriver* mountpoint, void* base, size_t length)
     {
         VALIDATE(mountpoint != nullptr,, "Bad mountpoint");
         VALIDATE(base != nullptr,, "Bad initdisk base address");
@@ -81,7 +81,7 @@ namespace Npk::Filesystem
                 continue;
             }
 
-            LoadInitdiskFile(mountpoint->GetRoot(), scan);
+            LoadInitdiskFile(mountpoint->Root(), scan);
             filesLoaded++;
             scan = scan->Next();
         }
@@ -102,12 +102,12 @@ namespace Npk::Filesystem
             if (sl::memcmp(module->cmdline, "northport-initdisk", nameLen) != 0)
                 continue;
             
-            Log("Found module \"%s\" (@ 0x%lx), loading as initdisk.", LogLevel::Info, 
+            Log("Loading module \"%s\" (@ 0x%lx) as initdisk.", LogLevel::Info, 
                 module->cmdline, (uintptr_t)module->address);
             
             //create a mountpoint for the initdisk under `/initdisk/`
             NodeProps mountProps { .name = "initdisk" };
-            auto mountpoint = RootFilesystem()->GetRoot()->Create(NodeType::Directory, mountProps);
+            auto mountpoint = RootFs()->Root()->Create(NodeType::Directory, mountProps, KernelFsCtxt);
             ASSERT(mountpoint, "Failed to create initdisk mountpoint");
 
             //create filesystem, load module as initdisk
@@ -145,26 +145,19 @@ namespace Npk::Filesystem
             ASSERT_UNREACHABLE()
 
         TryFindInitdisk();
-
-        char packetBuffer[37];
-        sl::memset(packetBuffer, 0, 37);
-        RwPacket readPacket { .write = false, .length = 37, .buffer = packetBuffer };
-        auto maybeNode = RootFilesystem()->GetNode("initdisk/dummy.txt");
-        ASSERT(maybeNode, "");
-        maybeNode->ReadWrite(readPacket);
-        Log("file contents: %s", LogLevel::Debug, packetBuffer);
-
-        Log("Done", LogLevel::Debug);
-        Halt();
     }
 
-    Vfs* RootFilesystem()
+    VfsDriver* RootFs()
     {
         return filesystems.Size() > 0 ? filesystems[0] : nullptr;
     }
 
-    sl::Handle<Node> VfsLookup(const VfsContext& context, sl::StringSpan path)
+    sl::Handle<Node> VfsLookup(sl::StringSpan path, const FsContext& context)
     {
-        ASSERT_UNREACHABLE(); //TODO:
+        VfsDriver* root = RootFs();
+        if (root == nullptr)
+            return {};
+        
+        return root->Resolve(path, context);
     }
 }

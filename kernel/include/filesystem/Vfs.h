@@ -1,13 +1,10 @@
 #pragma once
 
 #include <Atomic.h>
-#include <Span.h>
-#include <Handle.h>
 #include <Time.h>
-#include <Locks.h>
 #include <String.h>
-#include <containers/LinkedList.h>
-#include <Optional.h>
+#include <Handle.h>
+#include <Locks.h>
 
 namespace Npk::Filesystem
 {
@@ -18,6 +15,8 @@ namespace Npk::Filesystem
         Directory,
     };
 
+    //Bitfield representing the permissions of a node (and access to child nodes).
+    //Follows standard unix permissions.
     enum class NodePerms : size_t
     {
         None = 0,
@@ -35,6 +34,8 @@ namespace Npk::Filesystem
         OtherRead = GroupRead << 4,
     };
 
+    //Structure used for read and write commands. The control flags determine what type of operation
+    //is performed (a read by default). The buffer should be populated by the source of the packet.
     struct RwPacket
     {
         bool write = false;
@@ -44,7 +45,10 @@ namespace Npk::Filesystem
         size_t length = 0;
         void* buffer = nullptr;
     };
-    
+
+    //Properties of a node that may require indirect access. These properties are managed
+    //via the GetProps/SetProps functions of a node. The node itself only contains the bare
+    //minimum required to function, and the rest is loaded (and cached) on demand.
     struct NodeProps
     {
         sl::String name;
@@ -55,130 +59,116 @@ namespace Npk::Filesystem
         NodePerms perms {};
     };
 
+    //Arguments passed to `Mount()`
     struct MountArgs
     {
         
     };
 
-    struct FileCachePart
+    //Represents a program's (or user's) access rights, current directory (for relative paths),
+    //and any private caches of a file they might have.
+    struct FsContext
     {
-        void* page;
-        size_t offset;
-        sl::Atomic<size_t> references;
+        
     };
 
-    struct VfsContext
-    {
-        //TODO: cwd, rights, private views
-    };
+    constexpr FsContext KernelFsCtxt = {};
 
     struct Node;
-    
-    class Vfs
+    struct FileCache;
+
+    //A VFS driver is a single filesystem, mounted or unmounted. 
+    class VfsDriver
     {
     protected:
         Node* mountedOn;
 
-        Vfs() : mountedOn(nullptr)
+        VfsDriver() : mountedOn(nullptr)
         {}
 
     public:
-        virtual ~Vfs() = default;
+        virtual ~VfsDriver() = default;
 
-        [[gnu::always_inline]]
-        inline Node* Mountpoint()
-        { return mountedOn; }
-
-        //vfs operations
+        //FS-level operations
         virtual void FlushAll() = 0;
-        virtual Node* GetRoot() = 0;
-        virtual sl::Handle<Node> GetNode(sl::StringSpan path) = 0;
+        virtual Node* Root() = 0;
+        virtual sl::Handle<Node> Resolve(sl::StringSpan path, const FsContext& context) = 0;
         virtual bool Mount(Node* mountpoint, const MountArgs& args) = 0;
         virtual bool Unmount() = 0;
 
-        //node operations
-        virtual sl::Handle<Node> Create(Node* dir, NodeType type, const NodeProps& props) = 0;
-        virtual bool Remove(Node* dir, Node* target) = 0;
-        virtual bool Open(Node* node) = 0;
-        virtual bool Close(Node* node) = 0;
-        virtual size_t ReadWrite(Node* node, const RwPacket& packet) = 0;
+        //node-level operations
+        virtual sl::Handle<Node> Create(Node* dir, NodeType type, const NodeProps& props, const FsContext& context) = 0;
+        virtual bool Remove(Node* dir, Node* target, const FsContext& context) = 0;
+        virtual bool Open(Node* node, const FsContext& context) = 0;
+        virtual bool Close(Node* node, const FsContext& context) = 0;
+        virtual size_t ReadWrite(Node* node, const RwPacket& packet, const FsContext& context) = 0;
         virtual bool Flush(Node* node) = 0;
-        virtual sl::Handle<Node> GetChild(Node* dir, size_t index) = 0;
-        virtual bool GetProps(Node* node, NodeProps& props) = 0;
-        virtual bool SetProps(Node* node, const NodeProps& props) = 0;
+        virtual sl::Handle<Node> GetChild(Node* dir, size_t index, const FsContext& context) = 0;
+        virtual bool GetProps(Node* node, NodeProps& props, const FsContext& context) = 0;
+        virtual bool SetProps(Node* node, const NodeProps& props, const FsContext& context) = 0;
     };
 
-    struct Node 
+    //The building block of the VFS: a node represents a single file-like object within
+    //the graph. Only the bare minimum properties are stored here (lock, refcount and link ptrs),
+    //to access the actual properties indirect access might be required (see GetProps/SetProps).
+    struct Node
     {
     public:
         sl::RwLock lock;
         sl::Atomic<size_t> references;
-        sl::LinkedList<FileCachePart> parts;
-        Vfs& owner;
+        VfsDriver& driver;
         NodeType type;
-        void* fsData;
+        void* driverData;
 
         union 
         {
-            Vfs* mounted;
-            //NOTE: this seems silly right now, but it will also contain other
-            //linkage info in the future (like unix sockets).
+            FileCache* cache; //type::File = contains file cache info
+            VfsDriver* mounted;//type::Dir = non-null if a vfs driver is mounted here.
         } link;
 
-        Node(Vfs& owner, NodeType type)
-        : references(1), owner(owner), type(type), fsData(nullptr),
-        link { .mounted = nullptr }
+        Node(VfsDriver& owner, NodeType type)
+        : references(1), driver(owner), type(type), driverData(nullptr), link{ .mounted = nullptr}
         {}
 
-        Node(Vfs* mount, Vfs& owner, NodeType type)
-        : references(1), owner(owner), type(type), fsData(nullptr), 
-        link { .mounted = mount }
+        Node(VfsDriver& owner, NodeType type, void* privateData)
+        : references(1), driver(owner), type(type), driverData(privateData), link{ .mounted = nullptr}
         {}
 
-        Node(Vfs& owner, NodeType type, void* fsData)
-        : references(1), owner(owner), type(type), fsData(fsData),
-        link { .mounted = nullptr }
-        {}
-
-        //below here are just typed macros
+        //these are just typed macros
         [[gnu::always_inline]]
-        inline sl::Handle<Node> Create(NodeType type, const NodeProps& props)
-        { return owner.Create(this, type, props); }
+        inline sl::Handle<Node> Create(NodeType type, const NodeProps& props, const FsContext& context)
+        { return driver.Create(this, type, props, context); }
 
         [[gnu::always_inline]]
-        inline bool Remove(Node* target)
-        { return owner.Remove(this, target); }
-        
-        [[gnu::always_inline]]
-        inline bool Open()
-        { return owner.Open(this);}
+        inline bool Remove(Node* target, const FsContext& context)
+        { return driver.Remove(this, target, context); }
 
         [[gnu::always_inline]]
-        inline bool Close()
-        { return owner.Close(this); }
+        inline bool Open(const FsContext& context)
+        { return driver.Open(this, context); }
 
         [[gnu::always_inline]]
-        inline size_t ReadWrite(const RwPacket& buff)
-        { return owner.ReadWrite(this, buff); }
+        inline bool Close(const FsContext& context)
+        { return driver.Close(this, context); }
+
+        [[gnu::always_inline]]
+        inline size_t ReadWrite(const RwPacket& packet, const FsContext& context)
+        { return driver.ReadWrite(this, packet, context); }
 
         [[gnu::always_inline]]
         inline bool Flush()
-        { return owner.Flush(this); }
+        { return driver.Flush(this); }
 
         [[gnu::always_inline]]
-        inline sl::Handle<Node> GetChild(size_t index)
-        { return owner.GetChild(this, index); }
+        inline sl::Handle<Node> GetChild(size_t index, const FsContext& context)
+        { return driver.GetChild(this, index, context); }
 
         [[gnu::always_inline]]
-        inline bool GetProps(NodeProps& props)
-        { return owner.GetProps(this, props); }
+        inline bool GetProps(NodeProps& props, const FsContext& context)
+        { return driver.GetProps(this, props, context); }
 
         [[gnu::always_inline]]
-        inline bool SetProps(const NodeProps& props)
-        { return owner.SetProps(this, props); }
+        inline bool SetProps(const NodeProps& props, const FsContext& context)
+        { return driver.SetProps(this, props, context); }
     };
-
-    void InitVfs();
-    Vfs* RootFilesystem();
-    sl::Handle<Node> VfsLookup(const VfsContext& context, sl::StringSpan path);
 }
