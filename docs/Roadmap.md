@@ -24,10 +24,12 @@
             - [ ] Swapping.
             - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
+            - [ ] Per-core slab caches.
     - [x] Core clock, software timers.
         - [x] Configurable resolution.
         - [x] Tickless.
         - [x] Infinite expiry
+        - [ ] Continuous calibration.
     - [x] IPI mailbox.
     - [x] Scheduler.
         - [x] SMP-support.
@@ -56,8 +58,9 @@
         - [ ] Async command queues.
     - [ ] System calls.
         - [ ] ABI documentation
-    - [ ] VFS.
-        - [ ] TempFS, populated from initrd if present.
+    - [x] VFS.
+        - [x] TempFS, populated from initrd if present.
+        - [x] Page-cache.
         - [ ] Ext2 driver.
         - [ ] FAT driver.
         - [ ] NTFS driver?
@@ -102,12 +105,19 @@
         - [x] Linked list.
         - [ ] Map.
         - [x] Custom allocator support.
+    - [ ] File format helpers:
+        - [ ] ELF64.
+        - [x] Tar.
+        - [ ] Qoi.
     - [x] Optional.
+        - [x] Handle: ref-counted version of Optional.
+        - [ ] ErrorOr, which can also carry an error code.
     - [ ] Strings:
         - [x] Basic string.
         - [ ] String builder.
         - [ ] String formatter.
         - [ ] Integer <-> string conversions.
+    - [ ] Transaction framework.
     - [x] Basic locks.
     - [x] Psuedo-RNG.
     - [x] 2D primitives (vectors, rects).

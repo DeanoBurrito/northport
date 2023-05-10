@@ -26,7 +26,7 @@ Kernel:
     - Panic sequence with stack walker and symbol lookup.
 - Global software clock, driven by a number of supported hardware timers: LAPIC, TSC, HPET, PIT, SBI timer.
 - SMP-aware scheduler: round robin with per-core queues, work stealing and DPCs.
-- VFS with a robust tempfs driver. File contents are sparsely cached in a global page cache.
+- VFS with a robust tempfs driver. File contents are sparsely cached in a global file cache.
 - Loadable drivers and device management, partially automated by a device tree parser and PCI enumeration.
     - Notable drivers include: NVMe, virtio devices.
 - Optional UB sanitizer, helpful for detecting bugs or increasing code size!

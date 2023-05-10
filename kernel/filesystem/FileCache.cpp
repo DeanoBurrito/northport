@@ -41,13 +41,19 @@ namespace Npk::Filesystem
                 return &*it;
         }
 
-        if (!createNew)
+        if (!createNew) //readonly lookup, return an empty handle
             return {};
+        
         FileCacheUnit* unit = &cache->units.EmplaceBack();
         unit->references = 1;
         unit->offset = offset;
-        unit->physBase = (void*)PMM::Global().Alloc(cacheUnitSize / PageSize);
-        ASSERT(unit->physBase != nullptr, "PMM alloc failed.");
+        const uintptr_t physAddr = PMM::Global().Alloc(cacheUnitSize / PageSize);
+        ASSERT(physAddr != 0, "PMM alloc failed.");
+        unit->physBase = (void*)physAddr;
+
+        //link this page's metadata to the filecache
+        Memory::PageInfo* info = PMM::Global().Lookup(physAddr);
+        info->link = (uintptr_t)cache;
 
         return unit;
     }
