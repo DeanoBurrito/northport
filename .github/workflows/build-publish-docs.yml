@@ -2,9 +2,8 @@ name: Build and Publish Documentation
 
 on:
   push:
-    paths: [ 'docs/**', '.github/workflows/build-publish-docs.yml' ]
-  pull_request:
-    paths: [ 'docs/**', '.github/workflows/build-publish-docs.yml' ]
+    branches: [ 'master' ]
+    paths: [ 'docs/manual/**', '.github/workflows/build-publish-docs.yml' ]
 
 jobs:
   build-docs:
