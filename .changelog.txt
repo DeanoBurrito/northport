@@ -1,0 +1,3 @@
+- Initial release using git tags.
+- Releases include a bootable x86_64 iso for use with your emulator of choice now.
+    - A risc-v version may follow soon.

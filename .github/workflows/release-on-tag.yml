@@ -1,0 +1,56 @@
+name: Publish Release on New Tag
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Get Tag ID
+      run: echo "TAG_NAME=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))" >> $GITHUB_ENV
+
+    - name: Install dependencies
+      run: sudo apt install lld llvm clang
+
+    - name: Compile docs
+      uses: xu-cheng/latex-action@v2
+      with:
+        root_file: Manual.tex
+        working_directory: docs/manual
+
+    - name: Rename Manual.pdf
+      run: mv docs/manual/Manual.pdf docs/manual/northport-manual-${{ env.TAG_NAME }}.pdf
+
+    - name: Clone Limine
+      uses: actions/checkout@v3
+      with:
+        repository: limine-bootloader/limine
+        ref: v4.x-branch-binary
+        path: limine
+
+    - name: Build Limine Tools
+      run: cd limine; make
+
+    - name: Build x86_64 ISO
+      run: >
+        make clean;
+        make iso CPU_ARCH=x86_64 TOOLCHAIN=clang LIMINE_DIR=limine
+
+    - name: Upload to Github
+      uses: softprops/action-gh-release@v1
+      with:
+        name: northport-${{ env.TAG_NAME }}
+        body_path: ${{ github.workspace }}/.changelog.txt
+        files: |
+          iso/*
+          docs/manual/*.pdf
+        
