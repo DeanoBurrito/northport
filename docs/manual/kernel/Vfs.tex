@@ -5,7 +5,7 @@ The design follows a fairly typical pattern in that the VFS uses a single root g
 
 \subsection{Concepts}
 \paragraph{VFS Driver}
-A VFS driver represents a single instance of a filesystem. A driver can then be mounted within the global graph and be made available for global access (i.e. it's visible when calling \verb|driver->Resolve()| or \verb|VfsLookup()|). A VFS driver implements the required functions tthat allow the rest of the VFS subsystem to operate on nodes from this driver.
+A VFS driver represents a single instance of a filesystem. A driver can then be mounted within the global graph and be made available for global access (i.e. it's visible when calling \verb|driver->Resolve()| or \verb|VfsLookup()|). A VFS driver implements the required functions that allow the rest of the VFS subsystem to operate on nodes from this driver.
 
 \paragraph{VFS Node}
 A VFS node contains the bare minimum needed to represent a node within a filesystem: a reader-writer lock (to protect the node's data and properties - not the file contents!), reference count, responsible VFS driver and type. Each node also contains an opaque pointer for the driver to store internal data on the node. 
@@ -13,7 +13,7 @@ A VFS node contains the bare minimum needed to represent a node within a filesys
 Information like the file's size, name, child nodes (if it's a directory) is considered to be a property of the node and can be accessed by the \verb|GetProps()| and \verb|SetProps()| functions of a node.
 
 \paragraph{File Cache}
-While VFS nodes represent objects within VFS graph, the actual contents of a file is stored externally to the VFS. A file's contents are typically stored on a slower medium like a HDD or SSD, or even across a network, which results in the VFS slowing down when accessing file contents directly. As you might expect, the file cache keeps a copy of accessed file contents in local memory for faster accesses. The file cache operates in fixed sized chunks, and only caches accessed chunks, meaning accessed parts of files are only loaded as they're used.
+While VFS nodes represent objects within VFS graph, the actual contents of a file is stored externally to the VFS. The contents of a file are usually stored on a slower medium like a HDD or SSD, or even across a network, which results in the VFS slowing down when accessing file contents directly. As you might expect, the file cache keeps a copy of accessed file contents in local memory for faster accesses. The file cache operates in fixed sized chunks, and only caches accessed chunks, meaning accessed parts of files are only loaded as they're used.
 
 \paragraph{Access Context}
 Most operations on a node require a \verb|context| argument. A context represents a particular view of the VFS, typically from the perspective of a program or user. A context contains the access rights allowed for an operation and the working directory to use for relative path lookups.
@@ -43,7 +43,7 @@ Most operations on the VFS follow a similar pattern: find the VFS driver for the
 
 Some operations apply directly to the VFS driver, like mounting and unmounting, or flushing the whole filesystem's cache. These operations don't require a node to be passed, and can be called on the vfs driver directly.
 
-VFS drivers also provided a \verb|Resolve()| function which traverses the VFS starting at the their own root node. This can be used to quickly lookup known files or check for their existence.
+VFS drivers also provide a \verb|Resolve()| function which traverses the VFS starting at the their own root node. This can be used to quickly lookup known files or check for their existence.
 
 Some global utility functions are also provided: \verb|RootFs()| returns the VFS driver for the root filesystem, and \verb|VfsLookup()| is a shortcut for looking up a node based on a path (it can be absolute, or use the working directory of the context).
 
