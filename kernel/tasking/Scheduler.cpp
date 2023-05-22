@@ -51,6 +51,8 @@ namespace Npk::Tasking
         if (core.queue.head == nullptr)
             return nullptr;
         Thread* found = core.queue.head;
+        if (found == core.queue.tail)
+            core.queue.tail = nullptr;
         core.queue.head = found->next;
         core.queue.size--;
 
@@ -60,7 +62,7 @@ namespace Npk::Tasking
     SchedulerCore* Scheduler::GetCore(size_t id)
     {
         if (id == CoreLocal().id)
-            return reinterpret_cast<SchedulerCore*>(CoreLocal().schedData);
+            return reinterpret_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
         for (auto it = cores.Begin(); it != cores.End(); ++it)
         {
             if ((**it).coreId == id)
@@ -124,8 +126,8 @@ namespace Npk::Tasking
         auto dpcStack = VMM::Kernel().Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write);
         ASSERT(dpcStack, "No DPC stack for core.");
         core->dpcStack = dpcStack->Top();
-        core->dpcStack -= sizeof(TrapFrame);
-        core->dpcFrame = reinterpret_cast<TrapFrame*>(core->dpcStack);
+        core->dpcStack -= 2 * sizeof(TrapFrame);
+        core->dpcFrame = reinterpret_cast<TrapFrame*>(sl::AlignUp(core->dpcStack, sizeof(TrapFrame)));
         core->dpcFinished = true;
 
         //Ensure the cache for DPC invocations is filled.
@@ -140,8 +142,8 @@ namespace Npk::Tasking
         core->suspendScheduling = false;
         core->reschedulePending = false;
 
-        CoreLocal().schedThread = core->idleThread;
-        CoreLocal().schedData = core;
+        CoreLocal()[LocalPtr::Thread] = core->idleThread;
+        CoreLocal()[LocalPtr::Scheduler] = core;
         core->queue.lock.Unlock();
         
         coresListLock.Lock();
@@ -263,7 +265,7 @@ namespace Npk::Tasking
         schedCleanupData.updated.Trigger();
         schedCleanupData.lock.Unlock();
 
-        if (CoreLocal().schedThread == t)
+        if (CoreLocal()[LocalPtr::Thread] == t)
         {
             QueueReschedule();
             Yield(false);
@@ -283,7 +285,7 @@ namespace Npk::Tasking
 
         SchedulerCore* selectedCore = nullptr;
         if (t->coreAffinity == CoreLocal().id) //preferred core is self, no list traversal needed
-            selectedCore = static_cast<SchedulerCore*>(CoreLocal().schedData);
+            selectedCore = static_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
         else if (t->coreAffinity != NoAffinity)
         {
             //find preferred core
@@ -313,8 +315,8 @@ namespace Npk::Tasking
         }
 
         ASSERT(selectedCore != nullptr, "Failed to allocate processor.");
-        QueuePush(*selectedCore, t);
         t->activeCore = selectedCore->coreId;
+        QueuePush(*selectedCore, t);
     }
 
     void Scheduler::DequeueThread(size_t id)
@@ -324,10 +326,10 @@ namespace Npk::Tasking
 
         Thread* t = threadLookup[id];
         ScheduleGuard schedGuard;
-        t->lock.Lock();
+        sl::ScopedLock threadLock(t->lock);
         ASSERT(t->state == ThreadState::Runnable, "Thread is not runnable");
+        ASSERT(t->activeCore != NoAffinity, "Thread is not running");
         t->state = ThreadState::Ready;
-        t->lock.Unlock();
 
         //find core thread is queued on
         SchedulerCore* core = GetCore(t->activeCore);
@@ -381,7 +383,7 @@ namespace Npk::Tasking
 
     void Scheduler::QueueDpc(ThreadMain function, void* arg)
     {
-        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
         core.dpcLock.Lock();
         core.dpcs.EmplaceBack(function, arg);
         core.dpcLock.Unlock();
@@ -397,7 +399,7 @@ namespace Npk::Tasking
     {
         ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Bad run level.");
 
-        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
         core.dpcFinished = true;
         Yield(false);
         ASSERT_UNREACHABLE()
@@ -405,23 +407,22 @@ namespace Npk::Tasking
 
     void Scheduler::Yield(bool willReturn)
     {
-        if (!CoreLocalAvailable() || CoreLocal().schedData == nullptr)
+        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::Thread] == nullptr)
             return;
         
         sl::InterruptGuard intGuard;
-        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
 
         TrapFrame** current = nullptr;
         //there's no point in returning to a DPC or interrupt handler that yielded.
         willReturn = willReturn && (CoreLocal().runLevel == RunLevel::Normal);
-        if (willReturn && CoreLocal().schedThread != nullptr)
-            current = &(static_cast<Thread*>(CoreLocal().schedThread)->frame);
+        if (willReturn && CoreLocal()[LocalPtr::Thread] != nullptr)
+            current = &(static_cast<Thread*>(CoreLocal()[LocalPtr::Thread])->frame);
 
-        Thread* activeThread = static_cast<Thread*>(CoreLocal().schedThread);
-        ASSERT(activeThread != nullptr, "Current thread is null.");
         //we may be yielding because the current thread was dequeued: in which case
         //we try queue a reschedule (assuming one isnt already pending).
-        if (activeThread->state != ThreadState::Runnable)
+        Thread* activeThread = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
+        if (activeThread != nullptr && activeThread->state != ThreadState::Runnable)
             QueueReschedule();
 
         //select the next trap frame to load and execute, depending on priority:
@@ -452,7 +453,7 @@ namespace Npk::Tasking
         {
             CoreLocal().runLevel = RunLevel::Normal;
 
-            Thread* thread = static_cast<Thread*>(CoreLocal().schedThread);
+            Thread* thread = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
             next = thread->frame;
             thread->parent->vmm.MakeActive();
         }
@@ -467,25 +468,34 @@ namespace Npk::Tasking
     {
         ASSERT(CoreLocal().runLevel == RunLevel::Dispatch, "Bad run level");
         
-        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
         if (core.suspendScheduling)
             return;
 
         //decide what to do with the current thread: requeue or drop it
-        Thread* current = static_cast<Thread*>(CoreLocal().schedThread);
+        Thread* current = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
         ASSERT(current != nullptr, "Current thread is null?");
 
-        //decide what to do with current thread
-        if (current->state != ThreadState::Runnable || current->id < 2)
-            current->activeCore = 0; //no longer runnable or idle thread, dont requeue
-        else
-            QueuePush(core, current); //otherwise requeue it for this core.
+        //decide what to do with current thread: IDs of 0 (null) and 1 (idle thread) are silently dropped.
+        if (current->id > 1)
+        {
+            if (current->state == ThreadState::Runnable)
+                QueuePush(core, current); //requeue current thread if this is a regular reschedule
+            else
+                current->activeCore = NoAffinity; //drop thread from queue
+        }
+        //non runnable threads with id=0 or id=1 are special cases that are dropped without
+        //changing their core ids
 
         //get the next runnable thread. A thread is always runnable when added to the queue,
         //but this can change while it waits in the queue.
         Thread* next = QueuePop(core);
         while (next != nullptr && next->state != ThreadState::Runnable)
+        {
             next = QueuePop(core);
+            if (next->state != ThreadState::Runnable)
+                next->activeCore = NoAffinity;
+        }
 
         //work stealing: if the queue was empty, try pop from another core's queue.
         if (next == nullptr && registeredCores > 1)
@@ -516,13 +526,13 @@ namespace Npk::Tasking
         if (next == nullptr)
             next = core.idleThread;
 
-        CoreLocal().schedThread = next;
+        CoreLocal()[LocalPtr::Thread] = next;
         core.reschedulePending = false;
     }
 
     void Scheduler::QueueReschedule()
     {
-        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
         const bool pending = core.reschedulePending.Exchange(true);
         if (pending)
             return;
@@ -535,21 +545,21 @@ namespace Npk::Tasking
     {
         sl::InterruptGuard intGuard;
         
-        SchedulerCore* core = reinterpret_cast<SchedulerCore*>(CoreLocal().schedData);
+        SchedulerCore* core = reinterpret_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
         return core->suspendScheduling.Exchange(yes);
     }
 
     void Scheduler::SavePrevFrame(TrapFrame* current, RunLevel prevRunLevel)
     {
-        if (!CoreLocalAvailable() || CoreLocal().schedData == nullptr)
+        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::Scheduler] == nullptr)
             return;
         
         ASSERT(CoreLocal().runLevel == RunLevel::IntHandler, "Bad run level");
-        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal().schedData);
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
 
         if (prevRunLevel == RunLevel::Dispatch)
             core.dpcFrame = current;
-        else if (CoreLocal().schedThread != nullptr && prevRunLevel == RunLevel::Normal)
-            static_cast<Thread*>(CoreLocal().schedThread)->frame = current;
+        else if (CoreLocal()[LocalPtr::Thread] != nullptr && prevRunLevel == RunLevel::Normal)
+            static_cast<Thread*>(CoreLocal()[LocalPtr::Thread])->frame = current;
     }
 }

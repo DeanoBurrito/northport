@@ -11,19 +11,29 @@ namespace Npk
         Dispatch = 1,
         IntHandler = 2,
     };
-    
+
+    //each of the subsystems that get to store core-local data.
+    enum class LocalPtr : size_t
+    {
+        IntControl, //interrupt controller data: lapic/imsic
+        Scheduler, //core-local data for scheduler
+        Thread, //currently running thread
+        Vmm, //active *lower-half* VMM
+        Log, //debug log buffer for this core
+
+        Count
+    };
+
     struct CoreLocalInfo
     {
-        uintptr_t scratch[4]; //reserved for use during syscall/sysret/rv64 trap handlers.
-        uintptr_t selfAddr;
+        uintptr_t scratch; //reserved for use during syscall shenanigans
         uintptr_t id;
-        uintptr_t interruptControl; //x86: lapic*, rv: plic context id
         RunLevel runLevel;
-        void* schedThread; //currently executing thread
-        void* schedData;
-        void* vmm; //current lower-half vmm.
-        void* nextKernelStack; //x86: duplicate of tss->rsp0
-        void* logBuffers;
+        void* nextStack; //next stack available for kernel use. On x86_64 this is a duplicate of tss->rsp0
+        void* subsystemPtrs[(size_t)LocalPtr::Count];
+
+        constexpr void*& operator[](LocalPtr index)
+        { return subsystemPtrs[(size_t)index]; }
     };
 
     extern uintptr_t hhdmBase;

@@ -43,7 +43,7 @@ namespace Npk
     }
 
     LocalApic& LocalApic::Local()
-    { return *reinterpret_cast<LocalApic*>(CoreLocal().interruptControl); }
+    { return *reinterpret_cast<LocalApic*>(CoreLocal()[LocalPtr::IntControl]); }
 
     void LocalApic::Init()
     {

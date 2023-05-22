@@ -270,9 +270,7 @@ namespace Npk
     [[gnu::always_inline]]
     inline CoreLocalInfo& CoreLocal()
     {
-        uint64_t value;
-        asm volatile("mov %%gs:32, %0" : "=r"(value) :: "memory");
-        return *reinterpret_cast<CoreLocalInfo*>(value);
+        return *reinterpret_cast<CoreLocalInfo*>(ReadMsr(MsrGsBase));
     }
 
     [[gnu::always_inline]]

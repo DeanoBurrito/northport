@@ -20,6 +20,13 @@ namespace Npk
         FlushGdt();
         LoadIdt();
 
+        CoreLocalInfo* clb = new CoreLocalInfo();
+        clb->id = id;
+        clb->runLevel = RunLevel::Normal;
+        clb->nextStack = nullptr;
+        (*clb)[LocalPtr::IntControl] = new LocalApic();
+        WriteMsr(MsrGsBase, (uintptr_t)clb);
+
         uint64_t cr0 = ReadCr0();
         cr0 |= 1 << 16; //set write-protect bit
         cr0 &= ~0x6000'0000; //ensure CD/NW are cleared, enabling caching for this core.
@@ -48,15 +55,7 @@ namespace Npk
             cr4 & (1 << 7) ? ", global-pages" : "",
             CpuHasFeature(CpuFeature::NoExecute) ? ", nx" : "");
 
-        CoreLocalInfo* clb = new CoreLocalInfo();
-        clb->id = id;
-        clb->selfAddr = (uintptr_t)clb;
-        clb->interruptControl = (uintptr_t)new LocalApic();
-        clb->runLevel = RunLevel::Normal;
-        WriteMsr(MsrGsBase, (uint64_t)clb);
-
         LocalApic::Local().Init();
-
         EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }

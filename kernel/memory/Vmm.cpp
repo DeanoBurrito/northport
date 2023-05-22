@@ -67,7 +67,7 @@ namespace Npk::Memory
     { return *kernelVmm; }
 
     VMM& VMM::Current()
-    { return *static_cast<VMM*>(CoreLocal().vmm); }
+    { return *static_cast<VMM*>(CoreLocal()[LocalPtr::Vmm]); }
 
     VMM::VirtualMemoryManager()
     {

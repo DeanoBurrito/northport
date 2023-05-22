@@ -162,8 +162,8 @@ namespace Npk::Debug
         //get length of header (processor id + thread id)
         const size_t processorId = CoreLocalAvailable() ? CoreLocal().id : 0;
         size_t threadId = 0;
-        if (CoreLocalAvailable() && CoreLocal().schedThread != nullptr)
-            threadId = static_cast<Tasking::Thread*>(CoreLocal().schedThread)->Id();
+        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
+            threadId = static_cast<Tasking::Thread*>(CoreLocal()[LocalPtr::Thread])->Id();
         const size_t headerLen = npf_snprintf(nullptr, 0, "p%lut%lu", processorId, threadId) + 1;
 
         //get formatted message length
@@ -209,8 +209,8 @@ namespace Npk::Debug
         if (level == LogLevel::Fatal)
             Panic(nullptr, &buffer[textStart]);
 
-        if (CoreLocalAvailable() && CoreLocal().logBuffers != nullptr)
-            WriteLog(buffer, bufferLen, reinterpret_cast<LogBuffer*>(CoreLocal().logBuffers));
+        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Log] != nullptr)
+            WriteLog(buffer, bufferLen, reinterpret_cast<LogBuffer*>(CoreLocal()[LocalPtr::Log]));
         else
             WriteLog(buffer, bufferLen, &earlyBuffer);
     }
@@ -222,7 +222,7 @@ namespace Npk::Debug
         buffer->length = CoreLogBufferSize;
         buffer->buffer = reinterpret_cast<char*>(PMM::Global().Alloc(CoreLogBufferSize / PageSize) + hhdmBase);
 
-        CoreLocal().logBuffers = buffer;
+        CoreLocal()[LocalPtr::Log] = buffer;
     }
 
     void AddEarlyLogOutput(EarlyLogWrite callback)
@@ -320,12 +320,12 @@ extern "C"
         
         CoreLocalInfo& clb = CoreLocal();
         PanicWrite("Processor %lu: runLevel=%s, logBuffer=0x%lx\r\n", 
-            clb.id, RunLevelStrs[(size_t)clb.runLevel], (uintptr_t)clb.logBuffers);
+            clb.id, RunLevelStrs[(size_t)clb.runLevel], (uintptr_t)clb[LocalPtr::Log]);
 
         //print thread-local info
-        if (CoreLocalAvailable() && CoreLocal().schedThread != nullptr)
+        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
         {
-            Tasking::Thread& thread = *static_cast<Tasking::Thread*>(CoreLocal().schedThread);
+            Tasking::Thread& thread = *static_cast<Tasking::Thread*>(CoreLocal()[LocalPtr::Thread]);
             PanicWrite("Thread: %lu, name=<unimplemented>\r\n", thread.Id());
         }
         else

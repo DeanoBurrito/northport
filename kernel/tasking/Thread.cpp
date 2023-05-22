@@ -9,7 +9,7 @@ namespace Npk::Tasking
     }
 
     Thread& Thread::Current()
-    { return *reinterpret_cast<Thread*>(CoreLocal().schedThread); }
+    { return *reinterpret_cast<Thread*>(CoreLocal()[LocalPtr::Thread]); }
 
     void Thread::Start()
     {

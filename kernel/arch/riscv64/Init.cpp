@@ -21,8 +21,6 @@ namespace Npk
 
         CoreLocalInfo* clb = new CoreLocalInfo();
         clb->id = id;
-        clb->selfAddr = (uintptr_t)clb;
-        clb->interruptControl = plicContext;
         clb->runLevel = RunLevel::Normal;
         WriteCsr("sscratch", (uintptr_t)clb);
 

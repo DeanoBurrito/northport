@@ -15,7 +15,7 @@ help-text:
 	@printf "Both GCC and clang are supported as compilers, see the options in \e[4;39mConfig.mk\e[0;39m.\r\n"
 	@printf "To build an iso (recommended) you'll need a copy of the Limine Bootloader and xorriso.\r\n"
 	@printf "To use the built-in debug target, gdb-multiarch is required.\r\n"
-	@printf "To build the documentations, a texlive install is required. Alternatively pre-built versions are \
+	@printf "To build the documentation, a texlive install is required. Alternatively pre-built versions are \
 	on github at \e[4;39mhttps://github.com/DeanoBurrito/northport/releases\e[0;39m.\r\n\r\n"
 	@printf "For more detailed instructions see \e[4;39mdocs/Building.md\e[0;39m or the dedicated section in the manual.\r\n"
 
