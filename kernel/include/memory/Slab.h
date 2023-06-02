@@ -3,33 +3,30 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Locks.h>
+#include <Span.h>
 
 namespace Npk::Memory
 {
     struct SlabSegment
     {
-        size_t totalCount;
-        size_t freeCount;
+        size_t freeCount; //total number of free slabs
         uint8_t* bitmap;
+        size_t hint; //hint for where to start next allocation
         uintptr_t allocBase;
-        size_t hint;
+        sl::TicketLock lock;
         SlabSegment* next;
-
-        SlabSegment(uintptr_t base, uint8_t* bitmap, size_t count)
-        : totalCount(count), freeCount(count), bitmap(bitmap), allocBase(base), hint(0), next(nullptr)
-        {}
     };
 
     class SlabAlloc
     {
     private:
         SlabSegment* head;
-        SlabSegment* tail;
-        size_t slabSize;
-        size_t slabsPerSeg;
-        sl::TicketLock lock;
+        size_t slabSize; //size of slab this instance deals with
+        size_t segmentCapacity; //number of slabs per segment
+        size_t segmentSize; //size of segment in bytes, including metadata
 
-        SlabSegment* InitSegment();
+        SlabSegment* CreateSegment();
+        void DestroySegment(SlabSegment* segment);
 
     public:
         SlabAlloc() = default;
@@ -38,9 +35,11 @@ namespace Npk::Memory
         SlabAlloc(SlabAlloc&&) = delete;
         SlabAlloc& operator=(SlabAlloc&&) = delete;
 
-        void Init(size_t sizeSize, size_t slabCount);
+        void Init(size_t slabSizeBytes, size_t segSize, size_t createCount);
 
+        [[nodiscard]]
         void* Alloc();
+        [[nodiscard]]
         bool Free(void* ptr);
 
         [[gnu::always_inline]]

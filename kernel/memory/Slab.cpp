@@ -6,88 +6,121 @@
 
 namespace Npk::Memory
 {
-    SlabSegment* SlabAlloc::InitSegment()
+    SlabSegment* SlabAlloc::CreateSegment()
     {
-        const size_t totalSize = slabSize * slabsPerSeg;
-        const size_t bitmapSize = sl::AlignUp(slabsPerSeg, 8) / 8;
-        const size_t metaSize = sl::AlignUp(sizeof(SlabSegment) + bitmapSize, slabSize);
-        const size_t slabCount = slabsPerSeg - metaSize / slabSize;
+        const size_t bitmapBytes = sl::AlignUp(segmentCapacity, 8) / 8;
+        const size_t reservedBytes = segmentSize - (segmentCapacity * slabSize);
+        ASSERT(reservedBytes >= bitmapBytes + sizeof(SlabSegment), "huh");
 
-        auto maybeRegion = VMM::Kernel().Alloc(totalSize, 0, VmFlags::Write | VmFlags::Anon);
-        ASSERT(maybeRegion, "Failed to expand kernel slabs.");
+        auto maybeRegion = VMM::Kernel().Alloc(segmentSize, 0, VmFlags::Write | VmFlags::Anon);
+        VALIDATE(maybeRegion, nullptr, "Slab segment creation failed: VMM alloc failed.")
         const uintptr_t base = maybeRegion->base;
 
-        uint8_t* bitmapBase = reinterpret_cast<uint8_t*>(base + sizeof(SlabSegment));
-        SlabSegment* segment = new((void*)base) SlabSegment(base + metaSize, bitmapBase, slabCount);
-        sl::memset(bitmapBase, 0, bitmapSize);
+        uint8_t* bitmap = reinterpret_cast<uint8_t*>(base + sizeof(SlabSegment));
+        sl::memset(bitmap, 0, bitmapBytes);
 
-        Log("New kslab seg: base=0x%016lx, slabSize=%luB, count=%lu (%lu reserved)", LogLevel::Verbose,
-            base + metaSize, slabSize, slabCount, slabsPerSeg - slabCount);
-        
+        SlabSegment* segment = new((void*)base) SlabSegment();
+        segment->hint = 0;
+        segment->freeCount = segmentCapacity;
+        segment->bitmap = bitmap;
+        segment->allocBase = base + reservedBytes;
+        segment->next = nullptr;
+
+        const size_t slackBytes = reservedBytes - (bitmapBytes + sizeof(SlabSegment));
+        Log("KSlab segment created: %lux %lub (%lub reserved, %lub slack)", LogLevel::Verbose, 
+            segmentCapacity, slabSize, reservedBytes - slackBytes, slackBytes);
+
         return segment;
     }
 
-    void SlabAlloc::Init(size_t sizeSize, size_t slabCount)
+    void SlabAlloc::DestroySegment(SlabSegment* segment)
     {
-        slabSize = sizeSize;
-        slabsPerSeg = slabCount;
+        ASSERT_UNREACHABLE()
+    }
 
-        head = tail = InitSegment();
+    void SlabAlloc::Init(size_t slabSizeBytes, size_t segSize, size_t createCount)
+    {
+        slabSize = slabSizeBytes;
+        segmentSize = segSize;
+        const size_t bitmapSize = sl::AlignUp(segSize / slabSize, 8) / 8;
+        const size_t metadataSize = bitmapSize + sizeof(SlabSegment);
+        segmentCapacity = (segmentSize - metadataSize) / slabSize;
+
+        SlabSegment* tail = nullptr;
+        createCount = sl::Max(1ul, createCount); //list must contain at least 1 segment
+        for (size_t i = 0; i < createCount; i++)
+        {
+            SlabSegment* latest = CreateSegment();
+            ASSERT(latest != nullptr, "CreateSegment() failed during slab init.");
+
+            if (tail != nullptr) //single list append
+                tail->next = latest;
+            else
+                head = latest;
+            tail = latest;
+        }
     }
 
     void* SlabAlloc::Alloc()
     {
-        sl::ScopedLock scopeLock(lock);
-
+        SlabSegment* tail = nullptr;
         for (SlabSegment* seg = head; seg != nullptr; seg = seg->next)
         {
+            tail = seg;
+            seg->lock.Lock();
             if (seg->freeCount == 0)
-                continue;
-            
-            while (sl::BitmapGet(seg->bitmap, seg->hint))
             {
-                seg->hint++;
-                if (seg->hint >= seg->totalCount)
-                    seg->hint = 0;
+                if (seg->next != nullptr)
+                    seg->lock.Unlock();
+                continue;
             }
+            
+            const size_t found = sl::BitmapFindClear(seg->bitmap, segmentCapacity); //TODO: use hinting
+            ASSERT(found != segmentCapacity, "Segment bitmap out of sync?");
 
-            sl::BitmapSet(seg->bitmap, seg->hint);
+            sl::BitmapSet(seg->bitmap, found);
             seg->freeCount--;
-            return reinterpret_cast<void*>(seg->allocBase + seg->hint * slabSize);
+            seg->hint = (found + 1) % segmentCapacity; //TODO: sort based on fullness
+            seg->lock.Unlock();
+
+            return reinterpret_cast<void*>(seg->allocBase + (found * slabSize));
         }
+        
+        //all segments are in use: we still have the tail segment locked, so append
+        //and allocate directly from the new segment.
+        SlabSegment* latest = CreateSegment();
+        ASSERT(latest != nullptr, "CreateSegment() failed during expansion.");
 
-        tail->next = InitSegment();
-        tail = tail->next;
+        latest->lock.Lock();
+        sl::BitmapSet(latest->bitmap, 0);
+        latest->freeCount--;
+        latest->hint = 1;
+        latest->lock.Unlock();
 
-        //dont even bother searching, just take the first slab
-        sl::BitmapSet(tail->bitmap, 0);
-        tail->freeCount--;
-        tail->hint = 1;
+        tail->next = latest;
+        tail->lock.Unlock();
         return reinterpret_cast<void*>(tail->allocBase);
     }
 
     bool SlabAlloc::Free(void* ptr)
     {
-        sl::ScopedLock scopeLock(lock);
-
         for (SlabSegment* seg = head; seg != nullptr; seg = seg->next)
         {
-            const uintptr_t segTop = seg->allocBase + seg->totalCount * slabSize;
-            if ((uintptr_t)ptr >= segTop)
-                continue;
+            sl::ScopedLock segLock(seg->lock);
+            const size_t segTop = seg->allocBase + (segmentCapacity * slabSize);
+            if ((uintptr_t)ptr < seg->allocBase || (uintptr_t)ptr >= segTop)
+                continue; //not found in this segment
             
-            if ((uintptr_t)ptr < seg->allocBase)
-                return false;
-
             const uintptr_t localPtr = (uintptr_t)ptr - seg->allocBase;
             if (!sl::BitmapClear(seg->bitmap, localPtr / slabSize))
                 Log("Kernel slab double free @ 0x%016lx", LogLevel::Error, (uintptr_t)ptr);
             
             seg->hint = localPtr / slabSize;
             seg->freeCount++;
+            //TODO: handle duplicate free segments, free one of them
             return true;
         }
 
-        return false;
+        return true;
     }
 }

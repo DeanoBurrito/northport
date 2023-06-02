@@ -5,11 +5,31 @@
 #include <memory/Slab.h>
 #include <memory/Pool.h>
 #include <debug/Log.h>
+#include <Optional.h>
 
 namespace Npk::Memory
 {
     constexpr size_t SlabCount = 5;
     constexpr size_t SlabBaseSize = 32;
+    //NOTE: this is tuned so that sizeof(SlabCache) fits fits within a slab
+    //with zero wasted space.
+    constexpr size_t SlabCacheSize = 14;
+
+    struct SlabCache
+    {
+        size_t count;
+        SlabCache* next;
+        void* ptrs[SlabCacheSize];
+    };
+
+    struct HeapCacheData
+    {
+        struct
+        {
+            SlabCache* loaded;
+            SlabCache* prev;
+        } magazines[SlabCount];
+    };
 
     class VirtualMemoryManager;
     
@@ -17,13 +37,24 @@ namespace Npk::Memory
     {
     friend VirtualMemoryManager;
     private:
-        SlabAlloc slabs[SlabCount];        
+        SlabAlloc slabs[SlabCount];
+        struct
+        {
+            SlabCache* fullHead; //TODO: Add sl::ForwardList and sl::Queue
+            SlabCache* fullTail;
+            SlabCache* emptyHead;
+            SlabCache* emptyTail;
+            sl::SpinLock lock;
+        } cacheDepot[SlabCount];
         PoolAlloc pool;
 
         void Init();
+        void* DoSlabAlloc(size_t index);
+        void DoSlabFree(size_t index, void* ptr);
 
     public:
         static Heap& Global();
+        void CreateCaches();
 
         Heap() = default;
         Heap(const Heap&) = delete;
@@ -31,8 +62,9 @@ namespace Npk::Memory
         Heap(Heap&&) = delete;
         Heap& operator=(Heap&&) = delete;
 
-        void* Alloc(size_t);
-        void Free(void* ptr);
+        [[nodiscard]]
+        void* Alloc(size_t size);
+        void Free(void* ptr, size_t length);
     };
 
     /*
@@ -95,12 +127,12 @@ namespace Npk::Memory
             //cache is full, see if we can immediately free (and free the overflow list too)
             if (CoreLocal().runLevel != RunLevel::IntHandler)
             {
-                Heap::Global().Free(ptr);
+                Heap::Global().Free(ptr, length);
                 while (overdueList != nullptr)
                 {
                     OverdueItem* item = overdueList;
                     overdueList = item->next;
-                    Heap::Global().Free(item);
+                    Heap::Global().Free(ptr, length);
                 }
             }
 

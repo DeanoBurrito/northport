@@ -154,6 +154,6 @@ NoParse:
 
 void CloseImage(GTImage& image)
 {
-    delete[] image.data;
+    operator delete[](image.data, (size_t)0);
     image.data = nullptr;
 }

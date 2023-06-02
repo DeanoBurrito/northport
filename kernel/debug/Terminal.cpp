@@ -886,11 +886,11 @@ def:
         }
 
         vgaFontBits = nullptr;
-        delete[] vgaFontBool;
-        delete[] grid;
-        delete[] queue;
-        delete[] map;
-        delete[] bgCanvas;
+        operator delete[](vgaFontBool, vgaFontBoolSize / sizeof(bool));
+        operator delete[](grid, gridSize / sizeof(GTChar));
+        operator delete[](queue, queueSize / sizeof(GTQueueItem));
+        operator delete[](map, mapSize / sizeof(void*));
+        operator delete[](bgCanvas, bgCanvasSize / sizeof(uint32_t));
     }
 
     void Terminal::Reinit()

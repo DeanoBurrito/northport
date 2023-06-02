@@ -55,7 +55,9 @@ namespace Npk::Memory
 
         void Init(size_t minAllocBytes);
 
+        [[nodiscard]]
         void* Alloc(size_t bytes);
+        [[nodiscard]]
         bool Free(void* ptr);
     };
 }
