@@ -7,6 +7,7 @@
 #include <interrupts/InterruptManager.h>
 #include <memory/Vmm.h>
 #include <memory/Pmm.h>
+#include <tasking/Thread.h>
 #include <Maths.h>
 #include <Memory.h>
 
@@ -24,10 +25,6 @@ namespace Npk::Drivers
             There's also the trick of a device with type 0, which means this device is
             simply a placeholder in the device tree for later on, and should be ignored.
         */
-        auto maybeFilterTag = FindTag(arg, InitTagType::Filter);
-        VALIDATE(maybeFilterTag,, "No filter tag");
-        FilterInitTag* filterTag = static_cast<FilterInitTag*>(*maybeFilterTag);
-
         auto maybeDtNodeTag = FindTag(arg, InitTagType::DeviceTree);
         VALIDATE(maybeDtNodeTag,, "No device tree node tag");
         DeviceTreeInitTag* dtTag = static_cast<DeviceTreeInitTag*>(*maybeDtNodeTag);
@@ -40,22 +37,29 @@ namespace Npk::Drivers
         VmObject mmio(PageSize, reg.base, VmFlags::Mmio);
         VALIDATE(mmio->Read<uint32_t>() == VirtioMmioMagic,, "Bad magic.");
         const uint32_t deviceType = mmio->Offset((size_t)VirtioReg::DeviceId).Read<uint32_t>();
+
+        //type 0 indicates this device is just a placeholder within the memory map, just ignore it.
         if (deviceType == 0)
-            return; //type 0 is the placeholder device in memory maps. We're supposed to ignore it.
+        {
+            Log("Virtio mmio device is just a placeholder.", LogLevel::Verbose);
+            Tasking::Thread::Current().Exit(0);
+        }
 
         const char* nameTemplate = "VirtioMmio%u";
         const size_t nameLength = npf_snprintf(nullptr, 0, nameTemplate, deviceType) + 1;
         char driverName[nameLength];
         npf_snprintf(driverName, nameLength, nameTemplate, deviceType);
 
-        Drivers::ManifestName manifestName = { nameLength, reinterpret_cast<uint8_t*>(driverName) };
+        Drivers::ManifestName manifestName(reinterpret_cast<uint8_t*>(driverName), nameLength);
         DeviceTreeInitTag* driverInitTag = new DeviceTreeInitTag(dtTag->node, nullptr);
-
-        *filterTag->success = Drivers::DriverManager::Global().TryLoadDriver(manifestName, driverInitTag);
-        if (*filterTag->success)
-            CleanupTags(arg); //Only cleanup the tags if we successfully loaded a driver.
-        else
+        if (!DriverManager::Global().TryLoadDriver(manifestName, driverInitTag))
+        {
+            Log("Failed to load driver for virtio mmio type %u", LogLevel::Error, deviceType);
             delete driverInitTag;
+        }
+
+        CleanupTags(arg);
+        Tasking::Thread::Current().Exit(0);
     }
 
 //signs of a bad API?
@@ -244,6 +248,15 @@ namespace Npk::Drivers
             return configAccess->Offset((size_t)VirtioReg::DeviceConfigBase);
     }
 
+
+    void VirtioInterruptStub(size_t vector, void* arg)
+    {
+        //we dont need to do anything inside of virtio device interrupts currently, 
+        //but this function gets installed as the interrupt handler anyway - just for
+        //consistency.
+        (void)vector; (void)arg;
+    }
+
     bool VirtioTransport::InitQueue(size_t index, uint16_t maxQueueEntries)
     {
         ASSERT(initialized, "Uninitialized");
@@ -255,6 +268,8 @@ namespace Npk::Drivers
         {
             volatile VirtioPciCommonCfg* cfg = configAccess->As<volatile VirtioPciCommonCfg>();
             
+            //select the queue we want to create, determine how much memory is needed
+            //for virtqueue data structures.
             cfg->queueSelect = index;
             const uint16_t queueSize = sl::Min(cfg->queueSize, maxQueueEntries);
             cfg->queueSize = queueSize;
@@ -264,20 +279,27 @@ namespace Npk::Drivers
             const size_t usedSize = queueSize * 8 + 6;
 
             size_t totalSize = descSize;
-            totalSize = sl::AlignUp(totalSize, 2);
+            totalSize = sl::AlignUp(totalSize, 2); //alignment required by the spec
             totalSize += availSize;
             totalSize = sl::AlignUp(totalSize, 4);
             totalSize += usedSize;
 
+            //try to get MSIX msix capability,
             auto maybeVector = Interrupts::InterruptManager::Global().Alloc();
             VALIDATE(maybeVector, false, "No vector.");
             auto maybeMsix = Devices::PciCap::Find(pciAddr, Devices::PciCapMsix);
             VALIDATE(maybeMsix, false, "No MSIX cap.");
 
             Devices::MsixCap msix(*maybeMsix);
-            Devices::PciBar bir = pciAddr.ReadBar(msix.Bir());
-            msixBirAccess = VmObject{ bir.size, bir.address, VmFlags::Mmio | VmFlags::Write };
+            if (!msixBirAccess.Valid())
+            {
+                //map msix config area if required
+                Devices::PciBar bir = pciAddr.ReadBar(msix.Bir());
+                ASSERT(bir.isMemory, "Only memory BARs supported");
+                msixBirAccess = VmObject{ bir.size, bir.address, VmFlags::Mmio | VmFlags::Write };
+            }
 
+            //setup msix
             msix.SetEntry(msixBirAccess->ptr, 0, MsiAddress(CoreLocal().id, *maybeVector), 
                 MsiData(CoreLocal().id, *maybeVector), false);
             msix.Enable(true);
@@ -290,9 +312,14 @@ namespace Npk::Drivers
                 return false;
             }
 
+            //install interrupt handler
+            Interrupts::InterruptManager::Global().Attach(*maybeVector, VirtioInterruptStub, this);
+
+            //get physical memory to hold virtqueue structures
             uintptr_t queueBuff = PMM::Global().Alloc(sl::AlignUp(totalSize, PageSize) / PageSize);
             sl::memset(sl::NativePtr(queueBuff + hhdmBase).ptr, 0, totalSize);
 
+            //tell device about buffers
             cfg->queueDesc = queueBuff;
             queueBuff = sl::AlignUp(queueBuff + descSize, 2);
             cfg->queueDriver = queueBuff;

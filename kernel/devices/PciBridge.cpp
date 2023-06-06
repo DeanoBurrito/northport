@@ -167,7 +167,7 @@ namespace Npk::Devices
     {
         using namespace Drivers;
         uint8_t nameBuffer[10] { "pcic\0\0\0\0\0" };
-        ManifestName manifestName { 0, nameBuffer };
+        ManifestName manifestName;
 
         size_t loadedCount = addresses.Size();
         for (size_t i = 0; i < addresses.Size(); i++)
@@ -181,7 +181,7 @@ namespace Npk::Devices
             nameBuffer[5] = (funcId >> 0)  & 0xFF;
             nameBuffer[6] = (funcId >> 24) & 0xFF;
             nameBuffer[7] = (funcId >> 16) & 0xFF;
-            manifestName.length = 8;
+            manifestName = ManifestName(nameBuffer, 8);
             if (DriverManager::Global().TryLoadDriver(manifestName, initTag))
                 continue;
 
@@ -191,7 +191,7 @@ namespace Npk::Devices
             nameBuffer[4] = (funcClass >> 24) & 0xFF;
             nameBuffer[5] = (funcClass >> 16) & 0xFF;
             nameBuffer[6] = (funcClass >> 8)  & 0xFF;
-            manifestName.length = 7;
+            manifestName = ManifestName(nameBuffer, 7);
             if (DriverManager::Global().TryLoadDriver(manifestName, initTag))
                 continue;
 

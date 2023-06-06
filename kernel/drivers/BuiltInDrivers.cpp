@@ -20,31 +20,25 @@ namespace Npk::Drivers
     void LoadBuiltInDrivers()
     {
         {   //bochs vga
-            ManifestName name { sizeof(bochsVgaName), bochsVgaName };
-            DriverManifest manifest { true, false, name, "bochs_vga", BochsVgaMain };
+            DriverManifest manifest(bochsVgaName, "BochsVga", BochsVgaMain);
             DriverManager::Global().RegisterDriver(manifest);
         }
 
         {
             //filter for detecting virtio-over-mmio devices
-            ManifestName name { sizeof(virtioMmioFilter), virtioMmioFilter };
-            DriverManifest manifest { true, true, name, "virtio_mmio", VirtioMmioFilterMain };
+            DriverManifest manifest(virtioMmioFilter, "VirtioMmioFilter", VirtioMmioFilterMain);
             DriverManager::Global().RegisterDriver(manifest);
         }
 
         {   //virtio gpu
-            ManifestName namePci { sizeof(virtioGpuPciName), virtioGpuPciName };
-            DriverManifest manifestPci { true, false, namePci, "virtio_gpu_pci", VirtioGpuMain };
-            DriverManager::Global().RegisterDriver(manifestPci);
-
-            ManifestName nameMmio { sizeof(virtioGpuMmioName), virtioGpuMmioName };
-            DriverManifest manifestMmio { true, false, nameMmio, "virtio_gpu_mmio", VirtioGpuMain };
-            DriverManager::Global().RegisterDriver(manifestMmio);
+            DriverManifest pciManifest(virtioGpuPciName, "VirtioGpu", VirtioGpuMain);
+            DriverManifest mmioManifest(virtioGpuMmioName, "VirtioGpu", VirtioGpuMain);
+            DriverManager::Global().RegisterDriver(pciManifest);
+            DriverManager::Global().RegisterDriver(mmioManifest);
         }
 
         {   //NVMe
-            ManifestName name { sizeof(nvmeName), nvmeName };
-            DriverManifest manifest { true, false, name, "nvme", NvmeMain };
+            DriverManifest manifest(nvmeName, "Nvme", NvmeMain);
             DriverManager::Global().RegisterDriver(manifest);
         }
     }

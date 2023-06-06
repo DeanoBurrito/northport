@@ -11,7 +11,6 @@ namespace Npk::Drivers
     {
         Pci,
         DeviceTree,
-        Filter,
     };
 
     struct InitTag
@@ -38,16 +37,6 @@ namespace Npk::Drivers
 
         DeviceTreeInitTag(Config::DtNode node, InitTag* next)
         : InitTag(InitTagType::DeviceTree, next), node(node)
-        {}
-    };
-
-    struct FilterInitTag : public InitTag
-    {
-        const ManifestName name;
-        volatile bool* success;
-
-        FilterInitTag(ManifestName name, volatile bool* succ, InitTag* next) : InitTag(InitTagType::Filter, next), 
-            name(name), success(succ)
         {}
     };
 

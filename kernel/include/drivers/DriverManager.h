@@ -4,32 +4,30 @@
 #include <drivers/InitTags.h>
 #include <tasking/Process.h>
 #include <containers/LinkedList.h>
-#include <Optional.h>
 #include <Locks.h>
+#include <Span.h>
 
 namespace Npk::Drivers
 {
-    enum class DriverStatus
-    {
-        PendingOnline = 0,
-        Online,
-        PendingOffline,
-        Offline,
-        Error,
-    };
-    
     struct LoadedDriver
     {
+        Tasking::Process* process;
         DriverManifest& manifest;
-        Tasking::Process* proc;
+
+        LoadedDriver(DriverManifest& man) : manifest(man)
+        {}
     };
     
     class DriverManager
     {
     private:
         sl::LinkedList<DriverManifest> manifests;
-        sl::LinkedList<LoadedDriver> instances;
         sl::TicketLock lock;
+
+        DriverManifest* FindByFriendlyName(sl::StringSpan name);
+        DriverManifest* FindByMachName(ManifestName name);
+
+        bool KillDriver(LoadedDriver* driver);
 
     public:
         static DriverManager& Global();
@@ -43,8 +41,8 @@ namespace Npk::Drivers
         void Init();
 
         void RegisterDriver(const DriverManifest& manifest);
-        bool TryLoadDriver(ManifestName name, InitTag* tags);
-        bool UnloadDriver(ManifestName name);
-        bool UnloadDriver(const char* friendlyName);
+        bool TryLoadDriver(ManifestName machineName, InitTag* tags);
+        bool UnloadDriver(ManifestName machineName);
+        bool UnloadDriver(sl::StringSpan friendlyName);
     };
 }

@@ -162,7 +162,7 @@ namespace Npk
                 npf_snprintf(driverName, nameLen, nameTemplate, propStr);
 
                 //see the 'oof' assert early in this function.
-                ManifestName manifestName { nameLen, reinterpret_cast<uint8_t*>(driverName) };
+                ManifestName manifestName(reinterpret_cast<uint8_t*>(driverName), nameLen);
                 success = DriverManager::Global().TryLoadDriver(manifestName, initTag);
                 if (success)
                     break;

@@ -7,6 +7,45 @@
 namespace Npk::Drivers
 {
     void LoadBuiltInDrivers(); //defined in drivers/BuiltInDrivers.cpp
+
+    DriverManifest* DriverManager::FindByFriendlyName(sl::StringSpan friendlyName)
+    {
+        for (auto it = manifests.Begin(); it != manifests.End(); ++it)
+        {
+            if (it->friendlyName.Size() != friendlyName.Size())
+                continue;
+            if (sl::memcmp(it->friendlyName.Begin(), friendlyName.Begin(), friendlyName.Size()) != 0)
+                continue;
+            return &*it;
+        }
+
+        return nullptr;
+    }
+
+    DriverManifest* DriverManager::FindByMachName(ManifestName machineName)
+    {
+        for (auto it = manifests.Begin(); it != manifests.End(); ++it)
+        {
+            if (it->machineName.Size() != machineName.Size())
+                continue;
+            if (sl::memcmp(it->machineName.Begin(), machineName.Begin(), machineName.Size()) != 0)
+                continue;
+            return &*it;
+        }
+
+        return nullptr;
+    }
+
+    bool DriverManager::KillDriver(LoadedDriver* driver)
+    {
+        driver->process->Kill();
+        
+        DriverManifest& manifest = driver->manifest;
+        manifest.control = nullptr;
+        delete driver;
+
+        return true;
+    }
     
     DriverManager globalDriverManager;
     DriverManager& DriverManager::Global()
@@ -23,97 +62,55 @@ namespace Npk::Drivers
         sl::ScopedLock scopeLock(lock);
         
         //check name isn't already in use
-        for (auto it = manifests.Begin(); it != manifests.End(); ++it)
+        DriverManifest* existing = FindByMachName(manifest.machineName);
+        if (existing != nullptr)
         {
-            if (it->name == manifest.name)
-            {
-                Log("Failed to register driver manifest, name already in use: %s", LogLevel::Error, 
-                    manifest.friendlyName);
-                return;
-            }
+            Log("Driver registration failed: %s machine name conflicts with '%s'", 
+                LogLevel::Error, manifest.friendlyName.Begin(), existing->friendlyName.Begin());
+            return;
         }
 
         manifests.PushBack(manifest);
-        Log("Driver manifest registered: %s %s", LogLevel::Verbose, manifest.friendlyName, 
-            manifest.isFilter ? "(filter)" : "");
+        manifests.Back().control = nullptr;
+        Log("Driver manifest registered: %s", LogLevel::Verbose, manifest.friendlyName.Begin());
     }
 
     bool DriverManager::TryLoadDriver(ManifestName name, InitTag* tags)
     {
         sl::ScopedLock scopeLock(lock);
-        DriverManifest* manifest = nullptr;
-
-        for (auto it = manifests.Begin(); it != manifests.End(); ++it)
-        {
-            if (it->name != name)
-                continue;
-            
-            manifest = &*it;
-        }
-
-        if (manifest == nullptr)
+        DriverManifest* manifest = FindByMachName(name);
+        if (manifest == nullptr || manifest->control != nullptr)
             return false;
-        
-        if (manifest->isFilter)
-        {
-            volatile bool success = false;
-            FilterInitTag* initTag = new FilterInitTag(name, &success, tags);
 
-            scopeLock.Release();
-            manifest->EnterNew(initTag);
-            if (!success)
-                delete initTag;
-            return success;
-        }
-        ASSERT(manifest->builtin, "Only builtin drivers currently supported");
-
+        manifest->control = new LoadedDriver(*manifest);
         using namespace Tasking;
-        auto driver = instances.EmplaceBack( *manifest, Process::Create() );
-        driver.manifest = *manifest;
+        Process* proc = (manifest->control->process = Process::Create());
+        Thread* mainThread = Thread::Create(manifest->EnterNew, tags, manifest->control->process);
 
-        Thread* mainThread = Thread::Create(manifest->EnterNew, tags, driver.proc);
         mainThread->Start();
-        Log("Starting driver: %s, proc=%lu, mainThread=%lu.", LogLevel::Info, 
-            manifest->friendlyName, driver.proc->Id(), mainThread->Id());
+        Log("Starting driver: %s, proc=%lu, mainThread=%lu.", LogLevel::Info, manifest->friendlyName.Begin(), 
+            proc->Id(), mainThread->Id());
 
         return true;
     }
 
-    bool DriverManager::UnloadDriver(ManifestName name)
+    bool DriverManager::UnloadDriver(sl::Span<const uint8_t> name)
     {
         sl::ScopedLock scopeLock(lock);
-        
-        for (auto it = instances.Begin(); it != instances.End(); ++it)
-        {
-            if (it->manifest.name != name)
-                continue;
-            
-            Log("Stopping driver: %s, proc=%lu.", LogLevel::Debug, it->manifest.friendlyName, it->proc->Id());
-            it->proc->Kill(); //TODO: would be nice to allow for a graceful exit.
-            instances.Erase(it);
-            return true;
-        }
+        DriverManifest* manifest = FindByMachName(name);
+        if (manifest == nullptr || manifest->control == nullptr)
+            return false;
 
-        return false;
+        return KillDriver(manifest->control);
     }
 
-    bool DriverManager::UnloadDriver(const char* friendlyName)
+    bool DriverManager::UnloadDriver(sl::StringSpan friendlyName)
     {
-        const size_t nameLen = sl::memfirst(friendlyName, 0, 0);
         sl::ScopedLock scopeLock(lock);
+        DriverManifest* manifest = FindByFriendlyName(friendlyName);
+        if (manifest == nullptr || manifest->control == nullptr)
+            return false;
         
-        for (auto it = instances.Begin(); it != instances.End(); ++it)
-        {
-            const size_t fNameLen = sl::memfirst(it->manifest.friendlyName, 0, 0);
-            if (nameLen != fNameLen || sl::memcmp(friendlyName, it->manifest.friendlyName, nameLen) != 0)
-                continue;
-            
-            Log("Stopping driver: %s, proc=%lu.", LogLevel::Debug, it->manifest.friendlyName, it->proc->Id());
-            it->proc->Kill();
-            instances.Erase(it);
-            return true;
-        }
-
-        return false;
+        return KillDriver(manifest->control);
     }
 }

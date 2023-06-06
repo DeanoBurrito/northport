@@ -207,7 +207,7 @@ namespace Npk::Debug
         buffer[bufferStart++] = '\n';
 
         if (level == LogLevel::Fatal)
-            Panic(nullptr, &buffer[textStart]);
+            Panic(&buffer[textStart]);
 
         if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Log] != nullptr)
             WriteLog(buffer, bufferLen, reinterpret_cast<LogBuffer*>(CoreLocal()[LocalPtr::Log]));
@@ -292,7 +292,7 @@ extern "C"
     static_assert(Npk::Debug::EarlyBufferSize > 0x2000, "Early buffer is too small to used as a panic stack");
     void* panicStack = &Npk::Debug::earlyBufferStore[Npk::Debug::EarlyBufferSize];
 
-    void PanicLanding(Npk::TrapFrame* exceptionFrame, const char* reason)
+    void PanicLanding(const char* reason)
     {
         using namespace Npk;
         using namespace Npk::Debug;

@@ -66,7 +66,7 @@ namespace Npk
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
     void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
-    void Panic(TrapFrame* exceptionFrame, const char* reason) asm("Panic");
+    void Panic(const char* reason) asm("Panic");
     uintptr_t GetReturnAddr(size_t level);
 
     void SendIpi(size_t dest);

@@ -2,32 +2,24 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <Memory.h>
+#include <Span.h>
 
 namespace Npk::Drivers
 {
-    struct ManifestName
-    {
-        size_t length;
-        const uint8_t* data;
-    };
+    using ManifestName = sl::Span<const uint8_t>;
+    using DriverEntryFunc = void (*)(void* arg);
 
-    constexpr bool operator==(const ManifestName& a, const ManifestName& b)
-    {
-        return a.length == b.length && sl::memcmp(a.data, b.data, a.length) == 0;
-    }
-
-    constexpr bool operator!=(const ManifestName& a, const ManifestName& b)
-    {
-        return a.length != b.length || sl::memcmp(a.data, b.data, a.length) != 0;
-    }
+    struct LoadedDriver;
 
     struct DriverManifest
     {
-        bool builtin;
-        bool isFilter;
-        ManifestName name;
-        const char* friendlyName;
-        void (*EnterNew)(void* arg);
+        ManifestName machineName;
+        sl::StringSpan friendlyName;
+        DriverEntryFunc EnterNew;
+        LoadedDriver* control;
+
+        constexpr DriverManifest(ManifestName mName, sl::StringSpan fName, DriverEntryFunc entry)
+        : machineName(mName), friendlyName(fName), EnterNew(entry), control(nullptr)
+        {}
     };
 }

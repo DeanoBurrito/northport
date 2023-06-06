@@ -4,7 +4,7 @@
 .extern HatHandlePanic
 .extern panicStack
 
-# void Panic(TrapFrame* frame, const char* reason)
+# void Panic(const char* reason)
 Panic:
     li t0, 0x40002
     csrc sstatus, t0
