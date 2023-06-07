@@ -15,6 +15,7 @@ namespace Npk
     //each of the subsystems that get to store core-local data.
     enum class LocalPtr : size_t
     {
+        Config, //core-specific settings, supported features etc
         IntControl, //interrupt controller data: lapic/imsic
         Scheduler, //core-local data for scheduler
         Thread, //currently running thread
@@ -56,6 +57,7 @@ namespace Npk
     { return value - hhdmBase; }
 
     struct TrapFrame;
+    struct ExtendedRegs;
 
     void Wfi();
     bool InterruptsEnabled();
@@ -65,14 +67,19 @@ namespace Npk
     void BlockSumac();
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
-    void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
-    void Panic(const char* reason) asm("Panic");
-    uintptr_t GetReturnAddr(size_t level);
+    void InitExtendedRegs(ExtendedRegs** regs);
+    void SaveExtendedRegs(ExtendedRegs* regs);
+    void LoadExtendedRegs(ExtendedRegs* regs);
+    void ExtendedRegsFence();
 
+    uintptr_t GetReturnAddr(size_t level);
     void SendIpi(size_t dest);
     uintptr_t MsiAddress(size_t core, size_t vector);
     uintptr_t MsiData(size_t core, size_t vector);
     void MsiExtract(uintptr_t addr, uintptr_t data, size_t& core, size_t& vector);
+
+    void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
+    void Panic(const char* reason) asm("Panic");
 
     CoreLocalInfo& CoreLocal();
     bool CoreLocalAvailable();

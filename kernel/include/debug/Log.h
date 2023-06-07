@@ -3,11 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-namespace Npk
-{
-    struct TrapFrame; //see arch/Platform.h
-}
-
 namespace Npk::Debug
 {
     struct KernelSymbol

@@ -34,6 +34,7 @@ namespace Npk::Tasking
             sl::Atomic<size_t> size;
             sl::InterruptLock lock;
         } queue;
+        Thread* extRegsOwner; //thread currently owning the extended registers
 
         //deferred procedure call management
         sl::InterruptLock dpcLock;
@@ -95,6 +96,7 @@ namespace Npk::Tasking
         void QueueReschedule();
         bool Suspend(bool yes);
         void SavePrevFrame(TrapFrame* current, RunLevel prevRunLevel);
+        void SwapExtendedRegs();
     };
 
     class ScheduleGuard

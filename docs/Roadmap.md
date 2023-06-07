@@ -2,7 +2,7 @@
     - [x] x86_64:
         - [x] Core (paging, interrupts).
         - [x] Timers (LAPIC, TSC, HPET, PIT).
-        - [ ] FPU, SSE, AVX.
+        - [x] FPU, SSE, AVX.
     - [x] riscv64:
         - [x] Core (paging, interrupts).
         - [x] Timer (SBI, sstc).
@@ -14,13 +14,12 @@
     - [ ] EFI entry stub.
     - [ ] Relocatable kernel.
     - [x] Memory Management:
-        - [x] PMM, with 32bit/64bit zones.
-            - [x] Reclaim bootloader memory.
-            - [x] PFN database.
-            - [ ] Split allocator design, buddy + freelist.
-        - [x] VMM, split kernel/user instances.
-            - [x] Move region-backing into specific VM drivers.
-            - [x] Demand paging.
+        - [x] PMM: 2 bitmap (dma) zones + freelist.
+            - [ ] Hotplug support: inject/eject regions.
+        - [x] VMM - driver based.
+            - [x] Anon driver.
+            - [ ] VFS driver.
+            - [x] Optional demand paging.
             - [ ] Swapping.
             - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
@@ -37,6 +36,7 @@
         - [x] Work stealing.
         - [x] Waitable objects.
         - [ ] Heterogenous cpu support.
+        - [ ] Cpu hotplug support.
     - [x] Panic.
         - [x] Stack frame walker.
     - [ ] Sanitizers.

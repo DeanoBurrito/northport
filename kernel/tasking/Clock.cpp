@@ -6,6 +6,7 @@
 #include <memory/Heap.h>
 #include <Locks.h>
 #include <Atomic.h>
+#include <Maths.h>
 
 namespace Npk::Tasking
 {

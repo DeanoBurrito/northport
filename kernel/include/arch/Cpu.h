@@ -25,6 +25,9 @@ namespace Npk
         InvariantTsc,
 #elif defined(__riscv)
         Sstc,
+        SingleFPU,
+        DoubleFPU,
+        QuadFPU,
 #endif
     };
 

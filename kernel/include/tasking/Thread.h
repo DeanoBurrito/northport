@@ -23,6 +23,7 @@ namespace Npk::Tasking
     friend Scheduler;
     private:
         TrapFrame* frame;
+        ExtendedRegs* extRegs;
         struct
         {
             uintptr_t base;

@@ -35,6 +35,12 @@ namespace Npk
             return false;
         case CpuFeature::VGuest:
             return false;
+        case CpuFeature::SingleFPU:
+            return false;
+        case CpuFeature::DoubleFPU:
+            return false;
+        case CpuFeature::QuadFPU:
+            return false;
 
         default:
             return false;
@@ -49,6 +55,12 @@ namespace Npk
             return "sstc";
         case CpuFeature::VGuest:
             return "vguest";
+        case CpuFeature::SingleFPU:
+            return "F";
+        case CpuFeature::DoubleFPU:
+            return "D";
+        case CpuFeature::QuadFPU:
+            return "Q";
         default:
             return "";
         }

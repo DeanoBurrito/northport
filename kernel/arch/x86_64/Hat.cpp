@@ -3,6 +3,7 @@
 #include <memory/Pmm.h>
 #include <debug/Log.h>
 #include <Memory.h>
+#include <Maths.h>
 
 namespace Npk
 {

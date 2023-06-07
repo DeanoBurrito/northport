@@ -10,12 +10,6 @@
 
 namespace Npk
 {
-    //TODO: having this here (instead of Platform.h) is a bit of a hack.
-    void SendIpi(size_t dest)
-    {
-        LocalApic::Local().SendIpi(dest);
-    }
-    
     /*
         This version of northport is actually a rewrite of the original. A big chunk of
         the APIC code (especially the x2apic stuff) was written by Ivan (github.com/dreamos82).

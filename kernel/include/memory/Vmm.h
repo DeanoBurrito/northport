@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Locks.h>
+#include <Maths.h>
 #include <Optional.h>
 #include <containers/LinkedList.h>
 #include <memory/VmObject.h>

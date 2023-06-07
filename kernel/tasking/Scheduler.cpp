@@ -139,6 +139,7 @@ namespace Npk::Tasking
         DisableInterrupts();
         core->queue.lock.Lock();
         core->queue.head = core->queue.tail = nullptr; //clear the runqueue
+        core->extRegsOwner = nullptr;
         core->suspendScheduling = false;
         core->reschedulePending = false;
 
@@ -211,6 +212,7 @@ namespace Npk::Tasking
             InitTrapFrame(&frame, thread->stack.base + thread->stack.length, (uintptr_t)entry, arg, false);
             parent->vmm.CopyIn((void*)thread->frame, &frame, sizeof(TrapFrame));
         }
+        thread->extRegs = nullptr;
 
         thread->parent = parent;
         thread->coreAffinity = coreAffinity;
@@ -526,6 +528,7 @@ namespace Npk::Tasking
         if (next == nullptr)
             next = core.idleThread;
 
+        ExtendedRegsFence(); //enable a mechanism for lazily swapping extended register states.
         CoreLocal()[LocalPtr::Thread] = next;
         core.reschedulePending = false;
     }
@@ -561,5 +564,21 @@ namespace Npk::Tasking
             core.dpcFrame = current;
         else if (CoreLocal()[LocalPtr::Thread] != nullptr && prevRunLevel == RunLevel::Normal)
             static_cast<Thread*>(CoreLocal()[LocalPtr::Thread])->frame = current;
+    }
+
+    void Scheduler::SwapExtendedRegs()
+    {
+        ASSERT(CoreLocal().runLevel == RunLevel::IntHandler, "Bad run level");
+        SchedulerCore& core = *static_cast<SchedulerCore*>(CoreLocal()[LocalPtr::Scheduler]);
+
+        if (core.extRegsOwner != nullptr)
+            SaveExtendedRegs(core.extRegsOwner->extRegs);
+
+        Thread* currThread = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
+        ASSERT(currThread != nullptr, "Current thread is null");
+        if (currThread->extRegs == nullptr)
+            InitExtendedRegs(&currThread->extRegs);
+        LoadExtendedRegs(currThread->extRegs);
+        core.extRegsOwner = currThread;
     }
 }

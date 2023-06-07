@@ -74,6 +74,8 @@ namespace Npk
                     brandStr[offset + 12 + i] = (d >> shiftor) & 0xFF;
                 }
             }
+
+            brandStr[47] = 0;
             Log("CPUID: brand=%s", LogLevel::Info, brandStr);
         }
 

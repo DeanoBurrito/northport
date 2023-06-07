@@ -2,6 +2,7 @@
 #include <debug/Log.h>
 #include <Bitmap.h>
 #include <Locks.h>
+#include <Maths.h>
 
 namespace Npk::Interrupts
 {

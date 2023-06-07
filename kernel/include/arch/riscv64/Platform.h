@@ -1,13 +1,18 @@
 #include <stdint.h>
 #include <stddef.h>
-#include <Maths.h>
-#include <arch/riscv64/Sbi.h>
 
 //risc-v has multiple names per register, this allows us to use any of the given names.
 #define REG_ALIAS(a, b) union { uint64_t a; uint64_t b; };
 
 namespace Npk
 {
+    struct CoreConfig
+    {
+        size_t extRegsBufferSize;
+        bool hasFpu;
+        bool hasVector;
+    };
+
     struct TrapFrame
     {
         REG_ALIAS(x1, ra)
@@ -105,48 +110,6 @@ namespace Npk
     inline void BlockSumac()
     {
         ClearCsrBits("sstatus", 1 << 18);
-    }
-
-    inline void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
-    {
-        frame->flags.spie = 1;
-        frame->flags.spp = user ? 0 : 1;
-        frame->a0 = (uintptr_t)arg;
-        frame->sepc = entry;
-        frame->sp = sl::AlignDown(stack, 8);
-        frame->fp = 0;
-        frame->vector = (uint64_t)-1; //not necessary, helps with debugging
-    }
-
-    [[gnu::always_inline]]
-    inline uintptr_t GetReturnAddr(size_t level)
-    {
-        struct Frame
-        {
-            Frame* next;
-            uintptr_t retAddr;
-        };
-
-        //NOTE: this is only possible because we compile with -fno-omit-framepointer.
-        //otherwise we'd have to make use of EH/unwind metadata (no thanks).
-        Frame* current = reinterpret_cast<Frame*>((uintptr_t)__builtin_frame_address(0) - 16);
-        for (size_t i = 0; i <= level; i++)
-        {
-            if (current == nullptr)
-                return 0;
-            if (i == level)
-                return current->retAddr;
-            current = current->next - 1;
-        }
-        return 0;
-    }
-    
-    [[gnu::always_inline]]
-    inline void SendIpi(size_t dest)
-    {
-        //SBI spec doesn't specify SXLEN-alignment, but some platforms expect it.
-        //so we do it anyway, just in case.
-        SbiSendIpi(1ul << (dest % 64), dest / 64);
     }
 
     [[gnu::always_inline]]

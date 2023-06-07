@@ -5,6 +5,7 @@
 #include <debug/Log.h>
 #include <config/DeviceTree.h>
 #include <Memory.h>
+#include <Maths.h>
 
 #if __riscv_xlen == 64
     #include <arch/riscv64/Sbi.h>

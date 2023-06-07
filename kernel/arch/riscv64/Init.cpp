@@ -1,6 +1,7 @@
 #include <arch/riscv64/Interrupts.h>
 #include <arch/Timers.h>
 #include <arch/Platform.h>
+#include <arch/Cpu.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
 #include <boot/LimineBootstrap.h>
@@ -10,7 +11,7 @@
 
 namespace Npk
 {
-    void InitCore(size_t id, uint32_t plicContext)
+    void InitCore(size_t id)
     {
         VMM::Kernel().MakeActive();
         
@@ -24,13 +25,27 @@ namespace Npk
         clb->runLevel = RunLevel::Normal;
         WriteCsr("sscratch", (uintptr_t)clb);
 
+        CoreConfig* config = new CoreConfig();
+        CoreLocal()[LocalPtr::Config] = config;
+        if (CpuHasFeature(CpuFeature::QuadFPU))
+            config->extRegsBufferSize = 16 * 32 + 4; //32 regs, 16 bytes each, +4 for FCSR
+        else if (CpuHasFeature(CpuFeature::DoubleFPU))
+            config->extRegsBufferSize = 8 * 32 + 4;
+        else if (CpuHasFeature(CpuFeature::SingleFPU))
+            config->extRegsBufferSize = 4 * 32 + 4;
+        else
+            config->extRegsBufferSize = 0;
+        config->hasFpu = (config->extRegsBufferSize != 0);
+
+        config->hasVector = false; //TODO: vector support
+
         EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }
 
     void ApEntry(limine_smp_info* info)
     {
-        InitCore(info->hart_id, info->plic_context);
+        InitCore(info->hart_id);
         ExitApInit();
     }
 
@@ -96,7 +111,7 @@ extern "C"
                 limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
                 if (procInfo->hart_id == Boot::smpRequest.response->bsp_hart_id)
                 {
-                    InitCore(procInfo->hart_id, procInfo->plic_context);
+                    InitCore(procInfo->hart_id);
                     continue;
                 }
                 

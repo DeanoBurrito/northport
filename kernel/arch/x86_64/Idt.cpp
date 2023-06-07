@@ -61,7 +61,7 @@ extern "C"
         "overflow",
         "BOUND range exceeded",
         "invalid opcode",
-        "no fpu",
+        "device not available",
         "double fault",
         "fpu segment overrun",
         "invalid TSS",
@@ -86,9 +86,7 @@ extern "C"
         CoreLocal().runLevel = RunLevel::IntHandler;
         Tasking::Scheduler::Global().SavePrevFrame(frame, prevRunLevel);
         
-        LocalApic::Local().SendEoi();
-
-        if (frame->vector == IntVectorPageFault)
+        if (frame->vector == 0xE)
         {
             using Memory::VmFaultFlags;
             VmFaultFlags flags = VmFaultFlags::None;
@@ -108,10 +106,15 @@ extern "C"
             else
                 VMM::Kernel().HandleFault(cr2, flags);
         }
+        else if (frame->vector == 0x7)
+            Tasking::Scheduler::Global().SwapExtendedRegs();
         else if (frame->vector < 0x20)
             Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
                 exceptionNames[frame->vector], frame->vector, frame->iret.rip, frame->iret.rsp, frame->ec);
-        else if (frame->vector == IntVectorIpi)
+        
+        //if we've reached this point the interrupt is external, and came via the lapic.
+        LocalApic::Local().SendEoi();
+        if (frame->vector == IntVectorIpi)
             Interrupts::ProcessIpiMail();
         else
             Interrupts::InterruptManager::Global().Dispatch(frame->vector);
