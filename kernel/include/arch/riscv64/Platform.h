@@ -139,12 +139,14 @@ namespace Npk
     [[gnu::always_inline]]
     inline CoreLocalInfo& CoreLocal()
     {
-        return *reinterpret_cast<CoreLocalInfo*>(ReadCsr("sscratch"));
+        register uint64_t tp asm("tp");
+        return *reinterpret_cast<CoreLocalInfo*>(tp);
     }
 
     [[gnu::always_inline]]
     inline bool CoreLocalAvailable()
     {
-        return ReadCsr("sscratch") != 0;
+        register uint64_t tp asm("tp");
+        return tp != 0;
     }
 }

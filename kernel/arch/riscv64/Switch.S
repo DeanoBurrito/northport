@@ -27,44 +27,22 @@ SwitchFrame:
 
     sd ra, 0x108(sp) # store return address
     li t0, 1
-    sd t0, 0x110(sp) # spp = 1 + spie = 0, we came from s-mode with ints disabled.
+    sw t0, 0x100(sp) # spp = 1 (s-mode)
+    sw t0, 0x114(sp) # spie = 1 
 
-    sd sp, (a0)
+    sd sp, (a0) # store the pointer to this trap frame
 
 SkipSave:
-    mv sp, a1
+    mv sp, a1 # load the new frame onto the stack
 
-    # setup spp and spie
-    lw t1, 0x110(sp)
-    li t0, 1 << 8
-    beqz t1, 1f
-    csrs sstatus, t0
-    j 2f
-1:
-    csrc sstatus, t0
-2:
-    lw t1, 0x114(sp)
-    li t0, 1 << 5
-    beqz t1, 1f
-    csrs sstatus, t0
-    j 2f
-1:
-    csrc sstatus, t0
-2:
-    
     # restore sepc
     ld t2, 0x108(sp)
     csrw sepc, t2
-
-    # juggle x1 and sscratch
-    ld x1, 0(sp)
-    csrrw x1, sscratch, x1
-    ld t0, 0x8(sp)
-    sd t0, 0(x1)
-
+    # restore most GPRS:
+    # x1 and x5 are temporaries used later in the end of this routine
+    # x2 is the stack pointer, restored last
+    # x4 is restored differently depending on the target mode
     ld x3, 0x10(sp)
-    ld x4, 0x18(sp)
-    ld x5, 0x20(sp)
     ld x6, 0x28(sp)
     ld x7, 0x30(sp)
     ld x8, 0x38(sp)
@@ -92,6 +70,46 @@ SkipSave:
     ld x30, 0xE8(sp)
     ld x31, 0xF0(sp)
 
-    ld x2, 0(x1) # load real sp
-    csrrw x1, sscratch, x1 # restore the real x1
+    # determine which mode we're returning to
+    lw x1, 0x110(sp)
+    beqz x1, GotoUMode
+GotoSMode:
+    # we're returning to s-mode, set spp and spie
+    li x1, 1 << 8
+    csrs sstatus, x1
+    lw x1, 0x114(sp)
+    li x5, 1 << 5
+
+    beqz x1, 1f # set spie if interrupts were enabled
+    csrs sstatus, x5
+    j 2f
+1:
+    csrc sstatus, x5
+2:
+    # restore x1, x5 and stack pointer (x2)
+    # x4/tp is not restored because this is a kernel -> kernel transition, so it remains
+    # to hold the core-local info.
+    ld x1, 0(sp)
+    ld x5, 0x20(sp)
+    addi sp, sp, 280
     sret
+
+GotoUMode:
+    # we're returning to u-mode, set spp and spie
+    li x1, 1 << 8
+    andi x1, x1, 1 << 5
+    csrs sstatus, x1
+
+    ld x1, 0x18(sp) # prime sscratch for a swap with x4 later on
+    csrw sscratch, x1
+    ld x1, 0x8(sp) # stash user stack in scratch slot
+    sd x1, 0(x4)
+
+    # restore x1 and x5
+    ld x1, 0(sp)
+    ld x5, 0x20(sp)
+
+    ld sp, 0(x4) # load user stack from scratch slot
+    csrrw x4, sscratch, x4 # restore real x4 and stash core-local info in sscratch
+    sret
+

@@ -104,6 +104,7 @@ namespace Npk
 
     void ApEntry(limine_smp_info* info)
     {
+        WriteMsr(MsrGsBase, 0); //ensure we wont load bogus core-local info
         InitCore(info->lapic_id);
         ExitApInit();
     }

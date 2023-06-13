@@ -27,7 +27,7 @@ namespace Npk
 
     struct CoreLocalInfo
     {
-        uintptr_t scratch; //reserved for use during syscall shenanigans
+        uintptr_t scratch;
         uintptr_t id;
         RunLevel runLevel;
         void* nextStack; //next stack available for kernel use. On x86_64 this is a duplicate of tss->rsp0

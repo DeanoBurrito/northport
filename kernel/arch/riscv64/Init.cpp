@@ -23,7 +23,7 @@ namespace Npk
         CoreLocalInfo* clb = new CoreLocalInfo();
         clb->id = id;
         clb->runLevel = RunLevel::Normal;
-        WriteCsr("sscratch", (uintptr_t)clb);
+        asm volatile("mv tp, %0" :: "r"((uint64_t)clb));
 
         CoreConfig* config = new CoreConfig();
         CoreLocal()[LocalPtr::Config] = config;
@@ -45,6 +45,9 @@ namespace Npk
 
     void ApEntry(limine_smp_info* info)
     {
+        asm volatile("mv tp, zero"); 
+        asm volatile("csrw sscratch, zero");
+        
         InitCore(info->hart_id);
         ExitApInit();
     }
@@ -92,7 +95,10 @@ extern "C"
     {
         using namespace Npk;
         
-        WriteCsr("sscratch", 0);
+        //these ensure we don't try to load bogus values as the core-local block.
+        asm volatile("mv tp, zero"); //implicitly volatile, but for clarity
+        asm volatile("csrw sscratch, zero"); 
+
         Boot::PerformLimineBootstrap(data->physBase, data->virtBase, data->hartId, data->dtb);
         data = nullptr;
         (void)data;
