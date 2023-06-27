@@ -81,6 +81,29 @@ namespace Npk::Config
         return {};
     }
 
+    sl::Opt<const DtNode> DeviceTree::FindHandleHelper(const DtNode& scan, size_t handle) const
+    {
+        for (size_t i = 0; i < scan.childCount; i++)
+        {
+            const DtNode child = *GetChild(scan, i);
+            auto maybeHandle = child.GetProp("phandle");
+            if (!maybeHandle)
+                continue;
+            if (handle == maybeHandle->ReadNumber())
+                return child;
+        }
+
+        for (size_t  i = 0; i < scan.childCount; i++)
+        {
+            auto found = FindHandleHelper(*GetChild(scan, i), handle);
+            if (found)
+                return found;
+        }
+
+        return {};
+    }
+
+
     size_t DeviceTree::SkipNode(size_t start) const
     {
         if (BS(cells[start]) == FdtBeginNode)
@@ -280,6 +303,14 @@ namespace Npk::Config
 
         const size_t compatStrLen = sl::memfirst(compatStr, 0, 0);
         return FindCompatHelper(rootNode, compatStr, compatStrLen, start ? start->ptr : rootNode.ptr);
+    }
+
+    sl::Opt<const DtNode> DeviceTree::GetByPHandle(size_t handle) const
+    {
+        if (cellsCount == 0)
+            return {};
+
+        return FindHandleHelper(rootNode, handle);
     }
 
     sl::Opt<const DtNode> DeviceTree::GetChild(const DtNode& parent, const char* name) const
