@@ -1,4 +1,5 @@
 #include <arch/riscv64/Interrupts.h>
+#include <arch/riscv64/IntControllers.h>
 #include <arch/Timers.h>
 #include <arch/Platform.h>
 #include <arch/Cpu.h>
@@ -38,7 +39,6 @@ namespace Npk
         config->hasFpu = (config->extRegsBufferSize != 0);
 
         config->hasVector = false; //TODO: vector support
-
         EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }
@@ -108,6 +108,7 @@ extern "C"
         InitPlatform();
 
         TryInitUart();
+        InitIntControllers(); //determine system-level controllers and bring them up.
         InitTimers();
 
         if (Boot::smpRequest.response != nullptr)
