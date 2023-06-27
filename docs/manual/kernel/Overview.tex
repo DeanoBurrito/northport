@@ -1,5 +1,5 @@
 \section{Overview}
-Northport is a monolithic kernel, with some modularity planned for later drivers. The kernel is booted via the limine boot protocol, and begins with some platform specific initialization. After this the clock and scheduler are started, and then the kernel operates as series of \textit{mostly} independent subsystems. The exceptions being the scheduler and virtual memory subsystem as most parts of the kernel will interact with these.
+Northport is a monolithic kernel, with some modularity planned for later drivers. The kernel is booted via the limine boot protocol, and begins with some platform specific initialization. After this the clock and scheduler are started, and then the kernel operates as series of \textit{mostly} independent subsystems.
 
 The kernel makes full use of multi-processor systems, and can run with minimal memory requirements.
 
@@ -91,11 +91,13 @@ The file \verb|CommonInit.cpp| contains initialization code that needs to happen
 \subsection{Multi-Core Systems}
 The kernel is written and tested with multi-core systems in mind, but it's also capable of running on single-core systems. 
 
-From the perspective of the kernel, each core operates independently of the others. The majority of the kernel subsystems are unaware of how many cores are present in the system. The scheduler and IPI mailboxes are the notable exceptions, as they operate on a per-core basis. The scheduler is covered in more in \autoref{Scheduler}.
+From the perspective of the kernel, each core is independent. This means any available processor extensions are detected per-core, and the kernel has full support for heterogenous core setups.
 
-During initialization one core is considered the boot core (the BSP, to use the x86 term) and will set up the initial memory management structures used for the kernel, and perform other early init operations like discovering and initializing early log outputs (like serial devices or the bootloader framebuffer). The boot core is also responsible for starting the other cores in the system so they can initialize themselves. Once each core has finished initializing itself, it will begin scheduled execution. 
+Most kernel subsystems operate without knowing how many cores are present in a system, with notable exceptions being the scheduler (\autoref{Scheduler}) and IPI mailboxes. The kernel heap (\autoref{Heap}) can optionally use core-local caches to speed up allocation and reduce a common source of contention between cores.
 
-At runtime one core is given the special duty of managing the system clock. This is often the boot core, but is not required to be. The clock core is responsible for managing the hardware timer(s) used to provide the clock functions to the rest of the kernel.
+During early initalization, one core is brought online first and is referred to as the BSP (a term borrowed from x86). The BSP does some initial memory management setup and enable any early log outputs before bringing up the cores. At this point each core will initialize itself, detecting and enabling any extensions. One this is done each core then begins processing work from the scheduler.
+
+Once scheduled execution has begun, the cores are treated mostly equally with the exception of timekeeping. One core (usually the BSP, but it's not required to be) is nominated to manage the software clock (\autoref{Clock}), ensuring clock events have their callbacks called at the correct time and on the correct processor. This core also becomes responsible for managing the hardware timers used to manage the clock.
 
 If for some reason a function is required to run on a specific core, there are two options:
 \begin{itemize}

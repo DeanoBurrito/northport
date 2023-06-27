@@ -1,4 +1,5 @@
 \section{Clocks and Timers}
+\label{Clock}
 Northport refers to hardware devices that provide timekeeping facilities as timers, and provides a software abstraction on top called a clock. There is only one clock in the system, and the rest of the kernel uses the clock for getting timer callbacks. Internally the clock uses whatever timers are provided by the platform to ensure it can keep the deadlines set by software.
 
 It's important to note that the timing subsystem is 'best-effort' and \textbf{not real time}. Clock events are guarenteed to expire \textit{exactly once}, and \textit{reasonably soon} after their ideal expiry time. Reasonably soon is relative to the accuracy and precision of the hardware timers being used to drive the clock.

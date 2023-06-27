@@ -1,9 +1,9 @@
-#include <tasking/Event.h>
+#include <tasking/Waitable.h>
 #include <tasking/Scheduler.h>
 
 namespace Npk::Tasking
 {
-    void Event::Wait()
+    void Waitable::Wait()
     {
         const size_t ourId = Thread::Current().Id();
 
@@ -25,12 +25,12 @@ namespace Npk::Tasking
         Scheduler::Global().Yield();
     }
 
-    bool Event::WouldWait()
+    bool Waitable::WouldWait()
     {
         return pendingTriggers > 0;
     }
 
-    void Event::Trigger(bool accumulate, size_t count)
+    void Waitable::Trigger(bool accumulate, size_t count)
     {
         sl::ScopedLock scopeLock(lock);
         

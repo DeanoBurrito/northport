@@ -1,4 +1,5 @@
 \section{Heap Allocation}
+\label{Heap}
 The kernel heap is provided by a series of aggregate slab allocators and a pool allocator. All of this is hidden behind the heap API, which consists of familiar free/alloc functions, and the C-style \verb|malloc()| and \verb|free()| global functions are provided as well (see \verb|memory/New.cpp|) if they're needed. The C functions are simple wrappers around the main heap functions.
 
 The global \verb|new| and \verb|delete| C++ operators have also been defined, making them available for kernel code. This is the ideal way to manage dynamically allocated memory.

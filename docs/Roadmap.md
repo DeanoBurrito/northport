@@ -7,20 +7,21 @@
         - [x] Core (paging, interrupts).
         - [x] Timer (SBI, sstc).
         - [ ] F/D/Q and V extension support.
-        - [ ] AIA (imsic, aplic).
+        - [ ] AIA (imsic, aplic) and ACLINT support.
     - [x] Limine protocol boot shim (for riscv):
         - [x] Memory map, hhdm and kernel address.
         - [x] SMP feature.
+        - [ ] Replace with real project (will need bootable uefi for riscv).
     - [ ] EFI entry stub.
     - [ ] Relocatable kernel.
     - [x] Memory Management:
-        - [x] PMM: 2 bitmap (dma) zones + freelist.
-            - [ ] Hotplug support: inject/eject regions.
+        - [x] PMM: multiple zones, each with a bitmap area + freelist.
+            - [ ] Hotplug support: inject/eject physical memory.
         - [x] VMM - driver based.
             - [x] Anon driver.
             - [ ] VFS driver.
             - [x] Optional demand paging.
-            - [ ] Swapping.
+            - [ ] Swap to disk.
             - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
             - [ ] Per-core slab caches.
@@ -29,12 +30,14 @@
         - [x] Tickless.
         - [x] Infinite expiry
         - [ ] Continuous calibration.
+        - [ ] Stopwatches.
     - [x] IPI mailbox.
     - [x] Scheduler.
         - [x] SMP-support.
         - [x] DPCs.
         - [x] Work stealing.
         - [x] Waitable objects.
+            - [ ] Composite objects.
         - [ ] Heterogenous cpu support.
         - [ ] Cpu hotplug support.
     - [x] Panic.
@@ -51,11 +54,15 @@
     - [x] Peripheral discovery:
         - [x] ACPI tables parser.
         - [x] Device tree parser.
-    - [x] Driver manager.
-        - [ ] Loadable drivers, with C api.
-        - [ ] Move some existing drivers into separate binaries.
-    - [x] Device manager.
-        - [ ] Async command queues.
+    - [ ] Device driver management.
+        - [x] Event queues + dispatcher.
+            - [x] Pluggable event filters.
+        - [ ] Demand loaded drivers (based on event queue filters).
+            - [ ] Load external binaries.
+        - [ ] Root drivers.
+        - [ ] Device interfaces, with command queues.
+        - [ ] Stable ABI.
+            - [ ] Example drivers in other languages.
     - [ ] System calls.
         - [ ] ABI documentation
     - [x] VFS.
@@ -121,3 +128,14 @@
     - [x] Basic locks.
     - [x] Psuedo-RNG.
     - [x] 2D primitives (vectors, rects).
+
+- np-gfx:
+    - [ ] Resource API.
+        - [ ] Shared resources.
+    - [ ] Generic 2D rendering API.
+        - [ ] Software backend.
+        - [ ] Kernel device backend.
+
+- np-syscall:
+    - [ ] C++ system call wrappers.
+

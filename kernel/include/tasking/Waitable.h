@@ -5,7 +5,7 @@
 
 namespace Npk::Tasking
 {
-    class Event
+    class Waitable
     {
     private:
         sl::SpinLock lock;
@@ -13,7 +13,7 @@ namespace Npk::Tasking
         size_t pendingTriggers;
 
     public:
-        constexpr Event() : waitingThreads(), pendingTriggers(0)
+        constexpr Waitable() : waitingThreads(), pendingTriggers(0)
         {}
 
         void Wait();

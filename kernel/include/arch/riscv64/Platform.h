@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -139,14 +141,16 @@ namespace Npk
     [[gnu::always_inline]]
     inline CoreLocalInfo& CoreLocal()
     {
-        register uint64_t tp asm("tp");
+        uint64_t tp;
+        asm("mv %0, tp" : "=r"(tp) :: "memory");
         return *reinterpret_cast<CoreLocalInfo*>(tp);
     }
 
     [[gnu::always_inline]]
     inline bool CoreLocalAvailable()
     {
-        register uint64_t tp asm("tp");
+        uint64_t tp;
+        asm("mv %0, tp" : "=r"(tp) :: "memory");
         return tp != 0;
     }
 }

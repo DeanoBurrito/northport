@@ -11,13 +11,14 @@ CXX_SRCS = arch/Helpers.cpp \
 	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp drivers/builtin/BochsVga.cpp \
 	drivers/InitTags.cpp drivers/builtin/VirtioTransport.cpp drivers/builtin/VirtioGpu.cpp \
 	drivers/builtin/Nvme.cpp \
+	events/Dispatch.cpp events/EventQueue.cpp \
+	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TempFs.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
 	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \
 	memory/virtual/KernelVmDriver.cpp \
 	tasking/Clock.cpp tasking/Thread.cpp tasking/Process.cpp tasking/Scheduler.cpp \
-	tasking/ServiceThreads.cpp tasking/Event.cpp \
-	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TempFs.cpp
+	tasking/ServiceThreads.cpp tasking/Waitable.cpp
 
 AS_SRCS =
 

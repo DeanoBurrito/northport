@@ -1,11 +1,15 @@
 \section{Preamble}
-First of all, thanks for taking an interest in the project! If you're somehow reading this without a copy of the source code, it's available at \url{https://github.com/deanoburrito/northport}.
+First of all, thanks for taking an interest in the project! If you're somehow reading this without a copy of the source code, there are copies hosted at the following sites:
 
-If you encounter any bugs, issues or otherwise just want to chat about the project, feel free to open an issue on github (at the link above) or message me on discord (\verb|r4#8873|).
+\begin{itemize}
+    \item Codeberg: \url{https://codeberg.org/r4/northport}
+    \item GitHub: \url{https://github.com/deanoburrito/northport}
+\end{itemize}
+
+If you encounter any bugs or issues, feel free to open an issue on either of the repository mirrors listed above. If you just want to chat about the project the best way is on discord (\verb|r4#8873|).
 
 \section{Contributors}
-While git (and github) track project contributors, this project has undergone a few rewrites, so I've decided to keep track of the contributors here so ensure everyone is represented. 
-This list is current at the time of writing, but may lag behind the source repository.
+While git tracks contributors to the project, there has been a few rewrites over time, so for posterity a complete list of all contributors is maintained here. 
 
 \begin{itemize}
     \item Dean T, \url{https://github.com/deanoburrito}
@@ -13,7 +17,7 @@ This list is current at the time of writing, but may lag behind the source repos
 \end{itemize}
 
 \section{References \& Thanks}
-\textit{I wanted to say a personal thanks to the following projects and resources, and the authors behind them, as they've helped me at various points throughout the development of northport. Any code from these projects has been licensed as appropriate, while some have been useful as a point of comparison, or helpful in understanding new concepts. - Dean T.}
+I wanted to say a personal thanks to the following projects and resources, and the authors behind them, as they've helped me at various points throughout the development of northport. Any code from these projects has been licensed as appropriate, while some have been useful as a point of comparison, or helpful in understanding new concepts.
 
 \begin{itemize}
     \item The Limine Bootloader: \url{https://github.com/limine-bootloader/limine}
@@ -22,6 +26,8 @@ This list is current at the time of writing, but may lag behind the source repos
     \item Frigg Utils Library: \url{https://github.com/managarm/frigg}
     \item Luna Hypervisor: \url{https://github.com/thomtl/Luna}
     \item SCAL-UX: \url{https://github.com/NetaScale/SCAL-UX}
+    \item Ironclad: \url{https://www.nongnu.org/ironclad/}
+    \item MentOS: \url{https://github.com/mentos-team/MentOS}
 \end{itemize}
 
 The builtin terminal font is \href{https://github.com/viler-int10h/vga-text-mode-fonts/blob/master/FONTS/NON-PC/APRIXENC.F14}{APRIXENC.F14} from \href{https://github.com/viler-int10h/vga-text-mode-fonts}{this collection} of x86 text mode fonts.
@@ -57,7 +63,7 @@ SOFTWARE.
 \section{Target Audience}
 If you're reading this, you're probably the target audience. An intermediate level of C++ knowledge is expected, as is familiarity with working in a freestanding environment.
 
-The purpose of this manual is document northport's design, code and structure; not any of the hardware or protocols it may interact with. Descriptions of things external to the project will only be provided if necessary for another explanation.
+The purpose of this manual is document northport's design and implementation; not any of the hardware or protocols it may interact with. Descriptions of things external to the project will only be provided if necessary for another explanation.
 Having said that, if you find something lacking or that could use clarification, feel free to let me know, or open a PR!
 
 \section{Roadmap}
@@ -71,4 +77,5 @@ Where possible, standard terminology is used to keep things accessible, but ther
 \begin{itemize}
     \item \textbf{HHDM}: Higher Half Direct Map, a term borrowed from the Limine bootloader, this refers to an identity map of all physical memory that has been offset into the higher half. An identity map allows you to access physical memory at the same virtual address, and the HHDM works in a similar way but a fixed offset is added to the virtual address. This allows a full memory of physical memory to be accessible without impacting the lower half. The two fields used to manage this in the kernel (\verb|hhdmBase| and \verb|hhdmLength|) are determined once when the kernel is booted and are constant through the kernel's lifecycle. These values will only change when the kernel is booted, and are otherwise constant throughout it's lifetime. 
     \item \textbf{SUMAC}: A portmanteau of SUM (a riscv term) and SMAP (an x86 term), retconned to mean Supervisor/User Memory Access Control. SUMAC is enabled by default on systems where it's supported, and prevents the kernel from unintentionally accessing user memory. This feature is temporarily disabled when copying data in/out of the kernel address space during system calls, and otherwise is on at all times.
+    \item \textbf{Extended Registers}: This term refers to any non-integer registers present in a processor. The kernel will always preserve integer registers on entry and exit, but extended registers are preserved lazily. Typically this is any floating point and vector registers that are present.
 \end{itemize}

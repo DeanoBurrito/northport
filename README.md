@@ -9,11 +9,13 @@ Instructions for building it yourself are [available here](docs/Building.md), an
 A brief summary of the current goals and features are listed below, or check [the roadmap](docs/Roadmap.md) for a more granular view.
 
 ## Project Goals
-1) To build a modern and relatively complete kernel: driver infrastructure, graphics/audio/network stacks, VFS, and smp-aware scheduler.
-2) Support for multiple platforms. My plan is to develop for risc-v first, and use the x86_64 port as a sanity check. With limine now supporting aarch64, support for that may come later.
-3) To eventually be self-hosting, and have the system be able to cross-compile itself.
+1) To build a usable, extensible and relatively complete kernel. This means an smp-aware scheduler with support for heterogeneous processors, media stacks (graphics, audio and network) and a flexible driver infrastructure.
+2) Support for multiple architectures: the current targets are x86_64 and riscv64, but this may expand over time.
+3) Be self hosting, this includes cross compiling the system.
 4) Clean code and useful documentation.
-5) A comfortable (if limited) userspace experience: window manager, common applications like a text editor and file explorer. This is an extended goal.
+5) Usable on both virtual machines and real hardware.
+
+An extended goal (previously goal #5) is to add a comfortable user experience: a window manager, basic programs like a text editor and file explorer.
 
 ## Project Features
 Kernel:
