@@ -9,7 +9,7 @@ namespace Npk::Memory
     SlabSegment* SlabAlloc::CreateSegment()
     {
         const size_t bitmapBytes = sl::AlignUp(segmentCapacity, 8) / 8;
-        const size_t reservedBytes = segmentSize - (segmentCapacity * slabSize);
+        const size_t reservedBytes = segmentSize - (segmentCapacity * slabSize); //TODO: externally allocate control data in larger slabs
         ASSERT(reservedBytes >= bitmapBytes + sizeof(SlabSegment), "huh");
 
         auto maybeRegion = VMM::Kernel().Alloc(segmentSize, 0, VmFlags::Write | VmFlags::Anon);

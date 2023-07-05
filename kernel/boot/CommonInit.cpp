@@ -16,6 +16,7 @@
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
+#include <memory/Heap.h>
 #include <tasking/Clock.h>
 #include <tasking/Scheduler.h>
 #include <UnitConverter.h>
@@ -143,6 +144,11 @@ namespace Npk
         Tasking::Thread::Current().Exit(0);
     }
 
+    bool CoresInEarlyInit()
+    {
+        return bootloaderRefs.Load(sl::Relaxed) != 0;
+    }
+
     [[noreturn]]
     void ExitBspInit()
     {
@@ -153,6 +159,7 @@ namespace Npk
     [[noreturn]]
     void ExitApInit()
     {
+        Memory::Heap::Global().CreateCaches();
         Debug::InitCoreLogBuffers();
         Interrupts::InitIpiMailbox();
 
@@ -161,6 +168,7 @@ namespace Npk
             Scheduler::Global().RegisterCore();
         else
         {
+            Log("Last core exiting early init stage", LogLevel::Verbose);
             auto reclaimThread = Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr);
             Scheduler::Global().RegisterCore(reclaimThread);
         }

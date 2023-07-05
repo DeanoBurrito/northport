@@ -2,7 +2,6 @@
 
 #include <containers/Vector.h>
 #include <containers/LinkedList.h>
-#include <memory/Heap.h>
 #include <tasking/Thread.h>
 #include <tasking/Dpc.h>
 #include <Locks.h>
@@ -38,7 +37,7 @@ namespace Npk::Tasking
 
         //deferred procedure call management
         sl::InterruptLock dpcLock;
-        sl::LinkedList<DeferredCall, Memory::CachingSlab<16>> dpcs;
+        sl::LinkedList<DeferredCall> dpcs;
         TrapFrame* dpcFrame;
         uintptr_t dpcStack;
         bool dpcFinished;

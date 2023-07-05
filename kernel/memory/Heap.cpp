@@ -27,17 +27,32 @@ namespace Npk::Memory
         HeapCacheData* localState = static_cast<HeapCacheData*>(CoreLocal()[LocalPtr::HeapCache]);
         auto& cache = localState->magazines[index];
 
+        sl::ScopedLock scopeLock(cache.lock); //TODO: potential for self deadlock here?
     try_alloc:
-        //TODO: locking around cache state (prevent self-deadlocks)
         if (cache.loaded->count > 0)
-            return cache.loaded->ptrs[--cache.loaded->count];
+            return cache.loaded->ptrs[--(cache.loaded->count)];
         if (cache.prev->count != 0)
         {
             sl::Swap(cache.loaded, cache.prev);
             goto try_alloc;
         }
-        //TODO: exchange previous mag with depo mag, goto try_alloc
+        
+        auto& depot = cacheDepot[index];
+        depot.lock.Lock();
+        SlabCache* mag = depot.fullCaches.PopFront();
+        if (mag != nullptr)
+        {
+            depot.fullCaches.PushFront(cache.prev);
+            depot.lock.Unlock();
 
+            cache.prev = cache.loaded;
+            cache.loaded = mag;
+            return cache.loaded->ptrs[--(cache.loaded->count)];
+        }
+        depot.lock.Unlock();
+        scopeLock.Release();
+
+        //all else failed, call the global slab allocator directly.
         return slabs[index].Alloc();
     }
 
@@ -54,16 +69,35 @@ namespace Npk::Memory
         HeapCacheData* localState = static_cast<HeapCacheData*>(CoreLocal()[LocalPtr::HeapCache]);
         auto& cache = localState->magazines[index];
 
+        sl::ScopedLock scopeLock(cache.lock);
     try_free:
-        //TODO: locking around cache state (prevent self-deadlocks)
-        if (cache.loaded->count != SlabCacheSize - 1)
-            cache.loaded->ptrs[cache.loaded->count++] = ptr;
+        if (cache.loaded->count < SlabCacheSize - 1)
+        {
+            cache.loaded->ptrs[(cache.loaded->count)++] = ptr;
+            return;
+        }
         if (cache.prev->count == 0)
         {
             sl::Swap(cache.loaded, cache.prev);
             goto try_free;
         }
-        //TODO: get empty mag from depo
+
+        auto& depot = cacheDepot[index];
+        depot.lock.Lock();
+        SlabCache* mag = depot.freeCaches.PopFront();
+        if (mag != nullptr)
+        {
+            depot.freeCaches.PushFront(cache.prev);
+            depot.lock.Unlock();
+
+            cache.prev = cache.loaded;
+            cache.loaded = mag;
+            cache.loaded->ptrs[(cache.loaded->count)++] = ptr;
+            return;
+        }
+        depot.lock.Unlock();
+        scopeLock.Release();
+
         //TODO: try allocate empty mag if all else fails
 
         if (!slabs[index].Free(ptr))
@@ -80,15 +114,28 @@ namespace Npk::Memory
         ASSERT(CoreLocal()[LocalPtr::HeapCache] == nullptr, "Core-local heap cache double init?")
 
         //TODO: expose tunable variables for cache sizes + depth, and a global enable/disable
-
+        HeapCacheData* cache = new HeapCacheData();
+        for (size_t i = 0; i < SlabCount; i++)
+        {
+            cache->magazines[i].prev = new SlabCache();
+            cache->magazines[i].loaded = new SlabCache();
+            cache->magazines[i].loaded->count = SlabCacheSize;
+            cache->magazines[i].prev->count = 0;
+            
+            //prefill the loaded magazine
+            for (size_t j = 0; j < SlabCacheSize; j++)
+                cache->magazines[i].loaded->ptrs[j] = slabs[i].Alloc();
+        }
+        
+        CoreLocal()[LocalPtr::HeapCache] = cache;
+        Log("Attached core-local allocator caches, depth=%lu", LogLevel::Verbose, SlabCacheSize);
     }
 
     void* Heap::Alloc(size_t size)
     {
         //TODO: tracable allocations
-
-        if (CoreLocalAvailable()) //TODO: what about DPCs? would be nice to allow dynamic memory access there.
-            ASSERT(CoreLocal().runLevel == RunLevel::Normal, "Heap allocations only allowed at normal run level.");
+        //if (CoreLocalAvailable() && CoreLocal().runLevel != RunLevel::Normal)
+        //    Log("Heap access at elevated run level.", LogLevel::Warning);
 
         if (size == 0)
             return nullptr;
@@ -108,6 +155,9 @@ namespace Npk::Memory
 
     void Heap::Free(void* ptr, size_t length)
     {
+        //if (CoreLocalAvailable() && CoreLocal().runLevel != RunLevel::Normal)
+        //    Log("Heap access at elevated run level.", LogLevel::Warning);
+
         if (ptr == nullptr)
             return;
         
@@ -119,10 +169,7 @@ namespace Npk::Memory
             slabIndex++;
         }
         if (slabIndex < SlabCount)
-        {
-            DoSlabFree(slabIndex, ptr);
-            return;
-        }
+            return DoSlabFree(slabIndex, ptr);
 
         if (!pool.Free(ptr))
             Log("KPool failed to free %lub at 0x%lx", LogLevel::Error, length, (uintptr_t)ptr);

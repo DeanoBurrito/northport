@@ -7,6 +7,7 @@ namespace Npk
     void InitPlatform();
 
     void InitThread(void*);
+    bool CoresInEarlyInit();
 
     [[noreturn]]
     void ExitBspInit();
