@@ -27,7 +27,9 @@
             - [ ] Swap to disk.
             - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
-            - [ ] Per-core slab caches.
+            - [x] Per-core slab caches.
+            - [ ] Page heap (canary + fault versions).
+            - [ ] Tracable allocations.
     - [x] Core clock, software timers.
         - [x] Configurable resolution.
         - [x] Tickless.

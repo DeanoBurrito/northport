@@ -88,17 +88,17 @@ extern "C"
         
         if (frame->vector == 0xE)
         {
-            using Memory::VmFaultFlags;
-            VmFaultFlags flags = VmFaultFlags::None;
+            using namespace Memory;
+            VmFaultFlags flags {};
             if (frame->ec & (1 << 1))
-                flags |= VmFaultFlags::Write;
+                flags.Set(VmFaultFlag::Write);
             if (frame->ec & (1 << 4))
-                flags |= VmFaultFlags::Execute;
-            if (flags == VmFaultFlags::None)
-                flags = VmFaultFlags::Read;
-            
+                flags.Set(VmFaultFlag::Execute);
+            if (!flags.Any())
+                flags.Set(VmFaultFlag::Read);
+
             if (frame->ec & (1 << 2))
-                flags |= VmFaultFlags::User;
+                flags.Set(VmFaultFlag::User);
 
             const uintptr_t cr2 = ReadCr2();
             if (cr2 < hhdmBase)

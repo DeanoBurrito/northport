@@ -1,41 +1,30 @@
 #pragma once
 
 #include <NativePtr.h>
+#include <Flags.h>
+#include <Optional.h>
 
 namespace Npk::Memory
 {
-    enum class VmFlags : size_t
+    enum class VmFlag : size_t
     {
-        None = 0,
+        Write = 0,
+        Execute = 1,
+        User = 2,
+        NoShare = 3,
 
-        //access flags
-        Write = 1 << 0,
-        Execute = 1 << 1,
-        User = 1 << 2,
-
-        //bits 48-63 are the type of memory to be requested
-        Anon = 1ul << 48,
-        Mmio = 2ul << 48,
+        Anon = 24, //bits 24-32 are reserved for the driver type
+        Mmio = 25,
+        File = 26,
     };
 
-    constexpr VmFlags operator|(const VmFlags& a, const VmFlags& b)
-    { return (VmFlags)((uintptr_t)a | (uintptr_t)b); }
+    using VmFlags = sl::Flags<VmFlag>;
+    class VirtualMemoryManager;
 
-    constexpr VmFlags operator&(const VmFlags& a, const VmFlags& b)
-    { return (VmFlags)((uintptr_t)a & (uintptr_t)b); }
-
-    constexpr VmFlags operator|=(VmFlags& src, const VmFlags& other)
-    { return src = (VmFlags)((uintptr_t)src | (uintptr_t)other); }
-
-    constexpr VmFlags operator&=(VmFlags& src, const VmFlags& other)
-    { return src = (VmFlags)((uintptr_t)src & (uintptr_t)other); }
-
-    constexpr VmFlags operator~(const VmFlags& src)
-    { return (VmFlags)(~(uintptr_t)src); }
-    
     class VmObject
     {
     private:
+        VirtualMemoryManager* vmm = nullptr;
         sl::NativePtr base = nullptr;
         size_t size = 0;
 
@@ -81,8 +70,12 @@ namespace Npk::Memory
         { return size; }
 
         void Release();
+        VmFlags Flags(sl::Opt<VmFlags> flags = {});
     };
 }
 
+
 using Npk::Memory::VmObject;
+using Npk::Memory::VmFlag;
 using Npk::Memory::VmFlags;
+

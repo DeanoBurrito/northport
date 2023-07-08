@@ -4,7 +4,7 @@
 
 namespace Npk::Memory::Virtual
 {
-    class KernelVmDriver : public VmDriver
+    class VfsVmDriver : public VmDriver
     {
     public:
         void Init(uintptr_t enableFeatures) override;
@@ -14,3 +14,4 @@ namespace Npk::Memory::Virtual
         bool Detach(VmDriverContext& context) override;
     };
 }
+

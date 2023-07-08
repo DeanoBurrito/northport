@@ -4,14 +4,28 @@
 
 namespace Npk::Memory::Virtual
 {
+    enum AnonFeature : uintptr_t
+    {
+        Demand = 1 << 0,
+        ZeroPage = 1 << 1,
+    };
+
     class AnonVmDriver : public VmDriver
     {
-    public:
-        void Init() override;
-        VmDriverType Type() override;
+    private:
+        uintptr_t zeroPage;
 
-        EventResult HandleEvent(VmDriverContext& context, EventType type, uintptr_t addr, uintptr_t eventArg) override;
-        sl::Opt<size_t> AttachRange(VmDriverContext& context, uintptr_t attachArg) override;
-        bool DetachRange(VmDriverContext& context) override;
+        struct
+        {
+            bool demandPage;
+            bool zeroPage;
+        } features;
+
+    public:
+        void Init(uintptr_t enableFeatures) override;
+
+        EventResult HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags) override;
+        AttachResult Attach(VmDriverContext& context, uintptr_t attachArg) override;
+        bool Detach(VmDriverContext& context) override;
     };
 }

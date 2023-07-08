@@ -6,11 +6,12 @@ namespace Npk::Memory
 {
     VmObject::VmObject(size_t length, uintptr_t arg, VmFlags flags)
     {
-        auto maybeBase = VMM::Kernel().Alloc(length, arg, flags);
+        vmm = &VMM::Kernel(); //TODO: overridable
+        auto maybeBase = vmm->Alloc(length, arg, flags);
         if (maybeBase)
         {
-            base = maybeBase->base;
-            size = maybeBase->length;
+            base = *maybeBase;
+            size = length;
         }
         else
             Log("VMO creation failed, caller: 0x%lx", LogLevel::Error, (uintptr_t)__builtin_return_address(0));
@@ -41,5 +42,16 @@ namespace Npk::Memory
             VMM::Kernel().Free(base.raw);
         base.ptr = nullptr;
         size = 0;
+    }
+
+    VmFlags VmObject::Flags(sl::Opt<VmFlags> flags)
+    {
+        if (flags.HasValue())
+        {
+            if (!VMM::Kernel().SetFlags(base.raw, size, *flags))
+                Log("Failed to set VMO flags: base=0x%lx, len=0x%lx, flags=0x%lx", LogLevel::Error,
+                    base.raw, size, flags->Raw());
+        }
+        return *VMM::Kernel().GetFlags(base.raw, size);
     }
 }

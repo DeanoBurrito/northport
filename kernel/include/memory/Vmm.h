@@ -7,6 +7,7 @@
 #include <Optional.h>
 #include <containers/LinkedList.h>
 #include <memory/VmObject.h>
+#include <Flags.h>
 
 namespace Npk
 {
@@ -21,7 +22,8 @@ namespace Npk::Memory
         size_t length;
         VmFlags flags;
         size_t token;
-        uintptr_t reserved[2];
+        size_t offset;
+        size_t reserved;
 
         constexpr inline uintptr_t Top() const
         { return base + length; }
@@ -48,23 +50,15 @@ namespace Npk::Memory
 
     static_assert(sizeof(VmSlabAlloc) == PageSize);
 
-    enum class VmFaultFlags : uintptr_t
+    enum class VmFaultFlag
     {
-        None = 0,
-        Read = 1 << 0,
-        Write = 1 << 1,
-        Execute = 1 << 2,
-        User = 1 << 3,
+        Read = 0,
+        Write = 1,
+        Execute = 2,
+        User = 3,
     };
 
-    constexpr VmFaultFlags operator|(const VmFaultFlags& a, const VmFaultFlags& b)
-    { return (VmFaultFlags)((uintptr_t)a | (uintptr_t)b); }
-
-    constexpr VmFaultFlags operator&(const VmFaultFlags& a, const VmFaultFlags& b)
-    { return (VmFaultFlags)((uintptr_t)a & (uintptr_t)b); }
-
-    constexpr VmFaultFlags operator|=(VmFaultFlags& src, const VmFaultFlags& other)
-    { return src = (VmFaultFlags)((uintptr_t)src | (uintptr_t)other); }
+    using VmFaultFlags = sl::Flags<VmFaultFlag>;
 
     //badge pattern
     class VirtualMemoryManager;
@@ -107,12 +101,13 @@ namespace Npk::Memory
 
         void MakeActive();
         void HandleFault(uintptr_t addr, VmFaultFlags flags);
-        void PrintRanges(void (*PrintFunc)(const char* format, ...));
+        //TODO dumpRange() instead of Print()
         
-        sl::Opt<VmRange> Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
+        sl::Opt<uintptr_t> Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound = 0, uintptr_t upperBound = -1ul);
         bool Free(uintptr_t base);
-
-        bool RangeExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags);
+        sl::Opt<VmFlags> GetFlags(uintptr_t base, size_t length) const;
+        bool SetFlags(uintptr_t base, size_t length, VmFlags flags);
+        bool MemoryExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags);
         sl::Opt<uintptr_t> GetPhysical(uintptr_t vaddr);
 
         size_t CopyIn(void* foreignBase, void* localBase, size_t length);

@@ -1,6 +1,7 @@
 #include <memory/virtual/VmDriver.h>
 #include <memory/virtual/AnonVmDriver.h>
 #include <memory/virtual/KernelVmDriver.h>
+#include <memory/virtual/VfsVmDriver.h>
 #include <debug/Log.h>
 #include <Lazy.h>
 
@@ -8,27 +9,23 @@ namespace Npk::Memory::Virtual
 {
     sl::Lazy<AnonVmDriver> anonDriver;
     sl::Lazy<KernelVmDriver> kernelDriver;
-    VmDriver* vmDrivers[(size_t)VmDriverType::EnumCount];
+    sl::Lazy<VfsVmDriver> vfsDriver;
 
-    VmDriver* VmDriver::GetDriver(VmDriverType name)
+    VmDriver* VmDriver::GetDriver(VmFlags flags)
     { 
-        const size_t nameInt = (size_t)name;
-        if (nameInt == 0 || nameInt >= (size_t)VmDriverType::EnumCount)
-            return nullptr;
-        return vmDrivers[(size_t)name];
+        if (flags.Has(VmFlag::Anon)) //TODO: a more elegant solution, same goes with the Lazy instantiations above
+            return &*anonDriver;
+        if (flags.Has(VmFlag::File))
+            return &*vfsDriver;
+        if (flags.Has(VmFlag::Mmio))
+            return &*kernelDriver;
+        return nullptr;
     }
 
-    void VmDriver::InitEarly()
+    void VmDriver::InitAll()
     {
-        vmDrivers[(size_t)VmDriverType::Anon] = &anonDriver.Init();
-        vmDrivers[(size_t)VmDriverType::Kernel] = &kernelDriver.Init();
-
-        for (size_t i = 1; i < (size_t)VmDriverType::EnumCount; i++)
-        {
-            if (vmDrivers[i] == nullptr)
-                continue;
-            vmDrivers[i]->Init();
-            Log("VM driver initialized: index=%lu, name=%s", LogLevel::Verbose, i, VmDriverTypeStrs[i]);
-        }
+        anonDriver.Init().Init(~0);
+        kernelDriver.Init().Init(~0);
+        vfsDriver.Init().Init(~0);
     }
 }

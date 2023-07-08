@@ -2,10 +2,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <Optional.h>
-#include <Locks.h>
 #include <memory/Vmm.h>
 #include <arch/Hat.h>
+#include <Locks.h>
 
 namespace Npk::Memory
 { class VirtualMemoryManager; }
@@ -17,13 +16,13 @@ namespace Npk::Memory::Virtual
         /*  VMFlags are stable across platforms, while HatFlags have different meanings
             depending on the ISA. This provides source-level translation between the two. */
         HatFlags value = HatFlags::None;
-        if ((flags & VmFlags::Write) != VmFlags::None)
+        if (flags.Has(VmFlag::Write))
             value |= HatFlags::Write;
-        if ((flags & VmFlags::Execute) != VmFlags::None)
+        if (flags.Has(VmFlag::Execute))
             value |= HatFlags::Execute;
-        if ((flags & VmFlags::User) != VmFlags::None)
+        if (flags.Has(VmFlag::User))
             value |= HatFlags::User;
-        
+
         return value;
     }
 
@@ -34,24 +33,12 @@ namespace Npk::Memory::Virtual
         Suspend,    //op will need time to complete, suspend thread or return async-handle.
     };
 
-    enum class EventType
+    struct AttachResult
     {
-        PageFault,
-    };
-
-    enum class VmDriverType : size_t
-    {
-        //0 is reserved, and will result in nullptr being returned.
-        //This forces alloc requests to set the `type` field.
-        Anon = 1,
-        Kernel = 2,
-        
-        EnumCount
-    };
-
-    constexpr inline const char* VmDriverTypeStrs[] = 
-    {
-        "null", "kernel/mmio", "anonymous"
+        bool success;
+        size_t token;
+        uintptr_t baseOffset;
+        size_t deadLength;
     };
 
     struct VmDriverContext
@@ -60,24 +47,20 @@ namespace Npk::Memory::Virtual
         HatMap* map;
         VmRange range;
     };
-    
+
     class VmDriver
     {
     friend VirtualMemoryManager;
     private:
-        static VmDriver* GetDriver(VmDriverType name);
+        static VmDriver* GetDriver(VmFlags flags);
 
     public:
-        static void InitEarly();
+        static void InitAll();
 
-        virtual void Init() = 0;
-        virtual VmDriverType Type() = 0;
+        virtual void Init(uintptr_t enableFeatures) = 0;
         
-        //driver needs to handle an event.
-        virtual EventResult HandleEvent(VmDriverContext& context, EventType type, uintptr_t addr, uintptr_t eventArg) = 0;
-        //driver should attach itself to a range, and prepare to back it accordingly.
-        virtual sl::Opt<size_t> AttachRange(VmDriverContext& context, uintptr_t attachArg) = 0;
-        //driver should release resources backing a range.
-        virtual bool DetachRange(VmDriverContext& context) = 0;
+        virtual EventResult HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags) = 0;
+        virtual AttachResult Attach(VmDriverContext& context, uintptr_t attachArg) = 0;
+        virtual bool Detach(VmDriverContext& context) = 0;
     };
 }

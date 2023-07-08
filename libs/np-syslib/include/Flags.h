@@ -2,28 +2,30 @@
 
 namespace sl
 {
-    template<typename T, typename BackingInt = unsigned long>
+    template<typename T>
     struct Flags
     {
     private:
+        using BackingInt = unsigned long;
         BackingInt value;
     
     public:
         constexpr Flags() : value{}
         {}
 
-        constexpr Flags(BackingInt rawInit) : value(rawInit)
+        constexpr Flags(BackingInt raw) : value(raw)
         {}
 
         constexpr Flags(T initial) : value((BackingInt)1 << (BackingInt)initial)
         {}
 
-        constexpr bool Has(T index) const
+        inline constexpr bool Has(T index) const
         {
-            return (BackingInt)index & value;
+            const BackingInt mask = (BackingInt)1 << (BackingInt)index;
+            return value & mask;
         }
 
-        constexpr bool Set(T index)
+        inline constexpr bool Set(T index)
         {
             const BackingInt mask = (BackingInt)1 << (BackingInt)index;
             const bool prev = value & mask;
@@ -31,7 +33,7 @@ namespace sl
             return !prev;
         }
 
-        constexpr bool Clear(T index)
+        inline constexpr bool Clear(T index)
         {
             const BackingInt mask = (BackingInt)1 << (BackingInt)index;
             const bool prev = value & mask;
@@ -39,37 +41,61 @@ namespace sl
             return prev;
         }
 
-        constexpr void Reset()
+        inline constexpr void Reset()
         { value = 0; }
 
-        constexpr bool Any()
+        inline constexpr bool Any() const
         { return value != 0; }
 
-        constexpr Flags operator!()
+        inline constexpr Flags operator!() const
         { return !value; }
 
-        constexpr Flags operator|(const Flags other)
+        inline constexpr Flags operator|(const Flags other) const
         { return value | other.value; }
 
-        constexpr Flags operator&(const Flags other)
+        inline constexpr Flags operator|(const T index) const
+        {
+            const BackingInt mask = (BackingInt)1 << (BackingInt)index;
+            return value | mask;
+        }
+
+        inline constexpr Flags operator&(const Flags other) const
         { return value & other.value; }
 
-        constexpr Flags& operator|=(const Flags other) 
+        inline constexpr Flags operator&(const T index) const
+        {
+            const BackingInt mask = (BackingInt)1 << (BackingInt)index;
+            return value & mask;
+        }
+
+        inline constexpr Flags& operator|=(const Flags other) 
         {
             value |= other.value;
             return *this;
         }
 
-        constexpr Flags& operator&=(const Flags other)
+        inline constexpr Flags& operator&=(const Flags other)
         {
             value &= other.value;
             return *this;
         }
 
+        inline constexpr bool operator==(const Flags other) const
+        { return value == other.value; }
+
+        inline constexpr bool operator!=(const Flags other) const
+        { return value != other.value; }
+
         //NOTE: using this defeats the whole purpose of this class, this function
         //is for printing debug output.
-        constexpr BackingInt Raw()
+        inline constexpr BackingInt Raw() const
         { return value; }
     };
+}
+
+template<typename T>
+inline constexpr sl::Flags<T> operator|(T a, T b)
+{
+    return sl::Flags<T>(a) | b;
 }
 
