@@ -71,7 +71,7 @@ namespace Npk::Drivers
         const Devices::PciBar bar2 = addr.ReadBar(2);
         ASSERT(subclass == 0x80 || bar2.size > 0, "Only legacy-free is supported, update your emulator.");
 
-        mmio = VmObject{ bar2.size, bar2.address, VmFlags::Mmio | VmFlags::Write };
+        mmio = VmObject{ bar2.size, bar2.address, VmFlag::Mmio | VmFlag::Write };
 
         WriteDispiReg(DispiReg::Enable, BGA_DISPI_DISABLE);
         width = ReadDispiReg(DispiReg::XRes);
@@ -80,7 +80,7 @@ namespace Npk::Drivers
         WriteDispiReg(DispiReg::Enable, BGA_DISPI_ENABLE | BGA_DISPI_LFB_ENABLED | BGA_DISPI_NO_CLEAR_MEM);
 
         const Devices::PciBar bar0 = addr.ReadBar(0);
-        fbBase = VmObject { bar0.size, bar0.address, VmFlags::Mmio | VmFlags::Write };
+        fbBase = VmObject { bar0.size, bar0.address, VmFlag::Mmio | VmFlag::Write };
 
         status = Devices::DeviceStatus::Online;
         return true;

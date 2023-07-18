@@ -49,7 +49,7 @@ namespace Npk::Filesystem
         unit->offset = offset;
         const uintptr_t physAddr = PMM::Global().Alloc(cacheUnitSize / PageSize);
         ASSERT(physAddr != 0, "PMM alloc failed.");
-        unit->physBase = (void*)physAddr;
+        unit->physBase = physAddr;
 
         //link this page's metadata to the filecache
         Memory::PageInfo* info = PMM::Global().Lookup(physAddr);

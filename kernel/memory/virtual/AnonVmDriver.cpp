@@ -12,8 +12,8 @@ namespace Npk::Memory::Virtual
     void AnonVmDriver::Init(uintptr_t enableFeatures)
     {
         //extract enabled features
-        features.demandPage = enableFeatures & AnonFeature::Demand;
-        features.zeroPage = enableFeatures & AnonFeature::ZeroPage;
+        features.demandPage = enableFeatures & (uintptr_t)AnonFeature::Demand;
+        features.zeroPage = enableFeatures & (uintptr_t)AnonFeature::ZeroPage;
 
         if (features.zeroPage)
         {
@@ -50,7 +50,7 @@ namespace Npk::Memory::Virtual
 
         //if we've reached this point, the fault wasn't caused by a permissions violation,
         //so we map some usable memory here and return to the program.
-        const size_t hatMode = context.range.token;
+        const size_t hatMode = reinterpret_cast<size_t>(context.range.token);
         const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
         const size_t mapLength = sl::Min(FaultMaxMapAhead, context.range.Top() - where);
         const size_t mapCount = sl::AlignUp(mapLength, granuleSize) / granuleSize;
@@ -66,36 +66,58 @@ namespace Npk::Memory::Virtual
         return EventResult::Continue;
     }
 
-    AttachResult AnonVmDriver::Attach(VmDriverContext& context, uintptr_t attachArg)
+    QueryResult AnonVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
     {
-        const bool demandAllowed = !CoresInEarlyInit() && CoreLocalAvailable() && features.demandPage;
-        const bool doDemand = demandAllowed && !(attachArg & AnonFeature::Demand);
-        const bool doZeroPage = demandAllowed && features.zeroPage && !(attachArg & AnonFeature::ZeroPage);
+        QueryResult result;
+        result.success = true;
+        
+        const HatLimits limits = GetHatLimits();
+        result.hatMode = 0;
+        result.alignment = limits.modes[result.hatMode].granularity;
+        result.length = sl::AlignUp(length, result.alignment);
 
-        //determine what HAT mode we'll use for translation. TODO: naturally use larger modes
-        const size_t hatMode = 0;
-        const size_t hatGranuleSize = GetHatLimits().modes[hatMode].granularity;
-        const AttachResult result 
-        { 
-            .success = true, 
-            .token = hatMode, 
-            .baseOffset = 0,
-            .deadLength = sl::AlignUp(context.range.length, hatGranuleSize)
+        if (flags.Has(VmFlag::Guarded))
+            result.length += 2 * result.alignment;
+
+        return result;
+    }
+
+    AttachResult AnonVmDriver::Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg)
+    {
+        //determine what features have access to: this depends on a few environmental factors
+        //as well as the features enabled when this driver was started, and optionally some may
+        //be disabled just for this VM range.
+        //Environmental factors include not using demand paging while other cores are not set up
+        //for it (since buffers like the heap can be shared between cores).
+        const bool demandAllowed = !CoresInEarlyInit() && CoreLocalAvailable() 
+            && features.demandPage;
+        const bool doDemand = demandAllowed && !(attachArg & (uintptr_t)AnonFeature::Demand);
+        const bool doZeroPage = demandAllowed && features.zeroPage 
+            && !(attachArg & (uintptr_t)AnonFeature::ZeroPage);
+
+        const AttachResult result
+        {
+            .token = reinterpret_cast<void*>(query.hatMode),
+            .offset = 0,
+            .success = true,
         };
 
         if (doDemand && !doZeroPage)
-            return result; //traditional demand paging, fault on first read/write access.
+            return result;
 
         VmFlags flags = context.range.flags;
         if (doZeroPage)
-            flags.Clear(VmFlag::Write); //tell MMU to fault on next write to this page
+            flags.Clear(VmFlag::Write); //fault on next write to this page
+
+        const HatFlags hatFlags = ConvertFlags(flags);
+        const size_t granuleSize = GetHatLimits().modes[query.hatMode].granularity;
 
         sl::ScopedLock scopeLock(context.lock);
-        for (size_t i = 0; i < context.range.length; i += hatGranuleSize)
+        for (size_t i = 0; i < context.range.length; i += granuleSize)
         {
             const uintptr_t phys = doZeroPage ? zeroPage : PMM::Global().Alloc();
-            Map(context.map, context.range.base + i, phys, 0, ConvertFlags(flags), false);
-        };
+            Map(context.map, context.range.base + i, phys, 0, hatFlags, false);
+        }
 
         return result;
     }

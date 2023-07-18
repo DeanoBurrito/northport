@@ -262,7 +262,7 @@ namespace Npk::Filesystem
                 const size_t copyLength = sl::Min(FileCacheUnitSize(), opSizeLimit - opSize) - misalignment;
                 auto cache = GetFileCache(node->link.cache, packet.offset + opSize, true);
                 ASSERT(cache.Valid(), "FileCache returned invalid handle.");
-                sl::memcopy(packet.buffer, opSize, AddHhdm(cache->physBase), misalignment, copyLength);
+                sl::memcopy(packet.buffer, opSize, AddHhdm((void*)cache->physBase), misalignment, copyLength);
 
                 opSize += copyLength;
                 misalignment = 0; //only the first entry can be misaligned
@@ -282,7 +282,7 @@ namespace Npk::Filesystem
                 const size_t copyLength = sl::Min(FileCacheUnitSize(), opSizeLimit - opSize) - misalignment;
                 auto cache = GetFileCache(node->link.cache, packet.offset + opSize, false);
                 ASSERT(cache.Valid(), "FileCache returned invalid handle.");
-                sl::memcopy(AddHhdm(cache->physBase), misalignment, packet.buffer, opSize, copyLength);
+                sl::memcopy(AddHhdm((void*)cache->physBase), misalignment, packet.buffer, opSize, copyLength);
 
                 opSize += copyLength;
                 misalignment = 0; //only the first entry can be misaligned

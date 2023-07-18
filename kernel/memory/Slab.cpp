@@ -12,9 +12,9 @@ namespace Npk::Memory
         const size_t reservedBytes = segmentSize - (segmentCapacity * slabSize); //TODO: externally allocate control data in larger slabs
         ASSERT(reservedBytes >= bitmapBytes + sizeof(SlabSegment), "huh");
 
-        auto maybeRegion = VMM::Kernel().Alloc(segmentSize, 0, VmFlags::Write | VmFlags::Anon);
+        auto maybeRegion = VMM::Kernel().Alloc(segmentSize, 0, VmFlag::Write | VmFlag::Anon);
         VALIDATE(maybeRegion, nullptr, "Slab segment creation failed: VMM alloc failed.")
-        const uintptr_t base = maybeRegion->base;
+        const uintptr_t base = *maybeRegion;
 
         uint8_t* bitmap = reinterpret_cast<uint8_t*>(base + sizeof(SlabSegment));
         sl::memset(bitmap, 0, bitmapBytes);

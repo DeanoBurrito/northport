@@ -11,7 +11,7 @@ namespace Npk::Memory
         Write = 0,
         Execute = 1,
         User = 2,
-        NoShare = 3,
+        Guarded = 3, //TODO:
 
         Anon = 24, //bits 24-32 are reserved for the driver type
         Mmio = 25,
@@ -20,6 +20,12 @@ namespace Npk::Memory
 
     using VmFlags = sl::Flags<VmFlag>;
     class VirtualMemoryManager;
+
+    struct VmoFileInitArg
+    {
+        const char* filepath;
+        size_t offset;
+    };
 
     class VmObject
     {

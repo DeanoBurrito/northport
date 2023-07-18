@@ -118,7 +118,7 @@ namespace Npk
         if (auto maybeHpet = Config::FindAcpiTable(Config::SigHpet); maybeHpet.HasValue())
         {
             const Config::Hpet* hpetTable = static_cast<const Config::Hpet*>(*maybeHpet);
-            hpetRegs = VmObject {0x1000, hpetTable->baseAddress.address, VmFlags::Write | VmFlags::Mmio};
+            hpetRegs = VmObject {0x1000, hpetTable->baseAddress.address, VmFlag::Write | VmFlag::Mmio};
 
             //reset main counter and leave it enabled
             hpetRegs->Offset(HpetRegConfig).Write<uint64_t>(0);

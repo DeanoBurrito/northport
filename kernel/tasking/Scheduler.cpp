@@ -110,7 +110,7 @@ namespace Npk::Tasking
 
         //setup the idle thread stack
         constexpr size_t IdleStackSize = PageSize;
-        idle->stack.base = VMM::Kernel().Alloc(IdleStackSize, 1, VmFlags::Anon | VmFlags::Write)->base;
+        idle->stack.base = *VMM::Kernel().Alloc(IdleStackSize, 1, VmFlag::Anon | VmFlag::Write);
         idle->stack.length = IdleStackSize;
         const uintptr_t stackTop = idle->stack.base + idle->stack.length;
 
@@ -123,9 +123,9 @@ namespace Npk::Tasking
         core->idleThread = idle;
 
         //DPC (deferred procedure call) setup
-        auto dpcStack = VMM::Kernel().Alloc(DefaultStackSize, 1, VmFlags::Anon | VmFlags::Write);
+        auto dpcStack = VMM::Kernel().Alloc(DefaultStackSize, 1, VmFlag::Anon | VmFlag::Write);
         ASSERT(dpcStack, "No DPC stack for core.");
-        core->dpcStack = dpcStack->Top();
+        core->dpcStack = *dpcStack + DefaultStackSize;
         core->dpcStack -= 2 * sizeof(TrapFrame);
         core->dpcFrame = reinterpret_cast<TrapFrame*>(sl::AlignUp(core->dpcStack, sizeof(TrapFrame)));
         core->dpcFinished = true;
@@ -194,12 +194,12 @@ namespace Npk::Tasking
         threadsLock.Unlock();
 
         VMM& vmm = (isKernelThread ? VMM::Kernel() : thread->parent->vmm);
-        auto maybeStack = vmm.Alloc(DefaultStackSize, isKernelThread ? 1 : 0, VmFlags::Anon | VmFlags::Write);
+        auto maybeStack = vmm.Alloc(DefaultStackSize, isKernelThread ? 1 : 0, VmFlag::Anon | VmFlag::Write);
         ASSERT(maybeStack, "No thread stack");
         
         sl::ScopedLock threadLock(thread->lock);
-        thread->stack.base = maybeStack->base;
-        thread->stack.length = maybeStack->length;
+        thread->stack.base = *maybeStack;
+        thread->stack.length = DefaultStackSize;
         thread->frame = reinterpret_cast<TrapFrame*>((thread->stack.base + thread->stack.length) - sizeof(TrapFrame));
 
         if (isKernelThread)

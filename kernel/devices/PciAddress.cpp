@@ -21,9 +21,10 @@ namespace Npk::Devices
         //discovered by the kernel system, space which is never released. I think this is fine as these objects
         //are passed around quite frequently, but it may be worth looking into in the future.
         //It's also worth noting that pci addreses are only created like this when a device is initially discovered.
-        auto accessWindow = VMM::Kernel().Alloc(0x1000, physAddr, VmFlags::Mmio | VmFlags::Write);
+
+        auto accessWindow = VMM::Kernel().Alloc(0x1000, physAddr, VmFlag::Mmio | VmFlag::Write);
         ASSERT(accessWindow, "VMM::Alloc()");
-        return accessWindow->base;
+        return *accessWindow;
     }
 
     PciAddress PciAddress::CreateLegacy(uint8_t bus, uint8_t device, uint8_t function)

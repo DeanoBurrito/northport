@@ -9,8 +9,10 @@
 - Memory management stack improvements:
     - Added per-core caches for slab allocation in the kernel. 
         - Functionally this is similar to magazines as described in 'magazines and vmem' from the BSD team.
+        - This greatly reduces contention between cores when allocating memory.
     - VMM: fixed demang paging + SMP bug, general cleanup of vm driver interface.
         - Added 'zero paging': when demang paging a readonly page of all zeroes is mapped instead of nothing. This should help cause a few less page faults, and later on.
+        - Added VFS driver: we can now memory map files, including expanding them. Private mappings aren't supported just yet, but there have been provisions made. The VFS VM driver also makes use of demand paging where appropriate.
     - PMM rewrite: now uses a hybrid approach of freelists for single-page allocations and a bitmap for larger allocations.
 
 - Added development cache (develcache): limine and any OVMF firmware files for testing are downloaded and cached inside the project directly, reducing setup for getting started with the project.

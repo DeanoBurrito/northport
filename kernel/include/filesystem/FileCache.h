@@ -4,12 +4,13 @@
 #include <Atomic.h>
 #include <Handle.h>
 #include <containers/LinkedList.h>
+#include <stdint.h>
 
 namespace Npk::Filesystem
 {
     struct FileCacheUnit
     {
-        void* physBase;
+        uintptr_t physBase;
         size_t offset;
         sl::Atomic<size_t> references;
     };

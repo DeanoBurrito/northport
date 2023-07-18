@@ -48,10 +48,10 @@ namespace Npk::Memory
     {
         if (flags.HasValue())
         {
-            if (!VMM::Kernel().SetFlags(base.raw, size, *flags))
+            if (!vmm->SetFlags(base.raw, size, *flags))
                 Log("Failed to set VMO flags: base=0x%lx, len=0x%lx, flags=0x%lx", LogLevel::Error,
                     base.raw, size, flags->Raw());
         }
-        return *VMM::Kernel().GetFlags(base.raw, size);
+        return *vmm->GetFlags(base.raw, size);
     }
 }

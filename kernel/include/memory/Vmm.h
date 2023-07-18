@@ -21,7 +21,7 @@ namespace Npk::Memory
         uintptr_t base;
         size_t length;
         VmFlags flags;
-        size_t token;
+        void* token;
         size_t offset;
         size_t reserved;
 

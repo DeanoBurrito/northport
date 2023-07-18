@@ -37,28 +37,38 @@ namespace Npk::Memory::Virtual
         ASSERT_UNREACHABLE();
         (void)context; (void)where; (void)flags;
     }
+
+    QueryResult KernelVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
+    {
+        QueryResult result;
+        result.success = true;
+        result.hatMode = 0;
+        result.alignment = GetHatLimits().modes[result.hatMode].granularity;
+        result.length = sl::AlignUp(length, result.alignment);
+
+        if (flags.Has(VmFlag::Guarded))
+            result.length += result.alignment * 2;
+
+        return result;
+    }
     
-    AttachResult KernelVmDriver::Attach(VmDriverContext& context, uintptr_t attachArg)
+    AttachResult KernelVmDriver::Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg)
     {
         HatFlags flags = HatFlags::Global;
         if (context.range.flags.Has(VmFlag::Write))
             flags |= HatFlags::Write;
 
-        const size_t hatMode = 0;
-        const size_t hatGranuleSize = GetHatLimits().modes[hatMode].granularity;
-
         AttachResult result
         {
+            .token = nullptr,
+            .offset = attachArg % query.alignment,
             .success = true,
-            .token = 0,
-            .baseOffset = attachArg % hatGranuleSize, //handle non-page-aligned mmio
-            .deadLength = sl::AlignUp(result.baseOffset + context.range.length, hatGranuleSize)
         };
 
-        attachArg = sl::AlignDown(attachArg, hatGranuleSize);
+        attachArg = sl::AlignDown(attachArg, query.alignment);
         sl::ScopedLock scopeLock(context.lock);
-        for (size_t i = 0; i < result.deadLength; i += hatGranuleSize)
-            Map(context.map, context.range.base + i, attachArg + i, hatMode, flags, false);
+        for (size_t i = 0; i < context.range.length; i += query.alignment)
+            Map(context.map, context.range.base + i, attachArg + i, query.hatMode, flags, false);
 
         return result;
     }
@@ -66,7 +76,6 @@ namespace Npk::Memory::Virtual
     bool KernelVmDriver::Detach(VmDriverContext& context)
     {
         const HatLimits& hatLimits = GetHatLimits();
-
         sl::ScopedLock ptLock(context.lock);
 
         for (uintptr_t base = context.range.base; base < context.range.base + context.range.length;)

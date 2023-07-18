@@ -66,16 +66,16 @@ namespace Npk::Memory
     void PoolAlloc::Expand(size_t minSize, bool takeLock)
     {
         const size_t expandSize = sl::Max(minSize, minAllocSize * PoolMinExpansionScale) + sizeof(PoolRegion) + sizeof(PoolNode);
-        auto maybeRegion = VMM::Kernel().Alloc(expandSize, 0, VmFlags::Anon | VmFlags::Write);
+        auto maybeRegion = VMM::Kernel().Alloc(expandSize, 0, VmFlag::Anon | VmFlag::Write); //TODO: a way for the VMM to communicate it allocated extra anon memory
         ASSERT(maybeRegion, "Failed to expand kernel pool.");
 
-        PoolRegion* region = new((void*)maybeRegion->base) PoolRegion();
+        PoolRegion* region = new((void*)*maybeRegion) PoolRegion();
         if (takeLock)
             region->lock.Lock();
         
-        const uintptr_t reservedSize = sl::AlignUp(maybeRegion->base + sizeof(PoolRegion), sizeof(PoolNode)) - maybeRegion->base;
-        region->base = maybeRegion->base + reservedSize;
-        region->length = maybeRegion->length - reservedSize;
+        const uintptr_t reservedSize = sl::AlignUp(*maybeRegion + sizeof(PoolRegion), sizeof(PoolNode)) - *maybeRegion;
+        region->base = *maybeRegion + reservedSize;
+        region->length = expandSize - reservedSize;
         
         region->first = region->last = new((void*)region->base) PoolNode();
         region->first->next = region->first->prev = nullptr;

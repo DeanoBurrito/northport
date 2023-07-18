@@ -6,9 +6,6 @@
 #include <arch/Hat.h>
 #include <Locks.h>
 
-namespace Npk::Memory
-{ class VirtualMemoryManager; }
-
 namespace Npk::Memory::Virtual
 {
     constexpr HatFlags ConvertFlags(VmFlags flags)
@@ -33,12 +30,19 @@ namespace Npk::Memory::Virtual
         Suspend,    //op will need time to complete, suspend thread or return async-handle.
     };
 
+    struct QueryResult
+    {
+        size_t alignment;
+        size_t length;
+        size_t hatMode;
+        bool success;
+    };
+
     struct AttachResult
     {
+        void* token;
+        size_t offset;
         bool success;
-        size_t token;
-        uintptr_t baseOffset;
-        size_t deadLength;
     };
 
     struct VmDriverContext
@@ -48,6 +52,16 @@ namespace Npk::Memory::Virtual
         VmRange range;
     };
 
+    /* Each virtual memory allocation has a type associated with it, the type determines
+     * which VmDriver is responsible for backing this memory. The current VmDrivers are:
+     * - Kernel: this maps the kernel binary itself at startup and is also used to map MMIO.
+     * - Anon: makes anonymous/general working memory available.
+     * - Vfs: acts as a bridge between the VFS + file cache and the VM subsystem, allows for
+     *   memory mapping files.
+     *
+     * VmDrivers are treated as plugins to the VMM. When the VMM needs to take an action that
+     * requires knowledge of how VM is provided it calls into the associated VmDriver.
+     */
     class VmDriver
     {
     friend VirtualMemoryManager;
@@ -59,8 +73,25 @@ namespace Npk::Memory::Virtual
 
         virtual void Init(uintptr_t enableFeatures) = 0;
         
+        //Called when the VMM is notified of a page fault within an existing range that is backed by
+        //this VmDriver. The driver informs the VMM (and rest of the kernel) what it should do with
+        //the faulting code depending on the EventResult.
         virtual EventResult HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags) = 0;
-        virtual AttachResult Attach(VmDriverContext& context, uintptr_t attachArg) = 0;
+        
+        //The VMM wants to know how much space (and with what alignment) a VM allocation would
+        //require. This is purely informational, no memory mappings are modified here.
+        virtual QueryResult Query(size_t length, VmFlags flags, uintptr_t attachArg) = 0;
+        
+        //The VMM has allocated space (in a way that satisfies a previously call to `Query()`).
+        //This function is responsible for backing the virtual memory with something useful.
+        //Note that lazy techniques like CoW and demand paging are used which may result in the
+        //actual mapping happening partially in this function, and partially in response to 
+        //a page fault.
+        virtual AttachResult Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg) = 0;
+
+        //The VMM is freeing a range of virtual memory and wants to remove the backing memory
+        //that was previously attached there. The VmDriver should also clean up any auxiliary
+        //resources here (used for communicating between Attach() and HandleFault() calls).
         virtual bool Detach(VmDriverContext& context) = 0;
     };
 }
