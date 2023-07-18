@@ -65,8 +65,10 @@ extern "C"
                 Log("Got riscv external interrupt.", LogLevel::Fatal);
                 break;
             default:
-                Interrupts::InterruptManager::Global().Dispatch(frame->vector);
-                break;
+                //on riscv, devices external to the cpu will all trigger an external
+                //interrupt. If we get an interrupt number other than these three
+                //something has gone wrong.
+                ASSERT_UNREACHABLE();
             }
             
             ClearCsrBits("sip", 1 << frame->vector);

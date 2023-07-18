@@ -29,8 +29,7 @@ namespace Npk
         cr4 |= 3 << 9; //set bits 9 and 10: enable SSE and FXSAVE
         WriteCr4(cr4);
 
-        CoreConfig* localConfig = new CoreConfig();
-        CoreLocal()[LocalPtr::Config] = localConfig;
+        CoreConfig* localConfig = static_cast<CoreConfig*>(CoreLocal()[LocalPtr::Config]);
         localConfig->xSaveBitmap = 0;
 
         if (CpuHasFeature(CpuFeature::XSave))
@@ -66,6 +65,11 @@ namespace Npk
         clb->nextStack = nullptr;
         (*clb)[LocalPtr::IntControl] = new LocalApic();
         WriteMsr(MsrGsBase, (uintptr_t)clb);
+
+        CoreConfig* config = new CoreConfig();
+        CoreLocal()[LocalPtr::Config] = config;
+        ScanLocalCpuFeatures();
+        ScanLocalTopology();
 
         uint64_t cr0 = ReadCr0();
         cr0 |= 1 << 16; //set write-protect bit
@@ -130,6 +134,7 @@ extern "C"
         WriteMsr(MsrGsBase, 0);
         InitEarlyPlatform();
         InitMemory();
+
         PopulateIdt();
         InitPlatform();
 

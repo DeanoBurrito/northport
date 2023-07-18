@@ -2,10 +2,7 @@
 #include <debug/Log.h>
 #include <Memory.h>
 #include <Maths.h>
-#include <stdint.h>
-
-//NOTE: this is a non-standard header, but any reputable compiler vendor should ship one.
-#include <cpuid.h>
+#include <Bitmap.h>
 
 namespace Npk
 {
@@ -15,175 +12,226 @@ namespace Npk
         uint32_t b;
         uint32_t c;
         uint32_t d;
+
+        uint32_t operator[](uint8_t index)
+        {
+            switch (index)
+            {
+                case 'a': return a;
+                case 'b': return b;
+                case 'c': return c;
+                case 'd': return d;
+            }
+            ASSERT_UNREACHABLE();
+        }
     };
 
-    constexpr unsigned BaseLeafLimit = 8;
-    constexpr unsigned ExtLeafLimit = 8;
-    CpuidLeaf baseLeaves[BaseLeafLimit];
-    CpuidLeaf extLeaves[ExtLeafLimit];
-
-    void ScanCpuFeatures()
+    CpuidLeaf& DoCpuid(uint32_t leaf, uint32_t subleaf, CpuidLeaf& data)
     {
-        for (size_t i = 0; i < BaseLeafLimit; i++)
-            baseLeaves[i] = { 0, 0, 0, 0 };
-        for (size_t i = 0; i < ExtLeafLimit; i++)
-            extLeaves[i] = { 0, 0, 0, 0 };
-        
-        const size_t baseLeafCount = sl::Min((unsigned)__get_cpuid_max(0, nullptr), BaseLeafLimit);
-        const size_t extLeafCount = sl::Min((unsigned)__get_cpuid_max(0x8000'0000, nullptr), ExtLeafLimit);
+        asm volatile("cpuid" : 
+            "=a"(data.a), "=b"(data.b), "=c"(data.c), "=d"(data.d) :
+            "0"(leaf), "2"(subleaf) :
+            "memory");
 
-        for (size_t i = 0; i < baseLeafCount; i++)
-            __get_cpuid_count(i, 0, &baseLeaves[i].a, &baseLeaves[i].b, &baseLeaves[i].c, &baseLeaves[i].d);
-        for (size_t i = 0; i < extLeafCount; i++)
-            __get_cpuid_count(0x8000'0000 + i, 0, &extLeaves[i].a, &extLeaves[i].b, &extLeaves[i].c, &extLeaves[i].d);
+        return data;
     }
 
-    void LogCpuFeatures()
+    size_t GetCpuidCount(uint32_t ns)
     {
-        const unsigned basicCount = __get_cpuid_max(0, nullptr);
-        const unsigned extCount = __get_cpuid_max(0x8000'0000, nullptr);
-        uint32_t a = 0, b = 0, c = 0, d = 0;
-        __get_cpuid(0, &a, &b, &c, &d);
-        char vendorStr[13];
-        for (size_t i = 0; i < 4; i++)
+        CpuidLeaf leaf;
+        return DoCpuid(ns, 0, leaf).a;
+    }
+
+    NumaDomain* rootDomain = nullptr;
+
+    void InitTopology()
+    {
+        rootDomain = new NumaDomain();
+        rootDomain->id = 0;
+        rootDomain->cpus = nullptr;
+        rootDomain->next = nullptr;
+        rootDomain->memory = nullptr;
+    }
+
+    NumaDomain* GetTopologyRoot()
+    { return rootDomain; }
+
+    void ScanLocalTopology()
+    {
+        //asserting this ensures that we've parsed the SRAT table at some point, or failed to (in which case a dummy NUMA domain is generated).
+        ASSERT(rootDomain != nullptr, "Cpu topology mapping failed, no known NUMA domains.");
+
+        const size_t baseLeafCount = GetCpuidCount(0);
+        size_t coreId; //which physical core we're part of
+        size_t threadId; //which logical core we are within a physical core
+        
+        //the intel SDM recommends leaf 0x1F over 0xB, but we dont need
+        //the extra reported data (we only care about cores vs threads)
+        if (baseLeafCount >= 0xB)
         {
-            const size_t shiftor = i * 8;
-            vendorStr[0 + i] = (b >> shiftor) & 0xFF;
-            vendorStr[4 + i] = (d >> shiftor) & 0xFF;
-            vendorStr[8 + i] = (c >> shiftor) & 0xFF;
+            CpuidLeaf leaf;
+            const uint32_t threadShift = DoCpuid(0xB, 0, leaf).a & 0xF;
+            const uint32_t coreShift = DoCpuid(0xB, 1, leaf).a & 0xF;
+            
+            uint32_t apicId = leaf.d;
+            threadId = apicId & ((1 << threadShift) - 1);
+            apicId >>= threadShift;
+            coreId = apicId & ((1 << coreShift) - 1);
         }
-        vendorStr[12] = 0;
-
-        Log("CPUID: basicCount=%u, extendedCount=%u, vendor=%s", LogLevel::Info,
-            basicCount, extCount - 0x8000'0000, vendorStr);
-        if (extCount >= 0x8000'0004)
+        else if (baseLeafCount >= 0x4)
+        { 
+            ASSERT_UNREACHABLE(); 
+        } //TODO: fallback
+        else
         {
-            char brandStr[48];
-            sl::memset(brandStr, 0, 48);
-            for (size_t reg = 0; reg < 3; reg++)
-            {
-                __get_cpuid(0x8000'0002 + reg, &a, &b, &c, &d);
-                const size_t offset = reg * 16;
+            Log("Unable to detect local processor topology", LogLevel::Warning);
+            return;
+        }
 
-                for (size_t i = 0; i < 4; i++)
+        ThreadDomain* thread = new ThreadDomain();
+        thread->id = threadId;
+        thread->next = nullptr;
+
+        //check if cpu domain has already been allocated
+        NumaDomain* numaDom = rootDomain;
+        CpuDomain* cpuDom = nullptr;
+        while (numaDom != nullptr)
+        {
+            numaDom->cpusLock.WriterLock();
+            CpuDomain* scan = numaDom->cpus;
+            while (scan != nullptr)
+            {
+                if (scan->id != coreId)
                 {
-                    const size_t shiftor = i * 8; //haha, manual sse :(
-                    brandStr[offset + 0 + i] = (a >> shiftor) & 0xFF;
-                    brandStr[offset + 4 + i] = (b >> shiftor) & 0xFF;
-                    brandStr[offset + 8 + i] = (c >> shiftor) & 0xFF;
-                    brandStr[offset + 12 + i] = (d >> shiftor) & 0xFF;
+                    scan = scan->next;
+                    continue;
                 }
+                cpuDom = scan;
+                break;
             }
 
-            brandStr[47] = 0;
-            Log("CPUID: brand=%s", LogLevel::Info, brandStr);
+            if (cpuDom != nullptr)
+                break;
+
+            numaDom->cpusLock.WriterUnlock();
+            numaDom = numaDom->next;
         }
 
-#ifdef NP_DUMP_CPUID
-        for (size_t i = 0; i < basicCount; i++)
+        if (cpuDom == nullptr)
         {
-            __get_cpuid_count(i, 0, &a, &b, &c, &d);
-            Log("CPUID %2lu: a=0x%08x, b=0x%08x, c=0x%08x, d=0x%08x", LogLevel::Verbose,
-                i, a, b, c, d);
+            if (numaDom == nullptr)
+            {
+                numaDom = rootDomain; //TODO: some way to get an "IDFK" numa domain
+                numaDom->cpusLock.WriterLock();
+            }
+
+            cpuDom = new CpuDomain();
+            cpuDom->id = coreId;
+            cpuDom->parent = numaDom;
+            cpuDom->next = nullptr;
+            cpuDom->threads = nullptr;
+            cpuDom->online = true;
+            
+            cpuDom->next = numaDom->cpus;
+            numaDom->cpus = cpuDom;
         }
 
-        for (size_t i = 0x8000'0000; i < extCount; i++)
+        //at this point we have a cpu domain + it's write lock
+        thread->parent = cpuDom;
+        thread->next = cpuDom->threads;
+        cpuDom->threads = thread;
+        numaDom->cpusLock.WriterUnlock();
+
+        Log("Core %lu has topographic name %lu:%lu.%lu", LogLevel::Verbose, CoreLocal().id,
+            numaDom->id, cpuDom->id, thread->id);
+    }
+
+    struct CpuFeatureAccessor
+    {
+        struct 
+        { 
+            uint32_t main;
+            uint32_t sub;
+        } leaf;
+        uint8_t index;
+        uint8_t shift;
+        const char* name;
+    };
+
+    constexpr static CpuFeatureAccessor accessors[] =
+    {
+        { .leaf {1, 0}, .index = 'c', .shift = 31, .name = "vguest" },
+        { .leaf {1, 0}, .index = 'd', .shift = 20, .name = "nx" },
+        { .leaf {1, 0}, .index = 'd', .shift = 26, .name = "1g-map" },
+        { .leaf {1, 0}, .index = 'd', .shift = 13, .name = "global-pages" },
+        { .leaf {7, 0}, .index = 'b', .shift = 20, .name = "smap" },
+        { .leaf {7, 0}, .index = 'b', .shift = 7, .name = "smep" },
+        { .leaf {7, 0}, .index = 'c', .shift = 2, .name = "umip" },
+        { .leaf {1, 0}, .index = 'd', .shift = 9, .name = "apic" },
+        { .leaf {1, 0}, .index = 'c', .shift = 21, .name = "x2apic" },
+        { .leaf {1, 0}, .index = 'd', .shift = 24, .name = "fxsave" },
+        { .leaf {1, 0}, .index = 'c', .shift = 26, .name = "xsave" },
+        { .leaf {1, 0}, .index = 'd', .shift = 0, .name = "fpu" },
+        { .leaf {1, 0}, .index = 'd', .shift = 25, .name = "sse" },
+        { .leaf {1, 0}, .index = 'd', .shift = 26, .name = "sse2" },
+        { .leaf {6, 0}, .index = 'a', .shift = 2, .name = "arat" },
+        { .leaf {1, 0}, .index = 'd', .shift = 4, .name = "tsc" },
+        { .leaf {1, 0}, .index = 'c', .shift = 24, .name = "tsc-d" },
+        { .leaf {7, 0}, .index = 'd', .shift = 8, .name = "inv-tsc" },
+    };
+
+    void ScanLocalCpuFeatures()
+    {
+        ASSERT(CoreLocalAvailable(), "Core-local store must be available");
+
+        CoreConfig* config = static_cast<CoreConfig*>(CoreLocal()[LocalPtr::Config]);
+        const size_t bitmapLen = sl::AlignUp((size_t)CpuFeature::Count, 8) / 8;
+        if (config->featureBitmap == nullptr)
+            config->featureBitmap = new uint8_t[bitmapLen];
+
+        sl::memset(config->featureBitmap, 0, bitmapLen);
+        for (size_t i = 0; i < (size_t)CpuFeature::Count; i++)
         {
-            __get_cpuid_count(i, 0, &a, &b, &c, &d);
-            Log("CPUID ext %2lu: a=0x%08x, b=0x%08x, c=0x%08x, d=0x%08x", LogLevel::Verbose,
-                i & ~0x8000'0000, a, b, c, d);
+            CpuidLeaf leaf {};
+            DoCpuid(accessors[i].leaf.main, accessors[i].leaf.sub, leaf);
+            const uint32_t data = leaf[accessors[i].index];
+            const bool present = data & (1ul << accessors[i].shift);
+
+            if (present)
+                sl::BitmapSet(config->featureBitmap, i);
         }
-#endif
     }
 
     bool CpuHasFeature(CpuFeature feature)
     {
-        switch (feature)
-        {
-        case CpuFeature::NoExecute: 
-            return extLeaves[1].d & (1 << 20);
-        case CpuFeature::Pml3Translation: 
-            return extLeaves[1].d & (1 << 26);
-        case CpuFeature::GlobalPages: 
-            return extLeaves[1].d & (1 << 13);
-        case CpuFeature::Smap: 
-            return baseLeaves[7].b & (1 << 20);
-        case CpuFeature::Smep: 
-            return baseLeaves[7].b & (1 << 7);
-        case CpuFeature::Umip: 
-            return baseLeaves[7].c & (1 << 2);
-        case CpuFeature::Apic: 
-            return baseLeaves[1].d & (1 << 9);
-        case CpuFeature::ApicX2: 
-            return baseLeaves[1].c & (1 << 21);
-        case CpuFeature::FxSave: 
-            return baseLeaves[1].d & (1 << 24);
-        case CpuFeature::XSave: 
-            return baseLeaves[1].c & (1 << 26);
-        case CpuFeature::FPU: 
-            return baseLeaves[1].d & (1 << 0);
-        case CpuFeature::SSE: 
-            return baseLeaves[1].d & (1 << 25);
-        case CpuFeature::SSE2: 
-            return baseLeaves[1].d & (1 << 26);
-        case CpuFeature::VGuest:
-            return baseLeaves[1].c & (1 << 31);
-        case CpuFeature::AlwaysRunningApic:
-            return baseLeaves[6].a & (1 << 2);
-        case CpuFeature::Tsc:
-            return baseLeaves[1].d & (1 << 4);
-        case CpuFeature::TscDeadline:
-            return baseLeaves[1].c & (1 << 24);
-        case CpuFeature::InvariantTsc:
-            return extLeaves[7].d & (1 << 8);
-        
-        default:
+        const size_t featIndex = static_cast<size_t>(feature);
+        if (featIndex >= (size_t)CpuFeature::Count)
             return false;
+
+        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Config] != nullptr)
+        {
+            auto config = static_cast<const CoreConfig*>(CoreLocal()[LocalPtr::Config]);
+            if (config != nullptr && config->featureBitmap != nullptr)
+                return sl::BitmapGet(config->featureBitmap, featIndex);
         }
+
+        //fallback path: try to return correct info even if cache isnt available.
+        //`cpuid` is a serializing instruction though, so this can slow things down.
+        CpuidLeaf leaf {};
+        DoCpuid(accessors[featIndex].leaf.main, accessors[featIndex].leaf.sub, leaf);
+        const uint32_t data = leaf[accessors[featIndex].index];
+        return data & (1ul << accessors[featIndex].shift);
     }
+
+    static_assert((size_t)CpuFeature::Count == (sizeof(accessors) / sizeof(CpuFeatureAccessor)),
+        "Forgot to update CpuFeatureAccessors array?");
 
     const char* CpuFeatureName(CpuFeature feature)
     {
-        switch (feature)
-        {
-        case CpuFeature::NoExecute:
-            return "nx";
-        case CpuFeature::Pml3Translation:
-            return "pml3t";
-        case CpuFeature::GlobalPages:
-            return "globalpg";
-        case CpuFeature::Smap:
-            return "smap";
-        case CpuFeature::Smep:
-            return "smep";
-        case CpuFeature::Umip:
-            return "umip";
-        case CpuFeature::Apic:
-            return "lapic";
-        case CpuFeature::ApicX2:
-            return "x2apic";
-        case CpuFeature::FxSave:
-            return "fxsave";
-        case CpuFeature::XSave:
-            return "xsave";
-        case CpuFeature::FPU:
-            return "fpu";
-        case CpuFeature::SSE:
-            return "sse";
-        case CpuFeature::SSE2:
-            return "sse2";
-        case CpuFeature::VGuest:
-            return "vguest";
-        case CpuFeature::AlwaysRunningApic:
-            return "arat";
-        case CpuFeature::Tsc:
-            return "tsc";
-        case CpuFeature::TscDeadline:
-            return "tscd";
-        case CpuFeature::InvariantTsc:
-            return "itsc";
-        default:
-            return "";
-        }
+        const size_t featIndex = static_cast<size_t>(feature);
+        if (featIndex >= (size_t)CpuFeature::Count)
+            return "<unknown feature>";
+
+        return accessors[featIndex].name;
     }
 }

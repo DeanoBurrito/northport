@@ -9,6 +9,7 @@ namespace Npk
     {
         uint64_t xSaveBitmap;
         size_t xSaveBufferSize;
+        uint8_t* featureBitmap;
     };
     
     struct TrapFrame

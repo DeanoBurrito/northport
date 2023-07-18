@@ -37,16 +37,12 @@ namespace Npk
         hhdmLength = sl::AlignUp(lastEntry->base + lastEntry->length, PageSize);
         Log("Hhdm: base=0x%lx, length=0x%lx", LogLevel::Info, hhdmBase, hhdmLength);
 
-        ScanCpuFeatures();
-        LogCpuFeatures();
-
         if (CpuHasFeature(CpuFeature::VGuest))
             Log("Kernel is running as virtualized guest.", LogLevel::Info);
-        if (Boot::bootloaderInfoRequest.response != nullptr)
-        {
-            Log("Loaded by: %s v%s", LogLevel::Info, Boot::bootloaderInfoRequest.response->name, 
-                Boot::bootloaderInfoRequest.response->version);
-        }
+        
+        const auto loaderResp = Boot::bootloaderInfoRequest.response;
+        if (loaderResp != nullptr)
+            Log("Kernel loaded by: %s v%s", LogLevel::Info, loaderResp->name, loaderResp->version);
 
         if (Boot::smpRequest.response == nullptr)
             bootloaderRefs = 1;
@@ -62,20 +58,24 @@ namespace Npk
 
     void InitPlatform()
     {
-        if (Boot::framebufferRequest.response != nullptr)
+        using namespace Boot;
+        if (framebufferRequest.response != nullptr)
             Debug::InitEarlyTerminal();
         else
             Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
 
-        if (Boot::rsdpRequest.response != nullptr && Boot::rsdpRequest.response->address != nullptr)
-            Config::SetRsdp(SubHhdm(Boot::rsdpRequest.response->address));
+        if (rsdpRequest.response != nullptr && rsdpRequest.response->address != nullptr)
+            Config::SetRsdp(SubHhdm(rsdpRequest.response->address));
         else
             Log("Bootloader did not provide RSDP (or it was null).", LogLevel::Warning);
         
-        if (Boot::dtbRequest.response != nullptr && Boot::dtbRequest.response->dtb_ptr != nullptr)
-            Config::DeviceTree::Global().Init((uintptr_t)Boot::dtbRequest.response->dtb_ptr);
+        if (dtbRequest.response != nullptr && dtbRequest.response->dtb_ptr != nullptr)
+            Config::DeviceTree::Global().Init((uintptr_t)dtbRequest.response->dtb_ptr);
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
+
+        //TODO: automate this from ACPI or DTB
+        InitTopology();
         
         Filesystem::InitFileCache();
         Filesystem::InitVfs();
@@ -105,6 +105,37 @@ namespace Npk
         auto reclaimConv = sl::ConvertUnits(reclaimAmount, sl::UnitBase::Binary);
         Log("Reclaimed %lu.%lu %sB (%lu entries) of bootloader memory.", LogLevel::Info, 
             reclaimConv.major, reclaimConv.minor, reclaimConv.prefix, reclaimCount);
+
+        //as a nicety print the known processor topology
+        NumaDomain* numaDom = GetTopologyRoot();
+        while (numaDom != nullptr)
+        {
+            numaDom->cpusLock.ReaderLock();
+            Log("NUMA domain %lu:", LogLevel::Verbose, numaDom->id);
+
+            CpuDomain* cpuDom = numaDom->cpus;
+            while (cpuDom != nullptr)
+            {
+                Log(" |- CPU domain %lu, online=%s", LogLevel::Verbose,
+                    cpuDom->id, cpuDom->online ? "yes" : "no");
+
+                ThreadDomain* threadDom = cpuDom->threads;
+                while (threadDom != nullptr)
+                {
+                    Log("    |- Thread %lu", LogLevel::Verbose, threadDom->id);
+                    threadDom = threadDom->next;
+                }
+
+                cpuDom = cpuDom->next;
+            }
+
+            NumaDomain* next = numaDom->next;
+            if (next != nullptr)
+                next->cpusLock.ReaderUnlock();
+            numaDom->cpusLock.ReaderUnlock();
+            numaDom = next;
+        }
+
         Tasking::Thread::Current().Exit(0);
     }
 

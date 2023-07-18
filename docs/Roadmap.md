@@ -3,9 +3,11 @@
         - [x] Core (paging, interrupts).
         - [x] Timers (LAPIC, TSC, HPET, PIT).
         - [x] FPU, SSE, AVX.
+        - [x] Map cpu topology.
     - [x] riscv64:
         - [x] Core (paging, interrupts).
         - [x] Timer (SBI, sstc).
+        - [ ] Map cpu topology.
         - [ ] F/D/Q and V extension support.
         - [ ] AIA (imsic, aplic) and ACLINT support.
     - [x] Limine protocol boot shim (for riscv):
@@ -17,6 +19,7 @@
     - [x] Memory Management:
         - [x] PMM: multiple zones, each with a bitmap area + freelist.
             - [ ] Hotplug support: inject/eject physical memory.
+            - [ ] NUMA-aware allocations.
         - [x] VMM - driver based.
             - [x] Anon driver.
             - [ ] VFS driver.
@@ -33,8 +36,10 @@
         - [ ] Stopwatches.
     - [x] IPI mailbox.
     - [x] Scheduler.
+        - [ ] Topology-aware scheduling.
         - [x] SMP-support.
         - [x] DPCs.
+        - [ ] APCs.
         - [x] Work stealing.
         - [x] Waitable objects.
             - [ ] Composite objects.

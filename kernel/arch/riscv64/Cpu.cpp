@@ -1,9 +1,23 @@
 #include <arch/Cpu.h>
 #include <debug/Log.h>
 #include <config/DeviceTree.h>
+#include <Bitmap.h>
 
 namespace Npk
 {
+    void InitTopology()
+    {
+        Log("Topological mapping is not currently available on riscv.", LogLevel::Warning);
+    }
+
+    void ScanLocalTopology()
+    {} //no-op
+
+    NumaDomain* rootDomain;
+
+    NumaDomain* GetTopologyRoot()
+    { return rootDomain; }
+
     const char* isaString = nullptr;
     
     void ScanCpuFeatures()
