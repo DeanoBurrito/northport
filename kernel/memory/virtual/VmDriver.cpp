@@ -24,6 +24,8 @@ namespace Npk::Memory::Virtual
 
     void VmDriver::InitAll()
     {
+        //the init functions take a bitmap of which driver-specific features to enable.
+        //we enable everything for now!
         anonDriver.Init().Init(~0);
         kernelDriver.Init().Init(~0);
         vfsDriver.Init().Init(~0);

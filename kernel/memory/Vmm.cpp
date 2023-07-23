@@ -12,47 +12,123 @@
 
 namespace Npk::Memory
 {
-    VmRange* VMM::AllocStruct()
+    constexpr const size_t VmmSlabSizes[(size_t)VmmMetaType::Count] = 
+    { 
+        sizeof(VmRange), 
+        sizeof(VmHole)
+    };
+
+    constexpr size_t VmmMetaSlabPages = 1;
+
+    VmmMetaSlab* VMM::CreateMetaSlab(VmmMetaType type)
     {
-        sl::ScopedLock scopeLock(allocLock);
-        
-        VmSlabAlloc* allocator = rangesAlloc;
-        while (allocator != nullptr)
+        const size_t index = static_cast<size_t>(type);
+        const size_t size = VmmSlabSizes[index];
+
+        const uintptr_t base = PMM::Global().Alloc(VmmMetaSlabPages) + hhdmBase;
+        const size_t totalSpace = VmmMetaSlabPages * PageSize;
+        const uintptr_t usableBase = sl::AlignUp(base + sizeof(VmmMetaSlab), size);
+        const size_t usableSpace = totalSpace - (usableBase - base);
+
+        size_t slabCount = usableSpace / size;
+        size_t bitmapBytes = sl::AlignUp(slabCount, 8) / 8;
+        while (slabCount * size + bitmapBytes > usableSpace && slabCount > 0)
         {
-            for (size_t i = 0; i < VmSlabCount; i++)
-            {
-                if (sl::BitmapGet(allocator->bitmap, i))
-                    continue;
-                
-                sl::BitmapSet(allocator->bitmap, i);
-                return new (&allocator->slabs[i]) VmRange{};
-            }
-
-            if (allocator->next == nullptr)
-                break;
-            allocator = allocator->next;
+            slabCount--;
+            bitmapBytes = sl::AlignUp(slabCount, 8) / 8;
         }
+        ASSERT(slabCount > 0, "Bad VMM meta slab params");
 
-        VmSlabAlloc* latestSlab = reinterpret_cast<VmSlabAlloc*>(PMM::Global().Alloc() + hhdmBase);
-        sl::memset(latestSlab->bitmap, 0, VmBitmapBytes);
-        sl::BitmapSet(latestSlab->bitmap, 0);
-        if (allocator == nullptr)
-            rangesAlloc = latestSlab;
-        else
-            allocator->next = latestSlab;
+        VmmMetaSlab* slab = new(reinterpret_cast<void*>(base)) VmmMetaSlab();
+        slab->next = metaSlabs[index];
+        slab->total = slabCount;
+        slab->free = slabCount;
+        slab->data = usableBase;
+        slab->bitmap = reinterpret_cast<uint8_t*>(usableBase + slabCount * size);
 
-        return new (&latestSlab->slabs[0]) VmRange{};
+        sl::memset(slab->bitmap, 0, bitmapBytes);
+        metaSlabs[index] = slab;
+
+        Log("VMM metadata slab created: type=%lu, %lu entries + %lub early slack",
+            LogLevel::Verbose, index, slabCount, totalSpace - usableSpace);
+
+        return slab;
     }
 
-    void VMM::FreeStruct(VmRange* item)
+    void* VMM::AllocMeta(VmmMetaType type)
     {
-        sl::ScopedLock scopeLock(allocLock);
-        
-        const uintptr_t allocAddr = sl::AlignDown((uintptr_t)item, PageSize);
-        VmSlabAlloc* allocator = reinterpret_cast<VmSlabAlloc*>(allocAddr);
+        const size_t slabIndex = static_cast<size_t>(type);
+        const size_t slabSize = VmmSlabSizes[slabIndex];
 
-        const size_t index = ((uintptr_t)item - allocAddr) / sizeof(VmRange);
-        sl::BitmapClear(allocator->bitmap, index);
+        sl::ScopedLock allocLock(metaSlabLocks[slabIndex]);
+        VmmMetaSlab* slab = metaSlabs[slabIndex];
+        while (slab != nullptr && slab->free == 0)
+            slab = slab->next;
+
+        if (slab == nullptr)
+        {
+            slab = CreateMetaSlab(type);
+            VALIDATE(slab != nullptr, nullptr, "VMM meta slab creation failed");
+        }
+
+        const size_t found = sl::BitmapFindClear(slab->bitmap, slab->total);
+        sl::BitmapSet(slab->bitmap, found);
+
+        return reinterpret_cast<void*>(slab->data + (found * slabSize));
+    }
+
+    void VMM::FreeMeta(void* ptr, VmmMetaType type)
+    {
+        const size_t slabIndex = static_cast<size_t>(type);
+
+        //ASSERT_UNREACHABLE();
+    }
+
+    void VMM::AdjustHole(VmHole* target, size_t offset, size_t length)
+    {
+        ASSERT(offset + length <= target->length, "AdjustHole() bad params")
+
+        holes.Remove(target);
+
+        //if we're taking a chunk out of the middle of the hole, preserve the address
+        //space before the chunk we're taking.
+        if (offset > 0)
+        {
+            VmHole* hole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
+            hole->base = target->base;
+            hole->length = offset;
+            holes.Insert(hole);
+        }
+
+        //check if there's any usable space after this allocation to preserve.
+        if (offset + length < target->length)
+        {
+            VmHole* hole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
+            hole->base = target->base + offset + length;
+            hole->length = target->length - (offset + length);
+            holes.Insert(hole);
+        }
+    }
+
+    VmRange* VMM::FindRange(uintptr_t addr)
+    {
+        if (addr < globalLowerBound || addr >= globalUpperBound)
+            return nullptr;
+
+        sl::ScopedLock rangeTreeLock(rangesLock);
+        VmRange* scan = ranges.GetRoot();
+        while (scan != nullptr)
+        {
+            if (addr >= scan->base && addr < scan->Top())
+                return scan;
+
+            if (addr < scan->base)
+                scan = ranges.GetLeft(scan); 
+            else if (addr > scan->Top())
+                scan = ranges.GetRight(scan);
+        }
+
+        return nullptr;
     }
     
     sl::Lazy<VMM> kernelVmm;
@@ -85,9 +161,15 @@ namespace Npk::Memory
     {
         sl::ScopedLock scopeLock(rangesLock);
 
-        //protect hhdm from allocations, we also reserve a region right after hhdm for early slab allocation.
+        //protect the HHDM from allocations, as well as the kernel binary.
         globalLowerBound = hhdmBase + hhdmLength;
-        globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GiB);
+        globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GetHatLimits().modes[0].granularity);
+
+        VmHole* initialHole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
+        initialHole->base = globalLowerBound;
+        initialHole->length = globalUpperBound - globalLowerBound;
+        initialHole->largestHole = initialHole->length;
+        holes.Insert(initialHole);
 
         hatMap = KernelMap();
         MakeActiveMap(hatMap);
@@ -99,7 +181,9 @@ namespace Npk::Memory
     }
 
     VMM::~VirtualMemoryManager()
-    {} //TODO: VMM teardown
+    {
+        ASSERT_UNREACHABLE(); //TODO: vmm teardown
+    }
 
     void VMM::MakeActive()
     {
@@ -108,169 +192,158 @@ namespace Npk::Memory
         MakeActiveMap(hatMap);
     }
 
-    void VMM::HandleFault(uintptr_t addr, VmFaultFlags flags)
+    bool VMM::HandleFault(uintptr_t addr, VmFaultFlags flags)
     {
         if (addr < globalLowerBound || addr >= globalUpperBound)
-            Log("Bad page fault at 0x%lx, flags=0x%lx", LogLevel::Fatal, addr, flags.Raw());
+            return false;
         
-        rangesLock.Lock();
-        VmRange* range = nullptr;
-        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
-        {
-            if (addr < it->base) //TODO: use an acceleration structure for lookups here
-                break;
-            if (addr > it->Top())
-                continue;
-            
-            if (addr >= it->base && addr < it->Top())
-                range = &(*it);
-        }
-        
+        //determine if this is a good or bad page fault by trying to locate a range
+        //containing the faulting address.
+        VmRange* range = FindRange(addr);
         if (range == nullptr)
-            Log("Bad page fault at 0x%lx, flags=0x%lx", LogLevel::Fatal, addr, flags.Raw());
-        rangesLock.Unlock();
+            return false;
 
         using namespace Virtual;
         VmDriver* driver = VmDriver::GetDriver(range->flags);
-        ASSERT(driver != nullptr, "Active range with no driver");
+        VALIDATE(driver != nullptr, false, "VmRange exists without a known driver");
 
-        VmDriverContext context { mapLock, hatMap, *range };
-        EventResult result = driver->HandleFault(context, addr, flags);
-        
-        if (result != EventResult::Continue)
-        {
-            Log("Bad page fault at 0x%lx, flags=0x%lx, result=%lu", LogLevel::Fatal, 
-                addr, flags.Raw(), (size_t)result);
-        }
-        Log("Good page fault: 0x%lx, ec=0x%lx", LogLevel::Debug, addr, flags.Raw());
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
+        const EventResult result = driver->HandleFault(context, addr, flags);
+        if (!result.goodFault)
+            return false;
+
+        Log("Good page fault: addr=0x%lx, ec=0x%lx", LogLevel::Debug, addr, flags.Raw());
+        return true;
     }
 
-    sl::Opt<uintptr_t> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, uintptr_t lowerBound, uintptr_t upperBound)
+    sl::Opt<uintptr_t> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, VmmAllocLimits limits)
     {
         using namespace Virtual;
 
+        //before even thinking about allocating address space, find the driver used to
+        //back this type of memory and find out what it would need to fulfill it.
         VmDriver* driver = VmDriver::GetDriver(flags);
-        VALIDATE(driver != nullptr, {}, "VMM alloc failed, no driver selected.");
-
-        //TOOD: notes on how vm drivers can prevent cross contamination while allows VMOs of any size.
-        lowerBound = sl::Max(globalLowerBound, sl::AlignUp(lowerBound, PageSize));
-        upperBound = sl::Min(globalUpperBound, sl::AlignDown(upperBound, PageSize));
-        if (lowerBound + length >= upperBound)
+        if (driver == nullptr)
             return {};
+
+        const QueryResult query = driver->Query(length, flags, initArg);
+        if (!query.success)
+            return {};
+
+        sl::ScopedLock holyLock(holesLock);
+        VmHole* hole = holes.GetRoot();
+        VALIDATE(hole != nullptr, {}, "No address space holes?");
+
+        //TODO: respect alignment when allocating + limits
+        uintptr_t rangeBase = 0;
+        while (true)
+        {
+            if (VmHole* left = holes.GetLeft(hole); 
+                left != nullptr && left->largestHole >= query.length)
+            {
+                //there's a hole with a lower address and it (or one its children)
+                //has enough space for the allocation.
+                hole = left;
+                continue;
+            }
+
+            //check if the current hole can meet the requirements
+            if (hole->length >= query.length)
+            {
+                rangeBase = hole->base;
+                AdjustHole(hole, 0, length);
+                FreeMeta(hole, VmmMetaType::Hole);
+                hole = nullptr;
+                break;
+            }
+            
+            //all else failed, look at the next hole higher up the address space
+            hole = holes.GetRight(hole);
+            VALIDATE(hole != nullptr, {}, "No hole in address space large enough.");
+            VALIDATE(hole->largestHole >= query.length, {}, "No hole in address space large enough.");
+        }
+        holyLock.Release();
+        VALIDATE(rangeBase != 0, {}, "Will not allocate VM at address 0");
+
+        VmRange* vmRange = new(AllocMeta(VmmMetaType::Range)) VmRange();
+        vmRange->base = rangeBase;
+        vmRange->length = length;
+        vmRange->flags = flags;
+
+        //we've reserved some of the address space, now attach a vmdriver to this
+        //range of memory.
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *vmRange };
+        const AttachResult attachResult = driver->Attach(context, query, initArg);
+        if (!attachResult.success)
+        {
+            VmHole* returnHole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
+            returnHole->base = vmRange->base;
+            returnHole->length = vmRange->length;
+            holesLock.Lock();
+            holes.Insert(returnHole);
+            holesLock.Unlock();
+
+            FreeMeta(vmRange, VmmMetaType::Range);
+            return {};
+        };
+
+        vmRange->token = attachResult.token;
+        vmRange->offset = attachResult.offset;
         
         rangesLock.Lock();
-        auto insertBefore = ranges.Begin();
-        uintptr_t allocAt = lowerBound;
-
-        //find a virtual range big enough
-        //first try: no existing ranges, or there's space before the first range
-        if (ranges.Size() == 0 || lowerBound + length < insertBefore->base)
-        {
-            if (lowerBound + length < upperBound)
-                goto alloc_range_claim;
-        }
-        
-        //second try: search the gaps between adjacent ranges.
-        //the list of ranges is always sorted, so this is easy.
-        while (insertBefore != ranges.End())
-        {
-            auto lowIt = insertBefore;
-            ++insertBefore;
-            if (insertBefore == ranges.End())
-                break;
-
-            if (insertBefore->base - lowIt->Top() < length)
-                continue;
-            
-            allocAt = lowIt->Top();
-            goto alloc_range_claim;
-        }
-        
-        //third try: check for enough after the last range.
-        if (sl::Max(ranges.Back().Top(), lowerBound) + length < upperBound)
-        {
-            allocAt = sl::Max(ranges.Back().Top(), lowerBound);
-            goto alloc_range_claim;
-        }
-        
-        //couldn't find space anywhere
-        rangesLock.Unlock();
-        return {};
-        
-    alloc_range_claim:
-        VmRange* range = AllocStruct();
-        range->base = allocAt;
-        range->length = length;
-        range->flags = flags;
-        if (insertBefore == ranges.End())
-            ranges.PushBack(range);
-        else
-            ranges.Insert(insertBefore, range);
+        ranges.Insert(vmRange);
         rangesLock.Unlock();
 
-        VmDriverContext context { mapLock, hatMap, *range };
-        AttachResult result = driver->Attach(context, initArg);
-        ASSERT(result.success, "VMM driver failed to attach"); //TODO: error handling
-                                                               
-        range->token = result.token;
-        range->offset = result.baseOffset;
-        range->length = result.deadLength;
-        return range->base + range->offset;
+        return vmRange->base + vmRange->offset;
     }
 
     bool VMM::Free(uintptr_t base)
     {
-        rangesLock.Lock();
-
-        //find the range, remove it from list
-        VmRange* range = nullptr;
-        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
-        {
-            if (base < it->base || base >= it->Top())
-                continue;
-            
-            range = static_cast<VmRange*>(ranges.Erase(it.entry));
-            break;
-        }
-        rangesLock.Unlock();
-        
-        VALIDATE(range != nullptr, false, "Couldn't free VM Range: it does not exist.");
-
-        //detach range from driver
-        using namespace Virtual;
-        VmDriver* driver = VmDriver::GetDriver(range->flags);
-        ASSERT(driver != nullptr, "Attempted to free range with no associated driver");
-        
-        constexpr size_t DetachTryCount = 3;
-        VmDriverContext context { mapLock, hatMap, *range };
-        ASSERT(driver->Detach(context), "VMM driver failed to detach range");
-
-        //TODO: we should handle this more gracefully in the future, when we have ways this can fail.
-        return true;
+        //find range, remove it from tree.
+        //detach driver from range
+        //create hole struct, insertt it into tree.
+        ASSERT_UNREACHABLE()
     }
 
-    sl::Opt<VmFlags> VMM::GetFlags(uintptr_t base, size_t length) const
-    {}
+    sl::Opt<VmFlags> VMM::GetFlags(uintptr_t base, size_t length)
+    {
+        const VmRange* range = FindRange(base);
+        if (range == nullptr || range->Top() < base + length)
+            return {};
+
+        return range->flags;
+    }
 
     bool VMM::SetFlags(uintptr_t base, size_t length, VmFlags flags)
-    {}
+    {
+        VmRange* range = FindRange(base);
+        if (range == nullptr || range->Top() < base + length)
+            return false;
+        //TODO: this requires interaction with the underlying driver
+        ASSERT_UNREACHABLE();
+    }
 
     bool VMM::MemoryExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags)
     {
-        for (auto it = ranges.Begin(); it != ranges.End(); ++it)
-        {
-            if (it->base > base + length)
-                return false;
-            if (base >= it->base && base + length <= it->Top())
-                return flags.HasValue() ? (*flags & it->flags) == *flags : true;
-        }
+        const VmRange* range = FindRange(base);
+        if (range == nullptr)
+            return false;
+        if (range->Top() < base + length)
+            return false;
 
-        return false;
+        if (flags.HasValue())
+            return (*flags & range->flags) == *flags;
+        return true;
     }
 
     sl::Opt<uintptr_t> VMM::GetPhysical(uintptr_t vaddr)
     {
         return GetMap(hatMap, vaddr);
+    }
+
+    size_t VMM::GetDebugData(sl::Span<VmmDebugEntry>& entries, size_t offset)
+    {
+        ASSERT_UNREACHABLE();
     }
 
     size_t VMM::CopyIn(void* foreignBase, void* localBase, size_t length)

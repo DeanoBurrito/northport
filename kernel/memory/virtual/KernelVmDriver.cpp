@@ -38,6 +38,12 @@ namespace Npk::Memory::Virtual
         (void)context; (void)where; (void)flags;
     }
 
+    bool KernelVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
+    {
+        ASSERT_UNREACHABLE();
+        (void)context; (void)flags;
+    }
+
     QueryResult KernelVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
     {
         QueryResult result;

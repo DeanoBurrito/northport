@@ -42,11 +42,11 @@ namespace Npk::Memory::Virtual
         //we can have the HAT trigger page faults on certain actions. This lets us interact with a
         //program as it uses it's virtual memory (demand paging, swapping).
         if (flags.Has(VmFaultFlag::Write) && !context.range.flags.Has(VmFlag::Write))
-            return EventResult::Kill;
+            return { .goodFault = false };
         if (flags.Has(VmFaultFlag::Execute) && !context.range.flags.Has(VmFlag::Execute))
-            return EventResult::Kill;
+            return { .goodFault = false };
         if (flags.Has(VmFaultFlag::User) && !context.range.flags.Has(VmFlag::User))
-            return EventResult::Kill;
+            return { .goodFault = false };
 
         //if we've reached this point, the fault wasn't caused by a permissions violation,
         //so we map some usable memory here and return to the program.
@@ -63,7 +63,12 @@ namespace Npk::Memory::Virtual
                 hatMode, ConvertFlags(context.range.flags), true);
         }
 
-        return EventResult::Continue;
+        return { .goodFault = true };
+    }
+
+    bool AnonVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
+    { 
+        ASSERT_UNREACHABLE();
     }
 
     QueryResult AnonVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)

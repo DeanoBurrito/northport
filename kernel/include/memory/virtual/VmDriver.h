@@ -22,12 +22,11 @@ namespace Npk::Memory::Virtual
 
         return value;
     }
-
-    enum class EventResult
+    
+    struct EventResult
     {
-        Continue,   //thread is allowed to continue.
-        Kill,       //thread did something bad, kill it.
-        Suspend,    //op will need time to complete, suspend thread or return async-handle.
+        //TODO: handle for waiting on backing operation to complete
+        bool goodFault;
     };
 
     struct QueryResult
@@ -49,7 +48,7 @@ namespace Npk::Memory::Virtual
     {
         sl::TicketLock& lock;
         HatMap* map;
-        VmRange range;
+        const VmRange& range;
     };
 
     /* Each virtual memory allocation has a type associated with it, the type determines
@@ -77,6 +76,11 @@ namespace Npk::Memory::Virtual
         //this VmDriver. The driver informs the VMM (and rest of the kernel) what it should do with
         //the faulting code depending on the EventResult.
         virtual EventResult HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags) = 0;
+
+        //The VMM wants to modify an active VM range, the valid args indicate which properties of
+        //the range are requested for modification.
+        //Returns whether the operation was successful or not.
+        virtual bool ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags) = 0;
         
         //The VMM wants to know how much space (and with what alignment) a VM allocation would
         //require. This is purely informational, no memory mappings are modified here.
