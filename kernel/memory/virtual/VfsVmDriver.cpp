@@ -18,7 +18,7 @@ namespace Npk::Memory::Virtual
     { 
         features.demandPage = enableFeatures & (uintptr_t)VfsFeature::Demand;
 
-        Log("VmDriver init: vfs, demandCacheIn=%s", LogLevel::Info, 
+        Log("VmDriver init: vfs, demand=%s", LogLevel::Info, 
             features.demandPage ? "yes" : "no");
     }
 
@@ -30,11 +30,20 @@ namespace Npk::Memory::Virtual
     QueryResult VfsVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
     {
         ASSERT_UNREACHABLE()
+        /* length is basically just the size of window rounded up to the cache size granularity
+         * do a tentative check if file exists and is actually a file.
+         */
     }
 
     bool VfsVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
     {
         ASSERT_UNREACHABLE()
+        /*
+         * check file exists
+         * attach this range to the file cache parts (in a list I guess) so we can traceback
+         * this increments filecache ref count by 1?
+         * do usual demand-page stuff (and issue io operations for file cache misses)
+         */
     }
 
     AttachResult VfsVmDriver::Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg)

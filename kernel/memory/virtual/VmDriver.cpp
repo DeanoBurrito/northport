@@ -22,6 +22,17 @@ namespace Npk::Memory::Virtual
         return nullptr;
     }
 
+    const char* VmDriver::GetName(VmFlags flags)
+    {
+        if (flags.Has(VmFlag::Anon))
+            return "anon";
+        if (flags.Has(VmFlag::Mmio))
+            return "kernel";
+        if (flags.Has(VmFlag::File))
+            return "vfs";
+        return "unknown driver";
+    }
+
     void VmDriver::InitAll()
     {
         //the init functions take a bitmap of which driver-specific features to enable.

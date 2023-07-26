@@ -72,7 +72,9 @@ namespace Npk::Memory
         }
 
         const size_t found = sl::BitmapFindClear(slab->bitmap, slab->total);
+        ASSERT(found != slab->total, "VMM meta slab exhausted");
         sl::BitmapSet(slab->bitmap, found);
+        slab->free--;
 
         return reinterpret_cast<void*>(slab->data + (found * slabSize));
     }
@@ -80,8 +82,27 @@ namespace Npk::Memory
     void VMM::FreeMeta(void* ptr, VmmMetaType type)
     {
         const size_t slabIndex = static_cast<size_t>(type);
+        const size_t slabSize = VmmSlabSizes[slabIndex];
 
-        //ASSERT_UNREACHABLE();
+        sl::ScopedLock allocLock(metaSlabLocks[slabIndex]);
+        VmmMetaSlab* slab = metaSlabs[slabIndex];
+
+        while (slab != nullptr)
+        {
+            const uintptr_t top = slab->data + (slab->total * slabSize);
+            if ((uintptr_t)ptr < slab->data || (uintptr_t)ptr > top)
+            {
+                slab = slab->next;
+                continue;
+            }
+
+            //found the owning slab.
+            const size_t index = ((uintptr_t)ptr - slab->data) / slabSize;
+            sl::BitmapClear(slab->bitmap, index);
+            return;
+        }
+
+        ASSERT_UNREACHABLE() //means the metadata wasnt allocated from one of our slabs.
     }
 
     void VMM::AdjustHole(VmHole* target, size_t offset, size_t length)
@@ -124,7 +145,7 @@ namespace Npk::Memory
 
             if (addr < scan->base)
                 scan = ranges.GetLeft(scan); 
-            else if (addr > scan->Top())
+            else if (addr >= scan->Top())
                 scan = ranges.GetRight(scan);
         }
 
@@ -154,6 +175,15 @@ namespace Npk::Memory
         globalUpperBound = ~hhdmBase - PageSize;
         hatMap = InitNewMap();
 
+        for (size_t i = 0; i < (size_t)VmmMetaType::Count; i++)
+            metaSlabs[i] = nullptr;
+
+        VmHole* initialHole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
+        initialHole->base = globalLowerBound;
+        initialHole->length = globalUpperBound - globalLowerBound;
+        initialHole->largestHole = initialHole->length;
+        holes.Insert(initialHole);
+
         Log("User VMM initialized.", LogLevel::Info);
     }
 
@@ -164,6 +194,9 @@ namespace Npk::Memory
         //protect the HHDM from allocations, as well as the kernel binary.
         globalLowerBound = hhdmBase + hhdmLength;
         globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GetHatLimits().modes[0].granularity);
+
+        for (size_t i = 0; i < (size_t)VmmMetaType::Count; i++)
+            metaSlabs[i] = nullptr;
 
         VmHole* initialHole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
         initialHole->base = globalLowerBound;
@@ -251,7 +284,7 @@ namespace Npk::Memory
             if (hole->length >= query.length)
             {
                 rangeBase = hole->base;
-                AdjustHole(hole, 0, length);
+                AdjustHole(hole, 0, query.length);
                 FreeMeta(hole, VmmMetaType::Hole);
                 hole = nullptr;
                 break;
@@ -267,7 +300,7 @@ namespace Npk::Memory
 
         VmRange* vmRange = new(AllocMeta(VmmMetaType::Range)) VmRange();
         vmRange->base = rangeBase;
-        vmRange->length = length;
+        vmRange->length = query.length;
         vmRange->flags = flags;
 
         //we've reserved some of the address space, now attach a vmdriver to this
@@ -299,10 +332,38 @@ namespace Npk::Memory
 
     bool VMM::Free(uintptr_t base)
     {
-        //find range, remove it from tree.
-        //detach driver from range
-        //create hole struct, insertt it into tree.
-        ASSERT_UNREACHABLE()
+        VmRange* range = FindRange(base);
+        if (range == nullptr)
+            return false;
+
+        rangesLock.Lock();
+        ranges.Remove(range);
+        rangesLock.Unlock();
+
+        using namespace Virtual;
+        VmDriver* driver = VmDriver::GetDriver(range->flags);
+        VALIDATE(driver != nullptr, false, "Active VmRange with no known driver");
+
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range};
+        const bool detachSuccess = driver->Detach(context);
+        if (!detachSuccess)
+        {
+            Log("%s vmdriver failed to detach range @ 0x%lx, 0x%lx bytes.",
+                LogLevel::Warning, VmDriver::GetName(range->flags), range->base, range->length);
+            FreeMeta(range, VmmMetaType::Range);
+            return false;
+        }
+
+        VmHole* hole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
+        hole->length = range->length;
+        hole->base = range->base;
+
+        FreeMeta(range, VmmMetaType::Range);
+        holesLock.Lock();
+        holes.Insert(hole);
+        holesLock.Unlock();
+
+        return true;
     }
 
     sl::Opt<VmFlags> VMM::GetFlags(uintptr_t base, size_t length)

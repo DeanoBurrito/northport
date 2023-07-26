@@ -157,7 +157,6 @@ namespace Npk::Memory
         sl::Opt<uintptr_t> GetPhysical(uintptr_t vaddr);
         size_t GetDebugData(sl::Span<VmmDebugEntry>& entries, size_t offset = 0);
 
-        //TODO: allowFault flag for these
         size_t CopyIn(void* foreignBase, void* localBase, size_t length);
         size_t CopyOut(void* localBase, void* foreignBase, size_t length);
     };
