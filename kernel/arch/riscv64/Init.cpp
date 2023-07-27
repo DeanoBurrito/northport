@@ -5,7 +5,6 @@
 #include <arch/Cpu.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
-#include <boot/LimineBootstrap.h>
 #include <config/DeviceTree.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
@@ -48,7 +47,7 @@ namespace Npk
         asm volatile("mv tp, zero"); 
         asm volatile("csrw sscratch, zero");
         
-        InitCore(info->hart_id);
+        InitCore(info->hartid);
         ExitApInit();
     }
 
@@ -91,17 +90,13 @@ extern "C"
         uintptr_t virtBase;
     };
 
-    void KernelEntry(EntryData* data)
+    void KernelEntry()
     {
         using namespace Npk;
         
         //these ensure we don't try to load bogus values as the core-local block.
         asm volatile("mv tp, zero"); //implicitly volatile, but for clarity
         asm volatile("csrw sscratch, zero"); 
-
-        Boot::PerformLimineBootstrap(data->physBase, data->virtBase, data->hartId, data->dtb);
-        data = nullptr;
-        (void)data;
 
         InitEarlyPlatform();
         InitMemory();
@@ -113,17 +108,18 @@ extern "C"
 
         if (Boot::smpRequest.response != nullptr)
         {
-            for (size_t i = 0; i < Boot::smpRequest.response->cpu_count; i++)
+            auto resp = Boot::smpRequest.response;
+            for (size_t i = 0; i < resp->cpu_count; i++)
             {
-                limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
-                if (procInfo->hart_id == Boot::smpRequest.response->bsp_hart_id)
+                auto cpuInfo = resp->cpus[i];
+                if (cpuInfo->hartid == resp->bsp_hartid)
                 {
-                    InitCore(procInfo->hart_id);
+                    InitCore(cpuInfo->hartid);
                     continue;
                 }
-                
-                procInfo->goto_address = ApEntry;
-                Log("Sending bring-up request to core %lu.", LogLevel::Verbose, procInfo->hart_id);
+
+                cpuInfo->goto_address = ApEntry;
+                Log("Sending bring-up request to core %lu.", LogLevel::Verbose, cpuInfo->hartid);
             }
         }
 

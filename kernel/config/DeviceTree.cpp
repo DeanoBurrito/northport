@@ -1,5 +1,5 @@
 #include <config/DeviceTree.h>
-#include <boot/LimineExtensions.h>
+#include <boot/Limine.h>
 #include <debug/Log.h>
 #include <Memory.h>
 #include <Maths.h>

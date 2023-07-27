@@ -5,9 +5,9 @@ CXX_FLAGS = -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-table
 	-fno-asynchronous-unwind-tables -Iinclude -ffreestanding
 
 CXX_SRCS = Memory.cpp String.cpp UnitConverter.cpp Time.cpp Random.cpp \
-	formats/Tar.cpp formats/Url.cpp
+	formats/Tar.cpp formats/Url.cpp formats/Elf.cpp
 
-include $(PROJ_ROOT_DIR)/misc/LibCommon.mk
+include $(PROJ_ROOT_DIR)/misc/BuildCommon.mk
 
 # Syslib is a bit special in that we also build a version for the kernel.
 # We have separate build + clean recipes for this, and it gets an alternate 
@@ -16,6 +16,8 @@ include $(PROJ_ROOT_DIR)/misc/LibCommon.mk
 K_TARGET = $(LIBS_OUTPUT_DIR)/libk$(TARGET).a
 K_BUILD_DIR = k$(BUILD_DIR)
 K_OBJS = $(patsubst %.cpp, $(K_BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
+
+all: $(TARGET_STATIC)
 
 all-kernel: $(K_TARGET)
 

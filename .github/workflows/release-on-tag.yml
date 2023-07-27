@@ -30,20 +30,15 @@ jobs:
     - name: Rename Manual.pdf
       run: mv docs/manual/Manual.pdf docs/manual/northport-manual-${{ env.TAG_NAME }}.pdf
 
-    - name: Clone Limine
-      uses: actions/checkout@v3
-      with:
-        repository: limine-bootloader/limine
-        ref: v4.x-branch-binary
-        path: limine
-
-    - name: Build Limine Tools
-      run: cd limine; make
-
     - name: Build x86_64 ISO
       run: >
         make clean;
-        make iso CPU_ARCH=x86_64 TOOLCHAIN=clang LIMINE_DIR=limine
+        make iso-hybrid CPU_ARCH=x86_64 TOOLCHAIN=clang
+    
+    -name: Build riscv64 ISO
+      run: >
+        make clean;
+        make iso CPU_ARCH=riscv64 TOOLCHAIN=clang
 
     - name: Upload to Github
       uses: softprops/action-gh-release@v1

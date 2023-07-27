@@ -28,9 +28,7 @@ namespace Npk
     
     void InitEarlyPlatform()
     {
-        ASSERT(Boot::hhdmRequest.response, "No HHDM response.");
-        ASSERT(Boot::memmapRequest.response, "No memory map response.")
-        ASSERT(Boot::kernelAddrRequest.response, "No kernel address response.")
+        Boot::CheckLimineTags();
 
         hhdmBase = Boot::hhdmRequest.response->offset;
         auto lastEntry = Boot::memmapRequest.response->entries[Boot::memmapRequest.response->entry_count - 1];

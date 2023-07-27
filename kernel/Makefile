@@ -1,7 +1,7 @@
 KERNEL_CXX_FLAGS += -I../libs/np-syslib/include
 
 CXX_SRCS = arch/Helpers.cpp \
-	boot/CommonInit.cpp boot/LimineTags.cpp boot/LimineBootstrap.cpp \
+	boot/CommonInit.cpp boot/LimineTags.cpp \
 	config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
@@ -53,7 +53,7 @@ $(KERNEL_FULL_FILEPATH): $(OBJS) $(LD_SCRIPT)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $(SYMS_DUMMY_SRC) -o $(SYMS_DUMMY_OBJ)
 	$(LOUD)$(X_LD_BIN) $(OBJS) $(SYMS_DUMMY_OBJ) $(KERNEL_LD_FLAGS) -T $(LD_SCRIPT) -o $(KERNEL_FULL_FILEPATH)
 ifeq ($(INCLUDE_KERNEL_SYMBOLS), yes)
-	@printf "$(C_BLUE)[kernel]$(C_RST) Generating symbol table ...\r\n"
+	@printf "$(C_BLUE)[Kernel]$(C_RST) Generating symbol table ...\r\n"
 	$(LOUD)$(X_READELF_BIN) -s --demangle --wide $(KERNEL_FULL_FILEPATH) | \
 		awk $(SYMS_AWK_CMD) > $(SYMS_SRC)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $(SYMS_SRC) -o $(SYMS_OBJ)

@@ -1,4 +1,5 @@
 #include <boot/LimineTags.h>
+#include <debug/Log.h>
 
 namespace Npk::Boot
 {
@@ -31,11 +32,13 @@ namespace Npk::Boot
         .response = nullptr
     };
 
-    limine_5_level_paging_request la57PagingRequest
+    limine_paging_mode_request pagingModeRequest
     {
-        .id = LIMINE_5_LEVEL_PAGING_REQUEST,
+        .id = LIMINE_PAGING_MODE_REQUEST,
         .revision = 0,
-        .response = nullptr
+        .response = nullptr,
+        .mode = LIMINE_PAGING_MODE_MAX,
+        .flags = 0,
     };
 
     limine_memmap_request memmapRequest
@@ -102,7 +105,7 @@ namespace Npk::Boot
         &stackSizeRequest,
         &hhdmRequest,
         &framebufferRequest,
-        &la57PagingRequest,
+        &pagingModeRequest,
         &memmapRequest,
         &modulesRequest,
         &rsdpRequest,
@@ -113,4 +116,55 @@ namespace Npk::Boot
         &smpRequest,
         nullptr
     };
+
+    constexpr const char* RequestNameStrs[] =
+    {
+        "Bootloader info",
+        "Stack size",
+        "HHDM",
+        "Framebuffer",
+        "Paging mode",
+        "Memory map",
+        "Modules",
+        "RSDP",
+        "EFI runtime table",
+        "Boot time",
+        "Kernel address",
+        "DTB",
+        "SMP",
+    };
+
+    struct LimineReq
+    {
+        uint64_t id[4];
+        uint64_t revision;
+        uint64_t* response; //pointer to the response revision.
+    };
+
+    void CheckLimineTags()
+    {
+        //we require these tags as a bare minimum
+        ASSERT(hhdmRequest.response != nullptr, "HHDM response required");
+        ASSERT(memmapRequest.response != nullptr, "Memory map response required");
+        ASSERT(kernelAddrRequest.response != nullptr, "Kernel address required");
+
+        const size_t requestCount = (sizeof(requests) / sizeof(void*)) - 1;
+        
+        size_t responsesFound = 0;
+        for (size_t i = 0; i < requestCount; i++)
+        {
+            auto req = reinterpret_cast<const LimineReq*>(requests[i]);
+            if (req->response == nullptr)
+                Log("%s request: no response.", LogLevel::Verbose, RequestNameStrs[i]);
+            else
+            {
+                Log("%s request: revision=%lu, responseRevision=%lu", LogLevel::Verbose,
+                    RequestNameStrs[i], req->revision, *req->response);
+                responsesFound++;
+            }
+        }
+
+        Log("Bootloader populated %lu (out of %lu) responses.", LogLevel::Verbose, 
+            responsesFound, requestCount);
+    }
 }

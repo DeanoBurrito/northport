@@ -1,6 +1,6 @@
 #pragma once
 
-#include <boot/LimineExtensions.h>
+#include <boot/Limine.h>
 
 namespace Npk::Boot
 {
@@ -15,4 +15,6 @@ namespace Npk::Boot
     extern limine_kernel_address_request kernelAddrRequest;
     extern limine_dtb_request dtbRequest;
     extern limine_smp_request smpRequest;
+
+    void CheckLimineTags();
 }

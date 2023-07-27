@@ -1,7 +1,4 @@
-- Initial release using git tags.
-- Added new kernel features:
-    - VFS, follows a traditional unix design.
-    - File cache, caches chunk of file contents in memory.
-    - TempFS driver, operates like any other filesystem just with no backing storage.
-- Releases include a bootable x86_64 iso for use with your emulator of choice now.
-    - A risc-v version will follow soon.
+- riscv: kernel now uses `tp` register for core-local info instead of accessing `sscratch` everytime. Thanks for xvanc and sigterm in the osdev discord for this one.
+- Added development cache: firmware files (ovmf, for qemu) and other dependencies like limine are downloaded at first use and stored local to the project. This greatly decreases the setup for people new to the project.
+    - The cache can be disabled and limine and firmware files can be provided from external locations. This is essentially how it worked before the cache (also the firmware files location was hardcoded).
+- Added pre-built bootable iso for riscv, using limine v5.

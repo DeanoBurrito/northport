@@ -5,14 +5,15 @@ TOOLCHAIN = gcc
 TOOLCHAIN_PREFIX = ../cross-tools/bin
 # Where to find the target sysroot.
 TOOLCHAIN_SYSROOT = ../cross-tools/lib/gcc/$(ARCH_TARGET)
-# Where to find your limine install.
-LIMINE_DIR = ../cross-tools/limine
+# Whether to use the development cache for bootloader and firmware files.
+# This downloads and stores any necessary UEFI firmware for testing and the limine
+# bootloader in `.devel-cache`. Disable this if you want to use your own
+# firmware and copy of limine.
+USE_DEVEL_CACHE = yes
 
-# ---- Emulator Options ----
-# If available, will launch qemu with UEFI firmware instead of the
-# default for the platform. This may require EDK2 to be installed, 
-# and paths to be setup in the target platform's CrossConfig.mk.
-BOOT_WITH_UEFI = yes
+# If you're not using the cache these paths will need to be populated
+LIMINE_DIR =
+OVMF_FILE =
 
 # ---- Build System Options ----
 # By default build commands are not echoed to stdout as there is a lot
@@ -28,8 +29,8 @@ COUNT_TODOS = yes
 KERNEL_SYMBOL_TABLE = yes
 
 # ---- Compiler Options ----
-# ISA to compile for: 'x86_64' or 'riscv64'
-export CPU_ARCH = x86_64
+# ISA to compile for, valid options: `x86_64`, `riscv64`.
+CPU_ARCH = x86_64
 # KERNEL_CXX_FLAGS += -fsanitize=undefined
 KERNEL_CXX_FLAGS += -O0 -g
 # Set to 'yes' to embed a nice terminal background into the kernel,
@@ -42,5 +43,7 @@ CLOCK_TICK_MS = 1
 # Enable use of debugcon (port 0xE9) as a serial driver and early log output. 
 # Only enable this for virtual machines.
 X86_64_ENABLE_DEBUGCON_E9 = yes
+# Whether to boot qemu with legacy bios instead of OVMF.
+X86_64_RUN_WITH_BIOS = no
 
 # ---- Riscv 64 Options ----

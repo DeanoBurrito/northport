@@ -2,11 +2,11 @@
 
 ![All builds CI badge](https://github.com/DeanoBurrito/northport/actions/workflows/build-tests.yml/badge.svg) ![](https://tokei.rs/b1/github/DeanoBurrito/northport?category=code)
 
-Northport is a monolithic kernel written in C++ and booted via the Limine protocol. It currently supports x86_64 and riscv64 (via a custom boot shim). This repo also contains some supporting libraries, docs and source for the associated manual.
+Northport is a monolithic kernel, written in C++ and booted via the Limine protocol. It currently supports x86_64 and riscv64 machines. This repo also contains a completely standalone support library (see `libs/np-syslib`).
 
 Instructions for building it yourself are [available here](docs/Building.md), and a more in-depth manual can be found under the releases tab or by cloning this repository and running `make docs`.
 
-A brief summary of the current goals and features are listed below, or check [the roadmap](docs/Roadmap.md) for a more granular view.
+A brief summary of the current goals and features are listed below, or check [the roadmap](docs/Roadmap.md) for a more granular view. Pre-built isos are made available at major feature milestones, but for the latest and greatest it's recommended to built from the master branch.
 
 ## Project Goals
 1) To build a usable, extensible and relatively complete kernel. This means an smp-aware scheduler with support for heterogeneous processors, media stacks (graphics, audio and network) and a flexible driver infrastructure.
@@ -35,7 +35,7 @@ Kernel:
 
 Build System:
 - Uses stock core tools and GNU make, runs anywhere (tm).
-- Xorriso and limine are needed for creating a bootable iso.
+- Xorriso is needed for generating bootable isos.
 
 ## Glorious Screenshots
 ![Screenshot_20221120_215230](https://user-images.githubusercontent.com/12033165/202898511-7e10e72c-6cfa-4f30-b7a5-3173dac36199.png)

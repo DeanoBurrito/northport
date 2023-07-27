@@ -6,19 +6,14 @@ This should cover everything needed to build, run and debug the kernel. If you e
 
 The following tools are required:
 - Core utils, your system should already have these installed: `cp`, `mv`, `rm` and `mkdir`.
-- You'll need `xorriso` and a copy of the [limine bootloader](https://github.com/limine-bootloader/limine). See their install instructions for getting setup with limine. This is usually just cloning the latest binary branch and running `make` to build a copy of the `limine-deploy` tool for your system.
+- You'll need `xorriso` to generate bootable iso images.
 - A cross compiler: either a GCC cross compiler or clang is required. For GCC the target triplet is expected to be `x86_64-elf`, `riscv64-elf` or similar to use the default names. The binary names used can be changed in the root makefile  (at the very top) if yours is different.
 - For testing you will need qemu, and `gdb-multiarch` is required for debugging.
 - For building the manual, you'll also need `texlive`.
 
-At this point your system is setup, you'll want to edit some variables in `Config.mk` before building:
-- `TOOLCHAIN`: Select 'gcc' or 'clang'.
-- `TOOLCHAIN_PREFIX`: Only for gcc, set this to where you installed your cross compiler.
-- `TOOLCHAIN_SYSROOT`: Set this to your compiler's sysroot folder. Normally this is under `lib/gcc/x86_64` or `lib/gcc/riscv64`, relative to where your cross compiler is installed.
-- `LIMINE_DIR`: Where you cloned the limine repo.
-- `CPU_ARCH`: The architecture to build for.
+At this point your system has the all base tools required. It's recommend to check out `Config.mk` and set any options to your liking. This includes selecting which compiler toolchain to use, and pointing the build system to your toolchain binaries.
 
-This file is used to store any user-facing settings. If you need to override the names used for the toolchain binaries, these are defined at the top of the root makefile. Changing them like this is not the recommended approach, but it is available should you need to.
+You'll also need to select whether to use the development file cache or not. This takes care of downloading limine and any uefi (required for booting in qemu). If you choose *not* to use the cache, you will need to make these files available to the build system, as explained in `Config.mk`.
 
 ## Supported Configurations
 
@@ -40,3 +35,4 @@ All build commands should be run from the project root directory. Currently the 
 - `make attach`: Launches gdb with the kernel symbols loaded, connects to a gdb remote server, like one launched using `make debug`.
 - `make docs`: Builds the documentation and renders it as a pdf.
 - `make docs-clean`: Cleans build files related to documentation.
+- `make cache-clean`: Remove cached development files (limine and ovmf firmware).

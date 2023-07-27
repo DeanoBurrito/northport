@@ -13,11 +13,14 @@ all: $(INITDISK_FULL_FILEPATH)
 $(INITDISK_FULL_FILEPATH): $(FILES)
 	@printf "$(C_BLUE)[Initdisk]$(C_RST) Generating ...\r\n"
 	$(LOUD)mkdir -p $(BUILD_DIR)
-	$(LOUD)tar $(TAR_FLAGS) $(FILES) -f $(INITDISK_FULL_FILEPATH)
+	$(LOUD)mkdir -p drivers
+	$(LOUD)cp -a $(DRIVERS_OUTPUT_DIR)/* drivers
+	$(LOUD)tar $(TAR_FLAGS) $(FILES) drivers -f $(INITDISK_FULL_FILEPATH)
 	@printf "$(C_BLUE)[Initdisk]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 .PHONY: clean
 clean:
 	@printf "$(C_BLUE)[Initdisk]$(C_RST) Cleaning build files ...\r\n"
-	$(LOUD)rm -r $(BUILD_DIR)
+	$(LOUD)-rm -r $(BUILD_DIR)
+	$(LOUD)-rm -r drivers
 	@printf "$(C_BLUE)[Initdisk]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"

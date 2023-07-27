@@ -1,4 +1,6 @@
+.devel-cache
 build/
 kbuild/
 iso/
+initdisk/drivers/
 compile_flags.txt

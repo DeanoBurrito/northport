@@ -49,6 +49,7 @@ namespace Npk::Memory::Virtual
 
     sl::Opt<size_t> AnonVmDriver::AttachRange(VmDriverContext& context, uintptr_t attachArg)
     {
+        attachArg = 1;
         //if core local block is not available, neither are interrupts (i.e. demand paging) so we back immediately anyway.
         if ((attachArg & 0b1) == 0 && CoreLocalAvailable())
             return attachArg;
