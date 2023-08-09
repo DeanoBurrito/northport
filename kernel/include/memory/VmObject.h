@@ -3,6 +3,7 @@
 #include <NativePtr.h>
 #include <Flags.h>
 #include <Optional.h>
+#include <Span.h>
 
 namespace Npk::Memory
 {
@@ -11,7 +12,7 @@ namespace Npk::Memory
         Write = 0,
         Execute = 1,
         User = 2,
-        Guarded = 3, //TODO:
+        Guarded = 3, 
 
         Anon = 24, //bits 24-32 are reserved for the driver type
         Mmio = 25,
@@ -23,8 +24,9 @@ namespace Npk::Memory
 
     struct VmoFileInitArg
     {
-        const char* filepath;
+        sl::StringSpan filepath;
         size_t offset;
+        bool noDeferBacking;
     };
 
     class VmObject

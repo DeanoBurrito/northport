@@ -32,7 +32,7 @@ namespace Npk::Memory
 
         size_t slabCount = usableSpace / size;
         size_t bitmapBytes = sl::AlignUp(slabCount, 8) / 8;
-        while (slabCount * size + bitmapBytes > usableSpace && slabCount > 0)
+        while ((slabCount * size + bitmapBytes > usableSpace) && (slabCount > 0))
         {
             slabCount--;
             bitmapBytes = sl::AlignUp(slabCount, 8) / 8;
@@ -198,7 +198,7 @@ namespace Npk::Memory
         for (size_t i = 0; i < (size_t)VmmMetaType::Count; i++)
             metaSlabs[i] = nullptr;
 
-        VmHole* initialHole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
+        VmHole* initialHole = new(AllocMeta(VmmMetaType::Hole)) VmHole(); //TODO: extract this + user level version into a common_vmm_init() func
         initialHole->base = globalLowerBound;
         initialHole->length = globalUpperBound - globalLowerBound;
         initialHole->largestHole = initialHole->length;
@@ -274,7 +274,7 @@ namespace Npk::Memory
             if (VmHole* left = holes.GetLeft(hole); 
                 left != nullptr && left->largestHole >= query.length)
             {
-                //there's a hole with a lower address and it (or one its children)
+                //there's a hole with a lower address and it (or one of its children)
                 //has enough space for the allocation.
                 hole = left;
                 continue;
@@ -332,6 +332,7 @@ namespace Npk::Memory
 
     bool VMM::Free(uintptr_t base)
     {
+        #warning "Fix VMM::Free memory corruption"
         VmRange* range = FindRange(base);
         if (range == nullptr)
             return false;
@@ -362,7 +363,6 @@ namespace Npk::Memory
         holesLock.Lock();
         holes.Insert(hole);
         holesLock.Unlock();
-
         return true;
     }
 
@@ -380,8 +380,14 @@ namespace Npk::Memory
         VmRange* range = FindRange(base);
         if (range == nullptr || range->Top() < base + length)
             return false;
-        //TODO: this requires interaction with the underlying driver
-        ASSERT_UNREACHABLE();
+
+        using namespace Virtual;
+        VmDriver* driver = VmDriver::GetDriver(range->flags);
+        if (driver == nullptr)
+            return false;
+
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
+        return driver->ModifyRange(context, flags);
     }
 
     bool VMM::MemoryExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags)

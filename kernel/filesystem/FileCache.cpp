@@ -3,38 +3,45 @@
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <memory/Pmm.h>
+#include <memory/virtual/VfsVmDriver.h>
 #include <UnitConverter.h>
+#include <Memory.h>
 #include <Maths.h>
 
 namespace Npk::Filesystem
 {
-    size_t cacheUnitSize;
-    
+    FileCacheInfo cacheInfo;
+
     void InitFileCache()
     {
         //find the smallest granularity supported by the MMU, we'll use that as a cache unit size.
-        cacheUnitSize = -1ul;
+        cacheInfo.unitSize = -1ul;
         const HatLimits& mmuLimits = GetHatLimits();
         for (size_t i = 0; i < mmuLimits.modeCount; i++)
         {
-            if (mmuLimits.modes[i].granularity < cacheUnitSize)
-                cacheUnitSize = mmuLimits.modes[i].granularity;
+            if (mmuLimits.modes[i].granularity < cacheInfo.unitSize)
+            {
+                cacheInfo.unitSize = mmuLimits.modes[i].granularity;
+                cacheInfo.hatMode = i;
+                cacheInfo.modeMultiple = 1;
+            }
         }
-        ASSERT(sl::IsPowerOfTwo(cacheUnitSize), "Bad cache unit size");
+        ASSERT(cacheInfo.unitSize != -1ul, "Unable to select cache unit size");
+        ASSERT(sl::IsPowerOfTwo(cacheInfo.unitSize), "Bad cache unit size");
 
-        auto conv = sl::ConvertUnits(cacheUnitSize, sl::UnitBase::Binary);
+        auto conv = sl::ConvertUnits(cacheInfo.unitSize, sl::UnitBase::Binary);
         Log("File cache initialized: unitSize=0x%lx (%lu.%lu%sB)", LogLevel::Info,
-            cacheUnitSize, conv.major, conv.minor, conv.prefix);
+            cacheInfo.unitSize, conv.major, conv.minor, conv.prefix);
     }
 
-    size_t FileCacheUnitSize()
-    { return cacheUnitSize; }
+    FileCacheInfo GetFileCacheInfo()
+    { return cacheInfo; }
 
     sl::Handle<FileCacheUnit> GetFileCache(FileCache* cache, size_t offset, bool createNew)
     {
         VALIDATE(cache != nullptr, {}, "FileCache is nullptr");
         
-        offset = sl::AlignDown(offset, cacheUnitSize);
+        offset = sl::AlignDown(offset, cacheInfo.unitSize);
         for (auto it = cache->units.Begin(); it != cache->units.End(); ++it)
         {
             if (offset == it->offset)
@@ -45,11 +52,12 @@ namespace Npk::Filesystem
             return {};
         
         FileCacheUnit* unit = &cache->units.EmplaceBack();
-        unit->references = 1;
         unit->offset = offset;
-        const uintptr_t physAddr = PMM::Global().Alloc(cacheUnitSize / PageSize);
+        const uintptr_t physAddr = PMM::Global().Alloc(cacheInfo.unitSize / PageSize);
         ASSERT(physAddr != 0, "PMM alloc failed.");
         unit->physBase = physAddr;
+
+        sl::memset(reinterpret_cast<void*>(physAddr + hhdmBase), 0, cacheInfo.unitSize);
 
         //link this page's metadata to the filecache
         Memory::PageInfo* info = PMM::Global().Lookup(physAddr);

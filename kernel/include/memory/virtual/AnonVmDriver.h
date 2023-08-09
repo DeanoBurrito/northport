@@ -6,7 +6,7 @@ namespace Npk::Memory::Virtual
 {
     enum class AnonFeature : uintptr_t
     {
-        Demand = 1 << 0,
+        FaultHandler = 1 << 0,
         ZeroPage = 1 << 1,
     };
 
@@ -17,7 +17,7 @@ namespace Npk::Memory::Virtual
 
         struct
         {
-            bool demandPage;
+            bool faultHandler;
             bool zeroPage;
         } features;
 

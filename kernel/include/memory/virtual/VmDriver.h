@@ -66,6 +66,7 @@ namespace Npk::Memory::Virtual
     friend VirtualMemoryManager;
     private:
         static VmDriver* GetDriver(VmFlags flags);
+        static const char* GetName(VmFlags flags);
 
     public:
         static void InitAll();

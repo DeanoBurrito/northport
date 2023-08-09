@@ -7,19 +7,12 @@
 
 namespace Npk::Memory::Virtual
 {
-    struct VfsVmLink
-    {
-        size_t hatMode;
-        bool readonly;
-        sl::Handle<Filesystem::Node> vfsNode;
-    };
-
     void VfsVmDriver::Init(uintptr_t enableFeatures)
     { 
-        features.demandPage = enableFeatures & (uintptr_t)VfsFeature::Demand;
+        features.faultHandler = enableFeatures & (uintptr_t)VfsFeature::FaultHandler;
 
-        Log("VmDriver init: vfs, demand=%s", LogLevel::Info, 
-            features.demandPage ? "yes" : "no");
+        Log("VmDriver init: vfs, faultHandler=%s", LogLevel::Info, 
+            features.faultHandler ? "yes" : "no");
     }
 
     EventResult VfsVmDriver::HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags)
@@ -29,26 +22,84 @@ namespace Npk::Memory::Virtual
 
     QueryResult VfsVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
     {
-        ASSERT_UNREACHABLE()
-        /* length is basically just the size of window rounded up to the cache size granularity
-         * do a tentative check if file exists and is actually a file.
-         */
+        using namespace Filesystem;
+        auto arg = reinterpret_cast<const VmoFileInitArg*>(attachArg);
+
+        //do a tentative check that the file exists, and is actually a file.
+        //NOTE: this looks like a toctou bug, but its only an optimization - the authoratative check
+        //is performed in Attach().
+        if (auto file = VfsLookup(arg->filepath, KernelFsCtxt); file.Valid())
+        {
+            if (file->type != NodeType::File)
+                return { .success = false };
+        }
+        else
+            return { .success = false };
+
+        QueryResult result;
+        result.success = true;
+        result.hatMode = GetFileCacheInfo().hatMode;
+        result.alignment = GetHatLimits().modes[result.hatMode].granularity;
+        result.length = sl::AlignUp(length, result.alignment);
+        
+        if (flags.Has(VmFlag::Guarded))
+            result.length += 2 * result.alignment;
+
+        return result;
     }
 
     bool VfsVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
     {
         ASSERT_UNREACHABLE()
-        /*
-         * check file exists
-         * attach this range to the file cache parts (in a list I guess) so we can traceback
-         * this increments filecache ref count by 1?
-         * do usual demand-page stuff (and issue io operations for file cache misses)
-         */
     }
 
     AttachResult VfsVmDriver::Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg)
     {
-        ASSERT_UNREACHABLE()
+        using namespace Filesystem;
+        auto arg = reinterpret_cast<const VmoFileInitArg*>(attachArg);
+
+        auto fileHandle = VfsLookup(arg->filepath, KernelFsCtxt);
+        if (!fileHandle.Valid()) //assert whether we obtained a handle to the file or not.
+            return { .success = false };
+        if (fileHandle->type != NodeType::File)
+            return { .success = false };
+        if (!fileHandle->Open(KernelFsCtxt))
+            return { .success = false };
+
+        FileCache* cache = fileHandle->link.cache;
+
+        VfsVmLink* link = new VfsVmLink();
+        link->readonly = !context.range.flags.Has(VmFlag::Write);
+        link->vfsNode = sl::Move(fileHandle);
+        link->fileOffset = arg->offset;
+        (void)fileHandle;
+
+        const AttachResult result 
+        {
+            .token = link,
+            .offset = 0, //TODO: correctly set offset
+            .success = true,
+        };
+
+        //we found the file and were able to open it, next step depends on our backing strategy.
+        //if we're mapping on a page fault then we can exit now. Otherwise map the entire
+        //file cache contents.
+        if (features.faultHandler && !arg->noDeferBacking)
+            return result;
+
+        const size_t granuleSize = GetHatLimits().modes[query.hatMode].granularity;
+        const HatFlags hatFlags = ConvertFlags(context.range.flags);
+
+        sl::ScopedLock scopeLock(context.lock);
+        for (size_t i = 0; i < context.range.length; i += granuleSize)
+        {
+            auto handle = GetFileCache(cache, arg->offset + i, !link->readonly);
+            if (!handle.Valid())
+                break;
+            Map(context.map, context.range.base + i, handle->physBase, query.hatMode, hatFlags, false);
+        }
+
+        return result;
     }
 
     bool VfsVmDriver::Detach(VmDriverContext& context)

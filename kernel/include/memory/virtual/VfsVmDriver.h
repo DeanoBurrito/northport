@@ -1,12 +1,22 @@
 #pragma once
 
+#include <filesystem/Vfs.h>
 #include <memory/virtual/VmDriver.h>
 
 namespace Npk::Memory::Virtual
 {
+    struct VfsVmLink
+    {
+        VfsVmLink* next;
+
+        size_t fileOffset;
+        sl::Handle<Filesystem::Node> vfsNode;
+        bool readonly;
+    };
+
     enum class VfsFeature : uintptr_t
     {
-        Demand = 1 << 0,
+        FaultHandler = 1 << 0,
     };
 
     class VfsVmDriver : public VmDriver
@@ -14,7 +24,7 @@ namespace Npk::Memory::Virtual
     private:
         struct 
         {
-            bool demandPage;
+            bool faultHandler;
         } features;
 
     public:

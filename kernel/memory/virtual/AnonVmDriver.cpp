@@ -12,7 +12,7 @@ namespace Npk::Memory::Virtual
     void AnonVmDriver::Init(uintptr_t enableFeatures)
     {
         //extract enabled features
-        features.demandPage = enableFeatures & (uintptr_t)AnonFeature::Demand;
+        features.faultHandler = enableFeatures & (uintptr_t)AnonFeature::FaultHandler;
         features.zeroPage = enableFeatures & (uintptr_t)AnonFeature::ZeroPage;
 
         if (features.zeroPage)
@@ -32,7 +32,7 @@ namespace Npk::Memory::Virtual
         }
 
         Log("VmDriver init: anon, demand=%s, zeroPage=%s", LogLevel::Info, 
-            features.demandPage ? "yes" : "no", features.zeroPage ? "yes" : "no");
+            features.faultHandler ? "yes" : "no", features.zeroPage ? "yes" : "no");
     }
 
     EventResult AnonVmDriver::HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags)
@@ -95,8 +95,8 @@ namespace Npk::Memory::Virtual
         //Environmental factors include not using demand paging while other cores are not set up
         //for it (since buffers like the heap can be shared between cores).
         const bool demandAllowed = !CoresInEarlyInit() && CoreLocalAvailable() 
-            && features.demandPage;
-        const bool doDemand = demandAllowed && !(attachArg & (uintptr_t)AnonFeature::Demand);
+            && features.faultHandler;
+        const bool doDemand = demandAllowed && !(attachArg & (uintptr_t)AnonFeature::FaultHandler);
         const bool doZeroPage = demandAllowed && features.zeroPage 
             && !(attachArg & (uintptr_t)AnonFeature::ZeroPage);
 

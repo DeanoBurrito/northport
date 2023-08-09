@@ -46,6 +46,8 @@ namespace Npk::Memory::Virtual
 
     QueryResult KernelVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
     {
+        (void)attachArg;
+
         QueryResult result;
         result.success = true;
         result.hatMode = 0;

@@ -75,17 +75,18 @@ extern "C"
         }
         else if (frame->vector >= 12 && frame->vector <= 15)
         {
-            using Memory::VmFaultFlags;
-            VmFaultFlags flags = VmFaultFlags::None;
+            using namespace Memory;
+
+            VmFaultFlags flags {};
             if (frame->vector == 12)
-                flags |= VmFaultFlags::Execute;
+                flags.Set(VmFaultFlag::Execute);
             else if (frame->vector == 13)
-                flags |= VmFaultFlags::Read;
+                flags.Set(VmFaultFlag::Read);
             else if (frame->vector == 15)
-                flags |= VmFaultFlags::Write;
+                flags.Set(VmFaultFlag::Write);
             
             if (frame->flags.spp == 0)
-                flags |= VmFaultFlags::User;
+                flags.Set(VmFaultFlag::User);
             if (frame->ec < hhdmBase)
                 VMM::Current().HandleFault(frame->ec, flags);
             else

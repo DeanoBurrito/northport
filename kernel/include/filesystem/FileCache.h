@@ -17,17 +17,22 @@ namespace Npk::Filesystem
 
     struct FileCache
     {
-        sl::LinkedList<FileCacheUnit> units; //TODO: some kind of tree
+        sl::LinkedList<FileCacheUnit> units; //TODO: rbtree?
+    };
+
+    struct FileCacheInfo
+    {
+        size_t unitSize;
+        size_t hatMode;
+        size_t modeMultiple;
     };
 
     //Does what you'd expect, initializes some global state for the file cache.
     void InitFileCache();
 
-    //Returns the granule size used by the file cache: the size of cached parts of a file.
-    //Typically this is the page size used by the MMU, but it may be bigger.
-    size_t FileCacheUnitSize();
+    //Returns info about the size and configuration of the memory the file cache
+    //is using.
+    FileCacheInfo GetFileCacheInfo();
 
-    //Obtains part of a cached file, optionally creating a new cache if allowed (for writes).
-    //Otherwise it returns an empty handle (for reads).
     sl::Handle<FileCacheUnit> GetFileCache(FileCache* cache, size_t offset, bool createNew);
 }

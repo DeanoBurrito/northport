@@ -241,7 +241,7 @@ namespace Npk::Filesystem
         VALIDATE(packet.length > 0, 0, "Op length of zero.");
         (void)context; //TODO: 
 
-        size_t misalignment = packet.offset % FileCacheUnitSize();
+        size_t misalignment = packet.offset % GetFileCacheInfo().unitSize;
         size_t opSize = 0;
         if (packet.write) //TODO: this function can probably be reduced
         {
@@ -259,7 +259,7 @@ namespace Npk::Filesystem
             const size_t opSizeLimit = sl::Min(packet.offset + packet.length, data->props.size);
             while (opSize < opSizeLimit)
             {
-                const size_t copyLength = sl::Min(FileCacheUnitSize(), opSizeLimit - opSize) - misalignment;
+                const size_t copyLength = sl::Min(GetFileCacheInfo().unitSize, opSizeLimit - opSize) - misalignment;
                 auto cache = GetFileCache(node->link.cache, packet.offset + opSize, true);
                 ASSERT(cache.Valid(), "FileCache returned invalid handle.");
                 sl::memcopy(packet.buffer, opSize, AddHhdm((void*)cache->physBase), misalignment, copyLength);
@@ -279,7 +279,7 @@ namespace Npk::Filesystem
 
             while (opSize < opSizeLimit)
             {
-                const size_t copyLength = sl::Min(FileCacheUnitSize(), opSizeLimit - opSize) - misalignment;
+                const size_t copyLength = sl::Min(GetFileCacheInfo().unitSize, opSizeLimit - opSize) - misalignment;
                 auto cache = GetFileCache(node->link.cache, packet.offset + opSize, false);
                 ASSERT(cache.Valid(), "FileCache returned invalid handle.");
                 sl::memcopy(AddHhdm((void*)cache->physBase), misalignment, packet.buffer, opSize, copyLength);
