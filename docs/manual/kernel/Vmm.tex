@@ -1,0 +1,143 @@
+\section{Virtual Memory Manager}
+The virtual memory subsytem takes inspiration from a paper on the old SunOS VMM design: where the subsystem is separate into a few distinct parts. Namely the VMM itself acts as a high level manager of an address space, and handles the allocation of ranges of virtual addresses. The VMM is not responsible for actually mapping and unmapping virtual address, as this is the responsibility of the VM drivers. Each VM driver provides a single type of memory that the VMM can \textit{attach} to a range of virtual memory (see \autoref{vmdrivers} for specifics). 
+
+Both the VMM and VM drivers make use of an abstraction layer called the \textit{HAT} (hardware address translation) to keep themselves independent of the underlying hardware. The HAT is implemented as part of the architecture layer of the kernel.
+
+\subsection{Hardware Abstraction}
+The VMM and VM drivers are written to be independent of the underlying hardware, instead relying on the HAT (\textit{hardware address translation} - a borrowed term) to access the hardware. The HAT is part of the arch-layer of the kernel, and acts as the interface to the the platform's MMU.
+
+The HAT makes use of a few primitives, namely \textit{modes} and \textit{maps}. A mode describes one possible way that the MMU can map memory, specifying an alignment and granularity. Modes and and the number of them available are collectively referred to as the \textit{HAT limits}. A map is an opaque representation of an address space. From the kernel perspective a map is an opaque pointer, and the VMM will store exactly one of these per managed address space. In systems using paging, the map is usually the root page table. The HAT also provides a handful of functions for managing mappings within an address space.
+
+The VMM and VM drivers make full use of the available modes exposed by the HAT, meaning that the limitations placed on virtual memory management are based on what the hardware supports - no artificial limits are imposed by the VMM.
+
+TODO: add lines showing separation between layers of arch, subsystem and them VMOs on top (expected API).
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+    \node (vmm) {VMM};
+    \node (mgmtanchor) [right = 1.5cm of vmm] {};
+    \node (metaanchor) [left = 1.5cm of vmm] {};
+
+    \node (vmrange0) [rectangle, minimum width=2cm, minimum height=0.6cm, draw=black, fill=orange!10, above = 2mm of mgmtanchor] {};
+    \node (vmrange1) [rectangle, minimum width=2cm, minimum height=0.6cm, draw=black, fill=orange!10, below right = 3mm of vmrange0.north west] {};
+    \node (vmrange2) [rectangle, minimum width=2cm, minimum height=0.6cm, draw=black, fill=orange!10, below right = 3mm of vmrange1.north west] {VM ranges};
+
+    \node (vmhole0) [rectangle, minimum width=2cm, minimum height=0.6cm, draw=black, fill=yellow!10, below = 2mm of mgmtanchor] {};
+    \node (vmhole1) [rectangle, minimum width=2cm, minimum height=0.6cm, draw=black, fill=yellow!10, below right = 3mm of vmhole0.north west] {};
+    \node (vmhole2) [rectangle, minimum width=2cm, minimum height=0.6cm, draw=black, fill=yellow!10, below right = 3mm of vmhole1.north west] {VM holes};
+
+    \node (metaalloc) [rectangle, draw=black, fill=gray!10, above = 2mm of metaanchor] {Meta slabs};
+    \node (hatmap) [rectangle, draw=black, fill=red!10, below = 2mm of metaanchor] {HAT map};
+
+    \node[rectangle, minimum width = 9cm, minimum height = 3cm, draw=black, fit=(vmm) (vmrange0) (vmrange2) (vmhole0) (vmhole2) (metaalloc)] {};
+
+    \node (vmdrivers) [below = 2cm of vmm] {VM Drivers};
+    \node (vmdriver0) [rectangle, draw=black, fill=gray!10, below = 2mm of vmdrivers] {Kernel driver};
+    \node (vmdriver1) [rectangle, draw=black, fill=gray!10, right = 3mm of vmdriver0] {VFS driver};
+    \node (vmdriver2) [rectangle, draw=black, fill=gray!10, left = 3mm of vmdriver0] {Anon driver};
+    \node [rectangle, draw=black, fit=(vmdrivers) (vmdriver0) (vmdriver1) (vmdriver2)] {};
+
+    \begin{scope}[on background layer]
+        \node[fill=gray!10, minimum width = 9cm, minimum height = 3cm, fit=(vmm) (vmrange0) (vmrange2) (vmhole0) (vmhole2) (metaalloc)] {};
+        \node[fill=blue!20, fit=(vmdrivers) (vmdriver0) (vmdriver1) (vmdriver2)] {};
+    \end{scope}
+\end{tikzpicture}
+\caption{The various components of the virtual memory subsystem.}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+    \node (vmm1) [rectangle, minimum width=2cm, minimum height=1cm, draw=black, fill=gray!10] {VMM 1};
+    \node (vmm2) [rectangle, minimum width=2cm, minimum height=1cm, draw=black, fill=gray!10, right =of vmm1] {VMM 2};
+    \node (vmm3) [rectangle, minimum width=2cm, minimum height=1cm, draw=black, fill=gray!10, right =of vmm2] {VMM 2};
+
+    \node (vmdriver1) [rectangle, minimum width=2.5cm, minimum height=1cm, draw=black, fill=blue!20, below = of vmm2] {};
+    \node (vmdriver2) [rectangle, minimum width=2.5cm, minimum height=1cm, draw=black, fill=blue!20, below right=3mm of vmdriver1.north west] {};
+    \node (vmdriver3) [rectangle, minimum width=2.5cm, minimum height=1cm, draw=black, fill=blue!20, below right=3mm of vmdriver2.north west] {Vm Drivers};
+
+    \node (hat) [rectangle, minimum width=10cm, minimum height=5mm, draw=black, fill=red!10, below= 2mm of vmdriver3] {HAT};
+
+    \draw [<->] (vmm1) -- (vmdriver1);
+    \draw [<->] (vmm2) -- (vmdriver1);
+    \draw [<->] (vmm3) -- (vmdriver1);
+
+    \node (hat0) [minimum height=5mm, right = 1.4cm of hat.west] {};
+    \node (hat1) [minimum height=5mm, right = 5mm of hat0] {};
+    \node (hat2) [minimum height=5mm, left = 2.3cm of hat.east] {};
+    \node (vmm2fudge) [rectangle, minimum width=5mm, minimum height=1cm, left =1mm of vmm2.center] {};
+
+    \draw [->, red] (vmm1) -- (hat0);
+    \path [->, in=90, out=210, red] (vmm2fudge.south) edge (hat1);
+    \draw [->, red] (vmm3) -- (hat2);
+\end{tikzpicture}
+\caption{Relationship between multiple VMMs, VM drivers and the HAT.}
+\end{figure}
+
+\subsection{Concepts}
+
+\paragraph{VM Range}
+Used internally by the virtual memory subsystem to represent a range of virtual addresses. It contains the usual base and length, as well some flags to store what the memory should be able to do. It also contains an offset field as the virtual address returned may not always point to the start of the VM range. This is to allow things like the VMM adding guard pages to the range, which are included as part of the VM range but not included in the virtual memory made available to the consumer. This also allows for virtual memory to map things in ways that might be misaligned according to the MMU, as the offset provides a byte sized granularity. Each range also contains a \verb|token| field, which holds an opaque pointer for the VM driver that is attached to this range.
+
+\paragraph{VM Driver} 
+\label{vmdrivers}
+While these are called VM \textit{drivers} they have nothing to do with the device driver subsystem, and are loaded much earlier than that. It might be more accurate to think of them as plugins to the VMM, with each one providing one type virtual memory that can be used for VM ranges.
+
+\begin{itemize}
+    \item Anon VM Driver: Provides general purpose 'working memory'. This is the most common type of virtual memory and ultimately just allocates physical memory and maps it where appropriate. This driver makes heavy use of the page fault handler to perform operations like demand paging and a primitive form copy-on-write.
+    \item VFS VM Driver: Acts as a bridge between the VMM and the VFS, and allows for mapping the contents of a file into an address space. It has full support for demand paging, and can trigger parts of a file to be loaded from disk if they are not present in the file cache.
+    \item Kernel VM Driver: This driver is a catch-all for all the other operations the kernel might need to perform on virtual memory. This driver is responsible for making sure the kernel binary is mapped properly in virtual memory, and at runtime it can be used to map MMIO (physical addresses that aren't usable memory) into an address space.
+\end{itemize}
+
+\paragraph{Virtual Memory Object}
+A \textit{virtual memory object} (VMO) is a wrapper around a VM range and the VMM that owns it. The intention is to provide a cleaner interface than the VMM itself provides, and to abstract the complexity exposed by the VMM. The full API is still available if needed, but for the vast majority of use cases a VMO has the required features. As such, the VMO is the recommended way to manage virtual memory, it also makes use of RAII to help prevent leaks. VMOs can also be freely passed around the kernel as a way to represent 'some memory in an address space'.
+
+\subsection{Initialization}
+Immediately after the physical memory manager is initialized, the kernel VMM is brought up. First \verb|HatInit()| is called, which allows the architecture layer to perform some global setup, as well as map the HHDM in the map used by the kernel VMM. The reason the HAT is responsible for mapping the HHDM instead of the VMM is that the HAT can freely make assumptions about the best way to map the large, continuous area of address that the HHDM occupies. This function is only called once and is therefore not suitable for core-local setup of the MMU. It's mainly for detecting what mode the MMU is in (e.g. how many paging levels are available and in use), and any optional extensions. Next the VM drivers are initialized, this mainly consists of detecting and setting some software feature flags. The exception here is the kernel VMM which maps the kernel binary with (propoer permissions) into the address space of the kernel VMM.
+
+It should be noted that at this point the kernel is still running using the MMU settings setup by the bootloader. The next step is the actually initialize the kernel VMM instance by telling it what range of addresses it has available: these start immediately after the HHDM and end just before the kernel binary begins. At this point the kernel VMM switches loads it's own address map.
+
+The kernel VMM also instructs the global kernel heap to initialize itself at this point, however this is detailed in \autoref{Heap}.
+
+\subsection{Address Space Management}
+Both active VM ranges and free space are organised in similar ways: each instance is represented by a struct storing the base address and length, and these structs are stored in a red-black tree. Originally a singly-linked list was used for tracking active VM ranges, but this doesn't scale well with large numbers of ranges. A binary tree was a better option and a red black tree had desirable characteristics, although the major downside is the amount of code and complexity it adds to the kernel. In the future this may be replaced with an andersson (AA) tree to reduce this complexity a little.
+
+The tree of free addresses (referred to as \textit{holes}) represents what parts of the address space are free for allocations, while another tree (\textit{ranges}) stores the structs holding information about active VM ranges. While not used anywhere in the code, there is a soft concept of an inactive VM range, which is space not stored in either tree: i.e. its not allocatable but does isn't accessible to the rest of the system. Currently this is not supported or implemented, but this idea may be revisited in the future.
+
+\subsection{Meta Allocators}
+Allocating memory for the VM ranges and address space hole structs can't be done via the global kernel heap, as the heap is built on top of the virtual memory subsystem. To avoid this circular dependency, a VMM also contains a number of slab allocators known as \textit{meta allocators}. Each slab is sized around one type of metadata struct that needs to be stored: one slab for VM ranges, one for VM holes. Internally these allocators are quite simple, consisting of a linked list of individual slabs accompanied by a bitmap tracking a slab's free/in-use status.
+
+The backing memory for these slabs are allocated directly from the PMM, and then these are accessed via the HHDM. This means the memory used for these allocators is managed outside the heap and virtual memory stacks and don't gain the benefits afforded by either of them (e.g. demand paging or CoW).
+
+\subsection{Allocation}
+There's a few key steps to allocating a new chunk of virttual memory. First the VMM finds the correct VM driver for the type of memory requested via the \verb|flags| argument. Then the VMM calls \verb|vmdriver.Query()| to determine exactly how much space is needed for the allocation and the required alignment. The VM driver might require more space for the allocation than was requested depending on the limits exposed by the HAT. For example if mapping a file via the VFS VM driver with an offset of 123 bytes, which is not aligned with the HAT mode chosen by the file cache. The VM driver would need to start mapping the VM range at the nearest address aligned to the chosen HAT mode, and then return a pointer 123 bytes beyond the start of the mapping.
+
+\begin{figure}[h]
+\centering
+\caption{Example usage of the VM range offset field when mapping a file.}
+\end{figure}
+
+This mechanism of returning an offset into the allocated VM range also easily allows for other mechanisms like guard pages.
+
+\begin{figure}[h]
+\centering
+\caption{Using the offset field for Guard Pages.}
+\end{figure}
+
+After calling \verb|Query()| on the VM driver, the VMM finds an appropriate area of unused address space for the VM range to occupy, and creates a new VM range struct. The free space is marked as in-use and the VM range struct is populated with details like the base address and length of the range.
+
+At this point the VMM calls \verb|vmdriver.Attach()| which is where the VM driver begins managing the mappings associated with the VM range. Note that the driver isn't required to actually map anything yet, depending on it's configuration. It may wait for the VMM to signal a fault before committing any physical memory or other resources. During this function the VM driver can return a \textit{token}, which acts as a private pointer between the range and the VM driver. This token is stored in the VM range struct, and is available to the driver any time it's requested to oeprate on the VM range.
+
+Once the VM driver is attached, the range is inserted in the \verb|ranges| tree and is now considered active.
+
+\subsection{Freeing}
+
+\subsection{Usage of Page Faults}
+Proper handling of page faults is still a work-in-progress area. Currently incoming page faults are checked against any active VM ranges, and if successful they are routed to the attached VM driver. The VM driver can then decide how the fault is handled: it can kill the program that triggered the fault, put the current thread to sleep and wait on an external event to complete, or take action immediately and allow the program to continue. From an outside perspective sleeping and continuing appear as the same operation (sleeping just takes more time), but the distinction can be useful.
+
+It should be noted that if a page fault happens outside of an active VM range, or the faulting access is not allowed by the by the flags of the VM range, the offending program is killed. In the kernel's case, it triggers a panic.
+
+Each VM driver can make use page faults in a different way, or operate without them by clearing the feature flag for that driver. The anon VM driver currently backs new ranges with a readonly page of zeroes, replacing those mappings with writable memory when first written to. The VFS VM driver will map parts of the file cache when a mapped file is accessed, transparently triggering an io operation if needed. The kernel VM driver has no use for page faults.
+
+\subsection{Example Code}
