@@ -104,6 +104,23 @@ namespace Npk::Memory::Virtual
 
     bool VfsVmDriver::Detach(VmDriverContext& context)
     {
-        ASSERT_UNREACHABLE()
+        using namespace Filesystem;
+        const FileCacheInfo fcInfo = GetFileCacheInfo();
+
+        VfsVmLink* link = static_cast<VfsVmLink*>(context.range.token);
+
+        const size_t granuleSize = GetHatLimits().modes[fcInfo.hatMode].granularity;
+        size_t mode;
+        size_t phys;
+
+        sl::ScopedLock scopeLock(context.lock);
+        for (size_t i = 0; i < context.range.length; i += granuleSize)
+        {
+            //TODO: if page has dirty bit set, we'll need to mark the file cache entry as dirtied as well
+            Unmap(context.map, context.range.base + i, phys, mode, true);
+        }
+
+        delete link;
+        return true;
     }
 }

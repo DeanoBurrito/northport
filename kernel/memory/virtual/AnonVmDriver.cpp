@@ -31,7 +31,7 @@ namespace Npk::Memory::Virtual
             sl::memset((void*)AddHhdm(zeroPage), 0, PageSize);
         }
 
-        Log("VmDriver init: anon, demand=%s, zeroPage=%s", LogLevel::Info, 
+        Log("VmDriver init: anon, faultHandler=%s, zeroPage=%s", LogLevel::Info, 
             features.faultHandler ? "yes" : "no", features.zeroPage ? "yes" : "no");
     }
 
