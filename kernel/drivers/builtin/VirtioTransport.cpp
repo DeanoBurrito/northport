@@ -29,14 +29,15 @@ namespace Npk::Drivers
         VALIDATE(maybeDtNodeTag,, "No device tree node tag");
         DeviceTreeInitTag* dtTag = static_cast<DeviceTreeInitTag*>(*maybeDtNodeTag);
 
-        auto maybeReg = dtTag->node.GetProp("reg");
-        VALIDATE(maybeReg,, "No regs");
-        Config::DtReg reg;
-        maybeReg->ReadRegs(dtTag->node, &reg);
+        auto maybeReg = dtTag->node.FindProp("reg");
+        VALIDATE(maybeReg != nullptr,, "No regs");
+        Config::DtPair reg;
+        maybeReg->ReadRegs({ &reg, 1 });
 
-        VmObject mmio(PageSize, reg.base, VmFlags::Mmio);
+        VmObject mmio(PageSize, reg[0], VmFlags::Mmio);
         VALIDATE(mmio->Read<uint32_t>() == VirtioMmioMagic,, "Bad magic.");
         const uint32_t deviceType = mmio->Offset((size_t)VirtioReg::DeviceId).Read<uint32_t>();
+        mmio.Release();
 
         //type 0 indicates this device is just a placeholder within the memory map, just ignore it.
         if (deviceType == 0)
@@ -132,12 +133,12 @@ namespace Npk::Drivers
             if (tags->type == InitTagType::DeviceTree)
             {
                 const DeviceTreeInitTag* initTag = static_cast<DeviceTreeInitTag*>(tags);
-                auto maybeRegs = initTag->node.GetProp("reg");
-                VALIDATE(maybeRegs, false, "No regs prop");
+                Config::DtProp* maybeRegs = initTag->node.FindProp("reg");
+                VALIDATE(maybeRegs != nullptr, false, "No regs prop");
 
-                Config::DtReg reg;
-                maybeRegs->ReadRegs(initTag->node, &reg);
-                InitMmio(reg.base, reg.length);
+                Config::DtPair reg;
+                maybeRegs->ReadRegs({ &reg, 1 });
+                InitMmio(reg[0], reg[1]);
                 foundTag = true;
             }
             else if (tags->type == InitTagType::Pci)
@@ -197,6 +198,7 @@ namespace Npk::Drivers
     VirtioStatus VirtioTransport::ProgressInit(VirtioStatus stage)
     {
         ASSERT(initialized, "Uninitialized");
+        //TODO: when completing feature negotation, set legacy status based on FEATURE_VERSION_1 being set.
 
         if (isPci)
         {

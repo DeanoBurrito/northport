@@ -27,6 +27,9 @@ namespace Npk
 
         CoreConfig* config = new CoreConfig();
         CoreLocal()[LocalPtr::Config] = config;
+        ScanLocalCpuFeatures();
+        ScanLocalTopology();
+
         if (CpuHasFeature(CpuFeature::QuadFPU))
             config->extRegsBufferSize = 16 * 32 + 4; //32 regs, 16 bytes each, +4 for FCSR
         else if (CpuHasFeature(CpuFeature::DoubleFPU))
@@ -35,9 +38,7 @@ namespace Npk
             config->extRegsBufferSize = 4 * 32 + 4;
         else
             config->extRegsBufferSize = 0;
-        config->hasFpu = (config->extRegsBufferSize != 0);
 
-        config->hasVector = false; //TODO: vector support
         EnableInterrupts();
         Log("Core %lu finished core init.", LogLevel::Info, id);
     }
@@ -64,17 +65,17 @@ namespace Npk
 
     void TryInitUart()
     {
-        auto maybeUart = Config::DeviceTree::Global().GetCompatibleNode("ns16550a");
-        if (!maybeUart)
+        Config::DtNode* uart = Config::DeviceTree::Global().FindCompatible("ns16550a");
+        if (uart == nullptr)
             return;
 
-        auto regsProp = maybeUart->GetProp("reg");
-        if (!regsProp)
+        Config::DtProp* regsProp = uart->FindProp("reg");
+        if (regsProp == nullptr)
             return;
         
-        Config::DtReg reg;
-        regsProp->ReadRegs(*maybeUart, &reg);
-        uartRegs = reg.base + Npk::hhdmBase;
+        Config::DtPair reg;
+        regsProp->ReadRegs({ &reg, 1 });
+        uartRegs = Npk::hhdmBase + reg[0];
 
         Debug::AddEarlyLogOutput(UartWrite);
     }

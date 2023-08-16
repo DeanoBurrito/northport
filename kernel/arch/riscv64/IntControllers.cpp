@@ -36,49 +36,50 @@ namespace Npk
     bool DiscoverImsic()
     {
         using namespace Config;
-
-        DtNode prev;
+        DtNode* prev = nullptr;
         while (true)
         {
-            auto maybeFound = DeviceTree::Global().GetCompatibleNode("riscv,imsics", prev);
-            if (!maybeFound)
+            DtNode* found = DeviceTree::Global().FindCompatible("riscv,imsics", prev);
+            if (found == nullptr)
                 break;
-            prev= *maybeFound;
+            prev = found;
 
-            auto maybeExtInts = maybeFound->GetProp("interrupts-extended");
-            if (!maybeExtInts)
+            DtProp* extInts = found->FindProp("interrupts-extended");
+            if (extInts == nullptr)
                 continue;
             
             //cell A is the phandle of the target (only 1 cell in this case), and
             //cell B is the vector triggered on the target (also only 1 cell).
-            const size_t pairCount = maybeExtInts->ReadPairs(1, 1, nullptr);
+            DtPair layout { 1, 1 };
+            const size_t pairCount = extInts->ReadPairs(layout, {});
             if (pairCount < 1)
                 continue;
             DtPair pairs[pairCount];
-            maybeExtInts->ReadPairs(1, 1, pairs);
+            extInts->ReadPairs(layout, { pairs, pairCount });
 
-            auto regsProp = prev.GetProp("reg");
-            if (!regsProp)
+            DtProp* regsProp = found->FindProp("reg");
+            if (regsProp == nullptr)
                 continue;
-            const size_t regsCount = regsProp->ReadRegs(prev, nullptr);
-            DtReg regs[regsCount];
-            regsProp->ReadRegs(prev, regs);
+            const size_t regsCount = regsProp->ReadRegs({});
+            DtPair regs[regsCount];
+            regsProp->ReadRegs({ regs, regsCount });
 
-            const uintptr_t accessWindow = VMM::Kernel().Alloc(regs[0].length, regs[0].length,
+            //NOTE: we dont create a VMO for this since we never intend to free the addr space
+            const uintptr_t access = VMM::Kernel().Alloc(regs[0][0], regs[0][1],
                 VmFlags::Write | VmFlags::Mmio)->base;
 
             for (size_t i = 0; i < pairCount; i++)
             {
-                if (pairs[i].b != 9)
+                if (pairs[i][1] != 9)
                     continue; //we only care about triggering interrupt 9 (s-mode external)
 
-                auto coreNode = DeviceTree::Global().GetByPHandle(pairs[i].a);
-                if (!coreNode)
+                DtNode* cpuNode = DeviceTree::Global().FindPHandle(pairs[i][0]);
+                if (cpuNode == nullptr)
                     continue;
 
                 ImsicPage& page = imsicPages.EmplaceBack();
-                page.physAddr = regs[0].base + (i * 0x1000); //IMSIC pages are 4K in size
-                page.mmio = accessWindow + (i * 0x1000);
+                page.physAddr = regs[0][0] + (i * 0x1000); //IMSIC pages are 4K in size
+                page.mmio = access + (i * 0x1000);
                 //TODO: phandle gives us the int-controller node that is a child of the cpu node we want.
                 //we'll need a way to get a node's parent. Time to revist DTB parser?
                 
@@ -93,12 +94,15 @@ namespace Npk
     bool DiscoverAplic()
     {
         using namespace Config;
-        DtNode prev;
+        DtNode* prev = nullptr;
         while (true)
         {
-            auto maybeFound = DeviceTree::Global().GetCompatibleNode("riscv,aplic", prev);
-            if (!maybeFound)
+            DtNode* found = DeviceTree::Global().FindCompatible("riscv,aploc", prev);
+            if (found == nullptr)
                 break;
+            prev = found;
+
+            //TODO: init new aplic
         }
 
         return true;

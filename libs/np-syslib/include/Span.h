@@ -55,7 +55,26 @@ namespace sl
                 length = size - begin;
             return Span(data + begin, length);
         }
+
+        bool Contains(Span other) const
+        {
+            return true;
+        }
     };
+
+    template<typename T>
+    bool operator==(const Span<T>& a, const Span<T>& b)
+    {
+        if (a.Size() != b.Size())
+            return false;
+
+        for (size_t i = 0; i < a.Size(); i++)
+        {
+            if (a[i] != b[i])
+                return false;
+        }
+        return true;
+    }
 
     using StringSpan = Span<const char>;
 }

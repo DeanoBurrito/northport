@@ -41,7 +41,7 @@ namespace Npk::Devices
         sl::TicketLock lock;
 
         void ScanSegment(uintptr_t segmentBase, uint8_t startBus, uint16_t segId, bool ecamAvailable);
-        bool ParseTranslations(const Config::DtNode& node, const char* propName, bool outbound);
+        bool ParseTranslations(const Config::DtNode& node, sl::StringSpan propName, bool outbound);
         uintptr_t AllocForBar(PciSpaceType type, size_t length);
         void AllocateBars();
         void DetectDrivers();

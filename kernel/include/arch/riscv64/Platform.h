@@ -11,8 +11,6 @@ namespace Npk
     struct CoreConfig
     {
         size_t extRegsBufferSize;
-        bool hasFpu;
-        bool hasVector;
         uint8_t* featureBitmap;
     };
 

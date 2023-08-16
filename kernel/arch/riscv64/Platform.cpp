@@ -39,13 +39,13 @@ namespace Npk
     }
 
     void InitExtendedRegs(ExtendedRegs** regs)
-    {}
+    { (void)regs; } //TODO: implement meeeee
 
     void SaveExtendedRegs(ExtendedRegs* regs)
-    {}
+    { (void)regs; }
 
     void LoadExtendedRegs(ExtendedRegs* regs)
-    {}
+    { (void)regs; }
 
     void ExtendedRegsFence()
     {}

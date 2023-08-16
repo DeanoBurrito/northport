@@ -52,27 +52,31 @@ namespace Npk::Devices
         }
     }
 
-    bool PciBridge::ParseTranslations(const Config::DtNode& node, const char* propName, bool outbound)
+    bool PciBridge::ParseTranslations(const Config::DtNode& node, sl::StringSpan propName, bool outbound)
     {
         //TODO: handle empty properties (identity mapped)
-        auto maybeProp = node.GetProp(propName);
-        if (!maybeProp)
+        Config::DtProp* rangesProp = node.FindProp(propName);
+        if (rangesProp == nullptr)
             return false;
-        
-        const size_t count = maybeProp->ReadRanges(node, nullptr);
-        Config::DtRange ranges[count];
-        ASSERT(maybeProp->ReadRanges(node, ranges) == count, "");
+
+        //PCI <-> host address space translations are encoded with an extra field
+        //which includes metadata about what that space is used for. Like is it 32/64
+        //bit or io space. We also need this info so we can correctly assign BARs
+        //ourselves if we've reached this point
+        const size_t count = rangesProp->ReadRangesWithMeta({}, 1);
+        Config::DtQuad ranges[count];
+        ASSERT(rangesProp->ReadRangesWithMeta({ ranges, count }, 1) == count, "Bad DTB property");
 
         for (size_t i = 0; i < count; i++)
         {
-            const Config::DtRange& range = ranges[i];
+            const Config::DtQuad& range = ranges[i];
             PciSpaceType type = PciSpaceType::Dma;
             if (outbound)
-                type = (PciSpaceType)((range.metadata >> 24) & 0b11);
-            
-            maps.EmplaceBack(type, range.parentBase, range.childBase, range.length);
-            Log("PCI space map added: host=0x%lx -> pci=0x%lx, length=0x%lx, type=%s", LogLevel::Verbose, 
-                range.parentBase, range.childBase, range.length, SpaceTypeStrs[(size_t)type]);
+                type= (PciSpaceType)((range[3] >> 24) & 0b11);
+
+            maps.EmplaceBack(type, range[1], range[0], range[2]);
+            Log("PCI/host address space window: host=0x%lx, pci=0x%lx, length=0x%lx, type=%s",
+                LogLevel::Verbose, range[1], range[0], range[2], SpaceTypeStrs[(size_t)type]);
         }
 
         return true;
@@ -210,40 +214,44 @@ namespace Npk::Devices
 
     void PciBridge::Init()
     {
+        using namespace Config;
         sl::ScopedLock scopeLock(lock);
         
-        if (auto maybeMcfg = Config::FindAcpiTable(Config::SigMcfg); maybeMcfg.HasValue())
+        if (auto maybeMcfg = FindAcpiTable(SigMcfg); maybeMcfg.HasValue())
         {
-            const Config::Mcfg* mcfg = static_cast<const Config::Mcfg*>(*maybeMcfg);
+            const Mcfg* mcfg = static_cast<const Mcfg*>(*maybeMcfg);
 
             //discover and scan all segment groups
-            const size_t segmentCount = ((mcfg->length - sizeof(Config::Mcfg)) / sizeof(Config::McfgSegment));
+            const size_t segmentCount = ((mcfg->length - sizeof(Mcfg)) / sizeof(McfgSegment));
             for (size_t i = 0; i < segmentCount; i++)
             {
-                const Config::McfgSegment* seg = &mcfg->segments[i];
+                const McfgSegment* seg = &mcfg->segments[i];
                 Log("PCIe segment added: base=0x%lx, id=%u, firstBus=%u, lastBus=%u", LogLevel::Verbose, 
                     seg->base, seg->id, seg->firstBus, seg->lastBus);
 
                 ScanSegment(seg->base, seg->firstBus, seg->id, true);
             }
         }
-        else if (auto maybeDtNode = Config::DeviceTree::Global().GetCompatibleNode("pci-host-ecam-generic"); maybeDtNode.HasValue())
+        else if (DtNode* node = DeviceTree::Global().FindCompatible("pci-host-ecam-generic"); node != nullptr)
         {
-            auto regProp = maybeDtNode->GetProp("reg");
-            Config::DtReg reg;
-            ASSERT(regProp->ReadRegs(*maybeDtNode, &reg) == 1, "Unexpected register count for PCI bridge");
+            auto regProp = node->FindProp("reg");
+            DtPair reg;
+            ASSERT(regProp->ReadRegs({ &reg, 1 }) == 1, "Unexpected register count for PCI bridge");
 
-            ASSERT(ParseTranslations(*maybeDtNode, "ranges", true), "PCI DTB node had no 'ranges' prop");
-            if (!ParseTranslations(*maybeDtNode, "dma-ranges", false))
-                Log("PCI DTB node did not provide 'dma-ranges', some behaviour may be broken.", LogLevel::Warning);
+            ASSERT(ParseTranslations(*node, "ranges", true), "Failed to pass PCI DTB ranges");
+            if (!ParseTranslations(*node, "dma-ranges", false))
+            {
+                Log("Failed to parse dma-ranges node for PCI bridge, behaviour maybe be broken.",
+                    LogLevel::Warning);
+            }
 
-            auto busProp = maybeDtNode->GetProp("bus-range");
-            ASSERT(busProp, "No starting bus for DTB PCI bridge.");
-            const uint8_t firstBus = (uint8_t)busProp->ReadNumber();
+            auto busProp = node->FindProp("bus-range");
+            ASSERT(busProp, "Not starting bus for PCI bridge");
+            const uint8_t firstBus = busProp->ReadValue(1);
 
             Log("PCIe segment added: base=0x%lx, length=0x%lx, firstBus=%u", 
-                LogLevel::Verbose, reg.base, reg.length, firstBus);
-            ScanSegment(reg.base, firstBus, 0, true);
+                LogLevel::Verbose, reg[0], reg[1], firstBus);
+            ScanSegment(reg[0], firstBus, 0, true);
         }
         else
 #ifdef __x86_64__

@@ -1,143 +1,135 @@
 #pragma once
+/* This is v3 of this device tree parser, the original version had to work in a different
+ * environment, which is no longer required. If you're looking to use something like this
+ * in your own project check out smoldtb (https://github.com/deanoburrito/smoldtb),
+ * which provides the same functionality but it's written in C.
+ *
+ * If you're wondering about the excessive use of `[[gnu::always_inline]]`, it
+ * provides a read-only public interface, while allowing the real variables to remain
+ * mutable to certain parts of code (the device tree parser). This allows for runtime
+ * modifications internally, if needed. The forced inlining of these functions 
+ * compiles into a single load from memory anyway, so it's purely a C++-level thing.
+ */
 
 #include <stdint.h>
-#include <Optional.h>
+#include <stddef.h>
+#include <Span.h>
 
 namespace Npk::Config
 {
-    struct DtPair
-    {
-        union { uintptr_t base; uintptr_t a; };
-        union { uintptr_t length; uintptr_t b; };
-    };
-
-    struct DtTriplet
-    {
-        union { uintptr_t parentBase; uintptr_t a; };
-        union { uintptr_t childBase; uintptr_t b; };
-        union { uintptr_t length; uintptr_t c; };
-        
-        union { uint32_t metadata; }; //yes, I know this is non longer 3 values.
-    };
-    
-    using DtReg = DtPair;
-    using DtRange = DtTriplet;
-    using DtbPtr = size_t;
+    using DtValue = uintptr_t;
+    using DtPair = DtValue[2];
+    using DtTriplet = DtValue[3];
+    using DtQuad = DtValue[4];
 
     struct DtNode;
+    class DeviceTree;
     
-    struct DtProperty
+    struct DtProp
     {
-        DtbPtr ptr;
-        const char* name;
+    friend DeviceTree;
+    private:
+        sl::StringSpan name;
+        const uint32_t* firstCell;
+        size_t length;
+        DtNode* node;
+        DtProp* next;
 
-        const char* ReadStr(size_t index = 0) const;
-        uint32_t ReadNumber() const;
-        size_t ReadRegs(const DtNode& node, DtReg* regs) const;
-        size_t ReadPairs(size_t aCells, size_t bCells, DtPair* pairs) const;
-        size_t ReadRanges(const DtNode& node, DtRange* ranges) const;
+        DtProp() = default;
 
+    public:
+        [[gnu::always_inline]]
+        inline sl::StringSpan Name() const
+        { return name; }
+
+        DtValue ReadValue(size_t cellCount) const;
+        sl::StringSpan ReadString(size_t index) const;
+
+        //generic read functions
+        size_t ReadValues(size_t cellCount, sl::Span<DtValue> values) const;
+        size_t ReadPairs(DtPair layout, sl::Span<DtPair> values) const;
+        size_t ReadTriplets(DtTriplet layout, sl::Span<DtTriplet> values) const;
+        size_t ReadQuads(DtQuad layout, sl::Span<DtQuad> values) const;
+
+        //convinience functions for reading specific properties
+        size_t ReadRegs(sl::Span<DtPair> values) const;
+        size_t ReadRanges(sl::Span<DtTriplet> values) const;
+        size_t ReadRangesWithMeta(sl::Span<DtQuad> values, size_t metadataCells) const;
     };
-
+    
     struct DtNode
     {
-        constexpr DtNode() : ptr(0), parentPtr(0), childPtr(0), propPtr(0), 
-        propCount(0), childCount(0), addrCells(0), sizeCells(0), childAddrCells(0), 
-        childSizeCells(0), name(nullptr)
-        {}
-        
-        DtbPtr ptr;
-        DtbPtr parentPtr;
-        DtbPtr childPtr;
-        DtbPtr propPtr;
-        uint16_t propCount;
-        uint16_t childCount;
+    friend DeviceTree;
+    private:
+        DtNode* parent;
+        DtNode* sibling;
+        DtNode* child;
+        DtProp* props;
+        sl::StringSpan name;
         uint8_t addrCells;
         uint8_t sizeCells;
-        uint8_t childAddrCells;
-        uint8_t childSizeCells;
-        const char* name;
 
-        sl::Opt<const DtNode> GetChild(const char* str) const;
-        sl::Opt<const DtNode> GetChild(size_t index) const;
-        sl::Opt<const DtProperty> GetProp(size_t index) const;
-        sl::Opt<const DtProperty> GetProp(const char* name) const;
+        DtNode() = default;
+
+    public:
+        [[gnu::always_inline]]
+        inline sl::StringSpan Name() const
+        { return name; }
+
+        [[gnu::always_inline]]
+        inline DtNode* Parent() const
+        { return parent; }
+
+        [[gnu::always_inline]]
+        inline DtNode* Child() const
+        { return child; }
+
+        [[gnu::always_inline]]
+        inline DtNode* Sibling() const
+        { return sibling; }
+
+        [[gnu::always_inline]]
+        inline size_t AddrCells() const
+        { return addrCells; }
+
+        [[gnu::always_inline]]
+        inline size_t SizeCells() const
+        { return sizeCells; }
+
+        DtNode* FindChild(sl::StringSpan name) const;
+        DtProp* FindProp(sl::StringSpan name) const;
     };
 
     class DeviceTree
     {
     private:
-        const uint32_t* cells;
-        size_t cellsCount; //used to store init state, if this is non-zero, its been initialized.
-        const uint8_t* strings;
-        DtNode rootNode;
+        const uint32_t* cells = nullptr;
+        size_t cellCount;
+        const char* strings;
+        size_t stringsLength;
 
-        sl::Opt<const DtNode> FindCompatHelper(const DtNode& scan, const char* str, size_t strlen, DtbPtr start) const;
-        sl::Opt<const DtNode> FindHandleHelper(const DtNode& scan, size_t handle) const;
-        size_t SkipNode(size_t start) const;
-        DtNode CreateNode(size_t start, size_t addrCells, size_t sizeCells) const;
-        DtProperty CreateProperty(size_t start) const;
+        DtNode* root;
+        DtNode** phandleLookup;
+        size_t phandleCount;
+        DtNode* firstNode;
+        size_t nodeCount;
 
+        DtNode* nodeBuff;
+        size_t nodeBuffRemain;
+        DtProp* propBuff;
+        size_t propBuffRemain;
+
+        void CheckForHooks(DtNode* node, DtProp* prop);
+        DtNode* ParseNode(size_t& i, uint8_t addrCells, uint8_t sizeCells);
+        DtProp* ParseProp(size_t& i);
     public:
-        constexpr DeviceTree() : cells(nullptr), cellsCount(0), strings(nullptr),
-        rootNode()
-        {}
-
         static DeviceTree& Global();
         
-        void Init(uintptr_t dtbAddr);
-        bool Available();
+        void Init(void* dtbAddr);
+        bool Available() const;
 
-        sl::Opt<const DtNode> GetNode(const char* path) const;
-        sl::Opt<const DtNode> GetCompatibleNode(const char* compatStr, sl::Opt<const DtNode> start = {}) const;
-        sl::Opt<const DtNode> GetByPHandle(size_t handle) const;
-        sl::Opt<const DtNode> GetChild(const DtNode& parent, const char* name) const;
-        sl::Opt<const DtNode> GetChild(const DtNode& parent, size_t index) const;
-        sl::Opt<const DtProperty> GetProp(const DtNode& node, const char*) const;
-        sl::Opt<const DtProperty> GetProp(const DtNode& node, size_t index) const;
-
-        const char* ReadStr(const DtProperty& prop, size_t index = 0) const;
-        uint32_t ReadNumber(const DtProperty& prop) const;
-        size_t ReadRegs(const DtNode& node, const DtProperty& prop, DtReg* regs) const;
-        size_t ReadPairs(const DtProperty& prop, size_t aCells, size_t bCells, DtPair* pairs) const;
-        size_t ReadRanges(const DtNode& node, const DtProperty& prop, DtRange* ranges) const;
+        DtNode* FindCompatible(sl::StringSpan str, DtNode* last = nullptr) const;
+        DtNode* FindPHandle(size_t phandle) const;
+        DtNode* Find(sl::StringSpan path) const;
     };
-
-    //effectively these are just type-safe macros.
-
-    [[gnu::always_inline]]
-    inline const char* DtProperty::ReadStr(size_t index) const
-    { return DeviceTree::Global().ReadStr(*this, index); }
-
-    [[gnu::always_inline]]
-    inline uint32_t DtProperty::ReadNumber() const
-    { return DeviceTree::Global().ReadNumber(*this); }
-
-    [[gnu::always_inline]]
-    inline size_t DtProperty::ReadRegs(const DtNode& node, DtReg* regs) const
-    { return DeviceTree::Global().ReadRegs(node, *this, regs); }
-
-    [[gnu::always_inline]]
-    inline size_t DtProperty::ReadPairs(size_t aCells, size_t bCells, DtPair* pairs) const
-    { return DeviceTree::Global().ReadPairs(*this, aCells, bCells, pairs); }
-
-    [[gnu::always_inline]]
-    inline size_t DtProperty::ReadRanges(const DtNode& node, DtRange* ranges) const
-    { return DeviceTree::Global().ReadRanges(node, *this, ranges); }
-
-    [[gnu::always_inline]]
-    inline sl::Opt<const DtNode> DtNode::GetChild(const char* name) const
-    { return DeviceTree::Global().GetChild(*this, name); } 
-    
-    [[gnu::always_inline]]
-    inline sl::Opt<const DtNode> DtNode::GetChild(size_t index) const
-    { return DeviceTree::Global().GetChild(*this, index); }
-
-    [[gnu::always_inline]]
-    inline sl::Opt<const DtProperty> DtNode::GetProp(size_t index) const
-    { return DeviceTree::Global().GetProp(*this, index); }
-
-    [[gnu::always_inline]]
-    inline sl::Opt<const DtProperty> DtNode::GetProp(const char* name) const
-    { return DeviceTree::Global().GetProp(*this, name); }
 }

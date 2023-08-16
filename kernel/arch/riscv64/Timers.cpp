@@ -22,11 +22,11 @@ namespace Npk
         ASSERT(SbiExtensionAvail(SbiExt::Time), "SBI time extension not available.");
 
         using namespace Config;
-        auto freqProp = DeviceTree::Global().GetNode("/cpus")->GetProp("timebase-frequency");
-        ASSERT(freqProp.HasValue(), "No timebase-frequency node.");
+        DtProp* freqProp = DeviceTree::Global().Find("/cpus")->FindProp("timebase-frequency");
+        ASSERT(freqProp != nullptr, "No timebase-frequency node.");
         
-        timerPeriod = sl::ScaledTime::FromFrequency(freqProp->ReadNumber());
-        sl::UnitConversion freqUnits = sl::ConvertUnits(freqProp->ReadNumber(), sl::UnitBase::Decimal);
+        timerPeriod = sl::ScaledTime::FromFrequency(freqProp->ReadValue(1));
+        sl::UnitConversion freqUnits = sl::ConvertUnits(freqProp->ReadValue(1), sl::UnitBase::Decimal);
         Log("Platform timer: freq=%lu.%lu%shz", LogLevel::Info, freqUnits.major, freqUnits.minor, freqUnits.prefix);
     }
 
