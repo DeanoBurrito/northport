@@ -9,14 +9,14 @@ include misc/HelpText.mk
 
 # Toolchain selection
 ifeq ($(TOOLCHAIN), gcc)
-	export X_CXX_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-g++) --sysroot=$(abspath $(TOOLCHAIN_SYSROOT))
-	export X_AS_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-as)
-	export X_LD_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-ld)
-	export X_AR_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-ar)
-	export X_READELF_BIN = $(abspath $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-readelf)
+	export X_CXX_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-g++
+	export X_AS_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-as
+	export X_LD_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-ld
+	export X_AR_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-ar
+	export X_READELF_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-readelf
 	export KERNEL_AS_FLAGS = 
 else ifeq ($(TOOLCHAIN), clang)
-	export X_CXX_BIN = clang++ --target=$(ARCH_TARGET) --sysroot=$(abspath $(TOOLCHAIN_SYSROOT))
+	export X_CXX_BIN = clang++ --target=$(ARCH_TARGET)
 	export X_AS_BIN = clang --target=$(ARCH_TARGET)
 	export X_LD_BIN = ld.lld
 	export X_AR_BIN = llvm-ar
@@ -79,7 +79,6 @@ all: $(ARCH_DEFAULT_TARGET)
 options:
 	@printf "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST)\
 	 $(CPU_ARCH), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)\r\n"
-	@printf "$(C_CYAN)Sysroot:$(C_RST) $(abspath $(TOOLCHAIN_SYSROOT))\r\n"
 	@printf "$(C_CYAN)Kernel C++ flags:$(C_RST) $(KERNEL_CXX_FLAGS)\r\n"
 	@printf "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)\r\n"
 

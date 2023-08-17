@@ -208,6 +208,57 @@ namespace Npk::Devices
             loadedCount, addresses.Size() - loadedCount);
     }
 
+    bool PciBridge::TryInitFromAcpi()
+    {
+        using namespace Config;
+        auto maybeMcfg = Config::FindAcpiTable(SigMcfg);
+        if (!maybeMcfg.HasValue())
+            return false;
+
+        const Mcfg* mcfg = static_cast<const Mcfg*>(*maybeMcfg);
+        const size_t segmentCount = ((mcfg->length - sizeof(Mcfg)) / sizeof(McfgSegment));
+
+        for (size_t i = 0; i < segmentCount; i++)
+        {
+            const McfgSegment* seg = &mcfg->segments[i];
+            Log("PCIe segment added: base=0x%lx, id=%u, firstBus=%u, lastBus=%u", LogLevel::Verbose, 
+                seg->base, seg->id, seg->firstBus, seg->lastBus);
+
+            ScanSegment(seg->base, seg->firstBus, seg->id, true);
+        }
+
+        return true;
+    }
+
+    bool PciBridge::TryInitFromDtb()
+    {
+        using namespace Config;
+
+        DtNode* node = DeviceTree::Global().FindCompatible("pci-host-ecam-generic");
+        if (node == nullptr)
+            return false;
+        auto regProp = node->FindProp("reg");
+        DtPair reg;
+        ASSERT(regProp->ReadRegs({ &reg, 1 }) == 1, "Unexpected register count for PCI bridge");
+
+        ASSERT(ParseTranslations(*node, "ranges", true), "Failed to pass PCI DTB ranges");
+        if (!ParseTranslations(*node, "dma-ranges", false))
+        {
+            Log("Failed to parse dma-ranges node for PCI bridge, behaviour maybe be broken.",
+                LogLevel::Warning);
+        }
+
+        auto busProp = node->FindProp("bus-range");
+        ASSERT(busProp, "Not starting bus for PCI bridge");
+        const uint8_t firstBus = busProp->ReadValue(1);
+
+        Log("PCIe segment added: base=0x%lx, length=0x%lx, firstBus=%u", 
+            LogLevel::Verbose, reg[0], reg[1], firstBus);
+        ScanSegment(reg[0], firstBus, 0, true);
+
+        return true;
+    }
+
     PciBridge globalPciBridge;
     PciBridge& PciBridge::Global()
     { return globalPciBridge; }
@@ -217,43 +268,10 @@ namespace Npk::Devices
         using namespace Config;
         sl::ScopedLock scopeLock(lock);
         
-        if (auto maybeMcfg = FindAcpiTable(SigMcfg); maybeMcfg.HasValue())
-        {
-            const Mcfg* mcfg = static_cast<const Mcfg*>(*maybeMcfg);
-
-            //discover and scan all segment groups
-            const size_t segmentCount = ((mcfg->length - sizeof(Mcfg)) / sizeof(McfgSegment));
-            for (size_t i = 0; i < segmentCount; i++)
-            {
-                const McfgSegment* seg = &mcfg->segments[i];
-                Log("PCIe segment added: base=0x%lx, id=%u, firstBus=%u, lastBus=%u", LogLevel::Verbose, 
-                    seg->base, seg->id, seg->firstBus, seg->lastBus);
-
-                ScanSegment(seg->base, seg->firstBus, seg->id, true);
-            }
-        }
-        else if (DtNode* node = DeviceTree::Global().FindCompatible("pci-host-ecam-generic"); node != nullptr)
-        {
-            auto regProp = node->FindProp("reg");
-            DtPair reg;
-            ASSERT(regProp->ReadRegs({ &reg, 1 }) == 1, "Unexpected register count for PCI bridge");
-
-            ASSERT(ParseTranslations(*node, "ranges", true), "Failed to pass PCI DTB ranges");
-            if (!ParseTranslations(*node, "dma-ranges", false))
-            {
-                Log("Failed to parse dma-ranges node for PCI bridge, behaviour maybe be broken.",
-                    LogLevel::Warning);
-            }
-
-            auto busProp = node->FindProp("bus-range");
-            ASSERT(busProp, "Not starting bus for PCI bridge");
-            const uint8_t firstBus = busProp->ReadValue(1);
-
-            Log("PCIe segment added: base=0x%lx, length=0x%lx, firstBus=%u", 
-                LogLevel::Verbose, reg[0], reg[1], firstBus);
-            ScanSegment(reg[0], firstBus, 0, true);
-        }
-        else
+        bool initialized = TryInitFromAcpi();
+        if (!initialized)
+            initialized = TryInitFromDtb();
+        if (!initialized)
 #ifdef __x86_64__
         {
             //fallback to legacy mechanism
@@ -261,8 +279,8 @@ namespace Npk::Devices
             ScanSegment(0, 0, 0, false);
         }
 #else
-        { 
-            Log("No known mechanism for PCI discovery available.", LogLevel::Error); 
+        {
+            Log("No known mechanism for PCI discovery.", LogLevel::Error);
             return;
         }
 #endif

@@ -46,6 +46,9 @@ namespace Npk::Devices
         void AllocateBars();
         void DetectDrivers();
 
+        bool TryInitFromAcpi();
+        bool TryInitFromDtb();
+
     public:
         constexpr PciBridge() : addresses(), lock()
         {}

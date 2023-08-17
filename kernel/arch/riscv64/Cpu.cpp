@@ -1,11 +1,13 @@
 #include <arch/Cpu.h>
 #include <debug/Log.h>
 #include <debug/NanoPrintf.h>
+#include <config/AcpiTables.h>
 #include <config/DeviceTree.h>
 #include <Bitmap.h>
 #include <Span.h>
 #include <Maths.h>
 #include <Memory.h>
+#include <NativePtr.h>
 
 namespace Npk
 {
@@ -43,17 +45,65 @@ namespace Npk
     void ScanLocalCpuFeatures()
     {
         using namespace Config;
-        const size_t nodeNameLength = npf_snprintf(nullptr, 0, "/cpus/cpu@%lu", CoreLocal().id) + 1;
-        char nodeName[nodeNameLength];
-        npf_snprintf(nodeName, nodeNameLength, "/cpus/cpu@%lu", CoreLocal().id);
+        //Try get the isa string from the acpi table (RHCT) if it exists,
+        //fallback to the device tree otherwise.
 
-        const DtNode* cpuNode = DeviceTree::Global().Find({ nodeName, nodeNameLength - 1 });
-        ASSERT(cpuNode != nullptr, "No device tree node for cpu");
-        DtProp* isaProp = cpuNode->FindProp("riscv,isa");
-        ASSERT(isaProp != nullptr, "No isa string for cpu");
-        sl::StringSpan isaString = isaProp->ReadString(0);
-        Log("Isa string: %s", LogLevel::Verbose, isaString.Begin());
+        sl::StringSpan isaString {};
+        bool usedAcpi = true;
+        if (auto maybeRhct = FindAcpiTable(SigRhct); maybeRhct.HasValue())
+        {
+            const Rhct* rhct = static_cast<const Rhct*>(*maybeRhct);
+            const RhctNodes::HartInfoNode* found = nullptr;
 
+            while (true)
+            {
+                auto maybeNode = FindRhctNode(rhct, RhctNodeType::HartInfo, found);
+                if (!maybeNode)
+                {
+                    found = nullptr;
+                    break; //we're done, exit and leave found empty
+                }
+                found = static_cast<const RhctNodes::HartInfoNode*>(*maybeNode);
+
+                if (found->acpiProcessorId != CoreLocal().acpiId)
+                    continue; //wrong hart
+                break; //we found the node, exit and leave it in `prev`
+            }
+
+            ASSERT(found != nullptr, "Could not find hart's RHCT info node");
+            sl::NativePtr rhctAccess = rhct;
+            for (size_t i = 0; i < found->offsetCount; i++)
+            {
+                const RhctNode* node = rhctAccess.Offset(found->offsets[i]).As<RhctNode>();
+                if (node->type != RhctNodeType::IsaString)
+                    continue;
+
+                auto isaNode = static_cast<const RhctNodes::IsaStringNode*>(node);
+                isaString = sl::StringSpan(reinterpret_cast<const char*>(isaNode->str), isaNode->strLength);
+                break;
+            }
+        }
+        else if (DeviceTree::Global().Available())
+        {
+            const size_t nodeNameLength = npf_snprintf(nullptr, 0, "/cpus/cpu@%lu", CoreLocal().id) + 1;
+            char nodeName[nodeNameLength];
+            npf_snprintf(nodeName, nodeNameLength, "/cpus/cpu@%lu", CoreLocal().id);
+
+            const DtNode* cpuNode = DeviceTree::Global().Find({ nodeName, nodeNameLength - 1 });
+            ASSERT(cpuNode != nullptr, "No device tree node for cpu");
+            DtProp* isaProp = cpuNode->FindProp("riscv,isa");
+            ASSERT(isaProp != nullptr, "No isa string for cpu");
+
+            isaString = isaProp->ReadString(0);
+            usedAcpi = false;
+        }
+        else
+            ASSERT(false, "Cannot get ISA string");
+
+        Log("ISA string found via %s: %s", LogLevel::Verbose, usedAcpi ? "acpi" : "dtb",
+            isaString.Begin());
+
+        //found the isa string, no create a bitmap of features we care about
         const size_t bitmapBytes = sl::AlignUp((size_t)CpuFeature::Count, 8) / 8;
         uint8_t* bitmap = new uint8_t[bitmapBytes];
         sl::memset(bitmap, 0, bitmapBytes);

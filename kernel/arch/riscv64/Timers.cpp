@@ -1,5 +1,6 @@
 #include <arch/Timers.h>
 #include <arch/riscv64/Sbi.h>
+#include <config/AcpiTables.h>
 #include <config/DeviceTree.h>
 #include <debug/Log.h>
 #include <ArchHints.h>
@@ -21,13 +22,29 @@ namespace Npk
     {
         ASSERT(SbiExtensionAvail(SbiExt::Time), "SBI time extension not available.");
 
+        //try get the timer frequency from ACPI first, fall abck to the device tree otherwise.
         using namespace Config;
-        DtProp* freqProp = DeviceTree::Global().Find("/cpus")->FindProp("timebase-frequency");
-        ASSERT(freqProp != nullptr, "No timebase-frequency node.");
-        
-        timerPeriod = sl::ScaledTime::FromFrequency(freqProp->ReadValue(1));
-        sl::UnitConversion freqUnits = sl::ConvertUnits(freqProp->ReadValue(1), sl::UnitBase::Decimal);
-        Log("Platform timer: freq=%lu.%lu%shz", LogLevel::Info, freqUnits.major, freqUnits.minor, freqUnits.prefix);
+        bool usedAcpi = true;
+        size_t timebaseFrequency;
+        if (auto maybeRhct = FindAcpiTable(SigRhct); maybeRhct.HasValue())
+        {
+            const Rhct* rhct = static_cast<const Rhct*>(*maybeRhct);
+            timebaseFrequency = rhct->timebaseFrequency;
+        }
+        else if (DeviceTree::Global().Available())
+        {
+            DtProp* prop = DeviceTree::Global().Find("/cpus/")->FindProp("timebase-frequency");
+            ASSERT(prop != nullptr, "No DTB node for timebase-frequency");
+            timebaseFrequency = prop->ReadValue(1);
+            usedAcpi = false;
+        }
+        else
+            Log("Could not obtain timer info from ACPI or DTB, no other known methods.", LogLevel::Fatal);
+
+        timerPeriod = sl::ScaledTime::FromFrequency(timebaseFrequency);
+        sl::UnitConversion freqUnits = sl::ConvertUnits(timebaseFrequency, sl::UnitBase::Decimal);
+        Log("Platform timer: freq=%lu.%lu%shz, obtainedVia=%s", LogLevel::Info, freqUnits.major, 
+            freqUnits.minor, freqUnits.prefix, usedAcpi ? "acpi" : "dtb");
     }
 
     void (*timerCallback)();

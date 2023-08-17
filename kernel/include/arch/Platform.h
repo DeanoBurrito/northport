@@ -29,6 +29,7 @@ namespace Npk
     {
         uintptr_t scratch;
         uintptr_t id;
+        uintptr_t acpiId;
         RunLevel runLevel;
         void* nextStack; //next stack available for kernel use. On x86_64 this is a duplicate of tss->rsp0
         void* subsystemPtrs[(size_t)LocalPtr::Count];

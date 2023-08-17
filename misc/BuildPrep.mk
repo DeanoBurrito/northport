@@ -19,3 +19,9 @@ ifeq ($(CPU_ARCH), x86_64)
 		KERNEL_CXX_FLAGS += -DNP_X86_64_E9_ALLOWED
 	endif
 endif
+
+ifeq ($(CPU_ARCH), riscv64)
+	ifneq ($(RV64_ASSUME_UART), no)
+		KERNEL_CXX_FLAGS += -DNP_RISCV64_ASSUME_SERIAL=$(RV64_ASSUME_UART)
+	endif
+endif

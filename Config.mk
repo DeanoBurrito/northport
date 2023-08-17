@@ -3,8 +3,6 @@
 TOOLCHAIN = gcc
 # If not clang, where to find the compiler.
 TOOLCHAIN_PREFIX = ../cross-tools/bin
-# Where to find the target sysroot.
-TOOLCHAIN_SYSROOT = ../cross-tools/lib/gcc/$(ARCH_TARGET)
 # Whether to use the development cache for bootloader and firmware files.
 # This downloads and stores any necessary UEFI firmware for testing and the limine
 # bootloader in `.devel-cache`. Disable this if you want to use your own
@@ -47,3 +45,6 @@ X86_64_ENABLE_DEBUGCON_E9 = yes
 X86_64_RUN_WITH_BIOS = no
 
 # ---- Riscv 64 Options ----
+# Meant as an equivalent to debugcon on x86, set to "no" to disable, or
+# put the address the address of a uart controller the kernel can use to log.
+RV64_ASSUME_UART = no

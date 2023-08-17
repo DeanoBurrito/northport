@@ -50,7 +50,7 @@ namespace Npk
             Log("Xsave not available, using fxsave instead", LogLevel::Verbose);
     }
 
-    void InitCore(size_t id)
+    void InitCore(uintptr_t id, uintptr_t acpiId)
     {
         //ensure we're using the kernel's pagemap.
         VMM::Kernel().MakeActive();
@@ -61,6 +61,7 @@ namespace Npk
 
         CoreLocalInfo* clb = new CoreLocalInfo();
         clb->id = id;
+        clb->acpiId = acpiId;
         clb->runLevel = RunLevel::Normal;
         clb->nextStack = nullptr;
         (*clb)[LocalPtr::IntControl] = new LocalApic();
@@ -109,7 +110,7 @@ namespace Npk
     void ApEntry(limine_smp_info* info)
     {
         WriteMsr(MsrGsBase, 0); //ensure we wont load bogus core-local info
-        InitCore(info->lapic_id);
+        InitCore(info->lapic_id, info->processor_id);
         ExitApInit();
     }
 }
@@ -140,7 +141,6 @@ extern "C"
 
         IoApic::InitAll();
         InitTimers();
-        InitCore(0); //BSP is always id=0 on x86_64
 
         if (Boot::smpRequest.response != nullptr)
         {
@@ -148,7 +148,10 @@ extern "C"
             {
                 limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
                 if (procInfo->lapic_id == Boot::smpRequest.response->bsp_lapic_id)
+                {
+                    InitCore(procInfo->lapic_id, procInfo->processor_id);
                     continue;
+                }
                 
                 procInfo->goto_address = ApEntry;
                 Log("Sending bring-up request to core %u.", LogLevel::Verbose, procInfo->lapic_id);

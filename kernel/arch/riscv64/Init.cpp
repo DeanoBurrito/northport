@@ -5,13 +5,12 @@
 #include <arch/Cpu.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
-#include <config/DeviceTree.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
 
 namespace Npk
 {
-    void InitCore(size_t id)
+    void InitCore(uintptr_t id, uintptr_t acpiId)
     {
         VMM::Kernel().MakeActive();
         
@@ -22,6 +21,7 @@ namespace Npk
 
         CoreLocalInfo* clb = new CoreLocalInfo();
         clb->id = id;
+        clb->acpiId = acpiId;
         clb->runLevel = RunLevel::Normal;
         asm volatile("mv tp, %0" :: "r"((uint64_t)clb));
 
@@ -48,7 +48,7 @@ namespace Npk
         asm volatile("mv tp, zero"); 
         asm volatile("csrw sscratch, zero");
         
-        InitCore(info->hartid);
+        InitCore(info->hartid, info->processor_id);
         ExitApInit();
     }
 
@@ -61,23 +61,6 @@ namespace Npk
                 sl::HintSpinloop();
             uartRegs.Write<uint8_t>(str[i]);
         }
-    }
-
-    void TryInitUart()
-    {
-        Config::DtNode* uart = Config::DeviceTree::Global().FindCompatible("ns16550a");
-        if (uart == nullptr)
-            return;
-
-        Config::DtProp* regsProp = uart->FindProp("reg");
-        if (regsProp == nullptr)
-            return;
-        
-        Config::DtPair reg;
-        regsProp->ReadRegs({ &reg, 1 });
-        uartRegs = Npk::hhdmBase + reg[0];
-
-        Debug::AddEarlyLogOutput(UartWrite);
     }
 }
 
@@ -100,11 +83,14 @@ extern "C"
         asm volatile("csrw sscratch, zero"); 
 
         InitEarlyPlatform();
+#ifdef NP_RISCV64_ASSUME_SERIAL
+        uartRegs = Npk::hhdmBase + NP_RISCV64_ASSUME_SERIAL;
+        Debug::AddEarlyLogOutput(UartWrite);
+#endif
+
         InitMemory();
         InitPlatform();
-
-        TryInitUart();
-        InitIntControllers(); //determine system-level controllers and bring them up.
+        //InitIntControllers(); 
         InitTimers();
 
         if (Boot::smpRequest.response != nullptr)
@@ -115,7 +101,7 @@ extern "C"
                 auto cpuInfo = resp->cpus[i];
                 if (cpuInfo->hartid == resp->bsp_hartid)
                 {
-                    InitCore(cpuInfo->hartid);
+                    InitCore(cpuInfo->hartid, cpuInfo->processor_id);
                     continue;
                 }
 

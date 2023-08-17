@@ -3,6 +3,7 @@
 #include <memory/VmObject.h>
 #include <Memory.h>
 #include <containers/LinkedList.h>
+#include <NativePtr.h>
 
 namespace Npk::Config
 {
@@ -95,5 +96,25 @@ namespace Npk::Config
 
         Log("Acpi Sdt: sig=%.4s, oem=%s, revision=%u, length=0x%u", LogLevel::Verbose,
             table->signature, oem, table->revision, table->length);
+    }
+
+    sl::Opt<const RhctNode*> FindRhctNode(const Rhct* rhct, RhctNodeType type, const RhctNode* begin)
+    {
+        ASSERT(rhct != nullptr, "RHCT is null");
+
+        sl::NativePtr scan = rhct;
+        const uintptr_t rhctEnd = scan.raw + rhct->length;
+        scan = scan.Offset(rhct->nodesOffset);
+
+        while (scan.raw < rhctEnd)
+        {
+            const RhctNode* node = scan.As<const RhctNode>();
+            if (node->type == type && node > begin)
+                return node;
+
+            scan.raw += node->length;
+        }
+
+        return {};
     }
 }
