@@ -60,8 +60,7 @@ namespace Npk::Drivers
 
     void NvmeDpcStub(void* instance)
     {
-        Log("NVME DPC", LogLevel::Debug); //TODO: 
-        // static_cast<NvmeController*>(instance)->UpdateQueues(0b11, 0);
+        static_cast<NvmeController*>(instance)->UpdateQueues(0b11, 0);
         Tasking::DpcExit();
     }
 
@@ -88,11 +87,11 @@ namespace Npk::Drivers
             MsixCap msix = msiCap;
             msix.GlobalMask(false);
             PciBar bir = addr.ReadBar(msix.Bir());
-            msixBirAccess = VmObject{ bir.size, bir.address, VmFlags::Mmio | VmFlags::Write };
+            msixBirAccess = VmObject{ bir.size, bir.address, VmFlag::Mmio | VmFlag::Write };
             
             //mask all vectors by default
-            const uintptr_t msiAddr = MsiAddress(0, *intVector);
-            const uintptr_t msiData = MsiData(0, *intVector);
+            const uintptr_t msiAddr = MsiAddress(CoreLocal().id, *intVector);
+            const uintptr_t msiData = MsiData(CoreLocal().id, *intVector);
             for (size_t i = 0; i < msix.TableSize(); i++)
                 msix.SetEntry(msixBirAccess->ptr, i, msiAddr, msiData, false);
 
@@ -107,7 +106,7 @@ namespace Npk::Drivers
         {
             msiCap = *maybeMsi;
             MsiCap msi = msiCap;
-            msi.SetMessage(MsiAddress(0, *intVector), MsiData(0, *intVector));  
+            msi.SetMessage(MsiAddress(CoreLocal().id, *intVector), MsiData(CoreLocal().id, *intVector));  
             //TODO: we should also check + set allocated vectors field.
             
             msi.Enabled(true);
@@ -448,11 +447,12 @@ namespace Npk::Drivers
         queuesLock.Lock();
         NvmeQ& targetQ = queues[token.queueIndex];
         queuesLock.Unlock();
-
-        //NOTE: no need to lock here as we're only reading the completeion queue
+        
+        //NOTE: no need to lock here as we're only reading the completion queue
         size_t foundAt = -1ul;
         while (foundAt == -1ul)
         {
+            // -- increment last known index that completion wasnt found - keep scanning as long as phase matches what we expect
             // for (size_t i = token.cqHead; i != targetQ.cqHead; i = (i + 1) % targetQ.entries)
             for (size_t i = 0; i < targetQ.entries; i = (i + 1) % targetQ.entries) //TODO: finish interrupt support and update cqHead
             {
@@ -530,8 +530,10 @@ namespace Npk::Drivers
                 "Command-specific", "Media and data integrity error",
                 "Path related status"
             };
+            const char* reason = (type > 3) ? "reserved type" : TypeStrs[type - 1];
+
             Log("NVMe result (%s): type=%u, code=%u, dnr=%u, more=%u", LogLevel::Error, 
-                TypeStrs[type], type, code, dnr, more);
+                reason, type, code, dnr, more);
         }
     }
 
@@ -548,7 +550,7 @@ namespace Npk::Drivers
 
         //for PCIe we get the address of the properties table from BAR0.
         const Devices::PciBar bar0 = addr.ReadBar(0);
-        propsAccess = VmObject(bar0.size, bar0.address, VmFlags::Mmio | VmFlags::Write);
+        propsAccess = VmObject(bar0.size, bar0.address, VmFlag::Mmio | VmFlag::Write);
 
         //disable controller for now, and assert some expectations
         Enable(false);
@@ -624,8 +626,10 @@ namespace Npk::Drivers
             
             queuesLock.Lock();
             NvmeQ& q = queues[offset];
-            sl::ScopedLock queueLock(q.lock);
+            // sl::ScopedLock queueLock(q.lock);
             queuesLock.Unlock();
+            Log("NVME Q%lu updated", LogLevel::Debug, offset);
+            return;
 
             //check the current phase of the CQ head, see if there more 
             //entries with the same phase (and handle wraparound).

@@ -332,7 +332,6 @@ namespace Npk::Memory
 
     bool VMM::Free(uintptr_t base)
     {
-        #warning "Fix VMM::Free memory corruption"
         VmRange* range = FindRange(base);
         if (range == nullptr)
             return false;

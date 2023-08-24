@@ -23,7 +23,7 @@ namespace Npk::Filesystem
             {
                 cacheInfo.unitSize = mmuLimits.modes[i].granularity;
                 cacheInfo.hatMode = i;
-                cacheInfo.modeMultiple = 1;
+                cacheInfo.modeMultiple = 4;
             }
         }
         ASSERT(cacheInfo.unitSize != -1ul, "Unable to select cache unit size");

@@ -34,7 +34,7 @@ namespace Npk::Drivers
         Config::DtPair reg;
         maybeReg->ReadRegs({ &reg, 1 });
 
-        VmObject mmio(PageSize, reg.base, VmFlag::Mmio);
+        VmObject mmio(PageSize, reg[0], VmFlag::Mmio);
         VALIDATE(mmio->Read<uint32_t>() == VirtioMmioMagic,, "Bad magic.");
         const uint32_t deviceType = mmio->Offset((size_t)VirtioReg::DeviceId).Read<uint32_t>();
         mmio.Release();

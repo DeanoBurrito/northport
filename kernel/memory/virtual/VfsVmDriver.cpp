@@ -4,9 +4,12 @@
 #include <filesystem/Filesystem.h>
 #include <filesystem/FileCache.h>
 #include <Memory.h>
+#include <Maths.h>
 
 namespace Npk::Memory::Virtual
 {
+    constexpr size_t FaultMaxMapAhead = 8;
+
     void VfsVmDriver::Init(uintptr_t enableFeatures)
     { 
         features.faultHandler = enableFeatures & (uintptr_t)VfsFeature::FaultHandler;
@@ -17,7 +20,36 @@ namespace Npk::Memory::Virtual
 
     EventResult VfsVmDriver::HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags)
     {
-        ASSERT_UNREACHABLE()
+        using namespace Filesystem;
+        auto link = static_cast<VfsVmLink*>(context.range.token);
+        ASSERT(link != nullptr, "VFS link is nullptr");
+        
+        FileCache* cache = link->vfsNode->link.cache;
+        ASSERT(cache != nullptr, "Bad filecache pointer on vnode");
+
+        const FileCacheInfo fcInfo = GetFileCacheInfo();
+        const size_t granuleSize = GetHatLimits().modes[fcInfo.hatMode].granularity;
+        where = sl::AlignDown(where, granuleSize);
+        const size_t mappingLength = sl::Min(FaultMaxMapAhead * granuleSize, context.range.Top() - where);
+        const HatFlags hatFlags = ConvertFlags(context.range.flags);
+
+        auto cachePart = GetFileCache(cache, where - context.range.base + link->fileOffset, !link->readonly);
+        for (size_t offset = where - context.range.base; offset < mappingLength; offset += granuleSize)
+        {
+            if (offset % fcInfo.unitSize == 0)
+            {
+                //TODO: may block on triggering a load from the backing store, we
+                //should probably release the lock then - so other codepaths can use.
+                cachePart = GetFileCache(cache, offset + link->fileOffset, !link->readonly);
+                if (!cachePart.Valid())
+                    return { .goodFault = true };
+            }
+
+            Map(context.map, offset + context.range.base, cachePart->physBase + (offset % fcInfo.unitSize),
+                fcInfo.hatMode, hatFlags, false);
+        }
+
+        return { .goodFault = true };
     }
 
     QueryResult VfsVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)

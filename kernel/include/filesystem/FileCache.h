@@ -13,6 +13,7 @@ namespace Npk::Filesystem
         uintptr_t physBase;
         size_t offset;
         sl::Atomic<size_t> references;
+        //TODO: track dirty state
     };
 
     struct FileCache
