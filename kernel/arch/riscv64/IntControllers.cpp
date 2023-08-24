@@ -66,7 +66,7 @@ namespace Npk
 
             //NOTE: we dont create a VMO for this since we never intend to free the addr space
             const uintptr_t access = VMM::Kernel().Alloc(regs[0][0], regs[0][1],
-                VmFlags::Write | VmFlags::Mmio)->base;
+                VmFlag::Write | VmFlag::Mmio);
 
             for (size_t i = 0; i < pairCount; i++)
             {

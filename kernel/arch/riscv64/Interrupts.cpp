@@ -75,7 +75,8 @@ extern "C"
         }
         else if (frame->vector >= 12 && frame->vector <= 15)
         {
-            using Memory;
+            using namespace Memory;
+
             VmFaultFlags flags {};
             if (frame->vector == 12)
                 flags |= VmFaultFlag::Execute;

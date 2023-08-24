@@ -134,6 +134,7 @@ namespace Npk::Memory
         uintptr_t globalUpperBound;
 
         VmmMetaSlab* CreateMetaSlab(VmmMetaType type);
+        bool DestroyMetaSlab(VmmMetaType type);
         void* AllocMeta(VmmMetaType type);
         void FreeMeta(void* ptr, VmmMetaType type);
 

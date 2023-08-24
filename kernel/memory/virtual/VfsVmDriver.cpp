@@ -38,11 +38,8 @@ namespace Npk::Memory::Virtual
         {
             if (offset % fcInfo.unitSize == 0)
             {
-                //TODO: may block on triggering a load from the backing store, we
-                //should probably release the lock then - so other codepaths can use.
                 cachePart = GetFileCache(cache, offset + link->fileOffset, !link->readonly);
-                if (!cachePart.Valid())
-                    return { .goodFault = true };
+                ASSERT(cachePart.Valid(), "FileCache fetch from backing store not implemented yet");
             }
 
             Map(context.map, offset + context.range.base, cachePart->physBase + (offset % fcInfo.unitSize),

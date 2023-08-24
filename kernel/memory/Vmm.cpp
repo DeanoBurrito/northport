@@ -106,6 +106,11 @@ namespace Npk::Memory
         return slab;
     }
 
+    bool VMM::DestroyMetaSlab(VmmMetaType type)
+    {
+        //return if there are more slabs of this type
+    }
+
     void* VMM::AllocMeta(VmmMetaType type)
     {
         const size_t slabIndex = static_cast<size_t>(type);
@@ -222,8 +227,16 @@ namespace Npk::Memory
     {
         sl::ScopedLock scopeLock(rangesLock);
 
-        globalLowerBound = PageSize; //dont allocate in page 0.
-        globalUpperBound = ~hhdmBase - PageSize;
+        /* NOTE: we reserved the first page of the lower half because it contains
+         * address 0 (NULL), in an attempt to catch any null-deferences in programs.
+         * The uppermost page of the lower half is also reserved to prevent an attack
+         * that can cause the *kernel* to trigger a GP fault (rather then the calling
+         * program) when returning from a system call. This was originally documented
+         * by the fuchsia team.
+         */
+        const size_t granuleSize = GetHatLimits().modes[0].granularity;
+        globalLowerBound = granuleSize;
+        globalUpperBound = ~hhdmBase - granuleSize;
         hatMap = InitNewMap();
 
         for (size_t i = 0; i < (size_t)VmmMetaType::Count; i++)
@@ -235,7 +248,10 @@ namespace Npk::Memory
         initialHole->largestHole = initialHole->length;
         holes.Insert(initialHole);
 
-        Log("User VMM initialized.", LogLevel::Info);
+        const size_t usableSpace = globalUpperBound - globalLowerBound;
+        auto conv = sl::ConvertUnits(usableSpace, sl::UnitBase::Binary);
+        Log("User VMM created: %lu.%lu.%sB usable space, base=0x%lx.", LogLevel::Info,
+            conv.major, conv.minor, conv.prefix, globalLowerBound);
     }
 
     VMM::VirtualMemoryManager(VmmKey)
@@ -259,14 +275,49 @@ namespace Npk::Memory
         MakeActiveMap(hatMap);
 
         const size_t usableSpace = globalUpperBound - globalLowerBound;
-        auto conv = sl::ConvertUnits(usableSpace);
+        auto conv = sl::ConvertUnits(usableSpace, sl::UnitBase::Binary);
         Log("Kernel VMM bootstrap: %lu.%lu%sB usable space, base=0x%lx.",
             LogLevel::Info, conv.major, conv.minor, conv.prefix, globalLowerBound);
     }
 
     VMM::~VirtualMemoryManager()
     {
-        ASSERT_UNREACHABLE(); //TODO: vmm teardown
+        ASSERT(hatMap != KernelMap(), "Attempted to destroy kernel VMM.");
+
+        //Not strictly necessary, but better to know we're not using the VMM we're
+        //about to destroy. Switch to the kernel map.
+        MakeActiveMap(KernelMap());
+        
+        //iterate through active ranges, detaching each one and freeing the backing memory.
+        //This also frees the VM range structs as well.
+        while (VmRange* range = ranges.GetRoot())
+        {
+            if (!Free(range->base))
+                Log("Failed to destroy VM range during teardown.", LogLevel::Warning);
+        }
+
+        //free memory used by VM hole structs
+        size_t holesFreed = 0;
+        while (VmHole* hole = holes.GetRoot())
+        {
+            holes.Remove(hole);
+            holesFreed++;
+            FreeMeta(hole, VmmMetaType::Hole);
+        }
+        if (holesFreed > 1)
+        {
+            Log("Multiple VmHoles freed from end-of-life VMM, missing virtual memory?",
+                LogLevel::Warning);
+        }
+
+        //Free memory used by meta allocators
+        while (DestroyMetaSlab(VmmMetaType::Range)) {}
+        while (DestroyMetaSlab(VmmMetaType::Hole)) {}
+
+        //cleanup memory used by HAT structures, no need to lock as no one else
+        //can access the VMM at this stage in its life.
+        CleanupMap(hatMap);
+        hatMap = nullptr;
     }
 
     void VMM::MakeActive()
