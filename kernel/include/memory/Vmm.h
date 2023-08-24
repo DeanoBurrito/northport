@@ -37,6 +37,8 @@ namespace Npk::Memory
         { return a.base < b.base; }
     };
 
+    using VmRangeTree = sl::RBTree<VmRange, &VmRange::hook, VmRangeLess>;
+
     struct VmHole
     {
         uintptr_t base;
@@ -52,7 +54,14 @@ namespace Npk::Memory
         { return a.base < b.base; }
     };
 
-    //TODO: VmHoleAggregator
+    struct VmHoleAggregator;
+    using VmHoleTree = sl::RBTree<VmHole, &VmHole::hook, VmHoleLess, VmHoleAggregator>;
+
+    struct VmHoleAggregator
+    {
+        static bool Aggregate(VmHole* hole);
+        static bool CheckInvariant(VmHoleTree& tree, VmHole* hole);
+    };
 
     enum class VmmMetaType : size_t
     {
@@ -110,9 +119,9 @@ namespace Npk::Memory
     {
     private:
         sl::TicketLock rangesLock;
-        sl::RBTree<VmRange, &VmRange::hook, VmRangeLess> ranges;
+        VmRangeTree ranges;
         sl::TicketLock holesLock;
-        sl::RBTree<VmHole, &VmHole::hook, VmHoleLess> holes;
+        VmHoleTree holes;
         sl::TicketLock allocLock;
 
         VmmMetaSlab* metaSlabs[(size_t)VmmMetaType::Count];

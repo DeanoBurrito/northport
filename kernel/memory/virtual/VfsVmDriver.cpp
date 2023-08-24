@@ -106,10 +106,11 @@ namespace Npk::Memory::Virtual
         link->fileOffset = arg->offset;
         (void)fileHandle;
 
+        const size_t granuleSize = GetHatLimits().modes[query.hatMode].granularity;
         const AttachResult result 
         {
             .token = link,
-            .offset = 0, //TODO: correctly set offset
+            .offset = arg->offset % granuleSize,
             .success = true,
         };
 
@@ -119,7 +120,6 @@ namespace Npk::Memory::Virtual
         if (features.faultHandler && !arg->noDeferBacking)
             return result;
 
-        const size_t granuleSize = GetHatLimits().modes[query.hatMode].granularity;
         const HatFlags hatFlags = ConvertFlags(context.range.flags);
 
         sl::ScopedLock scopeLock(context.lock);

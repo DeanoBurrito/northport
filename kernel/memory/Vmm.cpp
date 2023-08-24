@@ -12,6 +12,57 @@
 
 namespace Npk::Memory
 {
+    //The VmHoleAggregator functions are more or less copied from managarm, thanks
+    //to the team there.
+    bool VmHoleAggregator::Aggregate(VmHole* hole)
+    {
+        size_t size = hole->length;
+        const VmHole* left = VmHoleTree::GetLeft(hole);
+        const VmHole* right = VmHoleTree::GetRight(hole);
+        if (left != nullptr && left->largestHole > size)
+            size = left->largestHole;
+        if (right != nullptr && right->largestHole > size)
+            size = right->largestHole;
+
+        if (hole->largestHole == size)
+            return false;
+        hole->largestHole = size;
+        return true;
+    }
+
+    bool VmHoleAggregator::CheckInvariant(VmHoleTree& tree, VmHole* hole)
+    {
+        const VmHole* pred = tree.Predecessor(hole);
+        const VmHole* succ = tree.Successor(hole);
+
+        size_t size = hole->length;
+        const VmHole* left = VmHoleTree::GetLeft(hole);
+        const VmHole* right = VmHoleTree::GetRight(hole);
+        if (left != nullptr && left->largestHole > size)
+            size = left->largestHole;
+        if (right != nullptr && right->largestHole > size)
+            size = right->largestHole;
+
+        if (hole->largestHole != size)
+        {
+            Log("VmHoleTree has invalid state!", LogLevel::Error);
+            return false;
+        }
+
+        if (pred != nullptr && hole->base < pred->base + pred->length)
+        {
+            Log("VmHoleTree overlapping regions", LogLevel::Error);
+            return false;
+        }
+        if (succ != nullptr && hole->base + hole->length > succ->base)
+        {
+            Log("VmHoleTree overlapping regions", LogLevel::Error);
+            return false;
+        }
+
+        return true;
+    }
+
     constexpr const size_t VmmSlabSizes[(size_t)VmmMetaType::Count] = 
     { 
         sizeof(VmRange), 
