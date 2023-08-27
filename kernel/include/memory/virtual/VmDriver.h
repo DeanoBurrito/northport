@@ -31,17 +31,17 @@ namespace Npk::Memory::Virtual
 
     struct QueryResult
     {
-        size_t alignment;
-        size_t length;
-        size_t hatMode;
-        bool success;
+        size_t alignment = 0;
+        size_t length = 0;
+        size_t hatMode = 0;
+        bool success = false;
     };
 
     struct AttachResult
     {
-        void* token;
-        size_t offset;
-        bool success;
+        void* token = nullptr;
+        size_t offset = 0;
+        bool success = false;
     };
 
     struct VmDriverContext

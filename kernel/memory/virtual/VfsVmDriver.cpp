@@ -20,7 +20,9 @@ namespace Npk::Memory::Virtual
 
     EventResult VfsVmDriver::HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags)
     {
+        (void)flags;
         using namespace Filesystem;
+
         auto link = static_cast<VfsVmLink*>(context.range.token);
         ASSERT(link != nullptr, "VFS link is nullptr");
         
@@ -79,6 +81,7 @@ namespace Npk::Memory::Virtual
 
     bool VfsVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
     {
+        (void)context; (void)flags;
         ASSERT_UNREACHABLE()
     }
 

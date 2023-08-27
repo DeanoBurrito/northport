@@ -1,14 +1,11 @@
 \section{Virtual Memory Manager}
-The virtual memory subsytem takes inspiration from a paper on the old SunOS VMM design: where the subsystem is separate into a few distinct parts. Namely the VMM itself acts as a high level manager of an address space, and handles the allocation of ranges of virtual addresses. The VMM is not responsible for actually mapping and unmapping virtual address, as this is the responsibility of the VM drivers. Each VM driver provides a single type of memory that the VMM can \textit{attach} to a range of virtual memory (see \autoref{vmdrivers} for specifics). 
+The virtual memory subsytem takes inspiration from a paper on the old SunOS VMM design: where the subsystem is composed of a few distinct parts:
 
-Both the VMM and VM drivers make use of an abstraction layer called the \textit{HAT} (hardware address translation) to keep themselves independent of the underlying hardware. The HAT is implemented as part of the architecture layer of the kernel.
-
-\subsection{Hardware Abstraction}
-The VMM and VM drivers are written to be independent of the underlying hardware, instead relying on the HAT (\textit{hardware address translation} - a borrowed term) to access the hardware. The HAT is part of the arch-layer of the kernel, and acts as the interface to the the platform's MMU.
-
-The HAT makes use of a few primitives, namely \textit{modes} and \textit{maps}. A mode describes one possible way that the MMU can map memory, specifying an alignment and granularity. Modes and and the number of them available are collectively referred to as the \textit{HAT limits}. A map is an opaque representation of an address space. From the kernel perspective a map is an opaque pointer, and the VMM will store exactly one of these per managed address space. In systems using paging, the map is usually the root page table. The HAT also provides a handful of functions for managing mappings within an address space.
-
-The VMM and VM drivers make full use of the available modes exposed by the HAT, meaning that the limitations placed on virtual memory management are based on what the hardware supports - no artificial limits are imposed by the VMM.
+\begin{itemize}
+    \item The VMM itself acts as a high level manager of an address space. It's responsible for tracking and allocating in-use/free virtual addresses and their associated permissions. However it's not responsible for managing the backing memory behind virtual memory it manages, this is the responsibility of the associated VM driver.
+    \item A number of VM drivers, which act as plugins to a VMM. Each VM driver is responsible for a certain type of backing that is \textit{attached} to virtual memory allocated by the VMM. A driver can be thought of as 'glue code' between virtual memory and physical memory being used for a particular purpose. See \autoref{vmdrivers} for specifics.
+    \item All of this operates on top of the \textit{HAT} (hardware address translation), a term borrowed from other kernels. The HAT is part of the arch layer of the kernel, and represents an abstract memory management unit. Any supported architectures must provided a HAT implementation, which allows the VMM and VM drivers to communicate with the underlying hardware. The use of this layer allows the rest of the virtual memory subsystem to remain completely platform independent and portable.
+\end{itemize}
 
 TODO: add lines showing separation between layers of arch, subsystem and them VMOs on top (expected API).
 
@@ -93,6 +90,20 @@ While these are called VM \textit{drivers} they have nothing to do with the devi
 \paragraph{Virtual Memory Object}
 A \textit{virtual memory object} (VMO) is a wrapper around a VM range and the VMM that owns it. The intention is to provide a cleaner interface than the VMM itself provides, and to abstract the complexity exposed by the VMM. The full API is still available if needed, but for the vast majority of use cases a VMO has the required features. As such, the VMO is the recommended way to manage virtual memory, it also makes use of RAII to help prevent leaks. VMOs can also be freely passed around the kernel as a way to represent 'some memory in an address space'.
 
+\subsection{Hardware Abstraction}
+The VMM and VM drivers are written to be independent of the underlying hardware, instead relying on the HAT (\textit{hardware address translation} - a borrowed term) to access the hardware. The HAT is part of the arch-layer of the kernel, and acts as the interface to the the platform's MMU.
+
+The HAT makes use of a few primitives, namely \textit{modes} and \textit{maps}. A mode describes one possible way that the MMU can map memory, specifying an alignment and granularity. Modes and and the number of them available are collectively referred to as the \textit{HAT limits}. A map is an opaque representation of an address space. From the kernel perspective a map is an opaque pointer, and the VMM will store exactly one of these per managed address space. In systems using paging, the map is usually the root page table. The HAT also provides a handful of functions for managing mappings within an address space.
+
+The VMM and VM drivers make full use of the available modes exposed by the HAT, meaning that the limitations placed on virtual memory management are based on what the hardware supports - no artificial limits are imposed by the VMM.
+
+\subsection{Address Space Management}
+TODO: ranges list, holes list, use of list vs tree (list is easier to conceptualize - tree for speedy runtime).
+Cover alloc + free.
+
+\subsection{Kernel VMM}
+TODO: vs lower half user vmms
+
 \subsection{Initialization}
 Immediately after the physical memory manager is initialized, the kernel VMM is brought up. First \verb|HatInit()| is called, which allows the architecture layer to perform some global setup, as well as map the HHDM in the map used by the kernel VMM. The reason the HAT is responsible for mapping the HHDM instead of the VMM is that the HAT can freely make assumptions about the best way to map the large, continuous area of address that the HHDM occupies. This function is only called once and is therefore not suitable for core-local setup of the MMU. It's mainly for detecting what mode the MMU is in (e.g. how many paging levels are available and in use), and any optional extensions. Next the VM drivers are initialized, this mainly consists of detecting and setting some software feature flags. The exception here is the kernel VMM which maps the kernel binary with (propoer permissions) into the address space of the kernel VMM.
 
@@ -131,13 +142,15 @@ At this point the VMM calls \verb|vmdriver.Attach()| which is where the VM drive
 
 Once the VM driver is attached, the range is inserted in the \verb|ranges| tree and is now considered active.
 
-\subsection{Freeing}
-
 \subsection{Usage of Page Faults}
-Proper handling of page faults is still a work-in-progress area. Currently incoming page faults are checked against any active VM ranges, and if successful they are routed to the attached VM driver. The VM driver can then decide how the fault is handled: it can kill the program that triggered the fault, put the current thread to sleep and wait on an external event to complete, or take action immediately and allow the program to continue. From an outside perspective sleeping and continuing appear as the same operation (sleeping just takes more time), but the distinction can be useful.
+The VMM and VM drivers make full usage of page faults (and handling them). Often a fault is triggered by the hardware in response to action taken by a program, but a page fault can also be triggered manually by calling \verb|HandleFault()| on any VMM to trigger the same response. This function returns a bool indicating if the fault was considered 'good' or not. A good fault is an allowed (and expected) memory access, while a bad fault is an illegal one.
 
-It should be noted that if a page fault happens outside of an active VM range, or the faulting access is not allowed by the by the flags of the VM range, the offending program is killed. In the kernel's case, it triggers a panic.
+Bad faults can result in any number of consequences, from a program being terminated to a kernel panic, depending on the VMM in question.
 
-Each VM driver can make use page faults in a different way, or operate without them by clearing the feature flag for that driver. The anon VM driver currently backs new ranges with a readonly page of zeroes, replacing those mappings with writable memory when first written to. The VFS VM driver will map parts of the file cache when a mapped file is accessed, transparently triggering an io operation if needed. The kernel VM driver has no use for page faults.
+When handling a page fault the VMM will check the faulting address against the list of active VM ranges, looking for the associated range. If a matching range isn't found, the fault returns \verb|false| as it failed to handle it properly. If the range is found, the VMM will then check the fault flags which describe what the memory access was (read, write or execute), it's privilege level (supervisor or user). Assuming the memory access was allowed for this VM range, the VMM will call the fault handler on the VM driver attached to the range and allow the driver to continue handling the fault. At this point the VM driver is responsible for the outcome of the fault.
+
+VM drivers may choose to not map physical memory with the full permissions requested by the VMM, in order to trigger a fault on certain actions. This is used to implement features like CoW (copy-on-write), zero-paging, or to allow the backing memory to be reclaimed and used elsewhere. \textit{Current swapping to disk isn't implemented, and the file cache is only half transient - it has no page-out features}
+
+At this point the action taken depends on the specific VM driver and the exact nature of the fault.
 
 \subsection{Example Code}

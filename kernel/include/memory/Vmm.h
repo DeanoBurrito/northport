@@ -12,7 +12,7 @@
 
 namespace Npk
 {
-    struct HatMap; //see arch/Hat.h for details, this struct is deliberately opaque.
+    struct HatMap; //Just a forward decl for arch/Hat, so we dont include all it's crap here.
 }
 
 namespace Npk::Memory
@@ -138,6 +138,7 @@ namespace Npk::Memory
         void* AllocMeta(VmmMetaType type);
         void FreeMeta(void* ptr, VmmMetaType type);
 
+        void CommonInit();
         void AdjustHole(VmHole* target, size_t offset, size_t length);
         VmRange* FindRange(uintptr_t addr);
 
@@ -165,7 +166,6 @@ namespace Npk::Memory
 
         bool MemoryExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags);
         sl::Opt<uintptr_t> GetPhysical(uintptr_t vaddr);
-        size_t GetDebugData(sl::Span<VmmDebugEntry>& entries, size_t offset = 0);
 
         size_t CopyIn(void* foreignBase, void* localBase, size_t length);
         size_t CopyOut(void* localBase, void* foreignBase, size_t length);

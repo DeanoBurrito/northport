@@ -109,6 +109,7 @@ namespace Npk::Memory
     bool VMM::DestroyMetaSlab(VmmMetaType type)
     {
         //return if there are more slabs of this type
+        ASSERT_UNREACHABLE();
     }
 
     void* VMM::AllocMeta(VmmMetaType type)
@@ -159,6 +160,20 @@ namespace Npk::Memory
         }
 
         ASSERT_UNREACHABLE() //means the metadata wasnt allocated from one of our slabs.
+    }
+
+    void VMM::CommonInit()
+    {
+        //initialize meta allocators
+        for (size_t i = 0; i < (size_t)VmmMetaType::Count; i++)
+            metaSlabs[i] = nullptr;
+
+        //Create the initial VM hole representing the initial address space
+        VmHole* initialHole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
+        initialHole->base = globalLowerBound;
+        initialHole->length = globalUpperBound - globalLowerBound;
+        initialHole->largestHole = initialHole->length;
+        holes.Insert(initialHole);
     }
 
     void VMM::AdjustHole(VmHole* target, size_t offset, size_t length)
@@ -212,9 +227,9 @@ namespace Npk::Memory
     void VMM::InitKernel()
     {
         HatInit(); //arch-specific setup of the MMU.
-        Virtual::VmDriver::InitAll(); //bring up basic VM drivers, including kernel driver.
+        Virtual::VmDriver::InitAll(); //Bring-up VM drivers
         kernelVmm.Init(VmmKey{}); //VmmKey calls the constructor for the kernel vmm.
-        Heap::Global().Init();
+        Heap::Global().Init(); //Make general purpose heap available for the rest of the kernel.
     }
 
     VMM& VMM::Kernel()
@@ -227,30 +242,30 @@ namespace Npk::Memory
     {
         sl::ScopedLock scopeLock(rangesLock);
 
-        /* NOTE: we reserved the first page of the lower half because it contains
-         * address 0 (NULL), in an attempt to catch any null-deferences in programs.
-         * The uppermost page of the lower half is also reserved to prevent an attack
-         * that can cause the *kernel* to trigger a GP fault (rather then the calling
-         * program) when returning from a system call. This was originally documented
-         * by the fuchsia team.
+        /* User VMMs managed (almost) the entire lower half of an address space, with
+         * a small chunk reserved at either size. HAT mode 0 is the smallest mode support,
+         * usually the page size (if that metric makes sense for the architecture).
+         * We leave a gap of `mode0.granularity` bytes on either side of the address
+         * space the VMM manages.
+         * - The space at the beginning is so that address 0 (NULL/nullptr in many languages)
+         *   is unmapped, resulting in a bad page fault on null pointer dereferences.
+         *   A nice side affect of keeping a few additional bytes unmapped is that this
+         *   will also fault on accesses to member accesses to objects with null as their address.
+         * - The space at the top of the managed area is to prevent a bug on some platforms.
+         *   This bug allows userspace to cause the kernel to trigger a fault, on behalf of
+         *   the user code, which can lead to some bad things. It's documented by the Fuchsia
+         *   team at: https://fuchsia.dev/fuchsia-src/concepts/kernel/sysret_problem
          */
         const size_t granuleSize = GetHatLimits().modes[0].granularity;
         globalLowerBound = granuleSize;
         globalUpperBound = ~hhdmBase - granuleSize;
+
+        CommonInit();
         hatMap = InitNewMap();
-
-        for (size_t i = 0; i < (size_t)VmmMetaType::Count; i++)
-            metaSlabs[i] = nullptr;
-
-        VmHole* initialHole = new(AllocMeta(VmmMetaType::Hole)) VmHole();
-        initialHole->base = globalLowerBound;
-        initialHole->length = globalUpperBound - globalLowerBound;
-        initialHole->largestHole = initialHole->length;
-        holes.Insert(initialHole);
 
         const size_t usableSpace = globalUpperBound - globalLowerBound;
         auto conv = sl::ConvertUnits(usableSpace, sl::UnitBase::Binary);
-        Log("User VMM created: %lu.%lu.%sB usable space, base=0x%lx.", LogLevel::Info,
+        Log("User VMM created: %lu.%lu%sB usable space, base=0x%lx.", LogLevel::Info,
             conv.major, conv.minor, conv.prefix, globalLowerBound);
     }
 
@@ -258,19 +273,15 @@ namespace Npk::Memory
     {
         sl::ScopedLock scopeLock(rangesLock);
 
-        //protect the HHDM from allocations, as well as the kernel binary.
+        /* The higher half of the address space is split into 3 main blocks:
+         * - at the base is the hhdm, from hhdmBase -> hhdmBase + hhdmLength.
+         * - the topmost 2GiB are reserved for the kernel binary.
+         * - everything in between is managed by the kernel VMM.
+         */
         globalLowerBound = hhdmBase + hhdmLength;
         globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GetHatLimits().modes[0].granularity);
 
-        for (size_t i = 0; i < (size_t)VmmMetaType::Count; i++)
-            metaSlabs[i] = nullptr;
-
-        VmHole* initialHole = new(AllocMeta(VmmMetaType::Hole)) VmHole(); //TODO: extract this + user level version into a common_vmm_init() func
-        initialHole->base = globalLowerBound;
-        initialHole->length = globalUpperBound - globalLowerBound;
-        initialHole->largestHole = initialHole->length;
-        holes.Insert(initialHole);
-
+        CommonInit();
         hatMap = KernelMap();
         MakeActiveMap(hatMap);
 
@@ -338,29 +349,55 @@ namespace Npk::Memory
         if (range == nullptr)
             return false;
 
+        //determine if access is legal according to VM range flags. The fault may
+        //be due to a VM driver not passing on the full flags to the HAT.
+        if (flags.Has(VmFaultFlag::Write) && !range->flags.Has(VmFlag::Write))
+            return false;
+        if (flags.Has(VmFaultFlag::Execute) && !range->flags.Has(VmFlag::Execute))
+            return false;
+        if (flags.Has(VmFaultFlag::User) && !range->flags.Has(VmFlag::User))
+            return false;
+
+        //locate the attached driver, and inform it of the fault.
         using namespace Virtual;
         VmDriver* driver = VmDriver::GetDriver(range->flags);
         VALIDATE(driver != nullptr, false, "VmRange exists without a known driver");
 
         VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
         const EventResult result = driver->HandleFault(context, addr, flags);
-        if (!result.goodFault)
-            return false;
 
-        Log("Good page fault: addr=0x%lx, ec=0x%lx", LogLevel::Debug, addr, flags.Raw());
-        return true;
+        Log("%s page fault: addr=0x%lx, flags=0x%lx", LogLevel::Debug, 
+            result.goodFault ? "Good" : "Bad", addr, flags.Raw());
+
+        if (!result.goodFault) //TODO: temporary feature for now, checking bad faults is the callers responsibility
+            Panic("Bad page fault, see log");
+        return result.goodFault;
     }
 
     sl::Opt<uintptr_t> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, VmmAllocLimits limits)
     {
-        using namespace Virtual;
+        /* Allocating has a few main steps:
+         * - First find the driver for the requested type of memory.
+         * - Call driver.Query() to get specifics on what the VM driver would need to
+         *   actually attach backing to the VM range. This includes the real number of bytes
+         *   required to map the requested number of bytes, alignment and the HAT mode.
+         * - Find a hole in the address space that meets the query criteria.
+         * - Split the found VM hole and create a VM range struct to represent the removed
+         *   address space. Store some metadata like the flags here too.
+         * - Attach the VM driver to the freshly created VM range. Conceptually the virtual
+         *   memory is now ready for use, although that doesn't necessarily mean it's
+         *   backed yet. That happens at the discretion of the attached VM driver.
+         * - Store the token returned by the VM driver in the range struct, and finally
+         *   stash the VM range in the global list/tree so it's available to the
+         *   rest of the VMM.
+         */
 
-        //before even thinking about allocating address space, find the driver used to
-        //back this type of memory and find out what it would need to fulfill it.
+        using namespace Virtual;
         VmDriver* driver = VmDriver::GetDriver(flags);
         if (driver == nullptr)
             return {};
 
+        //query the driver, find out what it would require to satify this allocation
         const QueryResult query = driver->Query(length, flags, initArg);
         if (!query.success)
             return {};
@@ -370,6 +407,7 @@ namespace Npk::Memory
         VALIDATE(hole != nullptr, {}, "No address space holes?");
 
         //TODO: respect alignment when allocating + limits
+        //find an empty part of the address space we can use, claim it.
         uintptr_t rangeBase = 0;
         while (true)
         {
@@ -400,13 +438,13 @@ namespace Npk::Memory
         holyLock.Release();
         VALIDATE(rangeBase != 0, {}, "Will not allocate VM at address 0");
 
+        //create VM range struct, start populating it
         VmRange* vmRange = new(AllocMeta(VmmMetaType::Range)) VmRange();
         vmRange->base = rangeBase;
         vmRange->length = query.length;
         vmRange->flags = flags;
 
-        //we've reserved some of the address space, now attach a vmdriver to this
-        //range of memory.
+        //attach the VM driver to this range, store the offset and token.
         VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *vmRange };
         const AttachResult attachResult = driver->Attach(context, query, initArg);
         if (!attachResult.success)
@@ -425,6 +463,7 @@ namespace Npk::Memory
         vmRange->token = attachResult.token;
         vmRange->offset = attachResult.offset;
         
+        //make range known to the rest of the VMM.
         rangesLock.Lock();
         ranges.Insert(vmRange);
         rangesLock.Unlock();
@@ -434,6 +473,23 @@ namespace Npk::Memory
 
     bool VMM::Free(uintptr_t base)
     {
+        /* Freeing virtual memory is the reverse of allocating:
+         * - First the range struct is removed from the list, meaning that part of the
+         *   address space isn't available for allocations (it's not in the holes list)
+         *   and its also not an active range, and wont be considered for faults or other
+         *   lookups.
+         * - The attached VM driver is located, and driver.Detach is called. This is where
+         *   the driver can cleanup any backing memory, populate dirty bits etc. If this function
+         *   fails the space represented by the VM range is simply dropped, and not merged into
+         *   the VM holes tree. This is because the exact state of the virtual memory is unknown,
+         *   there could be something mapped still, or parts of something mapped. Rather than
+         *   risk a class of bugs that could come from trying to re-allocate over it, the
+         *   space is simply dropped - essentially leaking the virtual memory.
+         * - If driver.Detach succeeds, the memory represented by the range is merged into the
+         *   VM holes tree, and the VM range is freed. Now the virtual memory is completely freed,
+         *   and ready for other uses.
+         */
+
         VmRange* range = FindRange(base);
         if (range == nullptr)
             return false;
@@ -507,11 +563,6 @@ namespace Npk::Memory
     sl::Opt<uintptr_t> VMM::GetPhysical(uintptr_t vaddr)
     {
         return GetMap(hatMap, vaddr);
-    }
-
-    size_t VMM::GetDebugData(sl::Span<VmmDebugEntry>& entries, size_t offset)
-    {
-        ASSERT_UNREACHABLE();
     }
 
     size_t VMM::CopyIn(void* foreignBase, void* localBase, size_t length)

@@ -8,6 +8,8 @@
 #include <debug/Log.h>
 #include <memory/Vmm.h>
 
+#include <tasking/Clock.h>
+
 namespace Npk
 {
     void InitCore(uintptr_t id, uintptr_t acpiId)
@@ -47,9 +49,11 @@ namespace Npk
     {
         asm volatile("mv tp, zero"); 
         asm volatile("csrw sscratch, zero");
-        
         InitCore(info->hartid, info->processor_id);
-        ExitApInit();
+
+        PerCoreCommonInit();
+        ExitCoreInit();
+        ASSERT_UNREACHABLE();
     }
 
     sl::NativePtr uartRegs;
@@ -110,6 +114,8 @@ extern "C"
             }
         }
 
-        ExitBspInit();
+        Tasking::StartSystemClock();
+        ExitCoreInit();
+        ASSERT_UNREACHABLE();
     }
 }

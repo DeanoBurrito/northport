@@ -70,6 +70,9 @@ namespace Npk
 
     //creates a new address space (without loading it).
     HatMap* InitNewMap();
+
+    //destroys (and frees) structures for an existing address space.
+    void CleanupMap(HatMap* map);
     
     //gets the kernel map
     HatMap* KernelMap();

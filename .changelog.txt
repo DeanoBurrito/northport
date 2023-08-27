@@ -3,7 +3,7 @@
     - With the shim being removed, the device tree parser no longer needs to operate with the 'no allocation' constraint, so it's been rewriten to be efficient and build a tree in memory. Previously it parsed chunks of the device tree for every operation. It operates like smoldtb without the statically allocated buffer.
     - Bootable ISO for riscv64 is now included in the releases tab.
 - Documentation improvements:
-    - Earlier chapter rewritten to be more consistent.
+    - Earlier chapters rewritten to be more consistent.
     - Added VMM chapter.
 
 - Memory management stack improvements:
@@ -14,7 +14,6 @@
         - Added 'zero paging': when demang paging a readonly page of all zeroes is mapped instead of nothing. This should help cause a few less page faults, and later on.
         - Added VFS driver: we can now memory map files, including expanding them. Private mappings aren't supported just yet, but there have been provisions made. The VFS VM driver also makes use of demand paging where appropriate.
         - Switched to a red-black tree for managing vm ranges (instead of a singly linked list). Managing free address space is also done with another rbtree instead of inferring which regions were in-use. This is a little easier to reason about at the cost of more runtime memory.
-    - PMM rewrite: now uses a hybrid approach of freelists for single-page allocations and a bitmap for larger allocations.
 
 - Added development cache (develcache): limine and any OVMF firmware files for testing are downloaded and cached inside the project directly, reducing setup for getting started with the project.
     - This is opt-out, and you can point the build system to your own limine and OVMF firmware files if you prefer that.

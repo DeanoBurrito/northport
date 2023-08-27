@@ -37,19 +37,9 @@ namespace Npk::Memory::Virtual
 
     EventResult AnonVmDriver::HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags)
     {
-        //check that the type of access is legal according to the VMM.
-        //Note that the VMM may not have passed the full permissions on to the HAT, this is so
-        //we can have the HAT trigger page faults on certain actions. This lets us interact with a
-        //program as it uses it's virtual memory (demand paging, swapping).
-        if (flags.Has(VmFaultFlag::Write) && !context.range.flags.Has(VmFlag::Write))
-            return { .goodFault = false };
-        if (flags.Has(VmFaultFlag::Execute) && !context.range.flags.Has(VmFlag::Execute))
-            return { .goodFault = false };
-        if (flags.Has(VmFaultFlag::User) && !context.range.flags.Has(VmFlag::User))
-            return { .goodFault = false };
-
         //if we've reached this point, the fault wasn't caused by a permissions violation,
         //so we map some usable memory here and return to the program.
+        (void)flags;
         const size_t hatMode = reinterpret_cast<size_t>(context.range.token);
         const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
         const size_t mapLength = sl::Min(FaultMaxMapAhead, context.range.Top() - where);
@@ -68,11 +58,13 @@ namespace Npk::Memory::Virtual
 
     bool AnonVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
     { 
+        (void)context; (void)flags;
         ASSERT_UNREACHABLE();
     }
 
     QueryResult AnonVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
     {
+        (void)attachArg;
         QueryResult result;
         result.success = true;
         

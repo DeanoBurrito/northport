@@ -141,6 +141,19 @@ namespace Npk
         Drivers::DriverManager::Global().Init();
         Devices::PciBridge::Global().Init();
 
+        for (size_t i = 0; i < 10; i++)
+        {
+            Log("creating VFS VMO %lu", LogLevel::Debug, i);
+            Memory::VmoFileInitArg arg;
+            arg.offset = 7;
+            arg.filepath = "initdisk/dummy.txt";
+            arg.noDeferBacking = false;
+            Memory::VmObject vmo(256, (uintptr_t)&arg, VmFlag::File | VmFlag::Write);
+            ASSERT(vmo.Valid(), "VMO invalid");
+
+            Log("File contents: %s", LogLevel::Debug, vmo->As<const char>());
+        }
+
         Tasking::Thread::Current().Exit(0);
     }
 
@@ -149,29 +162,45 @@ namespace Npk
         return bootloaderRefs.Load(sl::Relaxed) != 0;
     }
 
-    [[noreturn]]
-    void ExitBspInit()
+    void PerCoreCommonInit()
     {
-        Tasking::StartSystemClock();
-        ExitApInit();
-    }
-
-    [[noreturn]]
-    void ExitApInit()
-    {
-        Memory::Heap::Global().CreateCaches();
+        Memory::Heap::Global().CreateCaches(); //TODO: does this need to be a member function?
         Debug::InitCoreLogBuffers();
         Interrupts::InitIpiMailbox();
 
+        //TODO: dont forget Tasking::StartSystemClock()
+    }
+
+    [[noreturn]]
+    void ExitCoreInit()
+    {
         using namespace Tasking;
-        if (--bootloaderRefs > 0)
-            Scheduler::Global().RegisterCore();
-        else
+        Thread* initThread = nullptr;
+        if (bootloaderRefs != 0)
         {
-            Log("Last core exiting early init stage", LogLevel::Verbose);
-            auto reclaimThread = Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr);
-            Scheduler::Global().RegisterCore(reclaimThread);
+            /* Cores can be initialized (and reach this function) in two ways: either by
+             * the bootloader and are given to the kernel via the smp response, or hotplugged
+             * at runtime. Bootloader started cores reference bootloader data (mainly the 
+             * stack we're provided with) until they start scheduled execution - which presents a
+             * problem for reclaiming bootloader memory.
+             * The first if statement checks if *any* cores are still referencing bootloader memory,
+             * and if spawning the reclamation thread should even be considered. For hotplugged cores
+             * we dont care about reclaiming BL memory, so this filters out that case.
+             * The second if (below) decrements the reference count, and checks the new value (atomically)
+             * to see if this core is the last bootloader-started core. If it is, spawn the reclaim thread.
+             */
+            if (--bootloaderRefs == 0)
+            {
+                initThread = Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr);
+                Log("Bootloader memory reclamation thread spawned, id=%lu.", LogLevel::Verbose, initThread->Id());
+            }
         }
+        else
+            ASSERT_UNREACHABLE(); //TODO: start pluggable CPUs. (reclaim this core's boot data).
+
+        Log("Core finished init, exiting to scheduler.", LogLevel::Info);
+        Scheduler::Global().RegisterCore(initThread);
         ASSERT_UNREACHABLE();
+
     }
 }

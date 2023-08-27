@@ -9,8 +9,7 @@ namespace Npk
     void InitThread(void*);
     bool CoresInEarlyInit();
 
+    void PerCoreCommonInit();
     [[noreturn]]
-    void ExitBspInit();
-    [[noreturn]]
-    void ExitApInit();
+    void ExitCoreInit();
 }
