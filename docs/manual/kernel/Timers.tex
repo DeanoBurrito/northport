@@ -42,17 +42,17 @@ Timer functions are intended to be provided by arch-specific code for the clock'
 For the following few examples we'll assume we have a callback function \verb|void CallbackFunc(void*)| and some data we want to pass to it \verb|void* callbackData|. The data pointer can optionally be \verb|nullptr| if this feature is not needed. All the example functions used are declared in \verb|tasking/Clock.h|.
 
 The following is an example of using the software clock to have a function run 10 milliseconds from now. Clock events use nanosecond precision.
-\begin{verbatim}
+\begin{lstlisting}[stringstyle=\color{black}\ttfamily]
 QueueClockEvent(10'000'000, callbackData, callback);
-\end{verbatim}
+\end{lstlisting}
 
 To add a callback that runs every 20ms you could use the example below. Note that there's currently not a way to remove a periodic clock event, if this is something you may need it's suggested you re-queue the event yourself everytime it expires.
-\begin{verbatim}
+\begin{lstlisting}[stringstyle=\color{black}\ttfamily]
 QueueClockEvent(20'000'000, callbackData, callback, true);
-\end{verbatim}
+\end{lstlisting}
 
 The clock also provides a function to get the current uptime of the system, measured in milliseconds.
-\begin{verbatim}
+\begin{lstlisting}
 size_t uptimeMillis = GetUptime();
 Log("Uptime: %lu ms", LogLevel::Debug, uptimeMillis);
-\end{verbatim}
+\end{lstlisting}

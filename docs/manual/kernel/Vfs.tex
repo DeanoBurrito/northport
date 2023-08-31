@@ -55,13 +55,13 @@ For the following examples we'll assume you've obtained a handle to target node 
 For the following examples we'll use a dummy FsContext called \verb|context|. In real usage this would either be the kernel context (\verb|KernelFsCtxt| or a context created for a specific user or program).
 
 Creating a child node, in this case a file called "childfile.txt":
-\begin{verbatim}
+\begin{lstlisting}
 NodeProps props { .name = "childfile.txt" };
 sl::Handle<Node> child = node->Create(NodeType::File, props, context);
-\end{verbatim}
+\end{lstlisting}
 
 Directories can be enumerated in the following way:
-\begin{verbatim}
+\begin{lstlisting}
 size_t count = 0;
 while (true)
 {
@@ -73,12 +73,12 @@ while (true)
     count++;
 }
 Log("Node has %lu children.", LogLevel::Debug, count);
-\end{verbatim}
+\end{lstlisting}
 
 Reading and writing are condensed into a single API function, as they share a lot of functionality. Only the direction the data travels changes. These operations are controlled by a \verb|RwPacket| which contains fields for enabling certain behaviours, as well as the source and destination. It should be noted that \textbf{you must provide your own buffer} for the operation, \verb|ReadWrite()| will not populate this buffer for you.
 
 As an example let's read 123 bytes from offset 456 in a file:
-\begin{verbatim}
+\begin{lstlisting}
 RwPacket packet 
 {
     .write = false,
@@ -88,4 +88,4 @@ RwPacket packet
 };
 size_t length = node->ReadWrite(packet, context);
 Log("Read %lu bytes.", LogLevel::Debug, length);
-\end{verbatim}
+\end{lstlisting}

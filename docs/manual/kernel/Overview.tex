@@ -139,8 +139,8 @@ If for some reason a function is required to run on a specific core, there are t
 \subsubsection{Example Code}
 To use the mailbox mechanism all that's required a pointer to the function to run on the remote core. In the example we'll assume core 5 exists and we want to run \verb|ExampleFunction()| on that core. The callback function can optionally have an argument passed to it at runtime, but it's not required so we'll use \verb|nullptr|. We omit the argument in this example. The function we'll use is defined in \verb|interrupts/Ipi.h|.
 
-\begin{verbatim}
+\begin{lstlisting}
 void ExampleFunction(void* ignored);
 
 SendIpiMail(5, ExampleFunction, nullptr);
-\end{verbatim}
+\end{lstlisting}

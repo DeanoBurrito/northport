@@ -1,13 +1,5 @@
-\section{Virtual Memory Manager}
-The virtual memory subsytem takes inspiration from a paper on the old SunOS VMM design: where the subsystem is composed of a few distinct parts:
-
-\begin{itemize}
-    \item The VMM itself acts as a high level manager of an address space. It's responsible for tracking and allocating in-use/free virtual addresses and their associated permissions. However it's not responsible for managing the backing memory behind virtual memory it manages, this is the responsibility of the associated VM driver.
-    \item A number of VM drivers, which act as plugins to a VMM. Each VM driver is responsible for a certain type of backing that is \textit{attached} to virtual memory allocated by the VMM. A driver can be thought of as 'glue code' between virtual memory and physical memory being used for a particular purpose. See \autoref{vmdrivers} for specifics.
-    \item All of this operates on top of the \textit{HAT} (hardware address translation), a term borrowed from other kernels. The HAT is part of the arch layer of the kernel, and represents an abstract memory management unit. Any supported architectures must provided a HAT implementation, which allows the VMM and VM drivers to communicate with the underlying hardware. The use of this layer allows the rest of the virtual memory subsystem to remain completely platform independent and portable.
-\end{itemize}
-
-TODO: add lines showing separation between layers of arch, subsystem and them VMOs on top (expected API).
+\section{Virtual Memory}
+The virtual memory subsytem takes inspiration from a paper on the old SunOS VMM design: where the subsystem is composed of a few distinct parts: the VMM which manages free and used address within an address space, a number of VM drivers which physical addresses to back virtual memory, and the hardware address translation which provides a generic interface to access the MMU.
 
 \begin{figure}[h]
 \centering
@@ -88,12 +80,12 @@ While these are called VM \textit{drivers} they have nothing to do with the devi
 \end{itemize}
 
 \paragraph{Virtual Memory Object}
-A \textit{virtual memory object} (VMO) is a wrapper around a VM range and the VMM that owns it. The intention is to provide a cleaner interface than the VMM itself provides, and to abstract the complexity exposed by the VMM. The full API is still available if needed, but for the vast majority of use cases a VMO has the required features. As such, the VMO is the recommended way to manage virtual memory, it also makes use of RAII to help prevent leaks. VMOs can also be freely passed around the kernel as a way to represent 'some memory in an address space'.
+A \textit{virtual memory object} (VMO) is a wrapper around a VM range and the VMM that owns it. While the VMM provides all the options you could possibly need to manage virtual memory, a VMO provides only the most common ones and acts as a RAII type. The full VMM API is available can be used on memory managed by a VMO if the extra functionality is needed, but often it's not. As such a VMO is the recommended way to manage virtual memory, and you can freely pass this around the kernel as a representation of 'some memory in some address space'.
 
 \subsection{Hardware Abstraction}
 The VMM and VM drivers are written to be independent of the underlying hardware, instead relying on the HAT (\textit{hardware address translation} - a borrowed term) to access the hardware. The HAT is part of the arch-layer of the kernel, and acts as the interface to the the platform's MMU.
 
-The HAT makes use of a few primitives, namely \textit{modes} and \textit{maps}. A mode describes one possible way that the MMU can map memory, specifying an alignment and granularity. Modes and and the number of them available are collectively referred to as the \textit{HAT limits}. A map is an opaque representation of an address space. From the kernel perspective a map is an opaque pointer, and the VMM will store exactly one of these per managed address space. In systems using paging, the map is usually the root page table. The HAT also provides a handful of functions for managing mappings within an address space.
+The HAT makes use of a few primitives, namely \textit{modes} and \textit{maps}. A mode describes one possible way that the MMU can map memory, specifying an alignment and granularity. Modes and and the number of them available are collectively referred to as the \textit{HAT limits}. A map is an opaque representation of an address space. From the kernel perspective a map is an opaque pointer, and the VMM will store exactly one of these per managed address space. In systems using paging, the map is usually the root page table and the modes represent which levels of the table translation can end at. The HAT also provides a handful of functions for managing mappings within an address space.
 
 The VMM and VM drivers make full use of the available modes exposed by the HAT, meaning that the limitations placed on virtual memory management are based on what the hardware supports - no artificial limits are imposed by the VMM.
 
