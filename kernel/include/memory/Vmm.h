@@ -168,7 +168,7 @@ namespace Npk::Memory
         //attempts to update the flags for a range of virtual memory, returns whether the operation
         //was successful or not. The operation is atomic, so there is no 'partial flags update':
         //the flags will match what was requested, or they will remain the same.
-        bool SetFlags(uintptr_t base, size_t length, VmFlags flags);
+        bool SetFlags(uintptr_t base, VmFlags flags);
 
         //checks if some virtual memory exists, and can optionally check it's permissions
         //and type via the flags argument.

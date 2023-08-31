@@ -48,7 +48,7 @@ namespace Npk::Memory
     {
         if (flags.HasValue())
         {
-            if (!vmm->SetFlags(base.raw, size, *flags))
+            if (!vmm->SetFlags(base.raw, *flags))
                 Log("Failed to update VMO flags: base=0x%lx, size=0x%lx, flags=0x%lx",
                     LogLevel::Error, base.raw, size, flags->Raw());
         }

@@ -534,10 +534,10 @@ namespace Npk::Memory
         return range->flags;
     }
 
-    bool VMM::SetFlags(uintptr_t base, size_t length, VmFlags flags)
+    bool VMM::SetFlags(uintptr_t base, VmFlags flags)
     {
         VmRange* range = FindRange(base);
-        if (range == nullptr || range->Top() < base + length)
+        if (range == nullptr)
             return false;
         if ((flags.Raw() & (0xFF << 24)) != 0)
             return false; //bits 24-32 are the 'type' field, we dont support changing this.
