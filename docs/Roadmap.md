@@ -119,8 +119,9 @@
         - [x] Linked list.
         - [ ] Map.
         - [x] Custom allocator support.
+        - [x] Binary tree.
     - [ ] File format helpers:
-        - [ ] ELF64.
+        - [x] ELF64.
         - [x] Tar.
         - [ ] Qoi.
     - [x] Optional.

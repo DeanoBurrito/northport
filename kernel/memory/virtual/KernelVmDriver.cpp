@@ -2,6 +2,7 @@
 #include <debug/Log.h>
 #include <boot/LinkerSyms.h>
 #include <boot/LimineTags.h>
+#include <Maths.h>
 
 namespace Npk::Memory::Virtual
 {
@@ -38,10 +39,10 @@ namespace Npk::Memory::Virtual
         (void)context; (void)where; (void)flags;
     }
 
-    bool KernelVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
+    bool KernelVmDriver::ModifyRange(VmDriverContext& context, ModifyRangeArgs args)
     {
         ASSERT_UNREACHABLE();
-        (void)context; (void)flags;
+        (void)context; (void)args;
     }
 
     QueryResult KernelVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)

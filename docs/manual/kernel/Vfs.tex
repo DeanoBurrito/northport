@@ -30,9 +30,9 @@ The initdisk is just a tar with no compression applied. If located a tempFS inst
 \subsection{File Cache}
 The file cache is a separate entity to the VFS. Currently only file content is cached, meaning metadata still requires accessing the backing media.
 
-File contents are cached in chunks of a fixed number of bytes, called a unit. The unit size can be queried at runtime via \verb|FileCacheUnit()|. Files are sparsely cached, meaning only the parts of a file that (rounded to the nearest cache unit) are kept in memory. Non-accessed parts of a file may also be tentatively loaded, but this is not guarenteed.
+File contents are cached in chunks of a fixed number of bytes, called a unit. The unit size can be queried at runtime via \verb|GetFileCacheInfo()|, from the \verb|unitSize| field. Files are sparsely cached, meaning only the parts of a file that (rounded to the nearest cache unit) are kept in memory. Non-accessed parts of a file may also be tentatively loaded, but this is not guarenteed.
 
-The file cache is designed with memory mapping of files in mind, and all cache units are created in a way that satisifies the constraints of the MMU. During initialization the unit size is determined based on the data available from \verb|GetHatLimits()|.
+The file cache is designed with memory mapping of files in mind, and all cache units are created in a way that satisifies the constraints of the MMU. During initialization the unit size is determined based on the data available from \verb|GetHatLimits()|. The mode that gets selected (and a how many multiples of it are used) are also available from \verb|GetFileCacheInfo()|.
 
 Currently cache units must use contiguous physical memory, but there may be scatter-gather support in the future.
 

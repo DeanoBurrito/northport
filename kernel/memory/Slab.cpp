@@ -3,14 +3,15 @@
 #include <memory/Vmm.h>
 #include <Bitmap.h>
 #include <Memory.h>
+#include <Maths.h>
 
 namespace Npk::Memory
 {
     SlabSegment* SlabAlloc::CreateSegment()
     {
-        const size_t bitmapBytes = sl::AlignUp(segmentCapacity, 8) / 8;
-        const size_t reservedBytes = segmentSize - (segmentCapacity * slabSize); //TODO: externally allocate control data in larger slabs
-        ASSERT(reservedBytes >= bitmapBytes + sizeof(SlabSegment), "huh");
+        const size_t bitmapBytes = sl::AlignUp(segmentCapacity, 8) / 8; //TODO: externally allocate control structure if smaller than 1 segment
+        const size_t reservedBytes = sl::AlignUp(sizeof(SlabSegment) + bitmapBytes, slabSize);
+        ASSERT(reservedBytes + slabSize * segmentCapacity == segmentSize, "Bad slab config");
 
         auto maybeRegion = VMM::Kernel().Alloc(segmentSize, 0, VmFlag::Write | VmFlag::Anon);
         VALIDATE(maybeRegion, nullptr, "Slab segment creation failed: VMM alloc failed.")

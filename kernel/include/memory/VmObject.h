@@ -78,7 +78,7 @@ namespace Npk::Memory
         { return size; }
 
         void Release();
-        VmFlags Flags(sl::Opt<VmFlags> flags = {});
+        VmFlags Flags(sl::Opt<VmFlags> flags);
     };
 }
 

@@ -8,6 +8,7 @@
 #include <Bitmap.h>
 #include <Memory.h>
 #include <Lazy.h>
+#include <Maths.h>
 #include <UnitConverter.h>
 
 namespace Npk::Memory
@@ -90,6 +91,7 @@ namespace Npk::Memory
         }
         ASSERT(slabCount > 0, "Bad VMM meta slab params");
 
+        metaSlabLocks[index].Lock();
         VmmMetaSlab* slab = new(reinterpret_cast<void*>(base)) VmmMetaSlab();
         slab->next = metaSlabs[index];
         slab->total = slabCount;
@@ -99,6 +101,7 @@ namespace Npk::Memory
 
         sl::memset(slab->bitmap, 0, bitmapBytes);
         metaSlabs[index] = slab;
+        metaSlabLocks[index].Unlock();
 
         Log("VMM metadata slab created: type=%lu, %lu entries + %lub early slack",
             LogLevel::Verbose, index, slabCount, totalSpace - usableSpace);
@@ -229,7 +232,6 @@ namespace Npk::Memory
         HatInit(); //arch-specific setup of the MMU.
         Virtual::VmDriver::InitAll(); //Bring-up VM drivers
         kernelVmm.Init(VmmKey{}); //VmmKey calls the constructor for the kernel vmm.
-        Heap::Global().Init(); //Make general purpose heap available for the rest of the kernel.
     }
 
     VMM& VMM::Kernel()
@@ -537,6 +539,8 @@ namespace Npk::Memory
         VmRange* range = FindRange(base);
         if (range == nullptr || range->Top() < base + length)
             return false;
+        if ((flags.Raw() & (0xFF << 24)) != 0)
+            return false; //bits 24-32 are the 'type' field, we dont support changing this.
 
         using namespace Virtual;
         VmDriver* driver = VmDriver::GetDriver(range->flags);
@@ -544,7 +548,12 @@ namespace Npk::Memory
             return false;
 
         VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
-        return driver->ModifyRange(context, flags);
+        ModifyRangeArgs args {};
+        const size_t typeChanges = flags.Raw() & (0xFF << 24);
+        args.setFlags = flags.Raw() & ~range->flags.Raw();
+        args.clearFlags = range->flags.Raw() & ~flags.Raw();
+
+        return driver->ModifyRange(context, args);
     }
 
     bool VMM::MemoryExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags)
@@ -578,7 +587,8 @@ namespace Npk::Memory
             auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count);
             if (!maybePhys.HasValue())
             {
-                HandleFault((uintptr_t)foreignBase + count, VmFaultFlag::Write);
+                if (!HandleFault((uintptr_t)foreignBase + count, VmFaultFlag::Write))
+                    return count;
                 maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count);
             }
             

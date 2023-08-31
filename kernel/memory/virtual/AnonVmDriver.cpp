@@ -56,9 +56,9 @@ namespace Npk::Memory::Virtual
         return { .goodFault = true };
     }
 
-    bool AnonVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
+    bool AnonVmDriver::ModifyRange(VmDriverContext& context, ModifyRangeArgs args)
     { 
-        (void)context; (void)flags;
+        (void)context; (void)args;
         ASSERT_UNREACHABLE();
     }
 

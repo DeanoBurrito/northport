@@ -1,9 +1,102 @@
 #include <memory/Heap.h>
 #include <debug/Log.h>
 #include <arch/Platform.h>
+#include <CppUtils.h>
 
 namespace Npk::Memory
 {
+    void CreateLocalHeapCaches()
+    {
+        ASSERT(CoreLocalAvailable(), "CLS not available");
+        ASSERT(CoreLocal()[LocalPtr::HeapCache] == nullptr, "Slab caches already exist for this core");
+
+        HeapCacheData* cache = new HeapCacheData();
+        for (size_t i = 0; i < SlabCount; i++)
+        {
+            cache->magazines[i].prev = new SlabCache();
+            cache->magazines[i].prev->count = 0;
+            cache->magazines[i].loaded = nullptr;
+            Heap::Global().SwapCache(&cache->magazines[i].loaded, i);
+        }
+
+        CoreLocal()[LocalPtr::HeapCache] = cache;
+        Log("Created core-local slab caches, depth=%lu", LogLevel::Info, SlabCacheSize);
+    }
+
+    void* Heap::DoSlabAlloc(size_t index)
+    {
+        ASSERT(index < SlabCount, "Bad slab index");
+        return slabs[index].Alloc();
+
+        /* The bulk of this function is to make use of per-core caches of pre-allocated
+         * slabs, however if core local stuff isn't initialized yet or the cache isnt
+         * available we allocate normally. This also makes it easy to disable the caches
+         * if memory is scarce.
+         */
+        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::HeapCache] == nullptr)
+            return slabs[index].Alloc();
+
+        auto& cache = static_cast<HeapCacheData*>(CoreLocal()[LocalPtr::HeapCache])->magazines[index];
+        sl::ScopedLock cacheLock(cache.lock); //TODO: deadlock potential?
+
+        /* This algorithm is lifted out of the 'vmem and magazines' paper by Jeff Bonwick,
+         * and if you're familiar with how that system works you've understood this one.
+         */
+        if (cache.loaded->count > 0)
+            return cache.loaded->ptrs[--cache.loaded->count];
+        if (cache.prev->count > 0)
+        {
+            sl::Swap(cache.loaded, cache.prev);
+            return cache.loaded->ptrs[--cache.loaded->count];
+        }
+
+        if (SwapCache(&cache.loaded, index))
+            return cache.loaded->ptrs[--cache.loaded->count];
+        return slabs[index].Alloc();
+    }
+
+    void Heap::DoSlabFree(size_t index, void* ptr)
+    {
+        ASSERT(index < SlabCount, "Bad slab index");
+        ASSERT(slabs[index].Free(ptr), "bad slab free");
+        return;
+
+        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::HeapCache] == nullptr)
+        {
+            if (!slabs[index].Free(ptr))
+                Log("KSlab (%lu) failed to free at 0x%lx", LogLevel::Error, slabs[index].Size(), (size_t)ptr);
+            return;
+        }
+
+
+        auto& cache = static_cast<HeapCacheData*>(CoreLocal()[LocalPtr::HeapCache])->magazines[index];
+        sl::ScopedLock cacheLock(cache.lock);
+
+        if (cache.loaded->count < SlabCacheSize - 1)
+        {
+            cache.loaded->ptrs[cache.loaded->count++] = ptr;
+            return;
+        }
+        if (cache.prev->count < SlabCacheSize - 1)
+        {
+            sl::Swap(cache.loaded, cache.prev);
+            cache.loaded->ptrs[cache.loaded->count++] = ptr;
+            return;
+        }
+        if (SwapCache(&cache.loaded, index))
+        {
+            cache.loaded->ptrs[cache.loaded->count++] = ptr;
+            return;
+        }
+        
+        if (!slabs[index].Free(ptr))
+            Log("KSlab (%lu) failed to free at 0x%lx", LogLevel::Error, slabs[index].Size(), (size_t)ptr);
+    }
+
+    Heap globalHeap;
+    Heap& Heap::Global()
+    { return globalHeap; }
+    
     void Heap::Init()
     {
         size_t nextSlabSize = SlabBaseSize;
@@ -17,126 +110,59 @@ namespace Npk::Memory
         pool.Init(slabs[SlabCount - 1].Size());
     }
 
-    void* Heap::DoSlabAlloc(size_t index)
+    bool Heap::SwapCache(SlabCache** ptr, size_t index)
     {
-        ASSERT(index < SlabCount, "Bad slab index");
+        if (ptr == nullptr || index >= SlabCount)
+            return false;
         
-        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::HeapCache] == nullptr)
-            return slabs[index].Alloc();
-
-        HeapCacheData* localState = static_cast<HeapCacheData*>(CoreLocal()[LocalPtr::HeapCache]);
-        auto& cache = localState->magazines[index];
-
-        sl::ScopedLock scopeLock(cache.lock); //TODO: potential for self deadlock here?
-    try_alloc:
-        if (cache.loaded->count > 0)
-            return cache.loaded->ptrs[--(cache.loaded->count)];
-        if (cache.prev->count != 0)
-        {
-            sl::Swap(cache.loaded, cache.prev);
-            goto try_alloc;
-        }
-        
+        SlabCache* exchange = nullptr;
         auto& depot = cacheDepot[index];
-        depot.lock.Lock();
-        SlabCache* mag = depot.fullCaches.PopFront();
-        if (mag != nullptr)
+
+        if (*ptr == nullptr || (*ptr)->count == 0)
         {
-            depot.fullCaches.PushFront(cache.prev);
+            depot.lock.Lock(); //TODO: potential lockfree operations here?
+            if (*ptr != nullptr)
+                depot.freeCaches.PushFront(*ptr);
+            exchange = depot.fullCaches.PopFront();
             depot.lock.Unlock();
 
-            cache.prev = cache.loaded;
-            cache.loaded = mag;
-            return cache.loaded->ptrs[--(cache.loaded->count)];
+            if (exchange == nullptr)
+            {
+                //no available full caches, make one
+                exchange = new SlabCache();
+                exchange->next = nullptr;
+                exchange->count = SlabCacheSize;
+                for (size_t i = 0; i < exchange->count; i++)
+                    exchange->ptrs[i] = slabs[index].Alloc();
+            }
         }
-        depot.lock.Unlock();
-        scopeLock.Release();
-
-        //all else failed, call the global slab allocator directly.
-        return slabs[index].Alloc();
-    }
-
-    void Heap::DoSlabFree(size_t index, void* ptr)
-    {
-        ASSERT(index < SlabCount, "Bad slab index");
-
-        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::HeapCache] == nullptr)
+        else
         {
-            if (!slabs[index].Free(ptr))
-                Log("KSlab (%lub) failed to free at 0x%lx", LogLevel::Error, slabs[index].Size(), (uintptr_t)ptr);
-            return;
-        }
-        HeapCacheData* localState = static_cast<HeapCacheData*>(CoreLocal()[LocalPtr::HeapCache]);
-        auto& cache = localState->magazines[index];
-
-        sl::ScopedLock scopeLock(cache.lock);
-    try_free:
-        if (cache.loaded->count < SlabCacheSize - 1)
-        {
-            cache.loaded->ptrs[(cache.loaded->count)++] = ptr;
-            return;
-        }
-        if (cache.prev->count == 0)
-        {
-            sl::Swap(cache.loaded, cache.prev);
-            goto try_free;
-        }
-
-        auto& depot = cacheDepot[index];
-        depot.lock.Lock();
-        SlabCache* mag = depot.freeCaches.PopFront();
-        if (mag != nullptr)
-        {
-            depot.freeCaches.PushFront(cache.prev);
-            depot.lock.Unlock();
-
-            cache.prev = cache.loaded;
-            cache.loaded = mag;
-            cache.loaded->ptrs[(cache.loaded->count)++] = ptr;
-            return;
-        }
-        depot.lock.Unlock();
-        scopeLock.Release();
-
-        //TODO: try allocate empty mag if all else fails
-
-        if (!slabs[index].Free(ptr))
-            Log("KSlab (%lub) failed to free at 0x%lx", LogLevel::Error, slabs[index].Size(), (uintptr_t)ptr);
-    }
-
-    Heap globalHeap;
-    Heap& Heap::Global()
-    { return globalHeap; }
-    
-    void Heap::CreateCaches()
-    {
-        ASSERT(CoreLocalAvailable(), "Core-local store not available");
-        ASSERT(CoreLocal()[LocalPtr::HeapCache] == nullptr, "Core-local heap cache double init?")
-
-        //TODO: expose tunable variables for cache sizes + depth, and a global enable/disable
-        HeapCacheData* cache = new HeapCacheData();
-        for (size_t i = 0; i < SlabCount; i++)
-        {
-            cache->magazines[i].prev = new SlabCache();
-            cache->magazines[i].loaded = new SlabCache();
-            cache->magazines[i].loaded->count = SlabCacheSize;
-            cache->magazines[i].prev->count = 0;
+            ASSERT((*ptr)->count == SlabCacheSize, "SlabCache neither full or empty");
             
-            //prefill the loaded magazine
-            for (size_t j = 0; j < SlabCacheSize; j++)
-                cache->magazines[i].loaded->ptrs[j] = slabs[i].Alloc();
+            depot.lock.Lock();
+            depot.fullCaches.PushFront(*ptr);
+            exchange = depot.freeCaches.PopFront();
+            depot.lock.Lock();
+
+            if (exchange == nullptr)
+            {
+                //no free caches vailable, make one
+                exchange = new SlabCache();
+                exchange->next = nullptr;
+                exchange->count = 0;
+            }
         }
-        
-        CoreLocal()[LocalPtr::HeapCache] = cache;
-        Log("Attached core-local allocator caches, depth=%lu", LogLevel::Verbose, SlabCacheSize);
+
+        if (exchange == nullptr)
+            return false;
+        *ptr = exchange;
+        return true;
     }
 
     void* Heap::Alloc(size_t size)
     {
         //TODO: tracable allocations
-        //if (CoreLocalAvailable() && CoreLocal().runLevel != RunLevel::Normal)
-        //    Log("Heap access at elevated run level.", LogLevel::Warning);
-
         if (size == 0)
             return nullptr;
         
@@ -155,9 +181,6 @@ namespace Npk::Memory
 
     void Heap::Free(void* ptr, size_t length)
     {
-        //if (CoreLocalAvailable() && CoreLocal().runLevel != RunLevel::Normal)
-        //    Log("Heap access at elevated run level.", LogLevel::Warning);
-
         if (ptr == nullptr)
             return;
         

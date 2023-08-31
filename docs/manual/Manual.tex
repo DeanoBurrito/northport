@@ -22,6 +22,8 @@
 \usepackage{tikz}
 \usetikzlibrary{positioning}
 \usetikzlibrary{arrows.meta}
+\usetikzlibrary{fit}
+\usetikzlibrary{backgrounds}
 
 \usepackage{titlesec}
 \titleformat{\chapter}[hang]
@@ -81,8 +83,8 @@
 \chapterpage{Kernel}
 \input{kernel/Overview.tex}
 \input{kernel/Platforms.tex}
-\input{kernel/Limine.tex}
 \input{kernel/Pmm.tex}
+\input{kernel/Vmm.tex}
 \input{kernel/Heap.tex}
 \input{kernel/Timers.tex}
 \input{kernel/Vfs.tex}

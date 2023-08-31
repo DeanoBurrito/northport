@@ -2,6 +2,7 @@
 #include <memory/Vmm.h>
 #include <debug/Log.h>
 #include <Memory.h>
+#include <Maths.h>
 
 namespace Npk::Memory
 {

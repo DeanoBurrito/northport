@@ -79,10 +79,10 @@ namespace Npk::Memory::Virtual
         return result;
     }
 
-    bool VfsVmDriver::ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags)
+    bool VfsVmDriver::ModifyRange(VmDriverContext& context, ModifyRangeArgs args)
     {
-        (void)context; (void)flags;
-        ASSERT_UNREACHABLE()
+        (void)context; (void)args;
+        ASSERT_UNREACHABLE();
     }
 
     AttachResult VfsVmDriver::Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg)

@@ -9,6 +9,7 @@
 #include <containers/Queue.h>
 #include <Locks.h>
 #include <Memory.h>
+#include <Maths.h>
 
 namespace Npk::Debug
 {

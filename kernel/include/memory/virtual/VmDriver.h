@@ -44,6 +44,14 @@ namespace Npk::Memory::Virtual
         bool success = false;
     };
 
+    struct ModifyRangeArgs
+    {
+        size_t trimStart = 0;
+        size_t trimEnd = 0;
+        VmFlags setFlags {};
+        VmFlags clearFlags {};
+    };
+
     struct VmDriverContext
     {
         sl::TicketLock& lock;
@@ -78,10 +86,10 @@ namespace Npk::Memory::Virtual
         //the faulting code depending on the EventResult.
         virtual EventResult HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags) = 0;
 
-        //The VMM wants to modify an active VM range, the valid args indicate which properties of
-        //the range are requested for modification.
+        //The VMM wants to modify an active VM range: potentially it's length (base or limit fields),
+        //and potentially set or clear a number of flags.
         //Returns whether the operation was successful or not.
-        virtual bool ModifyRange(VmDriverContext& context, sl::Opt<VmFlags> flags) = 0;
+        virtual bool ModifyRange(VmDriverContext& context, ModifyRangeArgs args) = 0;
         
         //The VMM wants to know how much space (and with what alignment) a VM allocation would
         //require. This is purely informational, no memory mappings are modified here.

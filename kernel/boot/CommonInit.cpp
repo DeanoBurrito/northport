@@ -29,6 +29,7 @@ namespace Npk
     
     void InitEarlyPlatform()
     {
+        Log("\r\nNorthport kernel started.", LogLevel::Info);
         Boot::CheckLimineTags();
 
         hhdmBase = Boot::hhdmRequest.response->offset;
@@ -50,6 +51,7 @@ namespace Npk
     {
         PMM::Global().Init();
         VMM::InitKernel();
+        Memory::Heap::Global().Init();
     }
 
     void InitPlatform()
@@ -102,36 +104,6 @@ namespace Npk
         Log("Reclaimed %lu.%lu %sB (%lu entries) of bootloader memory.", LogLevel::Info, 
             reclaimConv.major, reclaimConv.minor, reclaimConv.prefix, reclaimCount);
 
-        //as a nicety print the known processor topology
-        NumaDomain* numaDom = GetTopologyRoot();
-        while (numaDom != nullptr)
-        {
-            numaDom->cpusLock.ReaderLock();
-            Log("NUMA domain %lu:", LogLevel::Verbose, numaDom->id);
-
-            CpuDomain* cpuDom = numaDom->cpus;
-            while (cpuDom != nullptr)
-            {
-                Log(" |- CPU domain %lu, online=%s", LogLevel::Verbose,
-                    cpuDom->id, cpuDom->online ? "yes" : "no");
-
-                ThreadDomain* threadDom = cpuDom->threads;
-                while (threadDom != nullptr)
-                {
-                    Log("    |- Thread %lu", LogLevel::Verbose, threadDom->id);
-                    threadDom = threadDom->next;
-                }
-
-                cpuDom = cpuDom->next;
-            }
-
-            NumaDomain* next = numaDom->next;
-            if (next != nullptr)
-                next->cpusLock.ReaderUnlock();
-            numaDom->cpusLock.ReaderUnlock();
-            numaDom = next;
-        }
-
         Tasking::Thread::Current().Exit(0);
     }
 
@@ -140,19 +112,6 @@ namespace Npk
         Devices::DeviceManager::Global().Init();
         Drivers::DriverManager::Global().Init();
         Devices::PciBridge::Global().Init();
-
-        for (size_t i = 0; i < 10; i++)
-        {
-            Log("creating VFS VMO %lu", LogLevel::Debug, i);
-            Memory::VmoFileInitArg arg;
-            arg.offset = 7;
-            arg.filepath = "initdisk/dummy.txt";
-            arg.noDeferBacking = false;
-            Memory::VmObject vmo(256, (uintptr_t)&arg, VmFlag::File | VmFlag::Write);
-            ASSERT(vmo.Valid(), "VMO invalid");
-
-            Log("File contents: %s", LogLevel::Debug, vmo->As<const char>());
-        }
 
         Tasking::Thread::Current().Exit(0);
     }
@@ -164,11 +123,13 @@ namespace Npk
 
     void PerCoreCommonInit()
     {
-        Memory::Heap::Global().CreateCaches(); //TODO: does this need to be a member function?
+        //Memory::CreateLocalHeapCaches();
         Debug::InitCoreLogBuffers();
         Interrupts::InitIpiMailbox();
 
-        //TODO: dont forget Tasking::StartSystemClock()
+        //TODO: one core should start the system clock (StartSystemClock()), 
+        //this should be determined by the platform init code, but done here.
+        //The idea is to force the arch code to specify, make sure we dont forget to do it.
     }
 
     [[noreturn]]

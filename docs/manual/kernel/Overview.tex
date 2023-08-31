@@ -14,6 +14,37 @@ The kernel makes full use of multi-processor systems, and can run with minimal m
     \item Driver and Device management: Loading, starting and stopping drivers in response to system events like hardware discovery.
 \end{itemize}
 
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+    \node (DriverLayer) [rectangle, draw=black, fill=black!10, minimum height=2cm, minimum width=12cm] at (0, 5) {};
+    \node (SupportLayer) [rectangle, draw=black, fill=green!10, minimum height=4cm, minimum width=12cm] at (0, 2) {};
+    \node (UserLayer) [rectangle, draw=black, fill=magenta!10, minimum height=3cm, minimum width=12cm] at (0, -1.5) {};
+    \node (CoreLayer) [rectangle, draw=black, fill=orange!10, minimum height=3cm, minimum width=8cm] {};
+    \node (ArchLayer) [rectangle, draw=black, fill=blue!10, minimum height=1cm, minimum width=1cm] {Architecture layer};
+
+    \node [above= 2mm of ArchLayer] {Core Layer};
+    \node (UserLabel) [below= 1.5cm of ArchLayer] {User Layer};
+    \node (SupportLabel) [above= 1cm of CoreLayer] {Support Layer};
+    \node (DriverLabel) [above= 0.75cm of SupportLayer] {Drivers};
+
+    \node [rectangle, draw=black, fill=gray!10, above right = 3mm of ArchLayer] {PMM};
+    \node [rectangle, draw=black, fill=gray!10, right = 6mm of ArchLayer] {VMM};
+    \node [rectangle, draw=black, fill=gray!10, below right = 3mm of ArchLayer] {IPC};
+    \node [rectangle, draw=black, fill=gray!10, above left = 2mm of ArchLayer] {Scheduler};
+    \node [rectangle, draw=black, fill=gray!10, left = of ArchLayer] {VFS};
+    \node [rectangle, draw=black, fill=gray!10, below left = 3mm of ArchLayer] {Clock};
+    \node [rectangle, draw=black, fill=gray!10, below = 3mm of ArchLayer] {IPI mailboxes};
+
+    \node [rectangle, draw=black, fill=gray!10, left = 3mm of UserLabel] {System Calls};
+
+    \node [rectangle, draw=black, fill=gray!10, left = 3mm of SupportLabel] {Process management};
+    \node [rectangle, draw=black, fill=gray!10, above left = 2mm of SupportLabel] {Debug Terminal};
+    \node [rectangle, draw=black, fill=gray!10, below left = 3mm of SupportLabel] {Logging};
+    \node [rectangle, draw=black, fill=gray!10, above right = 2mm of SupportLabel] {hardware detect};
+\end{tikzpicture}
+\end{figure}
+
 There are some other minor subsystems like interrupt vector allocation and IPI mailboxes for communicating on multi-core systems.
 
 \subsection{Init Sequence}
