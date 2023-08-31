@@ -549,7 +549,6 @@ namespace Npk::Memory
 
         VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
         ModifyRangeArgs args {};
-        const size_t typeChanges = flags.Raw() & (0xFF << 24);
         args.setFlags = flags.Raw() & ~range->flags.Raw();
         args.clearFlags = range->flags.Raw() & ~flags.Raw();
 
