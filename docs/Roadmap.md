@@ -27,7 +27,9 @@
             - [ ] Swap to disk.
             - [ ] Transparent usage of super pages.
         - [x] Slab/free-list style heap.
-            - [ ] Per-core slab caches.
+            - [x] Per-core slab caches.
+            - [ ] Page heap (canary + fault versions).
+            - [ ] Tracable allocations.
     - [x] Core clock, software timers.
         - [x] Configurable resolution.
         - [x] Tickless.
@@ -117,8 +119,9 @@
         - [x] Linked list.
         - [ ] Map.
         - [x] Custom allocator support.
+        - [x] Binary tree.
     - [ ] File format helpers:
-        - [ ] ELF64.
+        - [x] ELF64.
         - [x] Tar.
         - [ ] Qoi.
     - [x] Optional.

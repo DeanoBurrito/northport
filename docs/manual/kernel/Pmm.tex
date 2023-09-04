@@ -119,10 +119,10 @@ Contrary to allocation, there is only a single free function \verb|Free()|.
 \subsection{Example Code}
 The PMM operates as a singleton, and the global instance is available as \verb|PMM::Global()|. The alloc/free functions will assume a page-count of 1 unless otherwise specified. All the functions used below are declared in \verb|memory/Pmm.h|.
 
-\begin{verbatim}
+\begin{lstlisting}
 uintptr_t singlePage = PMM::Global().Alloc();
 uintptr_t sixPages = PMM::Global().Alloc(6);
 
 PMM::Global().Free(singlePage);
 PMM::Global().Free(sixPages, 6);
-\end{verbatim}
+\end{lstlisting}

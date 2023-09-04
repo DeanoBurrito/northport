@@ -30,8 +30,8 @@ namespace sl
 //These MUST be provided by the program, we'll forward declare them here to make them available.
 extern "C"
 {
-    void* malloc(size_t);
-    void free(void*);
+    void* malloc(size_t length);
+    void free(void* ptr, size_t length);
 
     //clang requires these to exist for __builtin_xyz, while GCC provides its own.
     void* memcpy(void* dest, const void* src, size_t len);

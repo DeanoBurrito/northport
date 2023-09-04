@@ -61,7 +61,7 @@ namespace sl
     String::~String()
     {
         if (buffer && buffer != emptyString)
-            delete[] buffer;
+            operator delete[](buffer, length + 1);
         length = 0;
     }
 
@@ -87,7 +87,7 @@ namespace sl
             return *this;
         
         if (buffer && buffer != emptyString)
-            delete[] buffer;
+            operator delete[](buffer, length + 1);
 
         length = other.length;
         buffer = new char[length + 1];
@@ -108,7 +108,7 @@ namespace sl
     String& String::operator=(String&& from)
     {
         if (buffer && buffer != emptyString)
-            delete[] buffer;
+            operator delete[](buffer, length + 1);
         
         buffer = nullptr;
         length = 0;

@@ -2,11 +2,14 @@
 #include <debug/Log.h>
 #include <boot/LinkerSyms.h>
 #include <boot/LimineTags.h>
+#include <Maths.h>
 
 namespace Npk::Memory::Virtual
 {
-    void KernelVmDriver::Init()
+    void KernelVmDriver::Init(uintptr_t enableFeatures)
     {
+        (void)enableFeatures;
+
         //map the kernel binary itself into the kernel map
         auto MapSection = [&](uintptr_t addr, size_t length, HatFlags flags)
         {
@@ -26,37 +29,62 @@ namespace Npk::Memory::Virtual
         MapSection((uintptr_t)KERNEL_TEXT_BEGIN, (size_t)KERNEL_TEXT_SIZE, HatFlags::Execute | HatFlags::Global);
         MapSection((uintptr_t)KERNEL_RODATA_BEGIN, (size_t)KERNEL_RODATA_SIZE, HatFlags::None | HatFlags::Global);
         MapSection((uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_SIZE, HatFlags::Write | HatFlags::Global);
+
+        Log("VmDriver init: kernel", LogLevel::Info);
     }
 
-    VmDriverType KernelVmDriver::Type()
-    { return VmDriverType::Kernel; }
-
-    EventResult KernelVmDriver::HandleEvent(VmDriverContext& context, EventType type, uintptr_t addr, uintptr_t eventArg)
+    EventResult KernelVmDriver::HandleFault(VmDriverContext& context, uintptr_t where, VmFaultFlags flags)
     {
-        (void)context; (void)type; (void)addr; (void)eventArg;
         ASSERT_UNREACHABLE();
+        (void)context; (void)where; (void)flags;
     }
-    
-    sl::Opt<size_t> KernelVmDriver::AttachRange(VmDriverContext& context, uintptr_t attachArg)
-    {
-        sl::InterruptGuard guard; //TODO: is this needed?
-        sl::ScopedLock ptLock(context.lock);
-        
-        HatFlags flags = HatFlags::Global;
-        if (VmFlags::Write == (context.range.flags & VmFlags::Write))
-            flags |= HatFlags::Write;
-        
-        for (size_t i = 0; i < context.range.length; i += PageSize)
-            Map(context.map, context.range.base + i, attachArg + i, 0, flags, false);
 
-        return 0;
+    bool KernelVmDriver::ModifyRange(VmDriverContext& context, ModifyRangeArgs args)
+    {
+        ASSERT_UNREACHABLE();
+        (void)context; (void)args;
+    }
+
+    QueryResult KernelVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
+    {
+        (void)attachArg;
+
+        QueryResult result;
+        result.success = true;
+        result.hatMode = 0;
+        result.alignment = GetHatLimits().modes[result.hatMode].granularity;
+        result.length = sl::AlignUp(length, result.alignment);
+
+        if (flags.Has(VmFlag::Guarded))
+            result.length += result.alignment * 2;
+
+        return result;
     }
     
-    bool KernelVmDriver::DetachRange(VmDriverContext& context)
+    AttachResult KernelVmDriver::Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg)
+    {
+        HatFlags flags = HatFlags::Global;
+        if (context.range.flags.Has(VmFlag::Write))
+            flags |= HatFlags::Write;
+
+        AttachResult result
+        {
+            .token = nullptr,
+            .offset = attachArg % query.alignment,
+            .success = true,
+        };
+
+        attachArg = sl::AlignDown(attachArg, query.alignment);
+        sl::ScopedLock scopeLock(context.lock);
+        for (size_t i = 0; i < context.range.length; i += query.alignment)
+            Map(context.map, context.range.base + i, attachArg + i, query.hatMode, flags, false);
+
+        return result;
+    }
+    
+    bool KernelVmDriver::Detach(VmDriverContext& context)
     {
         const HatLimits& hatLimits = GetHatLimits();
-
-        sl::InterruptGuard guard;
         sl::ScopedLock ptLock(context.lock);
 
         for (uintptr_t base = context.range.base; base < context.range.base + context.range.length;)

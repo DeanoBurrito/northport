@@ -1,5 +1,6 @@
 #include <tasking/ServiceThreads.h>
 #include <tasking/Scheduler.h>
+#include <debug/Log.h>
 
 namespace Npk::Tasking
 {

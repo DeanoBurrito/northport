@@ -78,27 +78,23 @@ extern "C"
         "control protection"
     };
     
-    void TrapDispatch(Npk::TrapFrame* frame)
+    void HandleNativeException(Npk::TrapFrame* frame)
     {
         using namespace Npk;
 
-        const RunLevel prevRunLevel = CoreLocal().runLevel;
-        CoreLocal().runLevel = RunLevel::IntHandler;
-        Tasking::Scheduler::Global().SavePrevFrame(frame, prevRunLevel);
-        
         if (frame->vector == 0xE)
         {
-            using Memory::VmFaultFlags;
-            VmFaultFlags flags = VmFaultFlags::None;
+            using namespace Memory;
+            VmFaultFlags flags {};
             if (frame->ec & (1 << 1))
-                flags |= VmFaultFlags::Write;
+                flags |= VmFaultFlag::Write;
             if (frame->ec & (1 << 4))
-                flags |= VmFaultFlags::Execute;
-            if (flags == VmFaultFlags::None)
-                flags = VmFaultFlags::Read;
+                flags |= VmFaultFlag::Execute;
+            if (!flags.Any())
+                flags |= VmFaultFlag::Read;
             
             if (frame->ec & (1 << 2))
-                flags |= VmFaultFlags::User;
+                flags |= VmFaultFlag::User;
 
             const uintptr_t cr2 = ReadCr2();
             if (cr2 < hhdmBase)
@@ -108,16 +104,29 @@ extern "C"
         }
         else if (frame->vector == 0x7)
             Tasking::Scheduler::Global().SwapExtendedRegs();
-        else if (frame->vector < 0x20)
+        else
             Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
                 exceptionNames[frame->vector], frame->vector, frame->iret.rip, frame->iret.rsp, frame->ec);
+    }
+    
+    void TrapDispatch(Npk::TrapFrame* frame)
+    {
+        using namespace Npk;
+
+        const RunLevel prevRunLevel = CoreLocal().runLevel;
+        CoreLocal().runLevel = RunLevel::IntHandler;
+        Tasking::Scheduler::Global().SavePrevFrame(frame, prevRunLevel);
         
-        //if we've reached this point the interrupt is external, and came via the lapic.
-        LocalApic::Local().SendEoi();
-        if (frame->vector == IntVectorIpi)
-            Interrupts::ProcessIpiMail();
+        if (frame->vector < 0x20)
+            HandleNativeException(frame);
         else
-            Interrupts::InterruptManager::Global().Dispatch(frame->vector);
+        {
+            LocalApic::Local().SendEoi();
+            if (frame->vector == IntVectorIpi)
+                Interrupts::ProcessIpiMail();
+            else
+                Interrupts::InterruptManager::Global().Dispatch(frame->vector);
+        }
 
         //RunNextFrame() wont return under most circumstances, but if we're handling an interrupt
         //before the scheduler is initialized (timekeeping for example) it will fail to find the

@@ -10,6 +10,8 @@
 #include <memory/Vmm.h>
 #include <cpuid.h>
 
+#include <tasking/Clock.h>
+
 namespace Npk
 {
     void InitExtendedState()
@@ -104,14 +106,16 @@ namespace Npk
 
         LocalApic::Local().Init();
         EnableInterrupts();
-        Log("Core %lu finished core init.", LogLevel::Info, id);
     }
 
     void ApEntry(limine_smp_info* info)
     {
         WriteMsr(MsrGsBase, 0); //ensure we wont load bogus core-local info
         InitCore(info->lapic_id, info->processor_id);
-        ExitApInit();
+
+        PerCoreCommonInit();
+        ExitCoreInit();
+        ASSERT_UNREACHABLE();
     }
 }
 
@@ -158,6 +162,8 @@ extern "C"
             }
         }
 
-        ExitBspInit();
+        Tasking::StartSystemClock();
+        ExitCoreInit();
+        ASSERT_UNREACHABLE();
     }
 }

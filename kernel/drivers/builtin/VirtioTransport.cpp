@@ -34,7 +34,7 @@ namespace Npk::Drivers
         Config::DtPair reg;
         maybeReg->ReadRegs({ &reg, 1 });
 
-        VmObject mmio(PageSize, reg[0], VmFlags::Mmio);
+        VmObject mmio(PageSize, reg[0], VmFlag::Mmio);
         VALIDATE(mmio->Read<uint32_t>() == VirtioMmioMagic,, "Bad magic.");
         const uint32_t deviceType = mmio->Offset((size_t)VirtioReg::DeviceId).Read<uint32_t>();
         mmio.Release();
@@ -94,18 +94,18 @@ namespace Npk::Drivers
         //get access to the common config structure
         const PciCap configCap = FindCap(PciCapTypeCommonCfg);
         const uintptr_t configPhysAddr = addr.ReadBar(configCap.ReadReg(1) & 0xFF, true).address + configCap.ReadReg(2);
-        configAccess = VmObject { sizeof(VirtioPciCommonCfg), configPhysAddr, VmFlags::Write | VmFlags::Mmio };
+        configAccess = VmObject { sizeof(VirtioPciCommonCfg), configPhysAddr, VmFlag::Write | VmFlag::Mmio };
 
         //get access to the device notification doorbells
         const PciCap notifyCap = FindCap(PciCapTypeNotifyCfg);
         const uintptr_t notifyPhysAddr = addr.ReadBar(notifyCap.ReadReg(1) & 0xFF, true).address + notifyCap.ReadReg(2);
         notifyStride = notifyCap.ReadReg(4);
-        notifyAccess = VmObject{ NumQueues() * notifyStride, notifyPhysAddr, VmFlags::Write | VmFlags::Mmio };
+        notifyAccess = VmObject{ NumQueues() * notifyStride, notifyPhysAddr, VmFlag::Write | VmFlag::Mmio };
 
         //get access to the device config, for later on
         const PciCap deviceCfg = FindCap(PciCapTypeDeviceCfg);
         const uintptr_t deviceCfgPhysAddr = addr.ReadBar(deviceCfg.ReadReg(1) & 0xFF, true).address + deviceCfg.ReadReg(2);
-        deviceCfgAccess = VmObject { PageSize, deviceCfgPhysAddr, VmFlags::Write | VmFlags::Mmio };
+        deviceCfgAccess = VmObject { PageSize, deviceCfgPhysAddr, VmFlag::Write | VmFlag::Mmio };
     }
 
     void VirtioTransport::InitMmio(uintptr_t addr, size_t length)
@@ -114,7 +114,7 @@ namespace Npk::Drivers
         initialized = true;
 
         //Everything is nicely contained in one area for MMIO devices
-        configAccess = VmObject { length, addr, VmFlags::Write | VmFlags::Mmio };
+        configAccess = VmObject { length, addr, VmFlag::Write | VmFlag::Mmio };
         //check if device exposes legacy or modern interface.
         isLegacy = (READ_MMIO_REG(Version) == 1);
 
@@ -298,7 +298,7 @@ namespace Npk::Drivers
                 //map msix config area if required
                 Devices::PciBar bir = pciAddr.ReadBar(msix.Bir());
                 ASSERT(bir.isMemory, "Only memory BARs supported");
-                msixBirAccess = VmObject{ bir.size, bir.address, VmFlags::Mmio | VmFlags::Write };
+                msixBirAccess = VmObject{ bir.size, bir.address, VmFlag::Mmio | VmFlag::Write };
             }
 
             //setup msix

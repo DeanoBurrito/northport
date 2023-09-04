@@ -16,6 +16,7 @@
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
+#include <memory/Heap.h>
 #include <tasking/Clock.h>
 #include <tasking/Scheduler.h>
 #include <UnitConverter.h>
@@ -28,6 +29,7 @@ namespace Npk
     
     void InitEarlyPlatform()
     {
+        Log("\r\nNorthport kernel started.", LogLevel::Info);
         Boot::CheckLimineTags();
 
         hhdmBase = Boot::hhdmRequest.response->offset;
@@ -49,6 +51,7 @@ namespace Npk
     {
         PMM::Global().Init();
         VMM::InitKernel();
+        Memory::Heap::Global().Init();
     }
 
     void InitPlatform()
@@ -101,36 +104,6 @@ namespace Npk
         Log("Reclaimed %lu.%lu %sB (%lu entries) of bootloader memory.", LogLevel::Info, 
             reclaimConv.major, reclaimConv.minor, reclaimConv.prefix, reclaimCount);
 
-        //as a nicety print the known processor topology
-        NumaDomain* numaDom = GetTopologyRoot();
-        while (numaDom != nullptr)
-        {
-            numaDom->cpusLock.ReaderLock();
-            Log("NUMA domain %lu:", LogLevel::Verbose, numaDom->id);
-
-            CpuDomain* cpuDom = numaDom->cpus;
-            while (cpuDom != nullptr)
-            {
-                Log(" |- CPU domain %lu, online=%s", LogLevel::Verbose,
-                    cpuDom->id, cpuDom->online ? "yes" : "no");
-
-                ThreadDomain* threadDom = cpuDom->threads;
-                while (threadDom != nullptr)
-                {
-                    Log("    |- Thread %lu", LogLevel::Verbose, threadDom->id);
-                    threadDom = threadDom->next;
-                }
-
-                cpuDom = cpuDom->next;
-            }
-
-            NumaDomain* next = numaDom->next;
-            if (next != nullptr)
-                next->cpusLock.ReaderUnlock();
-            numaDom->cpusLock.ReaderUnlock();
-            numaDom = next;
-        }
-
         Tasking::Thread::Current().Exit(0);
     }
 
@@ -143,27 +116,52 @@ namespace Npk
         Tasking::Thread::Current().Exit(0);
     }
 
-    [[noreturn]]
-    void ExitBspInit()
+    bool CoresInEarlyInit()
     {
-        Tasking::StartSystemClock();
-        ExitApInit();
+        return bootloaderRefs.Load(sl::Relaxed) != 0;
     }
 
-    [[noreturn]]
-    void ExitApInit()
+    void PerCoreCommonInit()
     {
+        //Memory::CreateLocalHeapCaches();
         Debug::InitCoreLogBuffers();
         Interrupts::InitIpiMailbox();
 
+        //TODO: one core should start the system clock (StartSystemClock()), 
+        //this should be determined by the platform init code, but done here.
+        //The idea is to force the arch code to specify, make sure we dont forget to do it.
+    }
+
+    [[noreturn]]
+    void ExitCoreInit()
+    {
         using namespace Tasking;
-        if (--bootloaderRefs > 0)
-            Scheduler::Global().RegisterCore();
-        else
+        Thread* initThread = nullptr;
+        if (bootloaderRefs != 0)
         {
-            auto reclaimThread = Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr);
-            Scheduler::Global().RegisterCore(reclaimThread);
+            /* Cores can be initialized (and reach this function) in two ways: either by
+             * the bootloader and are given to the kernel via the smp response, or hotplugged
+             * at runtime. Bootloader started cores reference bootloader data (mainly the 
+             * stack we're provided with) until they start scheduled execution - which presents a
+             * problem for reclaiming bootloader memory.
+             * The first if statement checks if *any* cores are still referencing bootloader memory,
+             * and if spawning the reclamation thread should even be considered. For hotplugged cores
+             * we dont care about reclaiming BL memory, so this filters out that case.
+             * The second if (below) decrements the reference count, and checks the new value (atomically)
+             * to see if this core is the last bootloader-started core. If it is, spawn the reclaim thread.
+             */
+            if (--bootloaderRefs == 0)
+            {
+                initThread = Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr);
+                Log("Bootloader memory reclamation thread spawned, id=%lu.", LogLevel::Verbose, initThread->Id());
+            }
         }
+        else
+            ASSERT_UNREACHABLE(); //TODO: start pluggable CPUs. (reclaim this core's boot data).
+
+        Log("Core finished init, exiting to scheduler.", LogLevel::Info);
+        Scheduler::Global().RegisterCore(initThread);
         ASSERT_UNREACHABLE();
+
     }
 }

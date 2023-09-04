@@ -1,11 +1,32 @@
 #pragma once
 
+#include <filesystem/Vfs.h>
 #include <memory/virtual/VmDriver.h>
 
 namespace Npk::Memory::Virtual
 {
-    class KernelVmDriver : public VmDriver
+    struct VfsVmLink
     {
+        VfsVmLink* next;
+
+        size_t fileOffset;
+        sl::Handle<Filesystem::Node> vfsNode;
+        bool readonly;
+    };
+
+    enum class VfsFeature : uintptr_t
+    {
+        FaultHandler = 1 << 0,
+    };
+
+    class VfsVmDriver : public VmDriver
+    {
+    private:
+        struct 
+        {
+            bool faultHandler;
+        } features;
+
     public:
         void Init(uintptr_t enableFeatures) override;
 
@@ -16,3 +37,4 @@ namespace Npk::Memory::Virtual
         bool Detach(VmDriverContext& context) override;
     };
 }
+

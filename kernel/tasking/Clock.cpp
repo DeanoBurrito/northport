@@ -28,7 +28,7 @@ namespace Npk::Tasking
 
     volatile sl::Atomic<size_t> uptimeMillis;
     sl::InterruptLock eventsLock;
-    sl::LinkedList<ClockEvent, Memory::CachingSlab<32>> events;
+    sl::LinkedList<ClockEvent> events;
 
     void ClockEventDispatch()
     {

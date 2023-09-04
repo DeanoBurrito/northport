@@ -13,14 +13,14 @@ namespace Npk::Config
     {
         ASSERT(providedRsdp != nullptr, "RSDP is null.");
         
-        VmObject rsdpWindow(sizeof(Rsdp), (uintptr_t)providedRsdp, VmFlags::Mmio);
+        VmObject rsdpWindow(sizeof(Rsdp), (uintptr_t)providedRsdp, VmFlag::Mmio);
         const Rsdp& rsdpAccess = *rsdpWindow->As<Rsdp>();
 
         if (rsdpAccess.revision > 1)
         {
             //version 2.0+, use xsdt
-            VmObject xsdtWindow(sizeof(Xsdt), (uintptr_t)rsdpAccess.xsdt, VmFlags::Mmio);
-            VmObject fullXsdt(xsdtWindow->As<Xsdt>()->length, (uintptr_t)rsdpAccess.xsdt, VmFlags::Mmio);
+            VmObject xsdtWindow(sizeof(Xsdt), (uintptr_t)rsdpAccess.xsdt, VmFlag::Mmio);
+            VmObject fullXsdt(xsdtWindow->As<Xsdt>()->length, (uintptr_t)rsdpAccess.xsdt, VmFlag::Mmio);
 
             const size_t tableCount = (fullXsdt->As<Xsdt>()->length - sizeof(Sdt)) / 8;
 
@@ -29,19 +29,19 @@ namespace Npk::Config
             {
                 //these 64bit addresses are misaligned by 4-bytes, resulting in UB. :(
                 const uintptr_t addr = ptrs.As<uint32_t>()[i * 2] | (uint64_t)ptrs.As<uint32_t>()[i * 2 + 1];
-                VmObject tempWindow(sizeof(Sdt), addr, VmFlags::Mmio);
+                VmObject tempWindow(sizeof(Sdt), addr, VmFlag::Mmio);
 
                 const size_t length = tempWindow->As<Sdt>()->length;
-                tables.EmplaceBack(length, addr, VmFlags::Mmio);
+                tables.EmplaceBack(length, addr, VmFlag::Mmio);
             }
 
-            tables.EmplaceBack(fullXsdt.Size(), (uintptr_t)rsdpAccess.xsdt, VmFlags::Mmio);
+            tables.EmplaceBack(fullXsdt.Size(), (uintptr_t)rsdpAccess.xsdt, VmFlag::Mmio);
         }
         else
         {
             //version 1 (stored as 0 sometimes), use rsdt
-            VmObject rsdtWindow(sizeof(Rsdt), (uintptr_t)rsdpAccess.rsdt, VmFlags::Mmio);
-            VmObject fullRsdt(rsdtWindow->As<Rsdt>()->length, (uintptr_t)rsdpAccess.rsdt, VmFlags::Mmio);
+            VmObject rsdtWindow(sizeof(Rsdt), (uintptr_t)rsdpAccess.rsdt, VmFlag::Mmio);
+            VmObject fullRsdt(rsdtWindow->As<Rsdt>()->length, (uintptr_t)rsdpAccess.rsdt, VmFlag::Mmio);
 
             const size_t tableCount = (fullRsdt->As<Rsdt>()->length - sizeof(Sdt)) / 4;
 
@@ -49,13 +49,13 @@ namespace Npk::Config
             for (size_t i = 0; i < tableCount; i++)
             {
                 const uintptr_t addr = ptrs.As<uint32_t>()[i];
-                VmObject tempWindow(sizeof(Sdt), addr, VmFlags::Mmio);
+                VmObject tempWindow(sizeof(Sdt), addr, VmFlag::Mmio);
                 
                 const size_t length = tempWindow->As<Sdt>()->length;
-                tables.EmplaceBack(length, addr, VmFlags::Mmio);
+                tables.EmplaceBack(length, addr, VmFlag::Mmio);
             }
 
-            tables.EmplaceBack(fullRsdt.Size(), (uintptr_t)rsdpAccess.rsdt, VmFlags::Mmio);
+            tables.EmplaceBack(fullRsdt.Size(), (uintptr_t)rsdpAccess.rsdt, VmFlag::Mmio);
         }
 
         Log("Rsdp set: 0x%lx, revision=%u, tables=%lu", LogLevel::Info, 

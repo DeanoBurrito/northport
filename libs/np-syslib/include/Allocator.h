@@ -5,7 +5,7 @@
 extern "C"
 {
     void* malloc(size_t length);
-    void free(void* ptr);
+    void free(void* ptr, size_t length);
 }
 
 namespace sl
@@ -23,8 +23,7 @@ namespace sl
 
         inline void Deallocate(void* ptr, size_t length)
         {
-            (void)length;
-            free(ptr);
+            free(ptr, length);
         }
     };
 }

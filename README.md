@@ -21,9 +21,9 @@ An extended goal (previously goal #5) is to add a comfortable user experience: a
 Kernel:
 - Support for multiple architectures: riscv64, x86_64.
 - Memory management:
-    - PMM with zoned allocations and support for adding additional memory at runtime.
-    - Modular VMM (inspired by old SunOS design) with demand paging, and separate MMU layer.
-    - General purpose heap provided by slabs for smaller objects and a freelist for larger objects.
+    - PMM with a fast path for single page allocations (freelist), and a slow path for allocations with imposed limits (required by some drivers).
+    - Modular and portable VMM, with demand paging options for anon and vfs backed memory. Inspired by the old SunOS design.
+    - General purpose heap provided by slabs for smaller objects and a freelist for larger objects. Slab allocation can be accelerated by core-local caches, and several debug features are available.
 - Logging infrastructure: fast and lock-free with support for several early outputs (uart chips, debugcon) and a built-in graphical terminal (based on gterm from the Limine bootloader).
     - Panic sequence with stack walker and symbol lookup.
 - Global software clock, driven by a number of supported hardware timers: LAPIC, TSC, HPET, PIT, SBI timer.

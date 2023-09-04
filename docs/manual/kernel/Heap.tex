@@ -1,44 +1,54 @@
 \section{Heap Allocation}
 \label{Heap}
 The kernel heap is provided by a series of aggregate slab allocators and a pool allocator. All of this is hidden behind the heap API, which consists of familiar free/alloc functions, and the C-style \verb|malloc()| and \verb|free()| global functions are provided as well (see \verb|memory/New.cpp|) if they're needed. The C functions are simple wrappers around the main heap functions.
+The kernel heap consists of a series of slab allocators and a single freelist allocator. Each slab allocators stores blocks twice the size of the previous. Meaning if the smallest slab stores 32-byte slabs, the next would store 64-byte slabs, and the next 128-byte slabs. 
 
-The global \verb|new| and \verb|delete| C++ operators have also been defined, making them available for kernel code. This is the ideal way to manage dynamically allocated memory.
+If an allocation request is too large for the slab allocators, the pool allocator is used. The pool allocator is intended for large but very infrequent uses as it prioritizes best-fit over speed.
 
-\subsection{Concepts}
+The intent with this split design is to prioritize speed for smaller allocations, which occur more frequently, and prioritize not wasting memory for larger allocations. The slab allocators are also further accelerated by using core-local caches, or magazines as other kernels may refer to them.
 
-\paragraph{Pinned Allocations} By default the kernel heap uses memory that can be swapped (purged from main memory to disk to free memory for use parts of the system) and demand-paged. Allocations can optionally be made \textit{pinned}. Pinned allocations are immediately backed with physical memory and non-swappable, which is useful for critical parts of the kernel infrastructure that can't be swapped out. The container used by the VMM to track allocated VMRanges is an example of when pinned memory is needed. Pinning allocations means that the physical memory used can't be used elsewhere if the system needs it, so they should be used sparingly and only when necessary.
+The heap interface is provided by the familiar \verb|new|(\verb|[]|) and \verb|delete|(\verb|[]|) operators. The kernel exclusively uses the sized \verb|delete|/\verb|delete[]| functions. The non-sized versions are provided as required by the C++ spec, but calling them is considered an error and results in a kernel panic. Most of the time the compiler will call the right function automatically, but there are some rare cases where manually calling the correct operator is required (see \verb|Debug::Terminal::Deinit()| in \verb|debug/Terminal.cpp| as an example).
+
+Forcing the use of the sized deallocation functions was done for two reasons:
+
+\begin{itemize}
+    \item Size information can often be determined at compile-time, and baked-in. For frequently allocated buffers this can save a small (but measurable) amount of memory at runtime as the size is only stored once (in the kernel binary), rather than once per allocation.
+    \item Knowing the size of the memory block to free allows for a much faster lookup of the correct slab to pass the pointer to, so that slab can properly free the memory. Without size information we would have to try each slab in turn, or store size information near the pointer.
+\end{itemize}
 
 \subsection{Slab Allocators}
-For small heap allocations the kernel uses a series of slab allocators, with each slab being 2x the size of the pervious. The smallest slab allocator starts at 32 bytes, and the largest is 512 bytes by default, although this is easily configurable. 
+Each slab allocator consists of a linked list of \textit{slab segments}. A segment is a block of contiguous virtual memory, managed by a bitmap stored at the beginning of the memory block. While a slab could be implemented without the bitmap, done this way for memory accounting purposes. The bitmap is checked when a slab frees memory and will emit a warning if the freed memory is not marked as in-use. Each segment also stores the last allocated index for optimization reasons, as if one free slab was found there are likely more immedately following it. When allocating the slab allocator starts searching the bitmap at this index, and will wrap around if none are found before the end of the bitmap. Each segment also stores the number of in-use slabs, so full segments can be skipped when searching for an allocation request.
 
-Each slab consists of a number of \textit{slab segments}, which contains a base address and bitmap to track which slabs have allocated relative to the base. A segment also contains some extra metadata to speed up allocations, like hinting at where the last successfull allocation was.
+If no free segments are available, the allocator requests a new block of virtual memory from the kernel VMM. A header for the new segment is created and stored at the start of this memory block, and the segment is added to the start of the segments list.
 
-When a segment is full, a new segment is created with identical parameters to the initial segment (slab size and number of slabs). These segments are stored as a linked list, effectively allowing infinite expansion if needed. As each slab tracks the number of free slabs, full segments can quickly be skipped when searching for free space.
+\subsection{Pool Allocator}
+The pool allocator is similar to the design of \hyperlink{https://github.com/blanham/liballoc}{liballoc} v1.1. It consists of a number of segments, and each segment is a freelist for a single contiguous block of virtual memory. Initially each segment's freelist has only a single entry, which is split (and later merged, if possible) during allocations.
 
-\subsubsection{Pinned vs Non-Pinned}
-Each slab allocator also tracks if it's pinned or not. Non-pinned slabs operate as you would expect, but pinned slabs are a special exception in how virtual memory is managed in the kernel. There is a circular dependency between pinned slabs and the VMM: since the VMM uses pinned allocations to store its management structures, the slab cannot use the VMM to allocate more virtual address space for itself as this would cause a pinned allocation, and so on. 
+\subsection{Core-Local Caches}
+The heap can make use of an extra mechanism to further accelerate slab allocations. Note that this only applies to allocations that would be handled by the slabs, \textit{not the pool allocator} which has no fast-path. If you're familiar with the magazines described in the \emph{Vmem and Magazines} paper by Jeff Bonwick, these caches function like the magazines described there.
 
-The current solution is to reserve an area of virtual memory above the HHDM but below the area the kernel VMM is allowed to allocate in. This area is the same size as the HHDM. A pointer within this area is stored, and is treated like a bump allocator: everytime a pinned slab expands it increments this pointer by the amount of virtual memory the new segment will consume. When it comes to back the new segment with physical memory, the slab modifies the kernel's master page tables directly.
+The way these work is that each core keeps track of a pair of \textit{magazines}, with a magazine being an array and a count of how many items are in the array. Magazines operate like a stack of addresses pre-allocated a slab allocator. Because they are per-core they eliminate contention between multiple cores for small allocations. This can greatly improve performance as contention only happens within threads running on the same core. Of these two magazines, one is referred to as active (or loaded) and the other is a spare.
 
-\subsection{Pool Allocators}
-The pool allocator is similar to the design of \hyperlink{https://github.com/blanham/liballoc}{liballoc} v1.1. It consists of a number of segments, and each segment is a freelist for a single contiguous block of virtual memory. Over time as the pool allocator expands more segments may be added. 
+TODO: graph of the above.
 
-There are no major differences between the pinned pool vs the non-pinned pool, except for the flags passed to the VMM when requesting virtual memory. The VMM handles the specifics of pinning memory.
+When allocating the active magazine for a slab is checked to see if it has any available slabs, if it does the entry is popped from the magazine and returned. Popping in this case means decrementing the count of the magazine, the address doesn't need to erased from the array. If the active magazine can't satisfy the request, the spare is checked in the same way: if it can allocate the address, it's swapped with the active magazine and the value is popped and returned like before. 
+
+The spare magazine is used to help prevent thrashing when allocating and freeing when the active magazine is close to full/empty. Imagine that the active magazine has one entry ready and two allocations are made, and that we aren't using a spare magazine. The first allocation is fine, but the second one would trigger the (now-empty) magazine to be swapped with a full one from the depot. This satifies the second allocation. Some time later both of these buffers would be TODO: finish
+The reason for swapping the magazines is that programs tend to allocate and free a number of things at a time, for example they might be calling a function which takes a buffer, this function may allocate and then call a few other functions. On the way back up the call stack, all those allocations are freed. This (generally) results in allocations and frees occuring in groups. Knowing this, we can optimize for what the next operation is likely to be.
 
 \subsection{Example Code}
-Like other singleton classes the global kernel heap can be accessed as \verb|Heap::Global()|. All heap declarations are available in the header \verb|memory/Heap.h|. The examples below are for documentation but the built-in C++ operators should be used where possible.
+The heap can be accessed by using the standard c++ \verb|new| and \verb|delete| functions, as well as C-style \verb|malloc()| and \verb|free()| (although use of them is discouraged outside of specific circumstances). All of these ultimately call one of the functions on the heap singleton, available via \verb|Heap::Global()| (declared in \verb|memory/Heap.h|).
 
-\begin{verbatim}
-void* _100Bytes = Heap::Global().Alloc(100);
+Use of the singleton functions are documented below, but the C++ operators are the preferred way to interact with the heap.
 
-Heap::Global().Free(_100Bytes);
-\end{verbatim}
+Allocating from the heap is as straight forward as you might expect. Do note that if an allocation fails the heap can return a \verb|nullptr|.
+\begin{lstlisting}
+void* _128Bytes = Heap::Global().Alloc(128);
+ASSERT(_128Bytes != nullptr, "Alloc() failed")
+\end{lstlisting}
 
-To use pinned allocations is similar, although you must tell \textit{both} alloc and free that this is pinned memory. This can be done by setting the optional argument to \verb|true|. A \verb|PinnedAllocator| class is also available for use as the allocator argument in template containers.
-
-\begin{verbatim}
-void* _40BytesPinned = Heap::Global().Alloc(40, true);
-
-Heap::Global().Free(_40BytesPinned);        //an error
-Heap::Global().Free(_40BytesPinned, true);  //okay
-\end{verbatim}
+Freeing a previously allocated pointer requires a bit more thought as the correct size must be passed to the free function. Passing the wrong size is considered an error by the programmer, and this may be caught at runtime but it shouldn't be relied upon. This is one of the reasons where the C++ operators are the recommended as the compiler can take care of size information.
+\begin{lstlisting}
+Heap::Global().Free(_128Bytes, 100); //an error
+Heap::Global().Free(_128Bytes, 128); //correct size
+\end{lstlisting}

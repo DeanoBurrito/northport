@@ -22,6 +22,9 @@
 \usepackage{tikz}
 \usetikzlibrary{positioning}
 \usetikzlibrary{arrows.meta}
+\usetikzlibrary{fit}
+\usetikzlibrary{backgrounds}
+\usetikzlibrary{decorations.pathreplacing}
 
 \usepackage{titlesec}
 \titleformat{\chapter}[hang]
@@ -36,6 +39,21 @@
 \lhead{\leftmark}
 \rfoot{Northport Manual}
 \lfoot{Page \thepage}
+
+\usepackage{listings}
+\lstset{language=C++}
+\lstset{basicstyle=\ttfamily}
+\lstset{keywordstyle=\color{blue}}
+\lstset{identifierstyle=\color{black}}
+\lstset{commentstyle=\color{teal}}
+\lstset{stringstyle=\color{red}}
+\lstset{showstringspaces=false}
+\lstset{backgroundcolor=\color{gray!10}}
+\lstset{frame=l}
+\lstset{emphstyle=\color{blue}}
+\lstset{emph={void,PMM,VMM,Heap,uintptr_t,size_t,nullptr,Handle,NodeType,LogLevel}}
+\lstset{emphstyle=[2]{\color{red!70!black!100}}}
+\lstset{emph=[2]{ASSERT}}
 
 \title{Northport Manual}
 \author{Dean T, Northport Contributors}
@@ -79,10 +97,10 @@
 \input{intro/SourceLayout.tex}
 
 \chapterpage{Kernel}
-\input{kernel/Overview.tex}
+\input{kernel/Introduction.tex}
 \input{kernel/Platforms.tex}
-\input{kernel/Limine.tex}
 \input{kernel/Pmm.tex}
+\input{kernel/Vmm.tex}
 \input{kernel/Heap.tex}
 \input{kernel/Timers.tex}
 \input{kernel/Vfs.tex}

@@ -110,6 +110,32 @@ namespace Npk
         return map;
     }
 
+    void CleanupPageTable(PageTable* pt)
+    {
+        if (pt == nullptr)
+            return;
+
+        for (size_t i = 0; i < PageTableEntries; i++)
+        {
+            if ((pt->entries[i] & PresentFlag) == 0)
+                continue;
+
+            const uint64_t entry = pt->entries[i];
+            CleanupPageTable(reinterpret_cast<PageTable*>((entry & addrMask) + hhdmBase));
+        }
+
+        PMM::Global().Free(reinterpret_cast<uintptr_t>(pt) - hhdmBase, 1);
+    }
+
+    void CleanupMap(HatMap* map)
+    {
+        if (map == nullptr)
+            return;
+
+        CleanupPageTable(AddHhdm(map->root));
+        delete map;
+    }
+
     HatMap* KernelMap()
     { return &kernelMap; }
 

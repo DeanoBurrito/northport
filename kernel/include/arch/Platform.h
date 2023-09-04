@@ -21,6 +21,7 @@ namespace Npk
         Thread, //currently running thread
         Vmm, //active *lower-half* VMM
         Log, //debug log buffer for this core
+        HeapCache, //core-local caches to speed up heap interactions
 
         Count
     };
