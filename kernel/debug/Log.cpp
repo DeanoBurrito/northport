@@ -284,8 +284,6 @@ namespace Npk::Debug
                 earlyOuts[i](messageBuffer, messageLen);
         }
     }
-
-    extern KernelSymbol kernelSymbols[];
 }
 
 extern "C"
@@ -339,18 +337,8 @@ extern "C"
             const uintptr_t addr = GetReturnAddr(i);
             if (addr == 0)
                 break;
-            
-            const char* symbolName = "<unknown>";
-            for (size_t i = 0; kernelSymbols[i].address != -1ul; i++)
-            {
-                if (addr < kernelSymbols[i].address)
-                    continue;
-                if (addr > kernelSymbols[i].address + kernelSymbols[i].size)
-                    continue;
-                symbolName = kernelSymbols[i].name;
-                break;
-            }
-            PanicWrite("%3u: 0x%lx %s\r\n", i, addr, symbolName);
+            //TODO: print function name
+            //PanicWrite("%3u: 0x%lx %s\r\n", i, addr, symbolName);
         }
         
         //dump the VMM ranges

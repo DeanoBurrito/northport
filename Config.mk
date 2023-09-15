@@ -2,7 +2,7 @@
 # Your compiler of choice: 'gcc' or 'clang', I dont judge.
 TOOLCHAIN = gcc
 # If not clang, where to find the compiler.
-TOOLCHAIN_PREFIX = ../cross-tools/bin
+TOOLCHAIN_PREFIX =
 # Whether to use the development cache for bootloader and firmware files.
 # This downloads and stores any necessary UEFI firmware for testing and the limine
 # bootloader in `.devel-cache`. Disable this if you want to use your own
@@ -22,9 +22,6 @@ QUIET_BUILD = yes
 # maybe shame me into fixing them oneday. Note this adds to compile times
 # slightly, and can be worth disabling on less powerful machines.
 COUNT_TODOS = yes
-# Whether to include a copy of the kernel symbol table in the final executable.
-# This is separate to the debug information `-g` adds.
-KERNEL_SYMBOL_TABLE = yes
 
 # ---- Compiler Options ----
 # ISA to compile for, valid options: `x86_64`, `riscv64`.

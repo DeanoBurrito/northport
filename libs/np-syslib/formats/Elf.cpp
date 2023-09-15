@@ -1,4 +1,5 @@
 #include <formats/Elf.h>
+#include <NativePtr.h>
 
 namespace sl
 {
@@ -13,12 +14,7 @@ namespace sl
         constexpr Elf64_UnsignedChar elfData = ELFDATA2LSB;
         constexpr Elf64_Half elfMach = EM_RISCV;
 #else
-    #warning "syslib/Elf.cpp: Unknown architecture"
-
-    constexpr Elf64_UnsignedChar elfClass = 0;
-    constexpr Elf64_UnsignedChar elfData = 0;
-    constexpr Elf64_Half elfMach = 0;
-    return false;
+    #error "syslib/Elf.cpp: Unknown architecture"
 #endif
 
         auto hdr = reinterpret_cast<const Elf64_Ehdr*>(file);
@@ -35,6 +31,59 @@ namespace sl
             return false;
         if (hdr->e_type != type)
             return false;
+
+        return true;
+    }
+
+    ComputedReloc ComputeRelocation(Elf64_Word type, uintptr_t a, uintptr_t s, uintptr_t p)
+    {
+        switch (type)
+        {
+#ifdef __x86_64__
+        case R_X86_64_64: return { .value = a + s, .mask = 0xFFFF'FFFF'FFFF'FFFF };
+        case R_X86_64_32: return { .value = a + s, .mask = 0xFFFF'FFFF };
+        case R_X86_64_16: return { .value = a + s, .mask = 0xFFFF };
+        case R_X86_64_8: return { .value = a + s, .mask = 0xFF };
+#else
+    #error "syslib/Elf.cpp: unknown architecture"
+#endif
+        }
+        return { .value = 0, .mask = 0 };
+    }
+
+    bool ApplySectionRelocations(const sl::Elf64_Ehdr* ehdr, size_t shdrIndex)
+    {
+        if (ehdr == nullptr)
+            return false;
+
+        sl::NativePtr image(ehdr);
+        auto shdrs = image.As<const sl::Elf64_Shdr>(ehdr->e_shoff);
+        for (size_t i = 0; i < ehdr->e_shnum; i++)
+        {
+            if (shdrs[i].sh_type != SHT_RELA)
+                continue; //TODO: support SHT_REL relocations as well
+            if (shdrs[i].sh_info != shdrIndex && shdrIndex != -1ul)
+                continue;
+
+            sl::NativePtr target(shdrs[shdrs[i].sh_info].sh_addr);
+            auto symbols = reinterpret_cast<sl::Elf64_Sym*>(shdrs[shdrs[i].sh_link].sh_addr);
+            auto relas = reinterpret_cast<const sl::Elf64_Rela*>(shdrs[i].sh_addr);
+
+            const size_t relaCount = shdrs[i].sh_size / shdrs[i].sh_entsize;
+            for (size_t r = 0; r < relaCount; r++)
+            {
+                sl::NativePtr fixpoint = target.Offset(relas[r].r_offset);
+                const uintptr_t s = symbols[ELF64_R_SYM(relas[r].r_info)].st_value;
+                const uintptr_t p = fixpoint.raw;
+                const uintptr_t a = relas[r].r_addend;
+
+                auto reloc = ComputeRelocation(ELF64_R_TYPE(relas[r].r_info), a, s, p);
+                if (reloc.mask == 0)
+                    return false;
+                const uintptr_t value = fixpoint.Read<uintptr_t>() & ~reloc.mask;
+                fixpoint.Write<uintptr_t>(value | (reloc.value & reloc.mask));
+            }
+        }
 
         return true;
     }
@@ -85,6 +134,25 @@ namespace sl
         }
 
         return nullptr;
+    }
+
+    sl::Vector<const Elf64_Shdr*> FindShdrs(const Elf64_Ehdr* hdr, Elf64_Word type)
+    {
+        if (hdr == nullptr)
+            return {};
+
+        auto file = reinterpret_cast<const uint8_t*>(hdr);
+        Vector<const Elf64_Shdr*> found {};
+
+        auto shdr = reinterpret_cast<const Elf64_Shdr*>(file + hdr->e_shoff);
+        for (size_t i = 0; i < hdr->e_shnum; i++)
+        {
+            if (shdr->sh_type == type)
+                found.PushBack(shdr);
+            shdr = reinterpret_cast<const Elf64_Shdr*>((uintptr_t)shdr + hdr->e_shentsize);
+        }
+
+        return found;
     }
 }
 

@@ -166,6 +166,47 @@ namespace sl
 #define ELF64_R_TYPE(i) ((i) & 0xFFFF'FFFFl)
 #define ELF64_R_INFO(s, t) ((s) << 32 + ((t) 0xFFFF'FFFFl))
 
+    constexpr static Elf64_Word R_X86_64_NONE = 0;
+    constexpr static Elf64_Word R_X86_64_64 = 1;
+    constexpr static Elf64_Word R_X86_64_PC32 = 2;
+    constexpr static Elf64_Word R_X86_64_GOT32 = 3;
+    constexpr static Elf64_Word R_X86_64_PLT32 = 4;
+    constexpr static Elf64_Word R_X86_64_COPY = 5;
+    constexpr static Elf64_Word R_X86_64_GLOB_DAT = 6;
+    constexpr static Elf64_Word R_X86_64_JUMP_SLOT = 7;
+    constexpr static Elf64_Word R_X86_64_RELATIVE = 8;
+    constexpr static Elf64_Word R_X86_64_GOTPCREL = 9;
+    constexpr static Elf64_Word R_X86_64_32 = 10;
+    constexpr static Elf64_Word R_X86_64_32S = 11;
+    constexpr static Elf64_Word R_X86_64_16 = 12;
+    constexpr static Elf64_Word R_X86_64_PC16 = 13;
+    constexpr static Elf64_Word R_X86_64_8 = 14;
+    constexpr static Elf64_Word R_X86_64_PC8 = 15;
+    constexpr static Elf64_Word R_X86_64_DTPMOD64 = 16;
+    constexpr static Elf64_Word R_X86_64_DTPOFF64 = 17;
+    constexpr static Elf64_Word R_X86_64_TPOFF64 = 18;
+    constexpr static Elf64_Word R_X86_64_TLSGD = 19;
+    constexpr static Elf64_Word R_X86_64_TLSLD = 20;
+    constexpr static Elf64_Word R_X86_64_DTPOFF32 = 21;
+    constexpr static Elf64_Word R_X86_64_GOTTPOFF = 22;
+    constexpr static Elf64_Word R_X86_64_TPOFF32 = 23;
+    constexpr static Elf64_Word R_X86_64_PC64 = 24;
+    constexpr static Elf64_Word R_X86_64_GOTOFF64 = 25;
+    constexpr static Elf64_Word R_X86_64_GOTPC32 = 26;
+    constexpr static Elf64_Word R_X86_64_GOT64 = 27;
+    constexpr static Elf64_Word R_X86_64_GOTPCREL64 = 28;
+    constexpr static Elf64_Word R_X86_64_GOTPC64 = 29;
+    constexpr static Elf64_Word R_X86_64_PLTOFF64 = 31;
+    constexpr static Elf64_Word R_X86_64_SIZE32 = 32;
+    constexpr static Elf64_Word R_X86_64_SIZE64 = 33;
+    constexpr static Elf64_Word R_X86_64_GOTPC32_TLSDESC = 34;
+    constexpr static Elf64_Word R_X86_64_TLSDESC_CALL = 35;
+    constexpr static Elf64_Word R_X86_64_TLSDESC = 36;
+    constexpr static Elf64_Word R_X86_64_IRELATIVE = 37;
+    constexpr static Elf64_Word R_X86_64_RELATIVE64 = 38;
+    constexpr static Elf64_Word R_X86_64_GOTPCRELX = 41;
+    constexpr static Elf64_Word R_X86_64_REX_GOTPCRELX = 42;
+
     struct [[gnu::packed]] Elf64_Phdr
     {
         Elf64_Word p_type;

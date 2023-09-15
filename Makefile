@@ -9,18 +9,16 @@ include misc/HelpText.mk
 
 # Toolchain selection
 ifeq ($(TOOLCHAIN), gcc)
-	export X_CXX_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-g++
-	export X_AS_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-as
-	export X_LD_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-ld
-	export X_AR_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-ar
-	export X_READELF_BIN = $(TOOLCHAIN_PREFIX)/$(ARCH_TARGET)-readelf
+	export X_CXX_BIN = $(TOOLCHAIN_PREFIX)$(ARCH_TARGET)-g++
+	export X_AS_BIN = $(TOOLCHAIN_PREFIX)$(ARCH_TARGET)-as
+	export X_LD_BIN = $(TOOLCHAIN_PREFIX)$(ARCH_TARGET)-ld
+	export X_AR_BIN = $(TOOLCHAIN_PREFIX)$(ARCH_TARGET)-ar
 	export KERNEL_AS_FLAGS = 
 else ifeq ($(TOOLCHAIN), clang)
 	export X_CXX_BIN = clang++ --target=$(ARCH_TARGET)
 	export X_AS_BIN = clang --target=$(ARCH_TARGET)
 	export X_LD_BIN = ld.lld
 	export X_AR_BIN = llvm-ar
-	export X_READELF_BIN = llvm-readelf
 	export KERNEL_AS_FLAGS = -c
 else
 $(error "Unknown toolchain: $(TOOLCHAIN), build aborted.")

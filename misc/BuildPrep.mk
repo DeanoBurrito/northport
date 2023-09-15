@@ -6,10 +6,6 @@ else
 	export LOUD_REDIRECT =
 endif
 
-ifeq ($(KERNEL_SYMBOL_TABLE), yes)
-	export INCLUDE_KERNEL_SYMBOLS = yes
-endif
-
 ifeq ($(INCLUDE_TERMINAL_BG), yes)
 	KERNEL_CXX_FLAGS += -DNP_INCLUDE_TERMINAL_BG
 endif

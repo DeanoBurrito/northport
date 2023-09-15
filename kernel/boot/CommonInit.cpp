@@ -5,8 +5,8 @@
 #include <config/DeviceTree.h>
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
-#include <debug/NanoPrintf.h>
 #include <debug/TerminalDriver.h>
+#include <debug/Symbols.h>
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
@@ -56,6 +56,8 @@ namespace Npk
 
     void InitPlatform()
     {
+        Debug::LoadKernelSymbols();
+
         using namespace Boot;
         if (framebufferRequest.response != nullptr)
             Debug::InitEarlyTerminal();
@@ -72,8 +74,7 @@ namespace Npk
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
 
-        //TODO: automate this from ACPI or DTB
-        InitTopology();
+        InitTopology(); //TODO: automate this from ACPI or DTB
         
         Filesystem::InitFileCache();
         Filesystem::InitVfs();
