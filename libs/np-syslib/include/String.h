@@ -54,6 +54,6 @@ namespace sl
         bool operator!=(const String& other) const;
         bool operator==(sl::StringSpan span) const;
         bool operator!=(sl::StringSpan span) const;
+        //TOOD: add StringSpan versions of comparison functions (or just replace them, and add a String::Span() operator)
     };
-
 }

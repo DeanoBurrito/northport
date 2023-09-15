@@ -177,6 +177,11 @@ namespace sl
         return *this;
     }
 
+    sl::StringSpan String::Span() const
+    {
+        return { buffer, length };
+    }
+
     size_t String::Find(const char token, size_t offset) const
     {
         return memfirst(buffer, offset, token, length);

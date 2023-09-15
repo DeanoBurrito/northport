@@ -51,13 +51,22 @@ namespace sl
 
         Span Subspan(size_t begin, size_t length) const
         {
-            if (begin + length > size)
+            if (length > size || begin + length > size)
                 length = size - begin;
             return Span(data + begin, length);
         }
 
         bool Contains(Span other) const
         {
+            if (size != other.size)
+                return false;
+
+            for (size_t i = 0; i < size; i++)
+            {
+                if (data[i] != other.data[i])
+                    return false;
+            }
+
             return true;
         }
     };

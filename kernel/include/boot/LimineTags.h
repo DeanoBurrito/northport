@@ -15,6 +15,7 @@ namespace Npk::Boot
     extern limine_kernel_address_request kernelAddrRequest;
     extern limine_dtb_request dtbRequest;
     extern limine_smp_request smpRequest;
+    extern limine_kernel_file_request kernelFileRequest;
 
     void CheckLimineTags();
 }

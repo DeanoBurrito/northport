@@ -51,8 +51,10 @@ namespace Npk::Boot
     limine_module_request modulesRequest
     {
         .id = LIMINE_MODULE_REQUEST,
-        .revision = 0,
-        .response = nullptr
+        .revision = 1,
+        .response = nullptr,
+        .internal_module_count = 0,
+        .internal_modules = nullptr
     };
 
     limine_rsdp_request rsdpRequest
@@ -98,6 +100,13 @@ namespace Npk::Boot
         .flags = 0
     };
 
+    limine_kernel_file_request kernelFileRequest
+    {
+        .id = LIMINE_KERNEL_FILE_REQUEST,
+        .revision = 0,
+        .response = nullptr,
+    };
+
     [[gnu::used, gnu::section(".limine_reqs")]]
     void* requests[] = 
     {
@@ -114,6 +123,7 @@ namespace Npk::Boot
         &kernelAddrRequest,
         &dtbRequest,
         &smpRequest,
+        &kernelFileRequest,
         nullptr
     };
 
@@ -132,6 +142,7 @@ namespace Npk::Boot
         "Kernel address",
         "DTB",
         "SMP",
+        "Kernel file",
     };
 
     struct LimineReq

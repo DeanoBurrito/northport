@@ -6,7 +6,7 @@ Northport is a monolithic kernel, written in C++ and booted via the Limine proto
 
 Instructions for building it yourself are [available here](docs/Building.md), and a more in-depth manual can be found under the releases tab or by cloning this repository and running `make docs`.
 
-A brief summary of the current goals and features are listed below, or check [the roadmap](docs/Roadmap.md) for a more granular view. Pre-built isos are made available at major feature milestones, but for the latest and greatest it's recommended to built from the master branch.
+A brief summary of the current goals and features are listed below, or check [the roadmap](docs/Roadmap.md) for a more granular view. Pre-built isos are made available at major feature milestones, but for the latest and greatest it's recommended to build from the master branch.
 
 ## Project Goals
 1) To build a usable, extensible and relatively complete kernel. This means an smp-aware scheduler with support for heterogeneous processors, media stacks (graphics, audio and network) and a flexible driver infrastructure.

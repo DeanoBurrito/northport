@@ -157,6 +157,11 @@ namespace Npk::Filesystem
         VfsDriver* root = RootFs();
         if (root == nullptr)
             return {};
+
+        if (path[0] == '/')
+            path = path.Subspan(1, path.Size() - 1);
+        if (path.Empty())
+            return root->Root();
         
         return root->Resolve(path, context);
     }

@@ -1,40 +1,49 @@
 \section{Overview}
-Northport is a monolithic kernel, with some modularity planned for later drivers. The kernel is booted via the limine boot protocol, and begins with some platform specific initialization. After this the clock and scheduler are started, and then the kernel operates as series of \textit{mostly} independent subsystems.
+The northport kernel is a modular-monolithic design. The kernel itself is a single binary providing most of the functionally required for the system to run, while drivers are loaded as dynamically linked modules. The kernel is written mostly in C++, with some platform-specific assembly where appropriate.
 
-The kernel makes full use of multi-processor systems, and can run with minimal memory requirements.
+\subsection{Subsystems and Layers}
+The kernel consists of a series of major and supporting subsystems, organised into various layers. The source code is generally organised by subsystem, and the distinction between layers is mainly visible in how the code interacts with other code.
 
-\subsection{Kernel Subsystems}
+Layers exist as a distinction in kernel logic: code in one layer can be aware of other code in the same layer and lower layers, but not code in higher layers. As with any rule there are some special cases where an exception is made, but special care is taken in these and no assumptions are made about the state of the higher-layer code. Layers can also be thought of a representation of complexity, with lower layers providing more basic functionality and higher layers providing more abstract things.
+
+\paragraph{Major Subsystems}
 \begin{itemize}
-    \item Memory: physical memory manager, virtual memory managers, kernel heap.
-    \item Tasking: software clock, scheduler, threads and processes.
-    \item Hardware abstraction: functionality required from the underlying hardware that cannot be provided by a driver. Things like the IPI mechanism used and interrupt management are handled here.
-    \item Filesystems: VFS, and filesystem drivers.
-    \item Debugging: logging facilities, built-in graphical terminal.
-    \item Hardware discovery: ACPI table parsing, PCI device enumeration, device tree parsing.
-    \item Driver and Device management: Loading, starting and stopping drivers in response to system events like hardware discovery.
+    \item Memory management stack: Contains the physical memory manager, virtual memory manager and it's virtual memory drivers, as well as providing the general purpose heap.
+    \item Interrupt infrastructure: Interrupt vector allocation, interrupt dispatch, and handling the effects of changing the core run level (switching to DPCs, etc).
+    \item Timekeeping: The system clock lives here and provides functions for up-counting software timers (\textit{stopwatches}) and enqueuing callback functions to run after a specified time (\textit{clock events}).
+    \item Program management and Scheduling: this contains the scheduler, as well as threads and processes, and ways to manage them.
+    \item Hardware detection: includes the device tree parser and code for parsing ACPI tables. Support for an AML interpreter (as a loadable driver) is planned in the future.
+    \item Devices and Drivers: provides high level functions for managing and communicating with driver programs. The device API is also defined here.
+    \item Filesystem and File Cache: contains the VFS, a tempFS implementation (in-memory filesystem with no backing media) and a page-cache system referred to as the \textit{file cache}.
+    \item Debugging: TODO:
 \end{itemize}
 
-There are some other minor subsystems like interrupt vector allocation and IPI mailboxes for communicating on multi-core systems.
-
-\subsection{Init Sequence}
-The philosophy of the entry sequence for the kernel is to allow the platform core to contain the messy parts required to interface with hardware, and call various hooks for generic parts of the init sequence when appropriate for the platform. Each architecture contains a \verb|arch/xyz/Init.cpp| file with a few common functions. These functions are not required, but are named this way for consistency.
-
+\paragraph{Kernel Layers}
 \begin{itemize}
-    \item \verb|KernelEntry()|: This is where the first core starts executing the kernel. This function is usually the ELF entry point, unless the limine boot shim is active. This function does any early set up the platform might require, and then enables the memory subsystems, early platform subsystems (logging), timing subsystem and then performs any core-local set up for BSP (a term borrowed from x86). 
-    \item \verb|ApEntry()|: APs (borrowed from x86) require a different codepath to the BSP, and this function is where they begin executing. Most of the time this is just calling \verb|InitCore()|.
-    \item \verb|InitCore()|: This function is either called by \verb|KernelEntry()| or \verb|ApEntry()| and performs any initialization required for each processor core in the system. This includes allocating and populating the core-local block, and setting any supported feature flags.
+    \item Arch: this layer is tied very closely to the target hardware the kernel is running on. It acts as the glue between the hardware and the functions defined the headers at \verb|include/arch/|, which the rest of the kernel is built upon. The arch layer is comparable to the \textit{HAL} (hardware abstraction layer) that some other systems use.
+    \item Core: the core layer contains low level code like the arch layer, but everything here is platform-agnostic. Things like the PMM and VMM live here as most other kernel subsystems are built on top of them. Some parts of the interrupt infrastructure also live here, as does the scheduler.
+    \item Support: The support layer provides high level functions like IPC, the VFS and tempFS, program management and driver management.
+    \item Drivers: This layer represents privileged programs running as drivers managed by the kernel. The code in this layer is highly dependent on the detected hardware and how the system is configured by it's user.
+    \item User: not technically a layer of the kernel, but it is a useful concept. This layer represents any programs running under supervision from the kernel: userspace programs.
 \end{itemize}
 
-\subsubsection{Platform-Independent Init}
-The file \verb|CommonInit.cpp| contains initialization code that needs to happen across all platforms. These are provided as hooks that the platform-specific init code can call when it's ready. These hook functions should be called in order.
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+    \node (archlayer) [rectangle, minimum width=14cm, minimum height=2cm, draw=black, fill=blue!10] {Arch Layer};
+    \node (corelayer) [rectangle, minimum width=14cm, minimum height=2cm, draw=black, fill=orange!10, above=1mm of archlayer] {Core Layer};
+    \node (supportlayer) [rectangle, minimum width=14cm, minimum height=2cm, draw=black, fill=red!10, above=1mm of corelayer] {Support Layer};
+\end{tikzpicture}
+\caption{Kernel Layers}
+\end{figure}
+TODO: diagram of kernel layers
 
-\begin{itemize}
-    \item \verb|InitEarlyPlatform()|: This should be called as early as possible. Here bootloader data is verified to be sane, and the HHDM base and length are determined. Early outputs for logging are detected here, namely a bootloader-provided framebuffer and serial devices.
-    \item \verb|InitMemory()|: Initializes the physical memory manager, virtual memory manager and the kernel heap.
-    \item \verb|InitPlatform()|: Hardware discovery methods are initialized here (ACPI tables and/or the DTB are parsed). Some global kernel state is also initialized like the core-independent part of the scheduler and interrupt vector allocator.
-    \item \verb|ExitBspInit()|: Starts the system clock and then calls \verb|ExitApInit()| (see below).
-    \item \verb|ExitApInit()|: Sets up the IPI mailbox for the core, decreases a reference count to bootloader data and then begins scheduled execution. If the reference count is decremented to 0, the core will launch a thread that reclaims bootloader memory and makes it available to the physical memory manager.
-\end{itemize}
+\subsection{Kernel Initialization}
+The entry point of the kernel is specific to each architecture, as even with the limine protocol there are still critical differences to account for. The entry function is highly specific to the target architecture, and so it's hard to generalize it in documentation - if you're interested in how a system arch is setup, the best resource will be to check the code.
+
+Having said that, the majority of the init logic for the kernel is shared across all platforms, and is split into stages. The current stage isn't tracked anyway, but progressing to the next stage is represented by calling the next \verb|InitXYZ()| function defined in \verb|kernel/include/CommonInit.h|. Each of these functions brings up another collection of kernel components.
+
+The init code was organised this way to give the freedom of implementation to the architecture-specific parts of the code, which is where it feels the most useful. The guiding principle here was to keep the general kernel code clean, while letting the arch-specific code take care of the messy things.
 
 \begin{figure}[h]
 \begin{tikzpicture}
@@ -85,25 +94,22 @@ The file \verb|CommonInit.cpp| contains initialization code that needs to happen
     & \begin{tikzpicture} \node (r)[rectangle, draw=black, fill=gray!10] (0, 0){}; \end{tikzpicture}
     & (Call to) common init code. \\
 \end{tabular}
-\caption{Kernel operation pre-scheduler.}
+\caption{Kernel initialization sequence.}
 \end{figure}
 
-\subsection{Multi-Core Systems}
-The kernel is written and tested with multi-core systems in mind, but it's also capable of running on single-core systems. 
+\subsection{Multi-Core Operation}
+The kernel takes full advantage of multiple processor cores in a system. Most kernel subsystems operate without specific knowledge of how many cores are present in the system, and those that do are only interested in \textit{online} cores. For completeness, a core can also be considered offline (not present or not available to the kernel), or in an initialization state (running kernel code but not ready for general use).
 
-From the perspective of the kernel, each core is independent. This means any available processor extensions are detected per-core, and the kernel has full support for heterogenous core setups.
+\textit{Currently the kernel brings all cores online when booting, but the kernel is built around the idea that the number of online cores is dynamic - i.e. hotplugging processors at runtime. This feature isn't implemented yet, but provisions have been made.}
 
-Most kernel subsystems operate without knowing how many cores are present in a system, with notable exceptions being the scheduler (\autoref{Scheduler}) and IPI mailboxes. The kernel heap (\autoref{Heap}) can optionally use core-local caches to speed up allocation and reduce a common source of contention between cores.
+As mentioned the bulk of the kernel operates without caring for the number of online cores in the system. This becomes a little blurry when performance of some subsystems becomes involved, where often per-core resource caches are created to reduce contention between cores. The implementation of these caches this breaks the idea of not caring about the number of cores, but the illusion remains from the consuming code's point of view. These per-core caches can also be disabled with feature flags if desired.
 
-During early initalization, one core is brought online first and is referred to as the BSP (a term borrowed from x86). The BSP does some initial memory management setup and enable any early log outputs before bringing up the cores. At this point each core will initialize itself, detecting and enabling any extensions. One this is done each core then begins processing work from the scheduler.
+If for some reason some code \textbf{must} execute on a particular core, there are two options: the IPI mailboxes or pinning a thread to a particular core. IPI mailboxes are useful for time sensitive actions as writing to a mailbox triggers an interrupt on the receiving core.
 
-Once scheduled execution has begun, the cores are treated mostly equally with the exception of timekeeping. One core (usually the BSP, but it's not required to be) is nominated to manage the software clock (\autoref{Clock}), ensuring clock events have their callbacks called at the correct time and on the correct processor. This core also becomes responsible for managing the hardware timers used to manage the clock.
+\paragraph{Topology Awareness}
+If available, the kernel also tracks the physical location of a core relative to other cores and physical memory. This information is tracked at three levels: the NUMA domain, physical processor, and logical thread. If no NUMA information is provided, a default domain is synthesized to act as a global domain that all system resources fall under. If no information about SMT (or hyperthreading as some vendors call it) is available, there is only one logical thread per physical processor. This information is either collection from ACPI tables (MADT, SRAT, SLIT), the device tree or some other platform-specific means.
 
-If for some reason a function is required to run on a specific core, there are two options:
-\begin{itemize}
-    \item A thread can be created to run the function, and pinned to a specific core. This is the recommended approach for code without timing requirements.
-    \item Each core has an IPI mailbox. Each mail item consists of a function pointer and an argument to pass to the function when run. When mail is sent the target core is sent an IPI and the function will whenever the IPI is served. See the function \verb|SendIpiMail()| in \verb|interrupts/Ipi.h|.
-\end{itemize}
+\textit{No subsystems actually make use of this info currently, but the but the next scheduler rewrite will consider this info.}
 
 \subsubsection{Example Code}
 To use the mailbox mechanism all that's required a pointer to the function to run on the remote core. In the example we'll assume core 5 exists and we want to run \verb|ExampleFunction()| on that core. The callback function can optionally have an argument passed to it at runtime, but it's not required so we'll use \verb|nullptr|. We omit the argument in this example. The function we'll use is defined in \verb|interrupts/Ipi.h|.
