@@ -10,6 +10,7 @@
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
+#include <drivers/Loader.h>
 #include <filesystem/Filesystem.h>
 #include <filesystem/FileCache.h>
 #include <interrupts/InterruptManager.h>
@@ -113,6 +114,9 @@ namespace Npk
         Devices::DeviceManager::Global().Init();
         Drivers::DriverManager::Global().Init();
         Devices::PciBridge::Global().Init();
+
+        //check for drivers available in the initdisk.
+        Drivers::ScanForModules("/initdisk/drivers/");
 
         Tasking::Thread::Current().Exit(0);
     }
