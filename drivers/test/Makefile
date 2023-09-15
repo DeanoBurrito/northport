@@ -1,8 +1,7 @@
 TARGET = Test
 
-CXX_FLAGS = -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -Iinclude -ffreestanding
-LD_FLAGS = -nostdlib -static -r
+CXX_FLAGS = $(DRIVER_CXX_FLAGS) -Iinclude -I$(PROJ_ROOT_DIR)/kernel/include
+LD_FLAGS = $(DRIVER_LD_FLAGS)
 
 CXX_SRCS = Main.cpp
 

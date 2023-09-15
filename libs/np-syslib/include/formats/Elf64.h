@@ -207,6 +207,56 @@ namespace sl
     constexpr static Elf64_Word R_X86_64_GOTPCRELX = 41;
     constexpr static Elf64_Word R_X86_64_REX_GOTPCRELX = 42;
 
+    constexpr static Elf64_Word R_RISCV_NONE = 0;
+    constexpr static Elf64_Word R_RISCV_32 = 1;
+    constexpr static Elf64_Word R_RISCV_64 = 2;
+    constexpr static Elf64_Word R_RISCV_RELATIVE = 3;
+    constexpr static Elf64_Word R_RISCV_COPY = 4;
+    constexpr static Elf64_Word R_RISCV_JUMP_SLOT = 5;
+    constexpr static Elf64_Word R_RISCV_TLS_DTPMOD32 = 6;
+    constexpr static Elf64_Word R_RISCV_TLS_DTPMOD64 = 7;
+    constexpr static Elf64_Word R_RISCV_TLS_DTPREL32 = 8;
+    constexpr static Elf64_Word R_RISCV_TLS_DTPREL64 = 9;
+    constexpr static Elf64_Word R_RISCV_TLS_TPREL32 = 10;
+    constexpr static Elf64_Word R_RISCV_TLS_TPREL64 = 11;
+    constexpr static Elf64_Word R_RISCV_BRANCH = 16;
+    constexpr static Elf64_Word R_RISCV_JAL = 17;
+    constexpr static Elf64_Word R_RISCV_CALL = 18;
+    constexpr static Elf64_Word R_RISCV_CALL_PLT = 19;
+    constexpr static Elf64_Word R_RISCV_GOT_HI20 = 20;
+    constexpr static Elf64_Word R_RISCV_TLS_GOT_HI20 = 21;
+    constexpr static Elf64_Word R_RISCV_TLS_GD_HI20 = 22;
+    constexpr static Elf64_Word R_RISCV_PCREL_HI20 = 24;
+    constexpr static Elf64_Word R_RISCV_PCREL_LO12_I = 24;
+    constexpr static Elf64_Word R_RISCV_PCREL_LO12_S = 25;
+    constexpr static Elf64_Word R_RISCV_HI20 = 26;
+    constexpr static Elf64_Word R_RISCV_LO12_I = 27;
+    constexpr static Elf64_Word R_RISCV_LO12_S = 28;
+    constexpr static Elf64_Word R_RISCV_TPREL_HI20 = 29;
+    constexpr static Elf64_Word R_RISCV_TPREL_LO12_I = 30;
+    constexpr static Elf64_Word R_RISCV_TPREL_LO12_S = 31;
+    constexpr static Elf64_Word R_RISCV_TPREL_ADD = 32;
+    constexpr static Elf64_Word R_RISCV_ADD8 = 33;
+    constexpr static Elf64_Word R_RISCV_ADD16 = 34;
+    constexpr static Elf64_Word R_RISCV_ADD32 = 35;
+    constexpr static Elf64_Word R_RISCV_ADD64 = 36;
+    constexpr static Elf64_Word R_RISCV_SUB8 = 37;
+    constexpr static Elf64_Word R_RISCV_SUB16 = 38;
+    constexpr static Elf64_Word R_RISCV_SUB32 = 39;
+    constexpr static Elf64_Word R_RISCV_SUB64 = 40;
+    constexpr static Elf64_Word R_RISCV_ALIGN = 43;
+    constexpr static Elf64_Word R_RISCV_RVC_BRANCH = 44;
+    constexpr static Elf64_Word R_RISCV_RVC_JUMP = 45;
+    constexpr static Elf64_Word R_RISCV_RVC_LUI = 46;
+    constexpr static Elf64_Word R_RISCV_RELAX = 51;
+    constexpr static Elf64_Word R_RISCV_SUB6 = 52;
+    constexpr static Elf64_Word R_RISCV_SET6 = 53;
+    constexpr static Elf64_Word R_RISCV_SET8 = 54;
+    constexpr static Elf64_Word R_RISCV_SET16 = 55;
+    constexpr static Elf64_Word R_RISCV_SET32 = 56;
+    constexpr static Elf64_Word R_RISCV_32_PCREL = 57;
+    constexpr static Elf64_Word R_RISCV_IRELATIVE = 58;
+
     struct [[gnu::packed]] Elf64_Phdr
     {
         Elf64_Word p_type;

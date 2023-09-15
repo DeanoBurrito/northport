@@ -1,5 +1,7 @@
 KERNEL_CXX_FLAGS += -mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 \
 	-mno-3dnow -mcmodel=kernel
+DRIVER_CXX_FLAGS += -mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 \
+	-mno-3dnow -mcmodel=large
 
 KERNEL_LD_FLAGS += -ztext
 
@@ -11,5 +13,5 @@ QEMU_BASE = qemu-system-x86_64 -machine q35 \
 	-debugcon /dev/stdout -monitor stdio -device virtio-gpu
 QEMU_KVM = --enable-kvm -cpu host
 QEMU_NO_KVM = -cpu qemu64,+smap,+smep
-QEMU_DEBUG = -s -S -no-reboot -no-shutdown --enable-kvm -cpu host
+QEMU_DEBUG = -s -S -no-reboot -no-shutdown
 QEMU_UEFI = -drive if=pflash,format=raw,file=$(OVMF_FILE),readonly=on

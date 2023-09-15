@@ -35,16 +35,17 @@ endif
 # Arch-specific flags + targets.
 include misc/cross/$(CPU_ARCH)/CrossConfig.mk
 
-# Platform-agnostic compiler and linker flags for the kernel
-KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fno-pic -fno-pie \
+# Platform-agnostic compiler and linker flags for the kernel and drivers
+export KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fno-pic -fno-pie \
 	-fno-omit-frame-pointer -ffreestanding -std=c++17 -fno-rtti -fno-exceptions \
 	-fsized-deallocation -fno-unwind-tables -fno-asynchronous-unwind-tables -Iinclude \
 	-DNP_CLOCK_MS=$(CLOCK_TICK_MS)ul -DNP_KERNEL 
-KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
+export KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
+export DRIVER_CXX_FLAGS += -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
+	-fno-asynchronous-unwind-tables -ffreestanding
+export DRIVER_LD_FLAGS += -nostdlib -static -r
 
-export KERNEL_CXX_FLAGS
-export KERNEL_LD_FLAGS
 export BUILD_DIR = build
 export CPU_ARCH
 export ARCH_TARGET = $(CPU_ARCH)-elf

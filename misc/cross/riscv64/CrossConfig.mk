@@ -1,4 +1,5 @@
 KERNEL_CXX_FLAGS += -mcmodel=medany
+DRIVER_CXX_FLAGS += -mcmodel=medany
 
 KERNEL_LD_FLAGS +=
 

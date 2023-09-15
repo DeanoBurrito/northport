@@ -44,6 +44,9 @@ namespace sl
         case R_X86_64_32: return { .value = a + s, .mask = 0xFFFF'FFFF };
         case R_X86_64_16: return { .value = a + s, .mask = 0xFFFF };
         case R_X86_64_8: return { .value = a + s, .mask = 0xFF };
+#elif __riscv_xlen == 64
+        case R_RISCV_64: return { .value = a + s, .mask = 0xFFFF'FFFF'FFFF'FFFF };
+        case R_RISCV_32: return { .value = a + s, .mask = 0xFFFF'FFFF };
 #else
     #error "syslib/Elf.cpp: unknown architecture"
 #endif
