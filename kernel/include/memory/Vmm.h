@@ -188,5 +188,3 @@ namespace Npk::Memory
         size_t CopyOut(void* localBase, void* foreignBase, size_t length);
     };
 }
-
-using VMM = Npk::Memory::VirtualMemoryManager;

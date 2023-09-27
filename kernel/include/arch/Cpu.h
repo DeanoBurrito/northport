@@ -80,7 +80,7 @@ namespace Npk
         size_t id;
     };
 
-    void InitTopology(); //TODO: remove this hack
+    void ScanGlobalTopology();
 
     //Detects system topology from the local core's perspective.
     void ScanLocalTopology();

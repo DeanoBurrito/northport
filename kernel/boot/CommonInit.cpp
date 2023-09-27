@@ -10,7 +10,6 @@
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
-#include <drivers/Loader.h>
 #include <filesystem/Filesystem.h>
 #include <filesystem/FileCache.h>
 #include <interrupts/InterruptManager.h>
@@ -75,8 +74,7 @@ namespace Npk
         else
             Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
 
-        InitTopology(); //TODO: automate this from ACPI or DTB
-        
+        ScanGlobalTopology();
         Filesystem::InitFileCache();
         Filesystem::InitVfs();
         Interrupts::InterruptManager::Global().Init();
@@ -111,12 +109,9 @@ namespace Npk
 
     void InitThread(void*)
     {
-        Devices::DeviceManager::Global().Init();
+        Devices::DeviceManager::Global().Init(); //TODO: this and driver manager should probably happen before threaded exec no?
         Drivers::DriverManager::Global().Init();
         Devices::PciBridge::Global().Init();
-
-        //check for drivers available in the initdisk.
-        Drivers::ScanForModules("/initdisk/drivers/");
 
         Tasking::Thread::Current().Exit(0);
     }

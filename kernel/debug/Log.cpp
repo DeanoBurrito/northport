@@ -1,6 +1,7 @@
 #include <debug/Log.h>
 #include <arch/Platform.h>
 #include <debug/NanoPrintf.h>
+#include <debug/Symbols.h>
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
@@ -307,8 +308,16 @@ extern "C"
         for (auto* msg = msgQueue.Pop(); msg != nullptr; msg = msgQueue.Pop())
             WriteElos(msg->data); //TODO: dont rely on external logic like this during panic
 
-        PanicWrite("\r\n\r\n");
-        PanicWrite("---==####==--- Kernel Panic ---==####==---\r\n\r\n");
+        PanicWrite("       )\r\n");
+        PanicWrite("    ( /(                        (\r\n");
+        PanicWrite("    )\\())  (   (             (  )\\             )        (\r\n");
+        PanicWrite("   ((_)\\  ))\\  )(    (      ))\\((_)  `  )   ( /(   (    )\\   (\r\n");
+        PanicWrite("  (_ ((_)/((_)(()\\   )\\ )  /((_)_    /(/(   )(_))  )\\ )((_)  )\\\r\n");
+        PanicWrite("  | |/ /(_))   ((_) _(_/( (_)) | |  ((_)_\\ ((_)_  _(_/( (_) ((_)\r\n");
+        PanicWrite("  | ' < / -_) | '_|| ' \\))/ -_)| |  | '_ \\)/ _` || ' \\))| |/ _|\r\n");
+        PanicWrite("  |_|\\_\\\\___| |_|  |_||_| \\___||_|  | .__/ \\__,_||_||_| |_|\\__|\r\n");
+        PanicWrite("                                    |_|\r\n");
+        PanicWrite("\r\n");
         PanicWrite(reason);
         PanicWrite("\r\n");
 
@@ -337,8 +346,10 @@ extern "C"
             const uintptr_t addr = GetReturnAddr(i);
             if (addr == 0)
                 break;
-            //TODO: print function name
-            //PanicWrite("%3u: 0x%lx %s\r\n", i, addr, symbolName);
+            auto symbol = SymbolFromAddr(addr);
+            const char* symbolName = symbol.HasValue() ? symbol->name.Begin() : "<unknown>";
+            const size_t symbolOffset = symbol.HasValue() ? addr - symbol->base : 0;
+            PanicWrite("%3u: 0x%lx %s+0x%lu\r\n", i, addr, symbolName, symbolOffset);
         }
         
         //dump the VMM ranges

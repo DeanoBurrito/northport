@@ -11,7 +11,7 @@
 
 namespace Npk
 {
-    void InitTopology()
+    void ScanGlobalTopology()
     {
         Log("Topological mapping is not currently available on riscv.", LogLevel::Warning);
         //TODO: map using device tree

@@ -20,13 +20,17 @@ namespace sl
 
         ~Handle()
         {
-            if (ptr != nullptr)
-            {
-                const unsigned count = (ptr->references--);
+            if (ptr == nullptr)
+                return;
 
-                if (count == 0 && Dtor != nullptr)
-                    Dtor(ptr);
-            }
+            const unsigned count = --(ptr->references);
+            if (count > 0)
+                return;
+
+            if (Dtor != nullptr)
+                Dtor(ptr);
+            else
+                delete ptr;
         }
 
         Handle(const Handle& other)

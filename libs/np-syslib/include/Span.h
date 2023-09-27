@@ -85,5 +85,11 @@ namespace sl
         return true;
     }
 
+    template<typename T>
+    bool operator!=(const Span<T>& a, const Span<T>& b)
+    {
+        return !(a == b);
+    }
+
     using StringSpan = Span<const char>;
 }

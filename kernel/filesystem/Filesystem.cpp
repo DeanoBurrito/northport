@@ -6,6 +6,7 @@
 #include <Memory.h>
 #include <formats/Tar.h>
 #include <formats/Url.h>
+#include <UnitConverter.h>
 
 namespace Npk::Filesystem
 {
@@ -16,8 +17,9 @@ namespace Npk::Filesystem
         VALIDATE(root != nullptr,, "Initdisk root is nullptr");
         VALIDATE(header != nullptr,, "Tar entry is nullptr");
 
-        Log("Loading initdisk file: %s (%lu bytes)", LogLevel::Verbose, 
-            header->Filename().Begin(), header->SizeBytes());
+        auto conv = sl::ConvertUnits(header->SizeBytes());
+        Log("Loading initdisk file: %s (%lu.%lu%sB)", LogLevel::Verbose, 
+            header->Filename().Begin(), conv.major, conv.minor, conv.prefix);
         
         const sl::Url filepath = sl::Url::Parse(header->Filename());
         sl::StringSpan segment {};

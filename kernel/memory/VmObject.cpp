@@ -25,13 +25,15 @@ namespace Npk::Memory
     VmObject::VmObject(VmObject&& from)
     {
         sl::Swap(this->base, from.base);
-        sl::Swap(this->size, this->size);
+        sl::Swap(this->size, from.size);
+        sl::Swap(this->vmm, from.vmm);
     }
 
     VmObject& VmObject::operator=(VmObject&& from)
     {
         sl::Swap(this->base, from.base);
         sl::Swap(this->size, from.size);
+        sl::Swap(this->vmm, from.vmm);
         
         return *this;
     }

@@ -86,4 +86,5 @@ namespace Npk::Memory
 using Npk::Memory::VmObject;
 using Npk::Memory::VmFlag;
 using Npk::Memory::VmFlags;
+using VMM = Npk::Memory::VirtualMemoryManager;
 

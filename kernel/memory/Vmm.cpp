@@ -91,7 +91,6 @@ namespace Npk::Memory
         }
         ASSERT(slabCount > 0, "Bad VMM meta slab params");
 
-        metaSlabLocks[index].Lock();
         VmmMetaSlab* slab = new(reinterpret_cast<void*>(base)) VmmMetaSlab();
         slab->next = metaSlabs[index];
         slab->total = slabCount;
@@ -101,7 +100,6 @@ namespace Npk::Memory
 
         sl::memset(slab->bitmap, 0, bitmapBytes);
         metaSlabs[index] = slab;
-        metaSlabLocks[index].Unlock();
 
         Log("VMM metadata slab created: type=%lu, %lu entries + %lub early slack",
             LogLevel::Verbose, index, slabCount, totalSpace - usableSpace);

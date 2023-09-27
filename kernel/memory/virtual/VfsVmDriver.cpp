@@ -59,12 +59,8 @@ namespace Npk::Memory::Virtual
         //do a tentative check that the file exists, and is actually a file.
         //NOTE: this looks like a toctou bug, but its only an optimization - the authoratative check
         //is performed in Attach().
-        if (auto file = VfsLookup(arg->filepath, KernelFsCtxt); file.Valid())
-        {
-            if (file->type != NodeType::File)
-                return { .success = false };
-        }
-        else
+        auto file = VfsLookup(arg->filepath, KernelFsCtxt);
+        if (!file.Valid() || file->type != NodeType::File)
             return { .success = false };
 
         QueryResult result;

@@ -44,7 +44,7 @@ namespace Npk
 
     NumaDomain* rootDomain = nullptr;
 
-    void InitTopology()
+    void ScanGlobalTopology()
     {
         rootDomain = new NumaDomain();
         rootDomain->id = 0;

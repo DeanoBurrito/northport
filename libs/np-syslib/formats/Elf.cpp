@@ -35,23 +35,23 @@ namespace sl
         return true;
     }
 
-    ComputedReloc ComputeRelocation(Elf64_Word type, uintptr_t a, uintptr_t s, uintptr_t p)
+    ComputedReloc ComputeRelocation(Elf64_Word type, uintptr_t a, uintptr_t b, uintptr_t s, uintptr_t p)
     {
         switch (type)
         {
 #ifdef __x86_64__
-        case R_X86_64_64: return { .value = a + s, .mask = 0xFFFF'FFFF'FFFF'FFFF };
-        case R_X86_64_32: return { .value = a + s, .mask = 0xFFFF'FFFF };
-        case R_X86_64_16: return { .value = a + s, .mask = 0xFFFF };
-        case R_X86_64_8: return { .value = a + s, .mask = 0xFF };
+        case R_X86_64_64: return { .value = a + s, .length = 8 };
+        case R_X86_64_32: return { .value = a + s, .length = 4 };
+        case R_X86_64_16: return { .value = a + s, .length = 2 };
+        case R_X86_64_8: return { .value = a + s, .length = 1};
 #elif __riscv_xlen == 64
-        case R_RISCV_64: return { .value = a + s, .mask = 0xFFFF'FFFF'FFFF'FFFF };
-        case R_RISCV_32: return { .value = a + s, .mask = 0xFFFF'FFFF };
+        case R_RISCV_64: return { .value = a + s, .length = 8; };
+        case R_RISCV_32: return { .value = a + s, .length = 4; };
 #else
     #error "syslib/Elf.cpp: unknown architecture"
 #endif
         }
-        return { .value = 0, .mask = 0 };
+        return { .value = 0, .length = 0 };
     }
 
     bool ApplySectionRelocations(const sl::Elf64_Ehdr* ehdr, size_t shdrIndex)
@@ -80,11 +80,10 @@ namespace sl
                 const uintptr_t p = fixpoint.raw;
                 const uintptr_t a = relas[r].r_addend;
 
-                auto reloc = ComputeRelocation(ELF64_R_TYPE(relas[r].r_info), a, s, p);
-                if (reloc.mask == 0)
+                auto reloc = ComputeRelocation(ELF64_R_TYPE(relas[r].r_info), a, 0, s, p);
+                if (reloc.length == 0)
                     return false;
-                const uintptr_t value = fixpoint.Read<uintptr_t>() & ~reloc.mask;
-                fixpoint.Write<uintptr_t>(value | (reloc.value & reloc.mask));
+                sl::memcopy(&reloc.value, fixpoint.ptr, reloc.length);
             }
         }
 
