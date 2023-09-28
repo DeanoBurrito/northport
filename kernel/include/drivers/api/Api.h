@@ -33,6 +33,12 @@
 extern "C" {
 #endif
 
+/* Decorators, most are purely cosmetic hints to the programmer, a few have functionality */
+#define OPTIONAL
+#define REQUIRED
+#define OWNING
+#define NPK_METADATA __attribute__((used, section(".npk_module")))
+
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
 #define NP_MODULE_API_VER_MINOR 1
@@ -45,11 +51,41 @@ extern "C" {
 /* Struct that indicates this file can be loaded as a module, only one of these can exist. */
 typedef struct
 {
-    uint8_t metadata_start_guid[16];
+    uint8_t guid[16];
     uint16_t api_ver_major;
     uint16_t api_ver_minor;
     uint16_t api_ver_rev;
 } npk_module_metadata;
+
+typedef enum
+{
+    PciFunction = 0,
+    DtbPath = 1,
+} npk_init_tag_type;
+
+struct npk_init_tag_
+{
+    npk_init_tag_type type;
+    OWNING struct npk_init_tag_* next;
+};
+typedef struct npk_init_tag_ npk_init_tag;
+
+typedef enum
+{
+    Mmio = 0,
+    Legacy = 1,
+} npk_pci_addr_type;
+
+typedef struct
+{
+    npk_pci_addr_type type;
+    uintptr_t addr;
+} npk_init_tag_pci_function;
+
+typedef struct
+{
+    OWNING const char* node_path;
+} npk_init_tag_dtb_path;
 
 typedef enum
 {
@@ -62,12 +98,13 @@ typedef enum
 
 typedef struct 
 {
-    uint8_t manifest_start_guid[16];
+    uint8_t guid[16];
     uint16_t ver_major;
     uint16_t ver_minor;
     uint16_t ver_rev;
 
     npk_load_type load_type;
+    size_t load_str_len;
     const uint8_t* load_str;
     const char* friendly_name;
 
@@ -88,10 +125,15 @@ typedef enum
 void* npk_heap_alloc(size_t count);
 void npk_heap_free(void* ptr, size_t count);
 
-void npk_log(const char* str, npk_log_level level, ...);
+void npk_log(const char* str, npk_log_level level);
 void npk_panic(const char* why);
 
-void npk_thread_exit(size_t code);
+uint8_t npk_pci_legacy_read8(uintptr_t addr);
+uint16_t npk_pci_legacy_read16(uintptr_t addr);
+uint32_t npk_pci_legacy_read32(uintptr_t addr);
+void npk_pci_legacy_write8(uintptr_t addr, uint8_t data);
+void npk_pci_legacy_write16(uintptr_t addr, uint16_t data);
+void npk_pci_legacy_write32(uintptr_t addr, uint32_t data);
 
 #ifdef __cplusplus
 }

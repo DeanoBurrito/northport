@@ -17,6 +17,11 @@
 
 - Added development cache (develcache): limine and any OVMF firmware files for testing are downloaded and cached inside the project directly, reducing setup for getting started with the project.
     - This is opt-out, and you can point the build system to your own limine and OVMF firmware files if you prefer that.
+
+- Kernel/drivers: module loader and external drivers now fully suppoported.
+    - Majority of kernel drivers will be loaded as shared objects from the initdisk.
+    - Proof of concept driver written. Previously implemented drivers will be ported at some point to use the new system.
+- Kernel: rewrite of symbol lookup. Before symbols used to be generated after the kernel was linked, compiling the symbols into an ELF object and sticking that object at the end of the kernel file (so as not to shuffle existing symbol addresses around). This certainly worked, but it's not as clean as the newer version: which just parses the kernel file request from the bootloader.
 - Kernel/riscv: now uses `tp` for core-local info instead of reading `sscratch` everytime. Thanks to xvanc and sigterm for the feedback.
 - Kernel/riscv: support for acpi based initialization, in addition to the device tree.
 - Kernel: added concept of system topology, currently logical and physical cores are tracked, are as NUMA domains and their corresponding physical cores and memory.

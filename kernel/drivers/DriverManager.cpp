@@ -1,116 +1,104 @@
 #include <drivers/DriverManager.h>
+#include <drivers/ElfLoader.h>
+#include <drivers/api/Api.h>
 #include <debug/Log.h>
+#include <memory/Vmm.h>
 #include <tasking/Thread.h>
-#include <tasking/Process.h>
-#include <Memory.h>
 
 namespace Npk::Drivers
 {
-    void LoadBuiltInDrivers(); //defined in drivers/BuiltInDrivers.cpp
+    constexpr const char* LoadTypeStrs[] = 
+    { 
+        "never", "always", "pci-class", "pci-id",
+        "dtb-compat",
+    };
 
-    DriverManifest* DriverManager::FindByFriendlyName(sl::StringSpan friendlyName)
+    bool DriverManager::LoadAndRun(sl::Handle<DriverManifest>& manifest)
     {
-        for (auto it = manifests.Begin(); it != manifests.End(); ++it)
-        {
-            if (it->friendlyName.Size() != friendlyName.Size())
-                continue;
-            if (sl::memcmp(it->friendlyName.Begin(), friendlyName.Begin(), friendlyName.Size()) != 0)
-                continue;
-            return &*it;
-        }
+        VALIDATE_(manifest.Valid(), false);
+        auto maybeEntry = LoadElf(VMM::Kernel(), manifest->sourcePath.Span());
+        VALIDATE_(maybeEntry, false);
 
-        return nullptr;
-    }
+        auto mainFunction = reinterpret_cast<void (*)(void*)>(*maybeEntry);
+        auto mainThread = Tasking::Thread::Create(mainFunction, nullptr);
+        Log("Driver %s loaded, will run on thread %lu.", LogLevel::Verbose,
+            manifest->friendlyName.C_Str(), mainThread->Id());
 
-    DriverManifest* DriverManager::FindByMachName(ManifestName machineName)
-    {
-        for (auto it = manifests.Begin(); it != manifests.End(); ++it)
-        {
-            if (it->machineName.Size() != machineName.Size())
-                continue;
-            if (sl::memcmp(it->machineName.Begin(), machineName.Begin(), machineName.Size()) != 0)
-                continue;
-            return &*it;
-        }
-
-        return nullptr;
-    }
-
-    bool DriverManager::KillDriver(LoadedDriver* driver)
-    {
-        driver->process->Kill();
-        
-        DriverManifest& manifest = driver->manifest;
-        manifest.control = nullptr;
-        delete driver;
-
+        mainThread->Start();
         return true;
     }
-    
+
     DriverManager globalDriverManager;
     DriverManager& DriverManager::Global()
     { return globalDriverManager; }
 
     void DriverManager::Init()
     {
-        Log("Driver mananger initialized.", LogLevel::Info);
-        LoadBuiltInDrivers();
+        Log("Driver manager initialized, api version %u.%u.%u", LogLevel::Info,
+            NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV);
     }
 
-    void DriverManager::RegisterDriver(const DriverManifest& manifest)
+    bool DriverManager::Register(DriverManifest* manifest)
     {
-        sl::ScopedLock scopeLock(lock);
-        
-        //check name isn't already in use
-        DriverManifest* existing = FindByMachName(manifest.machineName);
-        if (existing != nullptr)
+        manifestsLock.WriterLock();
+
+        for (auto it = manifests.Begin(); it != manifests.End(); ++it)
         {
-            Log("Driver registration failed: %s machine name conflicts with '%s'", 
-                LogLevel::Error, manifest.friendlyName.Begin(), existing->friendlyName.Begin());
-            return;
+            if ((**it)->friendlyName == manifest->friendlyName)
+            {
+                manifestsLock.WriterUnlock();
+                Log("Failed to register driver with duplicate name: %s", LogLevel::Error, 
+                    manifest->friendlyName.C_Str());
+                return false;
+            }
+            if ((**it)->loadStr == manifest->loadStr)
+            {
+                manifestsLock.WriterUnlock();
+                Log("Failed to register driver with duplicate load string: %s", LogLevel::Error,
+                    manifest->friendlyName.C_Str());
+                return false;
+            }
         }
 
         manifests.PushBack(manifest);
-        manifests.Back().control = nullptr;
-        Log("Driver manifest registered: %s", LogLevel::Verbose, manifest.friendlyName.Begin());
-    }
+        manifestsLock.WriterUnlock();
 
-    bool DriverManager::TryLoadDriver(ManifestName name, InitTag* tags)
-    {
-        sl::ScopedLock scopeLock(lock);
-        DriverManifest* manifest = FindByMachName(name);
-        if (manifest == nullptr || manifest->control != nullptr)
-            return false;
+        Log("Driver manifest added: %s, module=%s, loadType=%s", LogLevel::Info, 
+            manifest->friendlyName.C_Str(), manifest->sourcePath.C_Str(), 
+            LoadTypeStrs[(size_t)manifest->loadType]);
 
-        manifest->control = new LoadedDriver(*manifest);
-        using namespace Tasking;
-        Process* proc = (manifest->control->process = Process::Create());
-        Thread* mainThread = Thread::Create(manifest->EnterNew, tags, manifest->control->process);
-
-        mainThread->Start();
-        Log("Starting driver: %s, proc=%lu, mainThread=%lu.", LogLevel::Info, manifest->friendlyName.Begin(), 
-            proc->Id(), mainThread->Id());
-
+        if (manifest->loadType == LoadType::Always)
+        {
+            sl::Handle captive(manifest);
+            //still return true as we did successfully register the driver, we just failed to load it.
+            VALIDATE_(LoadAndRun(captive), true);
+        }
         return true;
     }
 
-    bool DriverManager::UnloadDriver(sl::Span<const uint8_t> name)
+    bool DriverManager::Unregister(sl::StringSpan friendlyName)
     {
-        sl::ScopedLock scopeLock(lock);
-        DriverManifest* manifest = FindByMachName(name);
-        if (manifest == nullptr || manifest->control == nullptr)
-            return false;
-
-        return KillDriver(manifest->control);
+        ASSERT_UNREACHABLE();
     }
 
-    bool DriverManager::UnloadDriver(sl::StringSpan friendlyName)
+    bool DriverManager::LoadDriver(LoadType type, sl::Span<const uint8_t> loadStr)
     {
-        sl::ScopedLock scopeLock(lock);
-        DriverManifest* manifest = FindByFriendlyName(friendlyName);
-        if (manifest == nullptr || manifest->control == nullptr)
+        manifestsLock.ReaderLock();
+
+        sl::Handle<DriverManifest> manifest;
+        for (auto it = manifests.Begin(); it != manifests.End(); ++it)
+        {
+            if ((**it)->loadType == type && (**it)->loadStr == loadStr)
+            {
+                manifest = *it;
+                break;
+            }
+        }
+        manifestsLock.ReaderUnlock();
+
+        if (!manifest.Valid())
             return false;
-        
-        return KillDriver(manifest->control);
+
+        return LoadAndRun(manifest);
     }
 }

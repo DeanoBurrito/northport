@@ -1,48 +1,45 @@
 #pragma once
 
-#include <drivers/DriverManifest.h>
-#include <drivers/InitTags.h>
-#include <tasking/Process.h>
-#include <containers/LinkedList.h>
+#include <String.h>
+#include <Handle.h>
 #include <Locks.h>
-#include <Span.h>
+#include <containers/LinkedList.h>
 
 namespace Npk::Drivers
 {
-    struct LoadedDriver
+    enum class LoadType
     {
-        Tasking::Process* process;
-        DriverManifest& manifest;
-
-        LoadedDriver(DriverManifest& man) : manifest(man)
-        {}
+        Never = 0,
+        Always = 1,
+        PciClass = 2,
+        PciId = 3,
+        DtbCompat = 4,
     };
-    
+
+    struct DriverManifest
+    {
+        size_t references;
+        sl::String sourcePath;
+        sl::String friendlyName;
+
+        LoadType loadType;
+        sl::Span<const uint8_t> loadStr;
+    };
+
     class DriverManager
     {
     private:
-        sl::LinkedList<DriverManifest> manifests;
-        sl::TicketLock lock;
+        sl::RwLock manifestsLock;
+        sl::LinkedList<sl::Handle<DriverManifest>> manifests;
 
-        DriverManifest* FindByFriendlyName(sl::StringSpan name);
-        DriverManifest* FindByMachName(ManifestName name);
-
-        bool KillDriver(LoadedDriver* driver);
+        bool LoadAndRun(sl::Handle<DriverManifest>& manifest);
 
     public:
         static DriverManager& Global();
 
-        DriverManager() = default;
-        DriverManager(const DriverManager&) = delete;
-        DriverManager& operator=(const DriverManager&) = delete;
-        DriverManager(DriverManager&&) = delete;
-        DriverManager& operator=(DriverManager&&) = delete;
-
         void Init();
-
-        void RegisterDriver(const DriverManifest& manifest);
-        bool TryLoadDriver(ManifestName machineName, InitTag* tags);
-        bool UnloadDriver(ManifestName machineName);
-        bool UnloadDriver(sl::StringSpan friendlyName);
+        bool Register(DriverManifest* manifest);
+        bool Unregister(sl::StringSpan friendlyName);
+        bool LoadDriver(LoadType type, sl::Span<const uint8_t> loadStr);
     };
 }

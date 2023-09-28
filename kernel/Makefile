@@ -8,9 +8,7 @@ CXX_SRCS = arch/Helpers.cpp \
 	debug/TerminalDriver.cpp debug/Symbols.cpp \
 	devices/PciAddress.cpp devices/PciBridge.cpp devices/PciCapabilities.cpp \
 	devices/DeviceManager.cpp \
-	drivers/DriverManager.cpp drivers/BuiltInDrivers.cpp drivers/builtin/BochsVga.cpp \
-	drivers/InitTags.cpp drivers/builtin/VirtioTransport.cpp drivers/builtin/VirtioGpu.cpp \
-	drivers/builtin/Nvme.cpp drivers/Loader.cpp \
+	drivers/DriverManager.cpp drivers/ElfLoader.cpp drivers/ApiBinds.cpp \
 	events/Dispatch.cpp events/EventQueue.cpp \
 	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TempFs.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \

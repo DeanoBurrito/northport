@@ -10,6 +10,7 @@
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
+#include <drivers/ElfLoader.h>
 #include <filesystem/Filesystem.h>
 #include <filesystem/FileCache.h>
 #include <interrupts/InterruptManager.h>
@@ -77,8 +78,12 @@ namespace Npk
         ScanGlobalTopology();
         Filesystem::InitFileCache();
         Filesystem::InitVfs();
+
         Interrupts::InterruptManager::Global().Init();
         Tasking::Scheduler::Global().Init();
+
+        Devices::DeviceManager::Global().Init();
+        Drivers::DriverManager::Global().Init();
     }
 
     void ReclaimMemoryThread(void*)
@@ -109,9 +114,8 @@ namespace Npk
 
     void InitThread(void*)
     {
-        Devices::DeviceManager::Global().Init(); //TODO: this and driver manager should probably happen before threaded exec no?
-        Drivers::DriverManager::Global().Init();
         Devices::PciBridge::Global().Init();
+        Drivers::ScanForModules("/initdisk/drivers/");
 
         Tasking::Thread::Current().Exit(0);
     }
