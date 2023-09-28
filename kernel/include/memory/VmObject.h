@@ -50,9 +50,6 @@ namespace Npk::Memory
         VmObject(VmObject&& from);
         VmObject& operator=(VmObject&& from);
 
-        inline operator bool() const
-        { return base.ptr != nullptr; }
-
         inline bool Valid() const
         { return base.ptr != nullptr; }
 
@@ -76,6 +73,12 @@ namespace Npk::Memory
 
         inline size_t Size() const
         { return size; }
+
+        inline sl::Span<uint8_t> Span()
+        { return { base.As<uint8_t>(), size }; }
+
+        inline sl::Span<const uint8_t> ConstSpan() const
+        { return { base.As<const uint8_t>(), size}; }
 
         void Release();
         VmFlags Flags(sl::Opt<VmFlags> flags);

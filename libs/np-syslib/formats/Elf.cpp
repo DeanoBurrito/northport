@@ -42,52 +42,17 @@ namespace sl
 #ifdef __x86_64__
         case R_X86_64_64: return { .value = a + s, .length = 8 };
         case R_X86_64_32: return { .value = a + s, .length = 4 };
-        case R_X86_64_16: return { .value = a + s, .length = 2 };
-        case R_X86_64_8: return { .value = a + s, .length = 1};
+        case R_X86_64_RELATIVE: return { .value = b + a, .length = sizeof(void*) };
+        case R_X86_64_JUMP_SLOT: return { .value = s, .length = sizeof(void*) };
 #elif __riscv_xlen == 64
-        case R_RISCV_64: return { .value = a + s, .length = 8; };
-        case R_RISCV_32: return { .value = a + s, .length = 4; };
+        case R_RISCV_64: return { .value = a + s, .length = 8 };
+        case R_RISCV_32: return { .value = a + s, .length = 4 };
+        case R_RISCV_RELATIVE: return { .value = b + a, .length = sizeof(void*) };
 #else
     #error "syslib/Elf.cpp: unknown architecture"
 #endif
         }
         return { .value = 0, .length = 0 };
-    }
-
-    bool ApplySectionRelocations(const sl::Elf64_Ehdr* ehdr, size_t shdrIndex)
-    {
-        if (ehdr == nullptr)
-            return false;
-
-        sl::NativePtr image(ehdr);
-        auto shdrs = image.As<const sl::Elf64_Shdr>(ehdr->e_shoff);
-        for (size_t i = 0; i < ehdr->e_shnum; i++)
-        {
-            if (shdrs[i].sh_type != SHT_RELA)
-                continue; //TODO: support SHT_REL relocations as well
-            if (shdrs[i].sh_info != shdrIndex && shdrIndex != -1ul)
-                continue;
-
-            sl::NativePtr target(shdrs[shdrs[i].sh_info].sh_addr);
-            auto symbols = reinterpret_cast<sl::Elf64_Sym*>(shdrs[shdrs[i].sh_link].sh_addr);
-            auto relas = reinterpret_cast<const sl::Elf64_Rela*>(shdrs[i].sh_addr);
-
-            const size_t relaCount = shdrs[i].sh_size / shdrs[i].sh_entsize;
-            for (size_t r = 0; r < relaCount; r++)
-            {
-                sl::NativePtr fixpoint = target.Offset(relas[r].r_offset);
-                const uintptr_t s = symbols[ELF64_R_SYM(relas[r].r_info)].st_value;
-                const uintptr_t p = fixpoint.raw;
-                const uintptr_t a = relas[r].r_addend;
-
-                auto reloc = ComputeRelocation(ELF64_R_TYPE(relas[r].r_info), a, 0, s, p);
-                if (reloc.length == 0)
-                    return false;
-                sl::memcopy(&reloc.value, fixpoint.ptr, reloc.length);
-            }
-        }
-
-        return true;
     }
 
     Vector<const Elf64_Phdr*> FindPhdrs(const Elf64_Ehdr* hdr, Elf64_Word type)
