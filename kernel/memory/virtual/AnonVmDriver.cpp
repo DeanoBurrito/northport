@@ -42,15 +42,21 @@ namespace Npk::Memory::Virtual
         (void)flags;
         const size_t hatMode = reinterpret_cast<size_t>(context.range.token);
         const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
-        const size_t mapLength = sl::Min(FaultMaxMapAhead, context.range.Top() - where);
+        const size_t mapLength = sl::Min(FaultMaxMapAhead * granuleSize, context.range.Top() - where);
         const size_t mapCount = sl::AlignUp(mapLength, granuleSize) / granuleSize;
         where = sl::AlignDown(where, granuleSize);
 
+        const auto convFlags = ConvertFlags(context.range.flags);
         sl::ScopedLock scopeLock(context.lock);
         for (size_t i = 0; i < mapCount; i++)
         {
-            Map(context.map, where + (i * granuleSize), PMM::Global().Alloc(),
-                hatMode, ConvertFlags(context.range.flags), true);
+            //NOTE: right now the only reason we'd be getting a fault is due to demand
+            //paging/zero paging, so if this logic seems to make a lot of assumptions - thats why.
+            const uintptr_t paddr = PMM::Global().Alloc();
+            if (features.zeroPage)
+                SyncMap(context.map, where + i * granuleSize, paddr, convFlags, true);
+            else
+                ASSERT_(Map(context.map, where + i * granuleSize, paddr, hatMode, convFlags, false));
         }
 
         return { .goodFault = true };
@@ -58,8 +64,44 @@ namespace Npk::Memory::Virtual
 
     bool AnonVmDriver::ModifyRange(VmDriverContext& context, ModifyRangeArgs args)
     { 
-        (void)context; (void)args;
-        ASSERT_UNREACHABLE();
+        ASSERT_(args.trimStart == 0 && args.trimEnd == 0); //TODO: not yet implemented
+
+        if (args.setFlags.Has(VmFlag::Guarded) || args.clearFlags.Has(VmFlag::Guarded))
+            return false;
+
+        const size_t hatMode = reinterpret_cast<size_t>(context.range.token);
+        const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
+        const bool doFlush = args.clearFlags.Any() || HatLimits().flushOnPermsUpgrade;
+
+        HatFlags flags = ConvertFlags(context.range.flags);
+        flags |= ConvertFlags(args.setFlags);
+        flags &= ~ConvertFlags(args.clearFlags);
+
+        sl::ScopedLock lock(context.lock);
+        for (size_t i = 0; i < context.range.length; i += granuleSize)
+            SyncMap(context.map, context.range.base + i, {}, flags, doFlush);
+
+        return true;
+    }
+
+    SplitResult AnonVmDriver::Split(VmDriverContext& context, size_t offset)
+    {
+        const size_t hatMode = reinterpret_cast<size_t>(context.range.token);
+        const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
+
+        offset = sl::AlignUp(offset, granuleSize);
+        if (offset >= context.range.length)
+            return { .success = false };
+
+        const SplitResult result
+        {
+            .offset = offset,
+            .tokenLow = context.range.token,
+            .tokenHigh = context.range.token,
+            .success = true,
+        };
+
+        return result;
     }
 
     QueryResult AnonVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)

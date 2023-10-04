@@ -4,22 +4,32 @@
 
 namespace Npk::Memory
 {
-    VmObject::VmObject(size_t length, uintptr_t arg, VmFlags flags)
+    VmObject::VmObject(VMM* vmm, size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits limits)
     {
-        vmm = &VMM::Kernel(); //TODO: overridable
-        auto maybeBase = vmm->Alloc(length, arg, flags);
-        if (maybeBase)
-        {
-            base = *maybeBase;
-            size = length;
-        }
-        else
-            Log("VMO creation failed, caller: 0x%lx", LogLevel::Error, (uintptr_t)__builtin_return_address(0));
+        if (vmm == nullptr)
+            vmm = &VMM::Kernel();
+        this->vmm = vmm;
+
+        base = nullptr;
+        size = 0;
+
+        auto maybeBase = vmm->Alloc(length, initArg, flags, limits);
+        VALIDATE(maybeBase.HasValue(),, "VMO creation failed");
+        base = *maybeBase;
+        size = length;
     }
 
     VmObject::~VmObject()
     {
         Release();
+    }
+    VmObject::VmObject(const VmObject&)
+    {
+        ASSERT_UNREACHABLE();
+    }
+    VmObject& VmObject::operator=(const VmObject&)
+    {
+        ASSERT_UNREACHABLE();
     }
 
     VmObject::VmObject(VmObject&& from)
@@ -63,5 +73,33 @@ namespace Npk::Memory
             return {};
         }
         return *maybeFlags;
+    }
+
+    VmObject VmObject::Subdivide(size_t length, bool fromStart)
+    {
+        if (length >= size)
+            return {};
+
+        auto maybeSplit = vmm->Split(base.raw, fromStart ? length : size - length);
+        if (!maybeSplit.HasValue())
+            return {};
+
+        VmObject other {};
+        other.vmm = vmm;
+        if (fromStart)
+        {
+            other.base = base;
+            other.size = *maybeSplit;
+            base.raw += other.size;
+            size -= other.size;
+        }
+        else
+        {
+            other.base = base.raw + *maybeSplit;
+            other.size = *maybeSplit;
+            size -= other.size;
+        }
+
+        return other;
     }
 }

@@ -52,6 +52,14 @@ namespace Npk::Memory::Virtual
         VmFlags clearFlags {};
     };
 
+    struct SplitResult
+    {
+        uintptr_t offset = 0;
+        void* tokenLow = nullptr;
+        void* tokenHigh = nullptr;
+        bool success = false;
+    };
+
     struct VmDriverContext
     {
         sl::TicketLock& lock;
@@ -90,6 +98,13 @@ namespace Npk::Memory::Virtual
         //and potentially set or clear a number of flags.
         //Returns whether the operation was successful or not.
         virtual bool ModifyRange(VmDriverContext& context, ModifyRangeArgs args) = 0;
+
+        //The VMM wants to split an existing range. This function is called before the existing range
+        //is modified or the new one is inserted, and allows the VM driver to abort the operation
+        //if it cant be (easily) done. If successuly, the VM driver should leave both ranges
+        //in a state similar to how an Attach() call would, and return the actual offset the split
+        //occured at.
+        virtual SplitResult Split(VmDriverContext& context, size_t offset) = 0;
         
         //The VMM wants to know how much space (and with what alignment) a VM allocation would
         //require. This is purely informational, no memory mappings are modified here.

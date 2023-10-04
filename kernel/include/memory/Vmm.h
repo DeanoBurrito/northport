@@ -78,14 +78,6 @@ namespace Npk::Memory
         size_t total;
     };
 
-    struct VmmDebugEntry
-    {
-        uintptr_t base;
-        size_t length;
-        VmFlags flags;
-        size_t lengthMappped;
-    };
-
     enum class VmFaultFlag
     {
         Read = 0,
@@ -96,21 +88,20 @@ namespace Npk::Memory
 
     using VmFaultFlags = sl::Flags<VmFaultFlag>;
 
+    struct VmmStats
+    {
+        size_t faults;
+        size_t anonRanges;
+        size_t fileRanges;
+        size_t mmioRanges;
+    };
+
     //badge pattern
     class VirtualMemoryManager;
     class VmmKey
     {
     friend VirtualMemoryManager;
         VmmKey() = default;
-    };
-
-    struct VmmAllocLimits
-    {
-        uintptr_t lowerBound;
-        uintptr_t upperBound;
-
-        constexpr VmmAllocLimits() : lowerBound(0), upperBound(-1ul)
-        {}
     };
 
     class VirtualMemoryManager
@@ -130,6 +121,7 @@ namespace Npk::Memory
 
         uintptr_t globalLowerBound;
         uintptr_t globalUpperBound;
+        VmmStats stats;
 
         VmmMetaSlab* CreateMetaSlab(VmmMetaType type);
         bool DestroyMetaSlab(VmmMetaType type);
@@ -158,9 +150,11 @@ namespace Npk::Memory
         void MakeActive();
         //allows to VMM to respond to an attempt to access a memory address, returns if the access was valid or not.
         bool HandleFault(uintptr_t addr, VmFaultFlags flags);
+        //get access to this VMM's statistics. Nothing too useful here, mainly used for fun screenshots.
+        VmmStats GetStats() const;
         
         //allocates virtual memory and returns the base address of the allocated addresses.
-        sl::Opt<uintptr_t> Alloc(size_t length, uintptr_t initArg, VmFlags flags, VmmAllocLimits = {});
+        sl::Opt<uintptr_t> Alloc(size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits = {});
         //frees virtual memory, returns whether freeing was successful or not.
         bool Free(uintptr_t base);
         //gets the flags associated with a range of virtual memory.
@@ -169,6 +163,10 @@ namespace Npk::Memory
         //was successful or not. The operation is atomic, so there is no 'partial flags update':
         //the flags will match what was requested, or they will remain the same.
         bool SetFlags(uintptr_t base, VmFlags flags);
+        //attempts to split a block of virtual memory at a specified offset. If successful, the
+        //actual offset the split occured at is returned (it may not be exactly what was requested
+        //due to MMU constraints).
+        sl::Opt<uintptr_t> Split(uintptr_t base, uintptr_t offset);
 
         //checks if some virtual memory exists, and can optionally check it's permissions
         //and type via the flags argument.

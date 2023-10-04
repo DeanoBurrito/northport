@@ -342,6 +342,7 @@ namespace Npk::Memory
     {
         if (addr < globalLowerBound || addr >= globalUpperBound)
             return false;
+        stats.faults++;
         
         //determine if this is a good or bad page fault by trying to locate a range
         //containing the faulting address.
@@ -368,13 +369,18 @@ namespace Npk::Memory
 
         Log("%s page fault: addr=0x%lx, flags=0x%lx", LogLevel::Debug, 
             result.goodFault ? "Good" : "Bad", addr, flags.Raw());
+        Log("VMM stats: faults=%lu, ranges=%lu/%lu/%lu (anon/file/mmio)", LogLevel::Debug,
+            stats.faults, stats.anonRanges, stats.fileRanges, stats.mmioRanges);
 
-        if (!result.goodFault) //TODO: temporary feature for now, checking bad faults is the callers responsibility
-            Panic("Bad page fault, see log");
         return result.goodFault;
     }
 
-    sl::Opt<uintptr_t> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, VmmAllocLimits limits)
+    VmmStats VMM::GetStats() const
+    {
+        return stats;
+    }
+
+    sl::Opt<uintptr_t> VMM::Alloc(size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits limits)
     {
         /* Allocating has a few main steps:
          * - First find the driver for the requested type of memory.
@@ -398,19 +404,21 @@ namespace Npk::Memory
             return {};
 
         //query the driver, find out what it would require to satify this allocation
-        const QueryResult query = driver->Query(length, flags, initArg);
+        const QueryResult query = driver->Query(length, flags, initArg); //TODO: tell vmdriver about alignment request
         if (!query.success)
+            return {};
+        if (limits.alignment > 1 && (query.alignment % limits.alignment) != 0)
             return {};
 
         sl::ScopedLock holyLock(holesLock);
         VmHole* hole = holes.GetRoot();
         VALIDATE(hole != nullptr, {}, "No address space holes?");
 
-        //TODO: respect alignment when allocating + limits
-        //find an empty part of the address space we can use, claim it.
+        //find an empty part of the address that meets our criteria.
         uintptr_t rangeBase = 0;
         while (true)
         {
+            //TODO: respect upper + lower bounds + alignment
             if (VmHole* left = holes.GetLeft(hole); 
                 left != nullptr && left->largestHole >= query.length)
             {
@@ -468,6 +476,13 @@ namespace Npk::Memory
         ranges.Insert(vmRange);
         rangesLock.Unlock();
 
+        if (flags.Has(VmFlag::Anon))
+            stats.anonRanges++;
+        else if (flags.Has(VmFlag::File))
+            stats.fileRanges++;
+        else if (flags.Has(VmFlag::Mmio))
+            stats.mmioRanges++;
+
         return vmRange->base + vmRange->offset;
     }
 
@@ -497,6 +512,13 @@ namespace Npk::Memory
         rangesLock.Lock();
         ranges.Remove(range);
         rangesLock.Unlock();
+
+        if (range->flags.Has(VmFlag::Anon))
+            stats.anonRanges--;
+        else if (range->flags.Has(VmFlag::File))
+            stats.fileRanges--;
+        else if (range->flags.Has(VmFlag::Mmio))
+            stats.mmioRanges--;
 
         using namespace Virtual;
         VmDriver* driver = VmDriver::GetDriver(range->flags);
@@ -551,6 +573,48 @@ namespace Npk::Memory
         args.clearFlags = range->flags.Raw() & ~flags.Raw();
 
         return driver->ModifyRange(context, args);
+    }
+
+    sl::Opt<uintptr_t> VMM::Split(uintptr_t base, uintptr_t offset)
+    {
+        VmRange* range = FindRange(base);
+        if (range == nullptr)
+            return {};
+
+        offset += base - (range->base + range->offset);
+        using namespace Virtual;
+        VmDriver* driver = VmDriver::GetDriver(range->flags);
+        if (driver == nullptr)
+            return {};
+
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
+        const SplitResult result = driver->Split(context, offset);
+        if (!result.success)
+            return {};
+
+        VmRange* newRange = new(AllocMeta(VmmMetaType::Range)) VmRange();
+
+        newRange->base = range->base + result.offset;
+        newRange->length = range->length - result.offset;
+        newRange->flags = range->flags;
+        newRange->offset = 0;
+        newRange->token = result.tokenHigh;
+
+        range->length = newRange->base - range->base;
+        range->token = result.tokenLow;
+
+        if (range->flags.Has(VmFlag::Anon))
+            stats.anonRanges++;
+        else if (range->flags.Has(VmFlag::File))
+            stats.fileRanges++;
+        else if (range->flags.Has(VmFlag::Mmio))
+            stats.mmioRanges++;
+
+        rangesLock.Lock();
+        ranges.Insert(newRange);
+        rangesLock.Unlock();
+
+        return result.offset;
     }
 
     bool VMM::MemoryExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags)

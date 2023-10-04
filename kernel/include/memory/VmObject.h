@@ -5,6 +5,9 @@
 #include <Optional.h>
 #include <Span.h>
 
+namespace Npk::Memory { class VirtualMemoryManager; };
+using VMM = Npk::Memory::VirtualMemoryManager;
+
 namespace Npk::Memory
 {
     enum class VmFlag : size_t
@@ -27,25 +30,64 @@ namespace Npk::Memory
         sl::StringSpan filepath;
         size_t offset;
         bool noDeferBacking;
+
+        VmoFileInitArg() : filepath(), offset(0), noDeferBacking(false)
+        {}
+    };
+
+    struct VmAllocLimits
+    {
+        uintptr_t lowerBound;
+        uintptr_t upperBound;
+        size_t alignment;
+
+        constexpr VmAllocLimits() : lowerBound(0), upperBound(-1ul), alignment(1)
+        {}
     };
 
     class VmObject
     {
     private:
-        VirtualMemoryManager* vmm = nullptr;
+        VMM* vmm = nullptr;
         sl::NativePtr base = nullptr;
         size_t size = 0;
 
     public:
         VmObject() = default;
 
-        VmObject(size_t length, VmFlags flags) : VmObject(length, 0, flags)
-        {};
-        VmObject(size_t length, uintptr_t arg, VmFlags flags);
+        VmObject(size_t length, VmFlags flags)
+            : VmObject(nullptr, length, 0, flags, VmAllocLimits{})
+        {}
 
-        ~VmObject();
-        VmObject(const VmObject& other) = delete;
-        VmObject& operator=(const VmObject& other) = delete;
+        VmObject(VMM* vmm, size_t length, VmFlags flags)
+            : VmObject(vmm, length, 0, flags, VmAllocLimits{})
+        {}
+
+        VmObject(size_t length, uintptr_t initArg, VmFlags flags)
+            : VmObject(nullptr, length, initArg, flags, VmAllocLimits{})
+        {}
+
+        VmObject(size_t length, VmoFileInitArg& initArg, VmFlags flags)
+            : VmObject(nullptr, length, reinterpret_cast<uintptr_t>(&initArg), flags, VmAllocLimits{})
+        {}
+
+        VmObject(VMM* vmm, size_t length, uintptr_t initArg, VmFlags flags)
+            : VmObject(vmm, length, initArg, flags, VmAllocLimits{})
+        {}
+
+        VmObject(VMM* vmm, size_t length, VmoFileInitArg& initArg, VmFlags flags)
+            : VmObject(vmm, length, reinterpret_cast<uintptr_t>(&initArg), flags, VmAllocLimits{})
+        {}
+
+        VmObject(size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits limits)
+            : VmObject(nullptr, length, initArg, flags, limits)
+        {}
+
+        VmObject(VMM* vmm, size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits limits);
+
+        ~VmObject(); //TODO: investigate use of copy ctors?
+        VmObject(const VmObject& other);
+        VmObject& operator=(const VmObject& other);
 
         VmObject(VmObject&& from);
         VmObject& operator=(VmObject&& from);
@@ -82,6 +124,7 @@ namespace Npk::Memory
 
         void Release();
         VmFlags Flags(sl::Opt<VmFlags> flags);
+        VmObject Subdivide(size_t length, bool fromStart);
     };
 }
 
@@ -89,5 +132,4 @@ namespace Npk::Memory
 using Npk::Memory::VmObject;
 using Npk::Memory::VmFlag;
 using Npk::Memory::VmFlags;
-using VMM = Npk::Memory::VirtualMemoryManager;
 

@@ -45,6 +45,25 @@ namespace Npk::Memory::Virtual
         (void)context; (void)args;
     }
 
+    SplitResult KernelVmDriver::Split(VmDriverContext& context, size_t offset)
+    {
+        const uintptr_t alignment = GetHatLimits().modes[0].granularity;
+        offset = sl::AlignUp(offset, alignment);
+
+        if (offset > context.range.length)
+            return { .success = false };
+
+        SplitResult result
+        {
+            .offset = offset,
+            .tokenLow = nullptr,
+            .tokenHigh = nullptr,
+            .success = true,
+        };
+
+        return result;
+    }
+
     QueryResult KernelVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
     {
         (void)attachArg;

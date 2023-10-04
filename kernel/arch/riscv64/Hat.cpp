@@ -41,6 +41,7 @@ namespace Npk
 
     HatLimits limits
     {
+        .flushOnPermsUpgrade = false,
         .modeCount = 4,
         .modes = 
         {

@@ -35,6 +35,9 @@ namespace Npk
     constexpr HatFlags operator&=(HatFlags& src, const HatFlags& other)
     { return src = (HatFlags)((uintptr_t)src & (uintptr_t)other); }
 
+    constexpr HatFlags operator~(const HatFlags& src)
+    { return (HatFlags)(~(size_t)src); }
+
     /*
         This struct holds implementation-specific details, and we only pass pointers to
         this struct through the API. This is intentional so the inner workings of the HAT
@@ -42,19 +45,12 @@ namespace Npk
     */
     struct HatMap;
 
-    //check that the bare minimum of flags are defined for the target platform:
-    //these are needed for the kernel to function.
-    static_assert(HatFlags::None == HatFlags::None, "HatFlags::None not defined");
-    static_assert(HatFlags::Write == HatFlags::Write, "HatFlags::Write not defined");
-    static_assert(HatFlags::User == HatFlags::User, "HatFlags::User not defined");
-    static_assert(HatFlags::Global == HatFlags::Global, "HatFlags::Global not defined");
-    static_assert(HatFlags::Execute == HatFlags::Execute, "HatFlags::Execute not defined");
-
     constexpr size_t MaxHatModes = 8;
     //This struct is used to communicate the limits of the underlying MMU to the
     //rest of the kernel.
     struct HatLimits
     {
+        bool flushOnPermsUpgrade;
         size_t modeCount;
         struct 
         {
@@ -84,8 +80,11 @@ namespace Npk
     //NOTE: paddr and mode are references and return the previously used values.
     bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush);
 
-    //attempts to return the physical address of 
+    //attempts to return the physical address of a mapping
     sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr);
+
+    //attempts to update the 
+    bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
 
     //hook that checks a userspace mapping has up-to-date kernel mappings,
     //this is run immediately before loading a new map.

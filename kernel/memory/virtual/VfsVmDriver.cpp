@@ -81,6 +81,12 @@ namespace Npk::Memory::Virtual
         ASSERT_UNREACHABLE();
     }
 
+    SplitResult VfsVmDriver::Split(VmDriverContext& context, size_t offset)
+    {
+        //TODO:
+        ASSERT_UNREACHABLE();
+    }
+
     AttachResult VfsVmDriver::Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg)
     {
         using namespace Filesystem;
