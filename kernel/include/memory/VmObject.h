@@ -86,8 +86,8 @@ namespace Npk::Memory
         VmObject(VMM* vmm, size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits limits);
 
         ~VmObject(); //TODO: investigate use of copy ctors?
-        VmObject(const VmObject& other);
-        VmObject& operator=(const VmObject& other);
+        VmObject(const VmObject& other) = delete;
+        VmObject& operator=(const VmObject& other) = delete;
 
         VmObject(VmObject&& from);
         VmObject& operator=(VmObject&& from);
@@ -122,8 +122,15 @@ namespace Npk::Memory
         inline sl::Span<const uint8_t> ConstSpan() const
         { return { base.As<const uint8_t>(), size}; }
 
+        //releases the virtual memory managed by this VMO without the destroying the VMO
+        //instance itself. Can be used as a manuall destructor.
         void Release();
+        //used to set and retrieve the current flags of the attached virtual memory.
         VmFlags Flags(sl::Opt<VmFlags> flags);
+        //portions this virtual memory into two separate blocks, either returning the portion before
+        //or after the separation point. The remainder of the virtual memory is kept as part
+        //of the current VMO, unless all memory is portioned off to the other - then this VMO
+        //is released and effectively becomes uninitiallised (as it manages no memory).
         VmObject Subdivide(size_t length, bool fromStart);
     };
 }

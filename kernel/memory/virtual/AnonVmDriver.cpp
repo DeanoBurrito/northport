@@ -90,7 +90,7 @@ namespace Npk::Memory::Virtual
         const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
 
         offset = sl::AlignUp(offset, granuleSize);
-        if (offset >= context.range.length)
+        if (offset > context.range.length)
             return { .success = false };
 
         const SplitResult result

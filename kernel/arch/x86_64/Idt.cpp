@@ -96,11 +96,14 @@ extern "C"
             if (frame->ec & (1 << 2))
                 flags |= VmFaultFlag::User;
 
+            bool success = false;
             const uintptr_t cr2 = ReadCr2();
             if (cr2 < hhdmBase)
-                VMM::Current().HandleFault(cr2, flags);
+                success = VMM::Current().HandleFault(cr2, flags);
             else
-                VMM::Kernel().HandleFault(cr2, flags);
+                success = VMM::Kernel().HandleFault(cr2, flags);
+            if (!success)
+                Log("Bad page fault @ 0x%lx, flags=0x%lx", LogLevel::Fatal, cr2, flags.Raw());
         }
         else if (frame->vector == 0x7)
             Tasking::Scheduler::Global().SwapExtendedRegs();

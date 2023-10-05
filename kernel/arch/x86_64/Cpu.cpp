@@ -161,8 +161,8 @@ namespace Npk
     constexpr static CpuFeatureAccessor accessors[] =
     {
         { .leaf {1, 0}, .index = 'c', .shift = 31, .name = "vguest" },
-        { .leaf {1, 0}, .index = 'd', .shift = 20, .name = "nx" },
-        { .leaf {1, 0}, .index = 'd', .shift = 26, .name = "1g-map" },
+        { .leaf {0x8000'0001, 0}, .index = 'd', .shift = 20, .name = "nx" },
+        { .leaf {0x8000'0001, 0}, .index = 'd', .shift = 26, .name = "1g-map" },
         { .leaf {1, 0}, .index = 'd', .shift = 13, .name = "global-pages" },
         { .leaf {7, 0}, .index = 'b', .shift = 20, .name = "smap" },
         { .leaf {7, 0}, .index = 'b', .shift = 7, .name = "smep" },
@@ -177,7 +177,7 @@ namespace Npk
         { .leaf {6, 0}, .index = 'a', .shift = 2, .name = "arat" },
         { .leaf {1, 0}, .index = 'd', .shift = 4, .name = "tsc" },
         { .leaf {1, 0}, .index = 'c', .shift = 24, .name = "tsc-d" },
-        { .leaf {7, 0}, .index = 'd', .shift = 8, .name = "inv-tsc" },
+        { .leaf {0x8000'0007, 0}, .index = 'd', .shift = 8, .name = "inv-tsc" },
     };
 
     void ScanLocalCpuFeatures()

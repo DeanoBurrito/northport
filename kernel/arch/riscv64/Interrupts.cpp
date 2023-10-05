@@ -87,10 +87,14 @@ extern "C"
             
             if (frame->flags.spp == 0)
                 flags |= VmFaultFlag::User;
+
+            bool success = false;
             if (frame->ec < hhdmBase)
-                VMM::Current().HandleFault(frame->ec, flags);
+                success = VMM::Current().HandleFault(frame->ec, flags);
             else
-                VMM::Kernel().HandleFault(frame->ec, flags);
+                success = VMM::Kernel().HandleFault(frame->ec, flags);
+            if (!success)
+                Log("Bad page fault @ 0x%lx, flags=0x%lx", LogLevel::Fatal, frame->ec, flags.Raw());
         }
         else if (frame->vector < 12)
         {

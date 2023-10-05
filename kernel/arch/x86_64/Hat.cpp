@@ -63,7 +63,7 @@ namespace Npk
         bool complete;
     };
 
-    inline void GetAddressIndices(uintptr_t vaddr, size_t* indices)
+    static inline void GetAddressIndices(uintptr_t vaddr, size_t* indices)
     {
         if (pagingLevels > 4)
             indices[5] = (vaddr >> 48) & 0x1FF;
@@ -75,7 +75,7 @@ namespace Npk
 
     //Internal helper function, walks the page tables as long as they are valid,
     //returns the PTE where translation ended and at what level.
-    static WalkResult WalkTables(PageTable* root, uintptr_t vaddr)
+    static inline WalkResult WalkTables(PageTable* root, uintptr_t vaddr)
     {
         //TODO: use fractal paging to accelerate walks in the same address space
         size_t indices[pagingLevels + 1];
@@ -92,7 +92,7 @@ namespace Npk
                 result.complete = false;
                 return result;
             }
-            if (result.level <= limits.modeCount && (*result.pte & SizeFlag) == 1)
+            if (result.level <= limits.modeCount && (*result.pte & SizeFlag) != 0)
             {
                 result.complete = true;
                 return result;
@@ -230,7 +230,7 @@ namespace Npk
 
         if (selectedSize > PageSizes::_4K)
             *path.pte |= SizeFlag;
-        if (mmuFeatures.nx && (NxFlag & (uint64_t)flags))
+        if (mmuFeatures.nx && (NxFlag & (uint64_t)flags) == 0)
             *path.pte |= NxFlag;
         if (!mmuFeatures.globalPages)
             *path.pte &= ~(uint64_t)(1 << 5); //global page bit
@@ -293,7 +293,7 @@ namespace Npk
             newFlags |= (uint64_t)*flags & 0xFFF;
             newFlags |= path.level > 0 ? SizeFlag : 0;
 
-            if (mmuFeatures.nx && (NxFlag & (uint64_t)*flags))
+            if (mmuFeatures.nx && (NxFlag & (uint64_t)*flags) == 0)
                 newFlags |= NxFlag;
             if (!mmuFeatures.globalPages)
                 newFlags &= ~(1 << 5);

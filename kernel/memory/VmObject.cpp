@@ -23,14 +23,6 @@ namespace Npk::Memory
     {
         Release();
     }
-    VmObject::VmObject(const VmObject&)
-    {
-        ASSERT_UNREACHABLE();
-    }
-    VmObject& VmObject::operator=(const VmObject&)
-    {
-        ASSERT_UNREACHABLE();
-    }
 
     VmObject::VmObject(VmObject&& from)
     {
@@ -99,6 +91,9 @@ namespace Npk::Memory
             other.size = *maybeSplit;
             size -= other.size;
         }
+
+        if (size == 0)
+            base = nullptr;
 
         return other;
     }

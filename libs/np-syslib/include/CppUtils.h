@@ -96,8 +96,8 @@ namespace sl
     constexpr inline bool IsUnsigned = IsSame<T, MakeUnsigned<T>>;
 
     template<typename T>
-    T&& Move(T&& t)
-    { return static_cast<T&&>(t); }
+    constexpr RemoveReferenceType<T>&& Move(T&& t) noexcept
+    { return static_cast<RemoveReferenceType<T>&&>(t); }
 
     template<typename T>
     void Swap(T& a, T& b)

@@ -592,6 +592,9 @@ namespace Npk::Memory
         if (!result.success)
             return {};
 
+        if (offset == range->length)
+            return range->base + offset; //effectively a no-op
+
         VmRange* newRange = new(AllocMeta(VmmMetaType::Range)) VmRange();
 
         newRange->base = range->base + result.offset;
@@ -614,7 +617,7 @@ namespace Npk::Memory
         ranges.Insert(newRange);
         rangesLock.Unlock();
 
-        return result.offset;
+        return result.offset - range->offset;
     }
 
     bool VMM::MemoryExists(uintptr_t base, size_t length, sl::Opt<VmFlags> flags)
