@@ -16,15 +16,18 @@ namespace Npk::Drivers
     bool DriverManager::LoadAndRun(sl::Handle<DriverManifest>& manifest)
     {
         VALIDATE_(manifest.Valid(), false);
-        auto maybeEntry = LoadElf(VMM::Kernel(), manifest->sourcePath.Span());
-        VALIDATE_(maybeEntry, false);
+        auto fileHandle = LoadElf(&VMM::Kernel(), manifest->sourcePath.Span(), 
+            manifest->friendlyName.Span());
+        VALIDATE_(fileHandle, false);
 
-        auto mainFunction = reinterpret_cast<void (*)(void*)>(*maybeEntry);
-        auto mainThread = Tasking::Thread::Create(mainFunction, nullptr);
-        Log("Driver %s loaded, will run on thread %lu.", LogLevel::Verbose,
-            manifest->friendlyName.C_Str(), mainThread->Id());
+        ASSERT_UNREACHABLE();
 
-        mainThread->Start();
+        //auto mainFunction = reinterpret_cast<void (*)(void*)>(*maybeEntry);
+        //auto mainThread = Tasking::Thread::Create(mainFunction, nullptr);
+        //Log("Driver %s loaded, will run on thread %lu.", LogLevel::Verbose,
+            //manifest->friendlyName.C_Str(), mainThread->Id());
+
+        //mainThread->Start();
         return true;
     }
 
@@ -69,9 +72,11 @@ namespace Npk::Drivers
 
         if (manifest->loadType == LoadType::Always)
         {
+            Log("Loading driver %s due to loadtype=always", LogLevel::Info, manifest->friendlyName.C_Str());
             sl::Handle captive(manifest);
-            //still return true as we did successfully register the driver, we just failed to load it.
-            VALIDATE_(LoadAndRun(captive), true);
+            
+            if (!LoadAndRun(captive))
+                Log("Failed to load always-load driver %s", LogLevel::Error, manifest->friendlyName.C_Str());
         }
         return true;
     }

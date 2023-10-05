@@ -1,9 +1,10 @@
 #pragma once
 
 #include <String.h>
-#include <Optional.h>
+#include <Handle.h>
 #include <memory/VmObject.h>
 #include <formats/Elf.h>
+#include <Atomic.h>
 
 namespace Npk::Drivers
 {
@@ -23,11 +24,18 @@ namespace Npk::Drivers
         size_t relCount;
     };
 
+    struct LoadedElf
+    {
+        sl::Atomic<size_t> references;
+        sl::Vector<VmObject> segments;
+        uintptr_t loadBase;
+        uintptr_t entryAddr;
+    };
+
     sl::Opt<DynamicElfInfo> ParseDynamic(VmObject& file, uintptr_t loadBase);
 
     void ScanForModules(sl::StringSpan dirpath);
     bool ScanForDrivers(sl::StringSpan filepath);
 
-    //Loads a elf into an address space and returns the entry address if it has one.
-    sl::Opt<uintptr_t> LoadElf(VMM& vmm, sl::StringSpan filepath);
+    sl::Handle<LoadedElf> LoadElf(VMM* vmm, sl::StringSpan filepath, sl::StringSpan driverName);
 }

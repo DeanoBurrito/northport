@@ -282,7 +282,7 @@ namespace Npk::Drivers
         return info;
     }
 
-    sl::Opt<uintptr_t> LoadElf(VMM& vmm, sl::StringSpan filepath)
+    sl::Handle<LoadedElf> LoadElf(VMM* vmm, sl::StringSpan filepath, sl::StringSpan driverName)
     {
         const auto shortName = GetShortName(filepath);
         VmObject file = OpenElf(filepath);
@@ -314,11 +314,12 @@ namespace Npk::Drivers
         }
         VALIDATE_(baseMemoryAddr == 0, {});
 
-        //TODO: use the given VMM for this VMO
-        VmObject vmo(maxMemoryAddr, 0, VmFlag::Anon | VmFlag::Write);
+        //TODO: we should check the given VMM is actually active, because we write to these VMOs
+        VmObject vmo(vmm, maxMemoryAddr, 0, VmFlag::Anon | VmFlag::Write);
         VALIDATE_(vmo.Valid(), {});
+        const uintptr_t loadBase = vmo->raw;
         Log("Loading elf %s with base address of 0x%lx", LogLevel::Verbose, 
-            shortName.Begin(), vmo->raw);
+            shortName.Begin(), loadBase);
 
         for (size_t i = 0; i < phdrs.Size(); i++)
         {
@@ -329,16 +330,86 @@ namespace Npk::Drivers
             const size_t zeroes = phdrs[i].p_memsz - phdrs[i].p_filesz;
             if (zeroes != 0)
                 sl::memset(vmo->As<void>(phdrs[i].p_vaddr + phdrs[i].p_filesz), 0, zeroes);
+
+            Log("Loaded elf %s phdr %lu at 0x%lx (+ 0x%lx zeroes)", LogLevel::Verbose,
+                shortName.Begin(), i, loadBase + phdrs[i].p_vaddr, zeroes);
         }
 
         auto dynInfo = ParseDynamic(file, vmo->raw);
         VALIDATE_(dynInfo.HasValue(), {});
         VALIDATE_(DoRelocations(*dynInfo, vmo, 0, -1ul), {});
 
-        //for kernel modules we'll also bind the PLT to any kernel functions.
-        //TODO: verify this only happens for kernel modules
-        VALIDATE_(LinkPlt(*dynInfo, vmo), {});
+        VmObject metadataVmo = LoadMetadataSection(file);
+        bool isModule = false;
+        if (metadataVmo.Valid())
+        {
+            const uint8_t moduleHdrGuid[] = NP_MODULE_META_START_GUID;
+            auto moduleInfo = static_cast<const npk_module_metadata*>(
+                FindGuid(metadataVmo.ConstSpan(), moduleHdrGuid));
 
-        return {};
+            isModule = (moduleInfo != nullptr) &&
+                (moduleInfo->api_ver_major == NP_MODULE_API_VER_MAJOR) &&
+                (moduleInfo->api_ver_minor <= NP_MODULE_API_VER_MINOR);
+        }
+
+        //for kernel modules we'll also bind any PLT symbols to kernel functions,
+        //so that modules can call into the kernel.
+        if (isModule)
+            VALIDATE_(LinkPlt(*dynInfo, vmo), {});
+
+        sl::Vector<VmObject> finalVmos;
+        for (size_t i = 0; i < phdrs.Size(); i++)
+        {
+            if (phdrs[i].p_type != sl::PT_LOAD)
+                continue;
+            VALIDATE(vmo.Valid(), {}, "Bad alignment in ELF PHDR");
+
+            VmObject& localVmo = finalVmos.EmplaceBack(sl::Move(vmo.Subdivide(phdrs[i].p_memsz, true)));
+            VALIDATE_(localVmo.Valid(), {});
+
+            VmFlags flags {};
+            if (phdrs[i].p_flags & sl::PF_W)
+                flags |= VmFlag::Write;
+            if (phdrs[i].p_flags & sl::PF_X)
+                flags |= VmFlag::Execute;
+            localVmo.Flags(flags);
+        }
+
+        //find the entry point for this program. This is easy for a regular elf, but since modules
+        //can contain multiple drivers we have to find the one with the correct name.
+        uintptr_t entryPoint = 0;
+        if (isModule)
+        {
+            const uint8_t manifestGuid[] = NP_MODULE_MANIFEST_GUID;
+            auto scan = metadataVmo.ConstSpan();
+            while (scan.Size() > 0)
+            {
+                auto manifest = static_cast<const npk_driver_manifest*>(FindGuid(scan, manifestGuid));
+                if (manifest == nullptr)
+                    break;
+                const size_t offset = (uintptr_t)manifest - (uintptr_t)scan.Begin();
+                scan = scan.Subspan(offset + sizeof(npk_driver_manifest), -1ul);
+
+                const size_t manifestNameLen = sl::memfirst(manifest->friendly_name, 0, 0);
+                const sl::StringSpan manifestName(manifest->friendly_name, manifestNameLen);
+                if (manifestName != driverName)
+                    continue;
+
+                entryPoint = reinterpret_cast<uintptr_t>(manifest->entry) + loadBase;
+                Log("Driver %s (from %s) entrypoint found at 0x%lx", LogLevel::Verbose, 
+                    driverName.Begin(), shortName.Begin(), entryPoint);
+            }
+            VALIDATE_(entryPoint != 0, {});
+        }
+        else
+            entryPoint = ehdr->e_entry + loadBase;
+
+        LoadedElf* elfInfo = new LoadedElf();
+        elfInfo->loadBase = loadBase;
+        elfInfo->segments = sl::Move(finalVmos);
+        elfInfo->references = 0;
+        elfInfo->entryAddr = entryPoint;
+
+        return sl::Handle(elfInfo);
     }
 }

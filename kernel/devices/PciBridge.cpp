@@ -169,43 +169,6 @@ namespace Npk::Devices
 
     void PciBridge::DetectDrivers()
     {
-        using namespace Drivers;
-        uint8_t nameBuffer[10] { "pcic\0\0\0\0\0" };
-        ManifestName manifestName;
-
-        size_t loadedCount = addresses.Size();
-        for (size_t i = 0; i < addresses.Size(); i++)
-        {
-            PciInitTag* initTag = new PciInitTag(addresses[i], nullptr);
-
-            //look for a pci device (pcid) driver.
-            const uint32_t funcId = addresses[i].ReadReg(PciReg::Id);
-            nameBuffer[3] = 'd';
-            nameBuffer[4] = (funcId >> 8)  & 0xFF;
-            nameBuffer[5] = (funcId >> 0)  & 0xFF;
-            nameBuffer[6] = (funcId >> 24) & 0xFF;
-            nameBuffer[7] = (funcId >> 16) & 0xFF;
-            manifestName = ManifestName(nameBuffer, 8);
-            if (DriverManager::Global().TryLoadDriver(manifestName, initTag))
-                continue;
-
-            //search for a matching pci class (pcic).
-            const uint32_t funcClass = addresses[i].ReadReg(PciReg::Class);
-            nameBuffer[3] = 'c';
-            nameBuffer[4] = (funcClass >> 24) & 0xFF;
-            nameBuffer[5] = (funcClass >> 16) & 0xFF;
-            nameBuffer[6] = (funcClass >> 8)  & 0xFF;
-            manifestName = ManifestName(nameBuffer, 7);
-            if (DriverManager::Global().TryLoadDriver(manifestName, initTag))
-                continue;
-
-            Log("PCI function %04x:%04x has no driver.", LogLevel::Verbose, funcId & 0xFFFF, funcId >> 16);
-            delete initTag;
-            loadedCount--;
-        }
-
-        Log("PCI bridge started %lu drivers, %lu unknown functions.", LogLevel::Info,
-            loadedCount, addresses.Size() - loadedCount);
     }
 
     bool PciBridge::TryInitFromAcpi()
