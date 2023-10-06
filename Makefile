@@ -44,7 +44,7 @@ export KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
 export DRIVER_CXX_FLAGS += -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -ffreestanding -fPIC
-export DRIVER_LD_FLAGS += -nostdlib -fPIC -shared
+export DRIVER_LD_FLAGS += -nostdlib -shared -znorelro
 
 export BUILD_DIR = build
 export CPU_ARCH
