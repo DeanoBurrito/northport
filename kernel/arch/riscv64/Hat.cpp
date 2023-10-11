@@ -51,6 +51,54 @@ namespace Npk
             { .granularity = GetPageSize(PageSizes::_512G) },
         }
     };
+
+    struct WalkResult
+    {
+        size_t level;
+        uint64_t* pte;
+        bool complete;
+    };
+
+    static inline void GetAddressIndices(uintptr_t vaddr, size_t* indices)
+    {
+        if (pagingLevels > 4)
+            indices[5] = (vaddr >> 48) & 0x1FF;
+        if (pagingLevels > 3)
+            indices[4] = (vaddr >> 39) & 0x1FF;
+        indices[3] = (vaddr >> 30) & 0x1FF;
+        indices[2] = (vaddr >> 21) & 0x1FF;
+        indices[1] = (vaddr >> 12) & 0x1FF;
+    }
+
+    static inline WalkResult WalkTables(PageTable* root, uintptr_t vaddr)
+    {
+        //TODO: use fractal paging to accelerate same-space lookups
+        size_t indices[pagingLevels + 1];
+        GetAddressIndices(vaddr, indices);
+
+        WalkResult result {};
+        PageTable* pt = AddHhdm(root);
+        for (size_t i = pagingLevels; i > 0; i--)
+        {
+            result.pte = &pt->entries[indices[i]];
+            result.level = i;
+            if ((*result.pte & ValidFlag) == 0)
+            {
+                result.complete = false;
+                return result;
+            }
+            if ((*result.pte & 0b1110) != 0)
+            {
+                result.complete = true;
+                return result;
+            }
+
+            pt = reinterpret_cast<PageTable*>(((*result.pte & addrMask) << 2)+ hhdmBase);
+        }
+
+        result.complete = *result.pte & ValidFlag;
+        return result;
+    }
     
     void HatInit()
     {
@@ -134,52 +182,38 @@ namespace Npk
     HatMap* KernelMap()
     { return &kernelMap; }
 
-    inline void GetAddressIndices(uintptr_t vaddr, size_t* indices)
-    {
-        if (pagingLevels > 4)
-            indices[5] = (vaddr >> 48) & 0x1FF;
-        if (pagingLevels > 3)
-            indices[4] = (vaddr >> 39) & 0x1FF;
-        indices[3] = (vaddr >> 30) & 0x1FF;
-        indices[2] = (vaddr >> 21) & 0x1FF;
-        indices[1] = (vaddr >> 12) & 0x1FF;
-    }
-
     bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
     {
-        ASSERT(map != nullptr, "HatMap is nullptr");
+        ASSERT_(map != nullptr);
         if (mode >= limits.modeCount)
-            return false; //invalid mode
-        
+            return false;
+
+        const PageSizes selectedSize = (PageSizes)(mode + 1);
         size_t indices[pagingLevels + 1];
         GetAddressIndices(vaddr, indices);
+        WalkResult path = WalkTables(map->root, vaddr);
 
-        uint64_t* entry = nullptr;
-        PageTable* pt = AddHhdm(map->root);
-        const PageSizes selectedSize = (PageSizes)(mode + 1);
+        if (path.complete)
+            return false;
 
-        for (size_t i = pagingLevels; i > 0; i--)
+        while (path.level != (size_t)selectedSize)
         {
-            entry = &pt->entries[indices[i]];
-            if (i == selectedSize)
-                break;
-            
-            if (!(*entry & ValidFlag))
-            {
-                const uintptr_t newPt = PMM::Global().Alloc();
-                sl::memset(reinterpret_cast<void*>(AddHhdm(newPt)), 0, PageSize);
-                *entry = (newPt >> 2) & addrMask;
-                *entry |= ValidFlag;
-            }
+            const uint64_t newPt = PMM::Global().Alloc();
+            sl::memset(reinterpret_cast<void*>(AddHhdm(newPt)), 0, PageSize);
+            *path.pte = (newPt >> 2) & addrMask;
+            *path.pte |= ValidFlag;
 
-            pt = reinterpret_cast<PageTable*>(((*entry & addrMask) << 2) + hhdmBase);
+            path.level--;
+            auto pt = reinterpret_cast<PageTable*>(newPt + hhdmBase);
+            path.pte = &pt->entries[indices[path.level]];
         }
 
-        *entry = (paddr >> 2) & addrMask;
-        *entry |= ValidFlag | ReadFlag | ((uintptr_t)flags & 0x3FF);
+        *path.pte = (paddr >> 2) & addrMask;
+        *path.pte |= ValidFlag | ReadFlag;
+        *path.pte |= (uint64_t)flags & 0x3FF;
+
         if (flush)
-            asm volatile ("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
-        
+            asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
         if (map == &kernelMap)
             kernelMap.generation++;
         return true;
@@ -187,72 +221,58 @@ namespace Npk
 
     bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
     {
-        ASSERT(map != nullptr, "HatMap is nullptr");
+        ASSERT_(map != nullptr);
 
-        size_t indices[pagingLevels + 1];
-        GetAddressIndices(vaddr, indices);
+        const WalkResult path = WalkTables(map->root, vaddr);
+        if (!path.complete)
+            return false;
 
-        uint64_t* entry = nullptr;
-        PageTable* pt = AddHhdm(map->root);
-
-        for (size_t i = 0; i < pagingLevels; i--)
-        {
-            entry = &pt->entries[indices[i]];
-            if ((*entry & ValidFlag) == 0)
-                return false; //translation fails to resolve
-            
-            if (*entry &0b1110)
-            {
-                mode = i - 1;
-                break;
-            }
-
-            pt = reinterpret_cast<PageTable*>(((*entry & addrMask) << 2) + hhdmBase);
-        }
-
-        paddr = (*entry & addrMask) << 2;
-        *entry = 0;
+        paddr = (*path.pte & addrMask) << 2;
+        mode = path.level - 1;
+        *path.pte = 0;
 
         if (flush)
             asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
+        if (map == &kernelMap)
+            kernelMap.generation++;
         return true;
     }
 
     sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr)
     {
-        ASSERT(map != nullptr, "HatMap is nullptr");
+        ASSERT_(map != nullptr);
 
-        size_t indices[pagingLevels + 1];
-        GetAddressIndices(vaddr, indices);
+        const WalkResult path = WalkTables(map->root, vaddr);
+        if (!path.complete)
+            return {};
 
-        uintptr_t mask = 1;
-        uint64_t* entry = nullptr;
-        PageTable* pt = AddHhdm(map->root);
-        
-        for (size_t i = pagingLevels; i > 0; i--)
-        {
-            entry = &pt->entries[indices[i]];
-            if ((*entry & ValidFlag) == 0)
-                return {}; //no translation, return empty
-            
-            if (*entry & 0b1110)
-            {
-                mask <<= ((i - 1) * 9) + 12;
-                mask--;
-                break;
+        const uint64_t offsetMask = GetPageSize((PageSizes)path.level) - 1;
+        return((*path.pte & addrMask) << 2) | (vaddr & offsetMask);
+    }
 
-                pt = reinterpret_cast<PageTable*>(((*entry & addrMask) << 2) + hhdmBase);
-            }
-        }
+    bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
+    {
+        ASSERT_(map != nullptr);
 
-        const uintptr_t offset = vaddr & mask;
-        const uintptr_t frame = ((*entry & addrMask) << 2) & ~mask;
-        return offset | frame;
+        const WalkResult path = WalkTables(map->root, vaddr);
+        if (!path.complete)
+            return false;
+
+        if (paddr.HasValue())
+            *path.pte = (*path.pte & ~addrMask) | ((*paddr >> 2) & addrMask);
+        if (flags.HasValue())
+            *path.pte = (*path.pte & addrMask) | ((uint64_t)*flags & 0x3FF) | ReadFlag | ValidFlag;
+
+        if (flush)
+            asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
+        if (map == &kernelMap)
+            kernelMap.generation++;
+        return true;
     }
 
     void SyncWithMasterMap(HatMap* map)
     {
-        ASSERT(map != nullptr, "HatMap is nullptr");
+        ASSERT_(map != nullptr);
 
         const PageTable* source = AddHhdm(kernelMap.root);
         PageTable* dest = AddHhdm(map->root);
@@ -264,7 +284,7 @@ namespace Npk
 
     void MakeActiveMap(HatMap* map)
     {
-        ASSERT(map != nullptr, "HatMap is nullptr");
+        ASSERT_(map != nullptr);
         
         WriteCsr("satp", satpBits | ((uintptr_t)map->root >> 12));
         //writing to satp DOES NOT flush the tlb, this sfence instruction flushes all

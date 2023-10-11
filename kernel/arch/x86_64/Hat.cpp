@@ -146,7 +146,8 @@ namespace Npk
         hhdmLength = sl::AlignUp(hhdmLength, GetPageSize((PageSizes)hhdmPageSize));
 
         constexpr const char* SizeStrs[] = { "", "4KiB", "2MiB", "1GiB" };
-        Log("HHDM mapped with %s pages", LogLevel::Verbose, SizeStrs[hhdmPageSize]);
+        Log("HHDM mapped with %s pages, length adjusted to 0x%lx", LogLevel::Verbose, 
+            SizeStrs[hhdmPageSize], hhdmLength);
         Log("Hat init (paging): levels=%lu, maxMapSize=%s, nx=%s, globalPages=%s", LogLevel::Info,
             pagingLevels, SizeStrs[maxTranslationLevel],
             mmuFeatures.nx ? "yes" : "no", mmuFeatures.globalPages ? "yes" : "no");
@@ -289,10 +290,10 @@ namespace Npk
             *path.pte = (*path.pte & ~addrMask) | (*paddr & addrMask);
         if (flags.HasValue())
         {
-            uint64_t newFlags = PresentFlag;
-            newFlags |= (uint64_t)*flags & 0xFFF;
-            newFlags |= path.level > 0 ? SizeFlag : 0;
+            uint64_t newFlags = ((uint64_t)*flags & 0xFFF) | PresentFlag;
 
+            if (path.level > (size_t)PageSizes::_4K)
+                newFlags |= PageSize;
             if (mmuFeatures.nx && (NxFlag & (uint64_t)*flags) == 0)
                 newFlags |= NxFlag;
             if (!mmuFeatures.globalPages)
@@ -309,13 +310,13 @@ namespace Npk
     void SyncWithMasterMap(HatMap* map)
     {
         ASSERT_(map != nullptr);
+        map->generation = kernelMap.generation.Load();
 
         const PageTable* source = AddHhdm(kernelMap.root);
         PageTable* dest = AddHhdm(map->root);
 
         for (size_t i = PageTableEntries / 2; i < PageTableEntries; i++)
             dest->entries[i] = source->entries[i];
-        map->generation = kernelMap.generation.Load();
     }
 
     void MakeActiveMap(HatMap* map)

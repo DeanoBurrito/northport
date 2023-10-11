@@ -83,7 +83,7 @@ namespace Npk
     //attempts to return the physical address of a mapping
     sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr);
 
-    //attempts to update the 
+    //attempts to update an existing mapping: either flags, physical address of both.
     bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
 
     //hook that checks a userspace mapping has up-to-date kernel mappings,
