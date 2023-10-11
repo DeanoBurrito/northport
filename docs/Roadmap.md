@@ -1,115 +1,113 @@
 - Kernel:
-    - [x] x86_64:
-        - [x] Core (paging, interrupts).
-        - [x] Timers (LAPIC, TSC, HPET, PIT).
-        - [x] FPU, SSE, AVX.
-        - [x] Map cpu topology.
-    - [x] riscv64:
-        - [x] Core (paging, interrupts).
-        - [x] Timer (SBI, sstc).
-        - [ ] Map cpu topology.
-        - [ ] F/D/Q and V extension support.
-        - [ ] AIA (imsic, aplic) and ACLINT support.
-    - [x] Limine protocol boot shim (for riscv):
-        - [x] Memory map, hhdm and kernel address.
-        - [x] SMP feature.
-        - [ ] Replace with real project (will need bootable uefi for riscv).
-    - [ ] EFI entry stub.
-    - [ ] Relocatable kernel.
-    - [x] Memory Management:
-        - [x] PMM: multiple zones, each with a bitmap area + freelist.
-            - [ ] Hotplug support: inject/eject physical memory.
-            - [ ] NUMA-aware allocations.
-        - [x] VMM - driver based.
-            - [x] Anon driver.
-            - [ ] VFS driver.
-            - [x] Optional demand paging.
-            - [ ] Swap to disk.
-            - [ ] Transparent usage of super pages.
-        - [x] Slab/free-list style heap.
-            - [x] Per-core slab caches.
-            - [ ] Page heap (canary + fault versions).
-            - [ ] Tracable allocations.
-    - [x] Core clock, software timers.
-        - [x] Configurable resolution.
-        - [x] Tickless.
-        - [x] Infinite expiry
-        - [ ] Continuous calibration.
-        - [ ] Stopwatches.
-    - [x] IPI mailbox.
-    - [x] Scheduler.
-        - [ ] Topology-aware scheduling.
-        - [x] SMP-support.
-        - [x] DPCs.
-        - [ ] APCs.
-        - [x] Work stealing.
-        - [x] Waitable objects.
-            - [ ] Composite objects.
-        - [ ] Heterogenous cpu support.
-        - [ ] Cpu hotplug support.
-    - [x] Panic.
-        - [x] Stack frame walker.
-    - [ ] Sanitizers.
-        - [x] Undefined behaviour.
-        - [ ] Address.
-    - [x] Logging
-        - [x] Early outputs:
-            - [x] Ns16650.
-            - [ ] PL011.
-            - [x] GTerm backend.
-        - [ ] Runtime sinks.
-    - [x] Peripheral discovery:
-        - [x] ACPI tables parser.
-        - [x] Device tree parser.
-    - [ ] Device driver management.
-        - [x] Event queues + dispatcher.
-            - [x] Pluggable event filters.
-        - [ ] Demand loaded drivers (based on event queue filters).
-            - [ ] Load external binaries.
-        - [ ] Root drivers.
-        - [ ] Device interfaces, with command queues.
-        - [ ] Stable ABI.
+    - [ ] Arch Layer:
+        - [ ] EFI entry stub.
+        - [x] Abstractions:
+            - [x] Feature detection.
+            - [x] Timers.
+            - [x] Interrupts.
+            - [x] MMU.
+        - [x] x86_64:
+            - [x] Core (paging, interrupts).
+            - [x] Timers (LAPIC, TSC, HPET, PIT).
+            - [x] FPU, SSE, AVX.
+            - [x] Map cpu topology.
+        - [x] riscv64:
+            - [x] Core (paging, interrupts).
+            - [x] Timer (SBI, sstc).
+            - [ ] Map cpu topology.
+            - [ ] F/D/Q and V extension support.
+            - [ ] AIA (imsic, aplic) and ACLINT support.
+    - [x] Core Layer:
+        - [x] Logging Infrastructure:
+            - [x] Fully lockless.
+            - [x] Per-core buffers.
+            - [ ] Runtime sinks.
+            - [x] Panic sequence.
+            - [x] Stack frame walker.
+            - [x] Symbol lookup.
+        - [x] Memory Management:
+            - [x] PMM with multiple zones.
+                - [x] Reclaim bootloader memory.
+                - [ ] Hybrid freelist/bitmap.
+                - [ ] Hotplug support.
+                - [ ] NUMA-aware allocations.
+            - [x] VMM, driver based.
+                - [x] Anonymous memory backend.
+                - [x] VFS backend.
+                - [x] MMIO/kernel backend.
+                - [ ] Copy-on-write capabilities.
+                - [ ] Page-to-disk.
+                - [ ] Usage of super-pages.
+            - [x] Hybrid slab/freelist heap.
+                - [x] Per-core slab caches.
+                - [ ] Page heap (canary + fault versions).
+                - [ ] Tracable allocations.
+        - [x] Software clock:
+            - [x] Hardware-derived limitations (resolution, accuracy).
+            - [x] Tickless.
+            - [x] Infinite expiry.
+            - [ ] Continuous calibration.
+            - [ ] Per-core timer support.
+            - [ ] Stopwatches.
+        - [x] IPI mailboxes.
+        - [x] Scheduler.
+            - [x] SMP-aware.
+                - [ ] Topology-aware.
+                - [ ] Heterogeneous processor support.
+            - [x] DPCs/run level system.
+            - [x] Work-stealing.
+            - [x] Waitable objects.
+            - [ ] Hotpluggable CPU support.
+                - [ ] Power-state steering.
+        - [x] Virtual filesystem.
+            - [x] TempFS, backed only by ram.
+            - [x] Initdisk (stored in a TempFS).
+            - [x] Page-cache.
+            - [ ] Ext2/3/4 driver.
+            - [ ] FAT driver.
+            - [ ] NTFS driver?
+    - [ ] Support Layer:
+        - [ ] IPC.
+            - [ ] Shared memory.
+            - [ ] Pipes.
+        - [ ] Sanitizers:
+            - [x] Undefined behaviour.
+            - [ ] Address.
+        - [x] Peripheral discovery.
+            - [x] ACPI table parser.
+            - [x] DTB parser.
+            - [x] PCI enumeration.
+                - [ ] PCIe.
+        - [ ] Driver management:
+            - [x] Scanning and loading ELF-based drivers.
+            - [x] Native ABI.
+            - [ ] Operation queues.
             - [ ] Example drivers in other languages.
-    - [ ] System calls.
-        - [ ] ABI documentation
-    - [x] VFS.
-        - [x] TempFS, populated from initrd if present.
-        - [x] Page-cache.
-        - [ ] Ext2 driver.
-        - [ ] FAT driver.
-        - [ ] NTFS driver?
-    - [x] Reclaim bootloader memory.
-    - [ ] IPC.
-        - [ ] Shared memory.
-        - [ ] Pipes.
-    - [x] PCI.
-        - [ ] PCIe.
-        - [x] MSI(-X).
-    - [ ] Device drivers:
-        - [ ] PS/2 keyboard + mouse.
-        - [ ] Virtio:
-            - [x] Transport layer (PCI + MMIO).
-            - [x] Legacy transport support.
-            - [x] GPU.
-            - [ ] Block.
-            - [ ] Network.
-            - [ ] Input (kb + mouse).
-            - [ ] Filesystem.
-        - [x] Bochs VGA.
-        - [ ] AHCI.
-        - [x] NVMe.
-        - [ ] XHCI (USB 3).
-        - [ ] E1000 NIC.
-        - [ ] AC97 audio.
-        - [ ] HD audio.
-    - [ ] Graphics manager.
-    - [ ] Audio manager.
-    - [ ] Networking stack:
-        - [ ] Ethernet.
-        - [ ] IP(4 + 6), ARP, ICMP.
-        - [ ] UDP.
-        - [ ] TCP.
-        - [ ] Socket manager.
+        - [ ] Media stacks:
+            - [ ] Graphics.
+            - [ ] Audio.
+            - [ ] Networking.
+    - [ ] Interface Layer:
+        - [x] Driver API binds.
+        - [ ] System calls.
+
+- Device drivers:
+    - [ ] x86 jank: ps2 peripherals, bochs VGA.
+    - [ ] AHCI.
+    - [x] NVMe.
+        - [ ] Port to new API.
+    - [x] Virtio:
+        - [x] Transport layer (PCI, MMIO).
+        - [x] Modern and legacy version support.
+        - [x] GPU.
+        - [ ] Block.
+        - [ ] Network.
+        - [ ] Input.
+        - [ ] Filesystem.
+    - [ ] XHCI (usb3).
+    - [ ] E1000(e) NIC.
+    - [ ] AC97 audio.
+    - [ ] iHD audio.
 
 - np-syslib:
     - [ ] Containers:

@@ -38,6 +38,9 @@ Build System:
 - Xorriso is needed for generating bootable isos.
 
 ## Glorious Screenshots
+![](https://github.com/DeanoBurrito/northport/assets/12033165/95c61e2b-3c8e-435c-8ee4-6e066e29fb0a)
+*11/10/2023: Kernel panic while loading a malformed driver from the initdisk.*
+
 ![Screenshot_20221120_215230](https://user-images.githubusercontent.com/12033165/202898511-7e10e72c-6cfa-4f30-b7a5-3173dac36199.png)
 *20/11/2022: x86 and riscv kernels running side by side in qemu.*
 
