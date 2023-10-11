@@ -364,13 +364,8 @@ namespace Npk::Memory
         VmDriver* driver = VmDriver::GetDriver(range->flags);
         VALIDATE(driver != nullptr, false, "VmRange exists without a known driver");
 
-        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range, .stats = stats };
         const EventResult result = driver->HandleFault(context, addr, flags);
-
-        Log("%s page fault: addr=0x%lx, flags=0x%lx", LogLevel::Debug, 
-            result.goodFault ? "Good" : "Bad", addr, flags.Raw());
-        Log("VMM stats: faults=%lu, ranges=%lu/%lu/%lu (anon/file/mmio)", LogLevel::Debug,
-            stats.faults, stats.anonRanges, stats.fileRanges, stats.mmioRanges);
 
         return result.goodFault;
     }
@@ -453,7 +448,7 @@ namespace Npk::Memory
         vmRange->flags = flags;
 
         //attach the VM driver to this range, store the offset and token.
-        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *vmRange };
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *vmRange, .stats = stats };
         const AttachResult attachResult = driver->Attach(context, query, initArg);
         if (!attachResult.success)
         {
@@ -524,7 +519,7 @@ namespace Npk::Memory
         VmDriver* driver = VmDriver::GetDriver(range->flags);
         VALIDATE(driver != nullptr, false, "Active VmRange with no known driver");
 
-        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range};
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range, .stats = stats };
         const bool detachSuccess = driver->Detach(context);
         if (!detachSuccess)
         {
@@ -567,7 +562,7 @@ namespace Npk::Memory
         if (driver == nullptr)
             return false;
 
-        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range, .stats = stats };
         ModifyRangeArgs args {};
         args.setFlags = flags.Raw() & ~range->flags.Raw();
         args.clearFlags = range->flags.Raw() & ~flags.Raw();
@@ -587,7 +582,7 @@ namespace Npk::Memory
         if (driver == nullptr)
             return {};
 
-        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range };
+        VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range, .stats = stats };
         const SplitResult result = driver->Split(context, offset);
         if (!result.success)
             return {};

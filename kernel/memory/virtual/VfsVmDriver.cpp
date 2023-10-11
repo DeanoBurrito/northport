@@ -46,6 +46,7 @@ namespace Npk::Memory::Virtual
 
             Map(context.map, offset + context.range.base, cachePart->physBase + (offset % fcInfo.unitSize),
                 fcInfo.hatMode, hatFlags, false);
+            context.stats.fileResidentSize += granuleSize;
         }
 
         return { .goodFault = true };
@@ -115,6 +116,7 @@ namespace Npk::Memory::Virtual
             .offset = arg->offset % granuleSize,
             .success = true,
         };
+        context.stats.fileWorkingSize += context.range.length - result.offset;
 
         //we found the file and were able to open it, next step depends on our backing strategy.
         //if we're mapping on a page fault then we can exit now. Otherwise map the entire
@@ -131,6 +133,7 @@ namespace Npk::Memory::Virtual
             if (!handle.Valid())
                 break;
             Map(context.map, context.range.base + i, handle->physBase, query.hatMode, hatFlags, false);
+            context.stats.fileResidentSize += granuleSize;
         }
 
         return result;
@@ -138,6 +141,7 @@ namespace Npk::Memory::Virtual
 
     bool VfsVmDriver::Detach(VmDriverContext& context)
     {
+        context.stats.fileWorkingSize -= context.range.length - context.range.offset;
         using namespace Filesystem;
         const FileCacheInfo fcInfo = GetFileCacheInfo();
 
@@ -151,7 +155,8 @@ namespace Npk::Memory::Virtual
         for (size_t i = 0; i < context.range.length; i += granuleSize)
         {
             //TODO: if page has dirty bit set, we'll need to mark the file cache entry as dirtied as well
-            Unmap(context.map, context.range.base + i, phys, mode, true);
+            if (Unmap(context.map, context.range.base + i, phys, mode, true))
+                context.stats.fileResidentSize -= granuleSize;
         }
 
         delete link;

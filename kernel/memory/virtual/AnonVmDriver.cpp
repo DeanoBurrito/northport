@@ -53,12 +53,14 @@ namespace Npk::Memory::Virtual
             //NOTE: right now the only reason we'd be getting a fault is due to demand
             //paging/zero paging, so if this logic seems to make a lot of assumptions - thats why.
             const uintptr_t paddr = PMM::Global().Alloc();
+            ASSERT(granuleSize == PageSize, "TODO: allocate an appropriate amount of physical memory for the granule size");
             if (features.zeroPage)
                 SyncMap(context.map, where + i * granuleSize, paddr, convFlags, true);
             else
                 ASSERT_(Map(context.map, where + i * granuleSize, paddr, hatMode, convFlags, false));
         }
 
+        context.stats.anonResidentSize += mapCount * granuleSize;
         return { .goodFault = true };
     }
 
@@ -140,6 +142,7 @@ namespace Npk::Memory::Virtual
             .offset = 0,
             .success = true,
         };
+        context.stats.anonWorkingSize += context.range.length - result.offset;
 
         if (doDemand && !doZeroPage)
             return result;
@@ -158,12 +161,15 @@ namespace Npk::Memory::Virtual
             Map(context.map, context.range.base + i, phys, 0, hatFlags, false);
         }
 
+        context.stats.anonResidentSize += context.range.length;
         return result;
     }
 
     bool AnonVmDriver::Detach(VmDriverContext& context)
     {
+        context.stats.anonWorkingSize -= context.range.length - context.range.offset;
         const HatLimits& hatLimits = GetHatLimits();
+
         sl::ScopedLock scopeLock(context.lock);
 
         for (size_t i = 0; i < context.range.length;)
@@ -176,6 +182,7 @@ namespace Npk::Memory::Virtual
                 if (phys != zeroPage)
                     PMM::Global().Free(phys, length / PageSize);
                 i += length;
+                context.stats.anonResidentSize -= length;
             }
             else
                 i += hatLimits.modes[0].granularity; //nothing was mapped, try the next area.

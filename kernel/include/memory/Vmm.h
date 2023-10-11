@@ -92,8 +92,13 @@ namespace Npk::Memory
     {
         size_t faults;
         size_t anonRanges;
+        size_t anonWorkingSize;
+        size_t anonResidentSize;
         size_t fileRanges;
+        size_t fileWorkingSize;
+        size_t fileResidentSize;
         size_t mmioRanges;
+        size_t mmioWorkingSize;
     };
 
     //badge pattern

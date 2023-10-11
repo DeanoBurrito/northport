@@ -29,7 +29,6 @@
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <boot/LimineTags.h>
 #include <debug/Terminal.h>
 #include <Memory.h>
 
@@ -777,7 +776,12 @@ def:
         context.textFg = tmp;
     }
 
-    bool Terminal::Init(const GTStyle& style)
+    Vector2 Terminal::CalculateFontSize(const GTStyle& style)
+    {
+        return { 8, 14 };
+    };
+
+    bool Terminal::Init(const GTStyle& style, const GTFramebuffer& framebuffer)
     {
         if (initialized)
             return true;
@@ -786,10 +790,8 @@ def:
         Deinit();
 
         const GTFont font = { (uintptr_t)FontBegin, { 8, 14 },  1 };
-        if (Boot::framebufferRequest.response == nullptr)
-            return false;
-        auto& fb0 = Boot::framebufferRequest.response->framebuffers[0];
-        fb = { (uintptr_t)fb0->address, { fb0->width, fb0->height }, fb0->pitch };
+
+        fb = framebuffer;
         fbAddr = reinterpret_cast<volatile uint32_t*>(fb.address);
 
 #ifdef NP_INCLUDE_TERMINAL_BG
@@ -863,6 +865,8 @@ def:
 
         mapSize = size.y * size.x * sizeof(void*);
         map = new GTQueueItem*[mapSize / sizeof(void*)];
+        for (size_t i = 0; i < mapSize / sizeof(void*); i++)
+            map[i] = nullptr;
 
         bgCanvasSize = fb.size.x * fb.size.y * sizeof(uint32_t);
         bgCanvas = new uint32_t[bgCanvasSize / sizeof(uint32_t)];

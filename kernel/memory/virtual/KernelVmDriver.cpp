@@ -98,6 +98,7 @@ namespace Npk::Memory::Virtual
         for (size_t i = 0; i < context.range.length; i += query.alignment)
             Map(context.map, context.range.base + i, attachArg + i, query.hatMode, flags, false);
 
+        context.stats.mmioWorkingSize += context.range.length;
         return result;
     }
     
@@ -111,7 +112,10 @@ namespace Npk::Memory::Virtual
             uintptr_t ignored;
             size_t mode;
             if (Unmap(context.map, base, ignored, mode, true))
+            {
                 base += hatLimits.modes[mode].granularity;
+                context.stats.mmioWorkingSize -= hatLimits.modes[mode].granularity;
+            }
             else
                 base += hatLimits.modes[0].granularity;
         }

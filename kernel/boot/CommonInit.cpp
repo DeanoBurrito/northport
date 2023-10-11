@@ -34,8 +34,17 @@ namespace Npk
         Boot::CheckLimineTags();
 
         hhdmBase = Boot::hhdmRequest.response->offset;
-        auto lastEntry = Boot::memmapRequest.response->entries[Boot::memmapRequest.response->entry_count - 1];
-        hhdmLength = sl::AlignUp(lastEntry->base + lastEntry->length, PageSize);
+        for (size_t i = Boot::memmapRequest.response->entry_count - 1; i > 0; i--)
+        {
+            auto entry = Boot::memmapRequest.response->entries[i];
+            auto type = entry->type;
+            if (type != LIMINE_MEMMAP_USABLE && type != LIMINE_MEMMAP_KERNEL_AND_MODULES &&
+                type != LIMINE_MEMMAP_FRAMEBUFFER && type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
+                continue;
+
+            hhdmLength = sl::AlignUp(entry->base + entry->length, PageSize);
+            break;
+        }
         Log("Hhdm: base=0x%lx, length=0x%lx", LogLevel::Info, hhdmBase, hhdmLength);
 
         const auto loaderResp = Boot::bootloaderInfoRequest.response;
@@ -61,7 +70,7 @@ namespace Npk
 
         using namespace Boot;
         if (framebufferRequest.response != nullptr)
-            Debug::InitEarlyTerminal();
+            Debug::InitEarlyTerminals();
         else
             Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
 

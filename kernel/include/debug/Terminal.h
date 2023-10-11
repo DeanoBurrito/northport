@@ -181,7 +181,9 @@ namespace Npk::Debug
         void SwapPalette();
 
     public:
-        bool Init(const GTStyle& style);
+        static Vector2 CalculateFontSize(const GTStyle& style);
+
+        bool Init(const GTStyle& style, const GTFramebuffer& framebuffer);
         void Deinit();
         void Reinit();
 

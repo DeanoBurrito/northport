@@ -1,6 +1,5 @@
 #include <devices/DeviceManager.h>
 #include <debug/Log.h>
-#include <debug/TerminalDriver.h>
 
 namespace Npk::Devices
 {
@@ -18,8 +17,6 @@ namespace Npk::Devices
     {
         nextId.Store(1);
         Log("Device manager initialized.", LogLevel::Info);
-
-        AttachDevice(new Debug::TerminalSerialDriver);
     }
 
     sl::Opt<size_t> DeviceManager::AttachDevice(GenericDevice* instance, bool delayInit)

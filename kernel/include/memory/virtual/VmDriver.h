@@ -65,6 +65,7 @@ namespace Npk::Memory::Virtual
         sl::TicketLock& lock;
         HatMap* map;
         const VmRange& range;
+        VmmStats& stats;
     };
 
     /* Each virtual memory allocation has a type associated with it, the type determines

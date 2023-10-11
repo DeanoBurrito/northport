@@ -14,12 +14,15 @@
         - Added 'zero paging': when demang paging a readonly page of all zeroes is mapped instead of nothing. This should help cause a few less page faults, and later on.
         - Added VFS driver: we can now memory map files, including expanding them. Private mappings aren't supported just yet, but there have been provisions made. The VFS VM driver also makes use of demand paging where appropriate.
         - Switched to a red-black tree for managing vm ranges (instead of a singly linked list). Managing free address space is also done with another rbtree instead of inferring which regions were in-use. This is a little easier to reason about at the cost of more runtime memory.
+        - Now tracks basic statistics about the working and resident set sizes.
 
 - Added development cache (develcache): limine and any OVMF firmware files for testing are downloaded and cached inside the project directly, reducing setup for getting started with the project.
     - This is opt-out, and you can point the build system to your own limine and OVMF firmware files if you prefer that.
 
+- Added stats display to graphical terminals, inspired by it's use in Keyronex.
+
 - Kernel/drivers: module loader and external drivers now fully suppoported.
-    - Majority of kernel drivers will be loaded as shared objects from the initdisk.
+    - Module loader supports ELF shared objects, rather than the convention relocatable objects.
     - Proof of concept driver written. Previously implemented drivers will be ported at some point to use the new system.
 - Kernel: rewrite of symbol lookup. Before symbols used to be generated after the kernel was linked, compiling the symbols into an ELF object and sticking that object at the end of the kernel file (so as not to shuffle existing symbol addresses around). This certainly worked, but it's not as clean as the newer version: which just parses the kernel file request from the bootloader.
 - Kernel/riscv: now uses `tp` for core-local info instead of reading `sscratch` everytime. Thanks to xvanc and sigterm for the feedback.
