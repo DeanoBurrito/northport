@@ -554,20 +554,25 @@ namespace Npk::Memory
         VmRange* range = FindRange(base);
         if (range == nullptr)
             return false;
-        if ((flags.Raw() & (0xFF << 24)) != 0)
-            return false; //bits 24-32 are the 'type' field, we dont support changing this.
+        if ((flags.Raw() & VmFlagTypeMask) != 0)
+            return false; //we dont support modifying the type of an existing range
 
         using namespace Virtual;
         VmDriver* driver = VmDriver::GetDriver(range->flags);
         if (driver == nullptr)
             return false;
+        flags &= ~VmFlagTypeMask;
 
         VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *range, .stats = stats };
         ModifyRangeArgs args {};
         args.setFlags = flags.Raw() & ~range->flags.Raw();
         args.clearFlags = range->flags.Raw() & ~flags.Raw();
 
-        return driver->ModifyRange(context, args);
+        if (!driver->ModifyRange(context, args))
+            return false;
+
+        range->flags = (range->flags & VmFlagTypeMask) | flags;
+        return true;
     }
 
     sl::Opt<uintptr_t> VMM::Split(uintptr_t base, uintptr_t offset)

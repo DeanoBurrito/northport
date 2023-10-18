@@ -22,6 +22,8 @@ namespace Npk::Memory
         File = 26,
     };
 
+    constexpr size_t VmFlagTypeMask = 0xFF << 24;
+
     using VmFlags = sl::Flags<VmFlag>;
     class VirtualMemoryManager;
 
@@ -85,7 +87,7 @@ namespace Npk::Memory
 
         VmObject(VMM* vmm, size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits limits);
 
-        ~VmObject(); //TODO: investigate use of copy ctors?
+        ~VmObject();
         VmObject(const VmObject& other) = delete;
         VmObject& operator=(const VmObject& other) = delete;
 

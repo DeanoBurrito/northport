@@ -76,8 +76,8 @@ namespace Npk::Memory::Virtual
         const bool doFlush = args.clearFlags.Any() || HatLimits().flushOnPermsUpgrade;
 
         HatFlags flags = ConvertFlags(context.range.flags);
-        flags |= ConvertFlags(args.setFlags);
         flags &= ~ConvertFlags(args.clearFlags);
+        flags |= ConvertFlags(args.setFlags);
 
         sl::ScopedLock lock(context.lock);
         for (size_t i = 0; i < context.range.length; i += granuleSize)

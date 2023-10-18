@@ -331,7 +331,7 @@ namespace Npk::Drivers
             if (zeroes != 0)
                 sl::memset(vmo->As<void>(phdrs[i].p_vaddr + phdrs[i].p_filesz), 0, zeroes);
 
-            Log("Loaded elf %s phdr %lu at 0x%lx (+ 0x%lx zeroes)", LogLevel::Verbose,
+            Log("Loaded elf %s phdr %lu at 0x%lx (+0x%lx zeroes)", LogLevel::Verbose,
                 shortName.Begin(), i, loadBase + phdrs[i].p_vaddr, zeroes);
         }
 
@@ -372,7 +372,8 @@ namespace Npk::Drivers
                 flags |= VmFlag::Write;
             if (phdrs[i].p_flags & sl::PF_X)
                 flags |= VmFlag::Execute;
-            localVmo.Flags(flags);
+            const auto readback = localVmo.Flags(flags);
+            VALIDATE_((readback & flags) == flags, {});
         }
 
         //find the entry point for this program. This is easy for a regular elf, but since modules

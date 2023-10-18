@@ -43,7 +43,7 @@ namespace Npk::Memory
     void VmObject::Release()
     {
         if (base.ptr != nullptr)
-            VMM::Kernel().Free(base.raw);
+            vmm->Free(base.raw);
         base.ptr = nullptr;
         size = 0;
     }
