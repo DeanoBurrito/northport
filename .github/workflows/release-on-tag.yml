@@ -34,12 +34,11 @@ jobs:
       run: >
         make clean;
         make iso-hybrid CPU_ARCH=x86_64 TOOLCHAIN=clang
-    
-    -name: Build riscv64 ISO
+    - name: Build riscv ISO
       run: >
         make clean;
         make iso CPU_ARCH=riscv64 TOOLCHAIN=clang
-
+    
     - name: Upload to Github
       uses: softprops/action-gh-release@v1
       with:

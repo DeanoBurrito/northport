@@ -1,3 +1,4 @@
+# v0.2.0
 - Updated to use limine v5:
     - Since the bootloader now supports riscv, the boot shim for that platform was removed. It'll be uploaded as a separate project for anyone who wants to use it.
     - With the shim being removed, the device tree parser no longer needs to operate with the 'no allocation' constraint, so it's been rewriten to be efficient and build a tree in memory. Previously it parsed chunks of the device tree for every operation. It operates like smoldtb without the statically allocated buffer.
@@ -22,10 +23,19 @@
 - Added stats display to graphical terminals, inspired by it's use in Keyronex.
 
 - Kernel/drivers: module loader and external drivers now fully suppoported.
-    - Module loader supports ELF shared objects, rather than the convention relocatable objects.
+    - Module loader supports ELF shared objects, rather than the conventional relocatable objects.
     - Proof of concept driver written. Previously implemented drivers will be ported at some point to use the new system.
 - Kernel: rewrite of symbol lookup. Before symbols used to be generated after the kernel was linked, compiling the symbols into an ELF object and sticking that object at the end of the kernel file (so as not to shuffle existing symbol addresses around). This certainly worked, but it's not as clean as the newer version: which just parses the kernel file request from the bootloader.
 - Kernel/riscv: now uses `tp` for core-local info instead of reading `sscratch` everytime. Thanks to xvanc and sigterm for the feedback.
 - Kernel/riscv: support for acpi based initialization, in addition to the device tree.
 - Kernel: added concept of system topology, currently logical and physical cores are tracked, are as NUMA domains and their corresponding physical cores and memory.
 - Moved to internal stdint.h/stddef.h headers, meaning no external headers are required for building. This removes the need for management external sysroots and platform-specific headers.
+
+# v0.1.0
+- Initial release using git tags.
+- Added new kernel features:
+    - VFS, follows a traditional unix design.
+    - File cache, caches chunks of file contents in memory.
+    - TempFS driver, operates like any other filesystem just with no backing storage.
+- Releases include a bootable x86_64 iso for use with your emulator of choice now.
+    - A risc-v version will follow soon.
