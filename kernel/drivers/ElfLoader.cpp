@@ -271,7 +271,7 @@ namespace Npk::Drivers
                 info.pltRelocs = reinterpret_cast<const void*>(dyn[i].d_ptr + loadBase);
                 break;
             case sl::DT_PLTREL:
-                info.pltUsesRela = dyn[i].d_val == sl::DT_RELA ? true : false;
+                info.pltUsesRela = (dyn[i].d_val == sl::DT_RELA);
                 break;
             case sl::DT_PLTRELSZ:
                 info.pltRelocsSize = dyn[i].d_val;

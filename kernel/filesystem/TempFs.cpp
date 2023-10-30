@@ -37,6 +37,7 @@ namespace Npk::Filesystem
 
     sl::Handle<Node> TempFs::Resolve(sl::StringSpan path, const FsContext& context)
     {
+        //TODO: reimplement this as a global function rather than per-FS
         VALIDATE(path.Begin()[0] != '/', {}, "Absolute path passed to VFS driver");
         VALIDATE(!path.Empty(), {}, "Empty path passed to VFS driver");
         (void)context;
@@ -304,13 +305,53 @@ namespace Npk::Filesystem
         VALIDATE(dir->type == NodeType::Directory, {}, "Parent is not a directory");
         (void)context;
         
-        Node* found = nullptr;
-        dir->lock.ReaderLock();
-        const TempFsData* data = static_cast<const TempFsData*>(dir->driverData);
+        sl::Handle<Node> parent = dir;
+        while (parent->type == NodeType::Directory && parent->link.mounted)
+            parent = parent->link.mounted->Root();
+
+        sl::Handle<Node> found {};
+        parent->lock.ReaderLock();
+        const TempFsData* data = static_cast<const TempFsData*>(parent->driverData);
         if (index < data->children.Size())
             found = data->children[index];
 
-        dir->lock.ReaderUnlock();
+        parent->lock.ReaderUnlock();
+
+        return found;
+    }
+
+    sl::Handle<Node> TempFs::FindChild(Node* dir, sl::StringSpan name, const FsContext& context)
+    {
+        VALIDATE_(dir != nullptr, {});
+        VALIDATE_(dir->driverData != nullptr, {});
+        VALIDATE_(dir->type == NodeType::Directory, {});
+        (void)context;
+
+        sl::Handle<Node> parent = dir;
+        while (parent->type == NodeType::Directory && parent->link.mounted)
+            parent = parent->link.mounted->Root();
+            
+        sl::Handle<Node> found {};
+        parent->lock.ReaderLock();
+        auto data = static_cast<const TempFsData*>(parent->driverData);
+        for (size_t i = 0; i < data->children.Size(); i++)
+        {
+            sl::Handle<Node> child(data->children[i]); //important we grab this handle while inspecting the child
+            child->lock.ReaderLock();
+            auto childData = static_cast<const TempFsData*>(child->driverData);
+            if (childData->props.name != name)
+            {
+                child->lock.ReaderUnlock();
+                continue;
+            }
+
+            //we found a child with a matching name
+            found = sl::Move(child);
+            found->lock.ReaderUnlock();
+            break;
+        }
+        parent->lock.ReaderUnlock();
+
         return found;
     }
 

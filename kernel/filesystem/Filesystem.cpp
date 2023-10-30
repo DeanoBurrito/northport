@@ -23,6 +23,7 @@ namespace Npk::Filesystem
         
         const sl::Url filepath = sl::Url::Parse(header->Filename());
         sl::StringSpan segment {};
+        sl::Handle<Node> parent = root;
 
         //create any parent directories needed
         while (true)
@@ -31,14 +32,19 @@ namespace Npk::Filesystem
             if (filepath.GetNextSeg(segment).Empty())
                 break; //last segment is actually the filename, handle that outside the loop
 
-            NodeProps props { .name = segment, .created = sl::TimePoint::Now() };
-            sl::Handle<Node> dir = root->Create(NodeType::Directory, props, KernelFsCtxt);
+            sl::Handle<Node> dir = parent->FindChild(segment, KernelFsCtxt);
             if (!dir.Valid())
             {
-                Log("Initdisk file loading failed: %s", LogLevel::Error, header->Filename().Begin());
-                return;
+                NodeProps props { .name = segment, .created = sl::TimePoint::Now() };
+                dir = root->Create(NodeType::Directory, props, KernelFsCtxt);
+
+                if (!dir.Valid())
+                {
+                    Log("Initdisk file loading failed: %s", LogLevel::Error, header->Filename().Begin());
+                    return;
+                }
             }
-            root = *dir;
+            parent = dir;
         }
 
         //load the file itself
@@ -48,7 +54,7 @@ namespace Npk::Filesystem
             .created = sl::TimePoint::Now(), 
             .size = header->SizeBytes() 
         };
-        sl::Handle<Node> file = root->Create(NodeType::File, props, KernelFsCtxt);
+        sl::Handle<Node> file = parent->Create(NodeType::File, props, KernelFsCtxt);
         if (!file.Valid())
         {
             Log("Initdisk file loading failed: %s", LogLevel::Error, header->Filename().Begin());
@@ -57,11 +63,32 @@ namespace Npk::Filesystem
 
         RwPacket writePacket { .write = true, .length = header->SizeBytes() };
         //NOTE: this is okay, since we're only reading from the buffer.
-        writePacket.buffer = const_cast<void*>(header->Data());
+        writePacket.buffer = const_cast<void*>(header->Data()); //TODO: memory map and write directory to the filecache
         if (size_t written = file->ReadWrite(writePacket, KernelFsCtxt) != header->SizeBytes())
         {
+
             Log("Initdisk file wrote %lu (out of %lu) bytes.", LogLevel::Error, 
                 written, header->SizeBytes());
+        }
+    }
+
+    void PrintVfsNode(sl::Handle<Node>& node, size_t level)
+    {
+        NodeProps props {};
+        node->GetProps(props, KernelFsCtxt);
+        Log("%*c%s%s (%lu bytes)", LogLevel::Debug, (int)level * 2, ' ', 
+            props.name.C_Str(), node->type == NodeType::Directory ? "/" : "", props.size);
+
+        if (node->type != NodeType::Directory)
+            return;
+
+        for (size_t i = 0; true; i++)
+        {
+            auto child = node->GetChild(i, KernelFsCtxt);
+            if (!child.Valid())
+                break;
+
+            PrintVfsNode(child, level + 1);
         }
     }
 
@@ -147,6 +174,8 @@ namespace Npk::Filesystem
             ASSERT_UNREACHABLE()
 
         TryFindInitdisk();
+        sl::Handle<Node> rootHandle = RootFs()->Root();
+        PrintVfsNode(rootHandle, 0);
     }
 
     VfsDriver* RootFs()

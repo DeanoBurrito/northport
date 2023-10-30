@@ -104,6 +104,7 @@ namespace Npk::Filesystem
         virtual size_t ReadWrite(Node* node, const RwPacket& packet, const FsContext& context) = 0;
         virtual bool Flush(Node* node) = 0;
         virtual sl::Handle<Node> GetChild(Node* dir, size_t index, const FsContext& context) = 0;
+        virtual sl::Handle<Node> FindChild(Node* dir, sl::StringSpan name, const FsContext& context) = 0;
         virtual bool GetProps(Node* node, NodeProps& props, const FsContext& context) = 0;
         virtual bool SetProps(Node* node, const NodeProps& props, const FsContext& context) = 0;
     };
@@ -162,6 +163,10 @@ namespace Npk::Filesystem
         [[gnu::always_inline]]
         inline sl::Handle<Node> GetChild(size_t index, const FsContext& context)
         { return driver.GetChild(this, index, context); }
+
+        [[gnu::always_inline]]
+        inline sl::Handle<Node> FindChild(sl::StringSpan name, const FsContext& context)
+        { return driver.FindChild(this, name, context); }
 
         [[gnu::always_inline]]
         inline bool GetProps(NodeProps& props, const FsContext& context)
