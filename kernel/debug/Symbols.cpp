@@ -2,114 +2,195 @@
 #include <debug/Log.h>
 #include <boot/LimineTags.h>
 #include <formats/Elf.h>
-#include <NativePtr.h>
-#include <Span.h>
+#include <containers/LinkedList.h>
 #include <Locks.h>
 
 namespace Npk::Debug
 {
-    sl::RwLock symbolsLock;
-    sl::Span<KernelSymbol> symbols;
+    static SymbolFlag ClassifySymbol(const sl::Elf64_Sym& sym)
+    {
+        if ((sym.st_info & 0xF) == sl::STT_FUNC)
+        {
+            if (((sym.st_info >> 4) & 0xF) == sl::STB_LOCAL)
+                return SymbolFlag::Private;
+            else
+                return SymbolFlag::Public;
+        }
+        else
+            return SymbolFlag::NonFunction;
+    }
 
-    size_t ScanSymbolTables(sl::NativePtr file, bool scanOnly)
+    void ProcessElfSymbolTables(sl::NativePtr file, SymbolRepo& repo, uintptr_t loadBase)
     {
         auto ehdr = file.As<const sl::Elf64_Ehdr>();
         auto shdrs = file.As<const sl::Elf64_Shdr>(ehdr->e_shoff);
-        sl::Vector<const sl::Elf64_Shdr*> symTables = sl::FindShdrs(ehdr, sl::SHT_SYMTAB);
+        auto symTables = sl::FindShdrs(ehdr, sl::SHT_SYMTAB);
 
-        size_t namedSymbolsCount = 0;
+        //first pass over the symbol tables: get counts for each category, make a copy of the string table.
+        size_t countPublic = 0;
+        size_t countPrivate = 0;
+        size_t countOther = 0;
         for (size_t i = 0; i < symTables.Size(); i++)
         {
             const size_t symbolCount = symTables[i]->sh_size / symTables[i]->sh_entsize;
             auto syms = file.As<const sl::Elf64_Sym>(symTables[i]->sh_offset);
-            const char* strings = file.As<const char>(shdrs[symTables[i]->sh_link].sh_offset);
+
+            //TODO: would be nice to just make a private mapping of this part of the file (0 copies),
+            //instead of copying into anonymous memory.
+            auto strTable = shdrs[symTables[i]->sh_link];
+            ASSERT(!repo.stringTable.Valid(), "All symtabs must share the same strtab (for now)");
+            repo.stringTable = VmObject(strTable.sh_size, VmFlag::Anon | VmFlag::Write);
+            VALIDATE_(repo.stringTable.Valid(),);
+
+            sl::memcopy(file.As<const void>(strTable.sh_offset), repo.stringTable->ptr, strTable.sh_size);
+            repo.stringTable.Flags({}); //clear permissions flags, making string table readonly.
 
             for (size_t j = 0; j < symbolCount; j++)
             {
                 if (syms[j].st_name == 0 || syms[j].st_size == 0)
-                    continue; //ignore unnamed or sizeless symbols.
+                    continue; //ignore nameless and sizeless symbols
 
-                const size_t accessor = namedSymbolsCount++;
-                if (scanOnly)
-                    continue;
-
-                symbols[accessor].length = syms[j].st_size;
-                const char* symName = strings + syms[j].st_name;
-                symbols[accessor].name = { symName, sl::memfirst(symName, 0, 0) };
-
-                if (syms[j].st_shndx == sl::SHN_ABS)
-                    symbols[accessor].base = syms[j].st_value;
-                else if (syms[j].st_shndx < ehdr->e_shnum)
-                    symbols[accessor].base = syms[j].st_value; //TODO: handle symbols when the kernel has been relocated
-                else
-                    Log("Kernel symbol %s has unknown address", LogLevel::Verbose, strings + syms[j].st_name);
+                switch (ClassifySymbol(syms[j]))
+                {
+                    case SymbolFlag::Public: countPublic++; break;
+                    case SymbolFlag::Private: countPrivate++; break;
+                    case SymbolFlag::NonFunction: countOther++; break;
+                    default: ASSERT_UNREACHABLE();
+                }
             }
         }
 
-        return namedSymbolsCount;
+        repo.publicFunctions.EnsureCapacity(countPublic);
+        repo.privateFunctions.EnsureCapacity(countPrivate);
+        repo.nonFunctions.EnsureCapacity(countOther);
+
+        //second iteration over symbol tables: store data about the symbols.
+        for (size_t i = 0; i < symTables.Size(); i++)
+        {
+            const size_t symbolCount = symTables[i]->sh_size / symTables[i]->sh_entsize;
+            auto syms = file.As<const sl::Elf64_Sym>(symTables[i]->sh_offset);
+
+            for (size_t j = 0; j < symbolCount; j++)
+            {
+                if (syms[j].st_name == 0 || syms[j].st_size == 0)
+                    continue; //ignore nameless and sizeless symbols
+
+                KernelSymbol* storage = nullptr;
+                switch (ClassifySymbol(syms[j]))
+                {
+                    case SymbolFlag::Public: 
+                        storage = &repo.publicFunctions.EmplaceBack();
+                        break;
+                    case SymbolFlag::Private:
+                        storage = &repo.privateFunctions.EmplaceBack();
+                        break;
+                    case SymbolFlag::NonFunction:
+                        storage = &repo.nonFunctions.EmplaceBack();
+                        break;
+                    default: 
+                        ASSERT_UNREACHABLE();
+                }
+
+                storage->base = loadBase + syms[j].st_value;
+                storage->length = syms[j].st_size;
+                const char* symbolName = repo.stringTable->As<const char>() + syms[j].st_name;
+                storage->name = { symbolName, sl::memfirst(symbolName, 0, 0) };
+            }
+        }
+
+        Log("Loaded symbols for %s: public=%lu, private=%lu, other=%lu", LogLevel::Info,
+            repo.name.C_Str(), countPublic, countPrivate, countOther);
     }
+
+    sl::RwLock repoListLock;
+    sl::LinkedList<SymbolRepo> symbolRepos;
 
     void LoadKernelSymbols()
     {
+        repoListLock.WriterLock();
+        SymbolRepo& repo = symbolRepos.EmplaceBack();
+        repoListLock.WriterUnlock();
+        repo.name = "kernel";
+        
         if (Boot::kernelFileRequest.response == nullptr)
         {
-            Log("Failed to load kernel symbols, file request not present", LogLevel::Warning);
+            //TODO: other ways to load kernel symbols
+            Log("Bootloader did not provide kernel file feature response", LogLevel::Error);
             return;
         }
 
-        void* fileAddr = Boot::kernelFileRequest.response->kernel_file->address;
-        if (!sl::ValidateElfHeader(fileAddr, sl::ET_EXEC))
-        {
-            Log("Failed to load kernel symbols, bad image header.", LogLevel::Warning);
-            return;
-        }
-
-        symbolsLock.WriterLock();
-        const size_t symbolCount = ScanSymbolTables(fileAddr, true);
-        symbols = sl::Span<KernelSymbol>(new KernelSymbol[symbolCount], symbolCount);
-        ScanSymbolTables(fileAddr, false);
-        symbolsLock.WriterUnlock();
-
-        Log("Loaded %lu kernel symbols.", LogLevel::Info, symbols.Size());
+        void* kernelFileAddr = Boot::kernelFileRequest.response->kernel_file->address;
+        ProcessElfSymbolTables(kernelFileAddr, repo, 0);
     }
 
-    sl::Opt<KernelSymbol> SymbolFromAddr(uintptr_t addr)
+    sl::Handle<SymbolRepo> LoadElfModuleSymbols(sl::StringSpan name, VmObject& file, uintptr_t loadBase)
     {
-        if (symbols.Empty())
-            return {};
+        repoListLock.WriterLock();
+        SymbolRepo& repo = symbolRepos.EmplaceBack();
+        repo.name = name;
+        ProcessElfSymbolTables(file->ptr, repo, loadBase);
+        repoListLock.WriterUnlock();
 
-        symbolsLock.ReaderLock();
-        for (size_t i = 0; i < symbols.Size(); i++)
-        {
-            if (addr >= symbols[i].base && addr < symbols[i].base + symbols[i].length)
-            {
-                KernelSymbol sym = symbols[i];
-                symbolsLock.ReaderUnlock();
-                return sym;
-            }
-        }
-        symbolsLock.ReaderUnlock();
-
-        return {}; //TODO: allow for parsing module symbol tables
+        return sl::Handle<SymbolRepo>(&repo); //TODO: delete[] wont properly remove repo from list
     }
 
-    sl::Opt<KernelSymbol> SymbolFromName(sl::StringSpan name)
+    sl::Opt<KernelSymbol> LocateSymbol(sl::Opt<uintptr_t> addr, sl::StringSpan name, SymbolFlags flags)
     {
-        if (symbols.Empty() || name.Empty())
+        auto CheckSymbolList = [=](sl::Vector<KernelSymbol>& list)
+        {
+            for (size_t i = 0; i < list.Size(); i++)
+            {
+                if (name == list[i].name)
+                    return sl::Opt<KernelSymbol>(list[i]);
+                if (addr.HasValue() && *addr >= list[i].base && *addr < list[i].base + list[i].length)
+                    return sl::Opt<KernelSymbol>(list[i]);
+            }
+
+            return sl::Opt<KernelSymbol>{};
+        };
+
+        if (!flags.Any())
             return {};
 
-        symbolsLock.ReaderLock();
-        for (size_t i = 0; i < symbols.Size(); i++)
+        sl::Opt<KernelSymbol> found {};
+        repoListLock.ReaderLock();
+        for (auto it = symbolRepos.Begin(); it != symbolRepos.End(); ++it)
         {
-            if (symbols[i].name == name)
+            if (flags.Has(SymbolFlag::Public))
             {
-                KernelSymbol sym = symbols[i];
-                symbolsLock.ReaderUnlock();
-                return sym;
+                found = CheckSymbolList(it->publicFunctions);
+                if (found.HasValue())
+                    break;
             }
-        }
-        symbolsLock.ReaderUnlock();
+            if (flags.Has(SymbolFlag::Private))
+            {
+                found = CheckSymbolList(it->privateFunctions);
+                if (found.HasValue())
+                    break;
+            }
+            if (flags.Has(SymbolFlag::NonFunction))
+            {
+                found = CheckSymbolList(it->nonFunctions);
+                if (found.HasValue())
+                    break;
+            }
 
-        return {};
+            //only search for kernel symbols: this works because the first repo is always the kernel.
+            if (flags.Has(SymbolFlag::Kernel))
+                break;
+        }
+        repoListLock.ReaderUnlock();
+
+        return found;
+    }
+
+    sl::Opt<KernelSymbol> SymbolFromAddr(uintptr_t addr, SymbolFlags flags)
+    {
+        return LocateSymbol(addr, {}, flags);
+    }
+
+    sl::Opt<KernelSymbol> SymbolFromName(sl::StringSpan name, SymbolFlags flags)
+    {
+        return LocateSymbol({}, name, flags);
     }
 }

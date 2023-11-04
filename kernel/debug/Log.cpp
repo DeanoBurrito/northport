@@ -346,7 +346,7 @@ extern "C"
             const uintptr_t addr = GetReturnAddr(i);
             if (addr == 0)
                 break;
-            auto symbol = SymbolFromAddr(addr);
+            auto symbol = SymbolFromAddr(addr, SymbolFlag::Public | SymbolFlag::Private);
             const char* symbolName = symbol.HasValue() ? symbol->name.Begin() : "<unknown>";
             const size_t symbolOffset = symbol.HasValue() ? addr - symbol->base : 0;
             PanicWrite("%3u: 0x%lx %s+0x%lu\r\n", i, addr, symbolName, symbolOffset);

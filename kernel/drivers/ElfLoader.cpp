@@ -115,7 +115,8 @@ namespace Npk::Drivers
             auto symbolName = dynInfo.strTable + dynInfo.symTable[ELF64_R_SYM(rel->r_info)].st_name;
             const size_t nameLen = sl::memfirst(symbolName, 0, 0);
 
-            auto resolved = Debug::SymbolFromName({ symbolName, nameLen });
+            using namespace Debug;
+            auto resolved = SymbolFromName({ symbolName, nameLen }, SymbolFlag::Public | SymbolFlag::Kernel);
             if (!resolved.HasValue())
             {
                 Log("Failed to resolve PLT symbol: %s", LogLevel::Error, symbolName);
@@ -396,9 +397,10 @@ namespace Npk::Drivers
                 if (manifestName != driverName)
                     continue;
 
-                entryPoint = reinterpret_cast<uintptr_t>(manifest->entry) + loadBase;
+                entryPoint = reinterpret_cast<uintptr_t>(manifest->entry);
                 Log("Driver %s (from %s) entrypoint found at 0x%lx", LogLevel::Verbose, 
                     driverName.Begin(), shortName.Begin(), entryPoint);
+                break;
             }
             VALIDATE_(entryPoint != 0, {});
         }
@@ -410,6 +412,9 @@ namespace Npk::Drivers
         elfInfo->segments = sl::Move(finalVmos);
         elfInfo->references = 0;
         elfInfo->entryAddr = entryPoint;
+
+        if (isModule)
+            elfInfo->symbolRepo = Debug::LoadElfModuleSymbols(shortName, file, loadBase);
 
         return sl::Handle(elfInfo);
     }

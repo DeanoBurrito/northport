@@ -1,5 +1,6 @@
 #pragma once
 
+#include <debug/Symbols.h>
 #include <String.h>
 #include <Handle.h>
 #include <memory/VmObject.h>
@@ -28,6 +29,7 @@ namespace Npk::Drivers
     {
         sl::Atomic<size_t> references;
         sl::Vector<VmObject> segments;
+        sl::Handle<Debug::SymbolRepo> symbolRepo;
         uintptr_t loadBase;
         uintptr_t entryAddr;
     };
