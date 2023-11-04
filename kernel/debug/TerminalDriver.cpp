@@ -7,18 +7,22 @@
 #include <UnitConverter.h>
 
 //these headers are needed to gather the info required for the stats display
+#include <debug/BakedConstants.h>
 #include <drivers/api/Api.h>
 #include <memory/Vmm.h>
+#include <filesystem/FileCache.h>
 
 namespace Npk::Debug
 {
-    constexpr const char VersionFormatStr[] = "Kernel v%u.%u.%u (api v%u.%u.%u)";
+    constexpr const char VersionFormatStr[] = "Kernel v%lu.%lu.%lu (api v%u.%u.%u)";
     constexpr const char VmmFormatStr[] = "[VMM] faults=%lu, anon=%lu.%lu%sB/%lu.%lu%sB (%lu), file=%lu.%lu%sB/%lu.%lu%sB (%lu), mmio=%lu.%lu%sB (%lu)";
+    constexpr const char FileCacheFormatStr[] = "[FCache] size=%lu%sB (0x%lx * %lu)";
     //TODO: other info to track and display
     //- interrupts per second, and execution time outside of scheduler (int handlers, dpcs)
     //- PMM and file cache usage.
     constexpr const char VersionPreStr[] = "\e[1;1H";
     constexpr const char VmmPreStr[] = "\e[2;1H";
+    constexpr const char FileCachePreStr[] = "\e[1;32H";
 
     constexpr size_t StatsFormatBuffSize = 128;
 
@@ -35,21 +39,26 @@ namespace Npk::Debug
     void UpdateRenderedStats()
     {
         const size_t verLen = npf_snprintf(nullptr, 0, VersionFormatStr,
-            0, 2, 0, //TODO: get kernel version from file
+            versionMajor, versionMinor, versionRev,
             NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV) + 1;
 
         char verStr[verLen]; //TODO: no VLAs!
         npf_snprintf(verStr, verLen, VersionFormatStr,
-            0, 2, 0,
+            versionMajor, versionMinor, versionRev,
             NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV);
 
         char formatBuff[StatsFormatBuffSize];
         auto vmmStats = VMM::Kernel().GetStats();
-        auto anonWss = sl::ConvertUnits(vmmStats.anonWorkingSize);
-        auto anonRss = sl::ConvertUnits(vmmStats.anonResidentSize);
-        auto fileWss = sl::ConvertUnits(vmmStats.fileWorkingSize);
-        auto fileRss = sl::ConvertUnits(vmmStats.fileResidentSize);
-        auto mmioWss = sl::ConvertUnits(vmmStats.mmioWorkingSize);
+        auto anonWss = sl::ConvertUnits(vmmStats.anonWorkingSize, sl::UnitBase::Binary);
+        auto anonRss = sl::ConvertUnits(vmmStats.anonResidentSize, sl::UnitBase::Binary);
+        auto fileWss = sl::ConvertUnits(vmmStats.fileWorkingSize, sl::UnitBase::Binary);
+        auto fileRss = sl::ConvertUnits(vmmStats.fileResidentSize, sl::UnitBase::Binary);
+        auto mmioWss = sl::ConvertUnits(vmmStats.mmioWorkingSize, sl::UnitBase::Binary);
+
+        auto fcInfo = Filesystem::GetFileCacheInfo();
+        if (fcInfo.unitSize == 0)
+            fcInfo.unitSize = fcInfo.modeMultiple = 1; //hack because terminals can start before file cache is initalized.
+        auto fcUnitSizeConv = sl::ConvertUnits(fcInfo.unitSize, sl::UnitBase::Binary);
 
         for (auto it = termHeads.Begin(); it != termHeads.End(); it = it->next)
         {
@@ -57,12 +66,16 @@ namespace Npk::Debug
             it->statsRenderer.Write(verStr, verLen);
 
             it->statsRenderer.Write(VmmPreStr, sizeof(VmmPreStr));
-            const size_t length = npf_snprintf(formatBuff, StatsFormatBuffSize, VmmFormatStr, vmmStats.faults,
+            const size_t vmmLen = npf_snprintf(formatBuff, StatsFormatBuffSize, VmmFormatStr, vmmStats.faults,
                 anonRss.major, anonRss.minor, anonRss.prefix, anonWss.major, anonWss.minor, anonWss.prefix, vmmStats.anonRanges,
                 fileRss.major, fileRss.minor, fileRss.prefix, fileWss.major, fileWss.minor, fileWss.prefix, vmmStats.fileRanges,
                 mmioWss.major, mmioWss.minor, mmioWss.prefix, vmmStats.mmioRanges);
+            it->statsRenderer.Write(formatBuff, vmmLen);
 
-            it->statsRenderer.Write(formatBuff, length);
+            it->statsRenderer.Write(FileCachePreStr, sizeof(FileCachePreStr));
+            const size_t fileCacheLen = npf_snprintf(formatBuff, StatsFormatBuffSize, FileCacheFormatStr,
+                fcUnitSizeConv.major, fcUnitSizeConv.prefix, fcInfo.unitSize / fcInfo.modeMultiple, fcInfo.modeMultiple);
+            it->statsRenderer.Write(formatBuff, fileCacheLen);
         }
     }
 

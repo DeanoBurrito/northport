@@ -5,7 +5,7 @@ CXX_SRCS = arch/Helpers.cpp \
 	config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
-	debug/TerminalDriver.cpp debug/Symbols.cpp \
+	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp \
 	devices/PciAddress.cpp devices/PciBridge.cpp devices/PciCapabilities.cpp \
 	devices/DeviceManager.cpp \
 	drivers/DriverManager.cpp drivers/ElfLoader.cpp drivers/ApiBinds.cpp \
@@ -43,6 +43,21 @@ clean:
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Cleaning build files ...\r\n"
 	$(LOUD)-rm -r $(BUILD_DIR)
 	@printf "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
+
+.PHONY: debug/BakedConstants.cpp
+debug/BakedConstants.cpp:
+	@printf "$(C_BLUE)[Kernel]$(C_RST) Creating source file for build-time kernel constants\r\n"
+	@mkdir -p $(@D)
+	@printf "#include <debug/BakedConstants.h>\n \
+		namespace Npk::Debug \
+		{ \
+			const char* targetArchStr = \"$(CPU_ARCH)\"; \
+			const char* gitCommitHash = \"$(shell git rev-parse HEAD)\"; \
+			const char* gitCommitShortHash = \"$(shell git rev-parse --short HEAD)\"; \
+			size_t versionMajor = 0; \
+			size_t versionMinor = 2; \
+			size_t versionRev = 0; \
+		}" > debug/BakedConstants.cpp
 
 $(BUILD_DIR)/%.S.o: %.S
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Assembling: $<\r\n"

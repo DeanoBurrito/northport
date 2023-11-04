@@ -7,6 +7,7 @@
 #include <debug/Log.h>
 #include <debug/TerminalDriver.h>
 #include <debug/Symbols.h>
+#include <debug/BakedConstants.h>
 #include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
@@ -30,7 +31,8 @@ namespace Npk
     
     void InitEarlyPlatform()
     {
-        Log("\r\nNorthport kernel started.", LogLevel::Info);
+        Log("\r\nNorthport kernel %lu.%lu.%lu for %s started.", LogLevel::Info, 
+            Debug::versionMajor, Debug::versionMinor, Debug::versionRev, Debug::targetArchStr);
         Boot::CheckLimineTags();
 
         hhdmBase = Boot::hhdmRequest.response->offset;
