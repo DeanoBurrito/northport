@@ -34,8 +34,6 @@ namespace Npk::Drivers
         uintptr_t entryAddr;
     };
 
-    sl::Opt<DynamicElfInfo> ParseDynamic(VmObject& file, uintptr_t loadBase);
-
     void ScanForModules(sl::StringSpan dirpath);
     bool ScanForDrivers(sl::StringSpan filepath);
 

@@ -129,104 +129,7 @@ namespace Npk::Drivers
         return true;
     }
 
-    static const VmObject LoadMetadataSection(VmObject& file)
-    {
-        auto ehdr = file->As<const sl::Elf64_Ehdr>();
-        auto metadataShdr = sl::FindShdr(ehdr, ".npk_module");
-        VALIDATE_(metadataShdr != nullptr, {});
-
-        VmObject workingBuffer(metadataShdr->sh_size, 0, VmFlag::Anon | VmFlag::Write);
-        sl::memcopy(file->As<void>(metadataShdr->sh_offset), workingBuffer->ptr, metadataShdr->sh_size);
-
-        auto dynInfo = ParseDynamic(file, file->raw);
-        VALIDATE_(dynInfo.HasValue(), {});
-        VALIDATE_(DoRelocations(*dynInfo, workingBuffer, metadataShdr->sh_addr, metadataShdr->sh_size), {});
-        return workingBuffer;
-    }
-
-    void ScanForModules(sl::StringSpan dirpath)
-    {
-        Log("Scanning for kernel modules in \"%s\"", LogLevel::Info, dirpath.Begin());
-
-        using namespace Filesystem;
-        auto dir = VfsLookup(dirpath, KernelFsCtxt);
-        VALIDATE_(dir.Valid(),);
-        VALIDATE_(dir->type == NodeType::Directory,);
-
-        size_t found = 0;
-        for (size_t i = 0; true; i++)
-        {
-            auto child = dir->GetChild(i, KernelFsCtxt);
-            if (!child.Valid())
-                break;
-            if (child->type != NodeType::File)
-                continue;
-
-            NodeProps props;
-            if (!child->GetProps(props, KernelFsCtxt))
-                continue;
-
-            sl::String filepath(dirpath);
-            if (!filepath.EndsWith('/'))
-                filepath += '/';
-            filepath += props.name;
-            if (ScanForDrivers(filepath.Span()))
-                found++;
-        }
-
-        Log("Detected %lu kernel modules in \"%s\"", LogLevel::Verbose, found, dirpath.Begin());
-    }
-
-    bool ScanForDrivers(sl::StringSpan filepath)
-    {
-        const auto shortName = GetShortName(filepath);
-        VmObject file = OpenElf(filepath);
-        VALIDATE_(file.Valid(), false);
-
-        VmObject metadataVmo = LoadMetadataSection(file);
-        VALIDATE_(metadataVmo.Valid(), false);
-
-        const uint8_t moduleHdrGuid[] = NP_MODULE_META_START_GUID;
-        const uint8_t manifestHdrGuid[] = NP_MODULE_MANIFEST_GUID;
-        auto moduleInfo = static_cast<const npk_module_metadata*>(FindGuid(metadataVmo.ConstSpan(), moduleHdrGuid));
-        VALIDATE_(moduleInfo != nullptr, false);
-
-        //API compatibility: major version must match, and kernel minor version must be greater/equal
-        VALIDATE_(moduleInfo->api_ver_major == NP_MODULE_API_VER_MAJOR, false);
-        VALIDATE_(moduleInfo->api_ver_minor <= NP_MODULE_API_VER_MINOR, false);
-
-        auto scan = metadataVmo.ConstSpan();
-        while (scan.Size() > 0)
-        {
-            auto apiManifest = static_cast<const npk_driver_manifest*>(FindGuid(scan, manifestHdrGuid));
-            if (apiManifest == nullptr)
-                break;
-            const size_t offset = (uintptr_t)apiManifest - (uintptr_t)scan.Begin();
-            scan = scan.Subspan(offset + sizeof(npk_driver_manifest), -1ul);
-
-            //TODO: TOCTOU-style bug potential here, what if a file's content changes
-            //after this point but before the driver is loaded? Probably should store
-            //a file hash with the cached data, so we can verify its validity later.
-            DriverManifest* manifest = new DriverManifest();
-            manifest->references = 0;
-            manifest->friendlyName = sl::String(apiManifest->friendly_name);
-            manifest->sourcePath = filepath;
-            manifest->loadType = static_cast<LoadType>(apiManifest->load_type);
-
-            uint8_t* loadString = new uint8_t[apiManifest->load_str_len];
-            sl::memcopy(apiManifest->load_str, loadString, apiManifest->load_str_len);
-            manifest->loadStr = sl::Span<const uint8_t>(loadString, apiManifest->load_str_len);
-            
-            DriverManager::Global().Register(manifest);
-            (void)manifest;
-            Log("Module %s provides driver: %s v%u.%u.%u", LogLevel::Info, shortName.Begin(),
-                manifest->friendlyName.C_Str(), apiManifest->ver_major, apiManifest->ver_minor,
-                apiManifest->ver_rev);
-        }
-        return true;
-    }
-
-    sl::Opt<DynamicElfInfo> ParseDynamic(VmObject& file, uintptr_t loadBase)
+    static sl::Opt<DynamicElfInfo> ParseDynamic(VmObject& file, uintptr_t loadBase)
     {
         auto ehdr = file->As<const sl::Elf64_Ehdr>();
         auto phdrs = file->As<const sl::Elf64_Phdr>(ehdr->e_phoff);
@@ -281,6 +184,153 @@ namespace Npk::Drivers
         }
 
         return info;
+    }
+
+    static const VmObject LoadMetadataSection(VmObject& file)
+    {
+        auto ehdr = file->As<const sl::Elf64_Ehdr>();
+        auto metadataShdr = sl::FindShdr(ehdr, ".npk_module");
+        VALIDATE_(metadataShdr != nullptr, {});
+
+        //TODO: small misalignment here I think, we use the base of the working buffer which becomes page-aligned
+        VmObject workingBuffer(metadataShdr->sh_size, 0, VmFlag::Anon | VmFlag::Write);
+        sl::memcopy(file->As<void>(metadataShdr->sh_offset), workingBuffer->ptr, metadataShdr->sh_size);
+
+        auto dynInfo = ParseDynamic(file, file->raw);
+        VALIDATE_(dynInfo.HasValue(), {});
+        VALIDATE_(DoRelocations(*dynInfo, workingBuffer, metadataShdr->sh_addr, metadataShdr->sh_size), {});
+        return workingBuffer;
+    }
+
+    void ScanForModules(sl::StringSpan dirpath)
+    {
+        Log("Scanning for kernel modules in \"%s\"", LogLevel::Info, dirpath.Begin());
+
+        using namespace Filesystem;
+        auto dir = VfsLookup(dirpath, KernelFsCtxt);
+        VALIDATE_(dir.Valid(),);
+        VALIDATE_(dir->type == NodeType::Directory,);
+
+        size_t found = 0;
+        for (size_t i = 0; true; i++)
+        {
+            auto child = dir->GetChild(i, KernelFsCtxt);
+            if (!child.Valid())
+                break;
+            if (child->type != NodeType::File)
+                continue;
+
+            NodeProps props;
+            if (!child->GetProps(props, KernelFsCtxt))
+                continue;
+
+            sl::String filepath(dirpath);
+            if (!filepath.EndsWith('/'))
+                filepath += '/';
+            filepath += props.name;
+            if (ScanForDrivers(filepath.Span()))
+                found++;
+        }
+
+        Log("Detected %lu kernel modules in \"%s\"", LogLevel::Verbose, found, dirpath.Begin());
+    }
+
+    bool ScanForDrivers(sl::StringSpan filepath)
+    {
+        const auto shortName = GetShortName(filepath);
+        VmObject file = OpenElf(filepath);
+        VALIDATE_(file.Valid(), false);
+
+        VmObject metadataVmo = LoadMetadataSection(file); //TODO: remove this function (its only used in one place)
+        VALIDATE_(metadataVmo.Valid(), false);
+
+        const uint8_t moduleHdrGuid[] = NP_MODULE_META_START_GUID;
+        const uint8_t manifestHdrGuid[] = NP_MODULE_MANIFEST_GUID;
+        auto moduleInfo = static_cast<const npk_module_metadata*>(FindGuid(metadataVmo.ConstSpan(), moduleHdrGuid));
+        VALIDATE_(moduleInfo != nullptr, false);
+
+        //API compatibility: major version must match, and kernel minor version must be greater/equal
+        VALIDATE_(moduleInfo->api_ver_major == NP_MODULE_API_VER_MAJOR, false);
+        VALIDATE_(moduleInfo->api_ver_minor <= NP_MODULE_API_VER_MINOR, false);
+
+        auto scan = metadataVmo.ConstSpan();
+        while (scan.Size() > 0)
+        {
+            auto apiManifest = static_cast<const npk_driver_manifest*>(FindGuid(scan, manifestHdrGuid));
+            if (apiManifest == nullptr)
+                break;
+            const size_t offset = (uintptr_t)apiManifest - (uintptr_t)scan.Begin();
+            scan = scan.Subspan(offset + sizeof(npk_driver_manifest), -1ul);
+
+            //TODO: TOCTOU-style bug potential here, what if a file's content changes
+            //after this point but before the driver is loaded? Probably should store
+            //a file hash with the cached data, so we can verify its validity later.
+            DriverManifest* manifest = new DriverManifest();
+            manifest->references = 0;
+            manifest->friendlyName = sl::String(apiManifest->friendly_name);
+            manifest->sourcePath = filepath;
+            manifest->loadType = static_cast<LoadType>(apiManifest->load_type);
+
+            uint8_t* loadString = new uint8_t[apiManifest->load_str_len];
+            sl::memcopy(apiManifest->load_str, loadString, apiManifest->load_str_len);
+            manifest->loadStr = sl::Span<const uint8_t>(loadString, apiManifest->load_str_len);
+            
+            DriverManager::Global().Register(manifest);
+            (void)manifest;
+            Log("Module %s provides driver: %s v%u.%u.%u", LogLevel::Info, shortName.Begin(),
+                manifest->friendlyName.C_Str(), apiManifest->ver_major, apiManifest->ver_minor,
+                apiManifest->ver_rev);
+        }
+        return true;
+    }
+
+    static const npk_module_metadata* GetElfModuleMetadata(VmObject& file, VmObject& loaded)
+    {
+        auto metadataShdr = sl::FindShdr(file->As<const sl::Elf64_Ehdr>(), ".npk_module");
+        if (metadataShdr == nullptr)
+            return nullptr;
+        if (metadataShdr->sh_addr >= loaded.Size())
+            return nullptr;
+
+        const uint8_t moduleHdrGuid[] = NP_MODULE_META_START_GUID;
+        auto shdrSpan = loaded.ConstSpan().Subspan(metadataShdr->sh_addr, metadataShdr->sh_size);
+        auto moduleInfo = static_cast<const npk_module_metadata*>(FindGuid(shdrSpan, moduleHdrGuid));
+
+        if (moduleInfo == nullptr)
+            return nullptr;
+        if (moduleInfo->api_ver_major != NP_MODULE_API_VER_MAJOR)
+            return nullptr;
+        if (moduleInfo->api_ver_minor > NP_MODULE_API_VER_MINOR)
+            return nullptr;
+
+        return moduleInfo;
+    }
+
+    static const npk_driver_manifest* GetElfModuleManifest(VmObject& file, VmObject& loaded, sl::StringSpan name)
+    {
+        auto metadataShdr = sl::FindShdr(file->As<const sl::Elf64_Ehdr>(), ".npk_module");
+        if (metadataShdr == nullptr)
+            return nullptr;
+        if (metadataShdr->sh_addr >= loaded.Size())
+            return nullptr;
+
+        const uint8_t manifestHdrGuid[] = NP_MODULE_MANIFEST_GUID;
+        auto shdrSpan = loaded.ConstSpan().Subspan(metadataShdr->sh_addr, metadataShdr->sh_size);
+
+        while (!shdrSpan.Empty())
+        {
+            auto manifest = static_cast<const npk_driver_manifest*>(FindGuid(shdrSpan, manifestHdrGuid));
+            if (manifest == nullptr)
+                break;
+            const size_t offset = (uintptr_t)manifest - (uintptr_t)shdrSpan.Begin();
+            shdrSpan = shdrSpan.Subspan(offset + sizeof(npk_driver_manifest), -1ul);
+
+            sl::StringSpan manifestName(manifest->friendly_name, sl::memfirst(manifest->friendly_name, 0, 0));
+            if (manifestName == name)
+                return manifest;
+        }
+
+        return nullptr;
     }
 
     sl::Handle<LoadedElf> LoadElf(VMM* vmm, sl::StringSpan filepath, sl::StringSpan driverName)
@@ -340,23 +390,23 @@ namespace Npk::Drivers
         VALIDATE_(dynInfo.HasValue(), {});
         VALIDATE_(DoRelocations(*dynInfo, vmo, 0, -1ul), {});
 
-        VmObject metadataVmo = LoadMetadataSection(file);
-        bool isModule = false;
-        if (metadataVmo.Valid())
+        const npk_module_metadata* moduleMetadata = nullptr;
+        const npk_driver_manifest* moduleManifest = nullptr;
+        if (!driverName.Empty())
         {
-            const uint8_t moduleHdrGuid[] = NP_MODULE_META_START_GUID;
-            auto moduleInfo = static_cast<const npk_module_metadata*>(
-                FindGuid(metadataVmo.ConstSpan(), moduleHdrGuid));
+            moduleMetadata = GetElfModuleMetadata(file, vmo);
+            moduleManifest = GetElfModuleManifest(file, vmo, driverName);
+            if (moduleMetadata == nullptr || moduleManifest == nullptr)
+            {
+                Log("Failed to load module %s, missing metadata header or driver manifest",
+                    LogLevel::Error, shortName.Begin());
+                return {};
+            }
 
-            isModule = (moduleInfo != nullptr) &&
-                (moduleInfo->api_ver_major == NP_MODULE_API_VER_MAJOR) &&
-                (moduleInfo->api_ver_minor <= NP_MODULE_API_VER_MINOR);
-        }
-
-        //for kernel modules we'll also bind any PLT symbols to kernel functions,
-        //so that modules can call into the kernel.
-        if (isModule)
+            //for kernel modules we'll also bind PLT functions to kernel functions, so
+            //that modules can call info the kernel via the driver API.
             VALIDATE_(LinkPlt(*dynInfo, vmo), {});
+        }
 
         sl::Vector<VmObject> finalVmos;
         for (size_t i = 0; i < phdrs.Size(); i++)
@@ -377,44 +427,19 @@ namespace Npk::Drivers
             VALIDATE_((readback & flags) == flags, {});
         }
 
-        //find the entry point for this program. This is easy for a regular elf, but since modules
-        //can contain multiple drivers we have to find the one with the correct name.
-        uintptr_t entryPoint = 0;
-        if (isModule)
-        {
-            const uint8_t manifestGuid[] = NP_MODULE_MANIFEST_GUID;
-            auto scan = metadataVmo.ConstSpan();
-            while (scan.Size() > 0)
-            {
-                auto manifest = static_cast<const npk_driver_manifest*>(FindGuid(scan, manifestGuid));
-                if (manifest == nullptr)
-                    break;
-                const size_t offset = (uintptr_t)manifest - (uintptr_t)scan.Begin();
-                scan = scan.Subspan(offset + sizeof(npk_driver_manifest), -1ul);
-
-                const size_t manifestNameLen = sl::memfirst(manifest->friendly_name, 0, 0);
-                const sl::StringSpan manifestName(manifest->friendly_name, manifestNameLen);
-                if (manifestName != driverName)
-                    continue;
-
-                entryPoint = reinterpret_cast<uintptr_t>(manifest->entry);
-                Log("Driver %s (from %s) entrypoint found at 0x%lx", LogLevel::Verbose, 
-                    driverName.Begin(), shortName.Begin(), entryPoint);
-                break;
-            }
-            VALIDATE_(entryPoint != 0, {});
-        }
-        else
-            entryPoint = ehdr->e_entry + loadBase;
-
         LoadedElf* elfInfo = new LoadedElf();
         elfInfo->loadBase = loadBase;
         elfInfo->segments = sl::Move(finalVmos);
         elfInfo->references = 0;
-        elfInfo->entryAddr = entryPoint;
+        elfInfo->entryAddr = ehdr->e_entry + loadBase;
 
-        if (isModule)
+        if (moduleMetadata != nullptr)
+        {
+            //get the entry point from the module metadata
+            elfInfo->entryAddr = reinterpret_cast<uintptr_t>(moduleManifest->entry);
+            //store the module's symbols in the global symbol storage
             elfInfo->symbolRepo = Debug::LoadElfModuleSymbols(shortName, file, loadBase);
+        }
 
         return sl::Handle(elfInfo);
     }

@@ -62,6 +62,8 @@ namespace Npk
     constexpr inline uint16_t PortPitCmd = 0x43;
     constexpr inline uint16_t PortPitData = 0x40;
     constexpr inline uint16_t PortSerial = 0x3F8;
+    constexpr inline uint16_t PortPciAddr = 0xCF8;
+    constexpr inline uint16_t PortPciData = 0xCFC;
 
     [[gnu::always_inline]]
     inline void Wfi()

@@ -28,15 +28,12 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "Decorators.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Decorators, most are purely cosmetic hints to the programmer, a few have functionality */
-#define OPTIONAL
-#define REQUIRED
-#define OWNING
 #define NPK_METADATA __attribute__((used, section(".npk_module")))
 
 /* API version defined by this header */
@@ -108,7 +105,7 @@ typedef struct
     const uint8_t* load_str;
     const char* friendly_name;
 
-    void (*entry)();
+    void (*entry)(OWNING npk_init_tag* tags);
 } npk_driver_manifest;
 
 typedef enum
@@ -122,17 +119,10 @@ typedef enum
 } npk_log_level;
 
 /* Global functions available to any drivers within a kernel module */
-void* npk_heap_alloc(size_t count);
-void npk_heap_free(void* ptr, size_t count);
+void npk_log(REQUIRED const char* str, npk_log_level level);
+void npk_panic(REQUIRED const char* why);
 
-void npk_log(const char* str, npk_log_level level);
-void npk_panic(const char* why);
-
-uint8_t npk_pci_legacy_read8(uintptr_t addr);
-uint16_t npk_pci_legacy_read16(uintptr_t addr);
 uint32_t npk_pci_legacy_read32(uintptr_t addr);
-void npk_pci_legacy_write8(uintptr_t addr, uint8_t data);
-void npk_pci_legacy_write16(uintptr_t addr, uint16_t data);
 void npk_pci_legacy_write32(uintptr_t addr, uint32_t data);
 
 #ifdef __cplusplus
