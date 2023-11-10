@@ -8,7 +8,6 @@
 #include <debug/TerminalDriver.h>
 #include <debug/Symbols.h>
 #include <debug/BakedConstants.h>
-#include <devices/DeviceManager.h>
 #include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
 #include <drivers/ElfLoader.h>
@@ -93,7 +92,6 @@ namespace Npk
         Interrupts::InterruptManager::Global().Init();
         Tasking::Scheduler::Global().Init();
 
-        Devices::DeviceManager::Global().Init();
         Drivers::DriverManager::Global().Init();
     }
 

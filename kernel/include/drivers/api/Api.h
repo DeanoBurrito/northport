@@ -38,7 +38,7 @@ extern "C" {
 
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
-#define NP_MODULE_API_VER_MINOR 1
+#define NP_MODULE_API_VER_MINOR 2
 #define NP_MODULE_API_VER_REV 0
 
 /* Various GUIDs used by the API */
@@ -63,7 +63,7 @@ typedef enum
 struct npk_init_tag_
 {
     npk_init_tag_type type;
-    OWNING struct npk_init_tag_* next;
+    struct npk_init_tag_* next;
 };
 typedef struct npk_init_tag_ npk_init_tag;
 
@@ -93,6 +93,19 @@ typedef enum
     DtbCompat = 4,
 } npk_load_type;
 
+typedef enum
+{
+    Exit = 0,
+    AddDevice = 1,
+    RemoveDevice = 2,
+} npk_event_type;
+
+
+typedef struct
+{
+    npk_init_tag* tags;
+} npk_event_new_device;
+
 typedef struct 
 {
     uint8_t guid[16];
@@ -102,10 +115,12 @@ typedef struct
 
     npk_load_type load_type;
     size_t load_str_len;
-    const uint8_t* load_str;
-    const char* friendly_name;
+    REQUIRED const uint8_t* load_str;
+    REQUIRED const char* friendly_name;
 
-    void (*entry)(OWNING npk_init_tag* tags);
+    REQUIRED void (*entry)();
+    REQUIRED bool (*process_event)(npk_event_type type, void* arg);
+    OPTIONAL void (*process_packet)();
 } npk_driver_manifest;
 
 typedef enum

@@ -9,8 +9,6 @@
 
 namespace Npk::Drivers
 {
-    using ElfBlankFunc = void (*)();
-
     struct DynamicElfInfo
     {
         const char* strTable;
@@ -34,8 +32,14 @@ namespace Npk::Drivers
         uintptr_t entryAddr;
     };
 
+    struct LoadingDriverInfo
+    {
+        sl::StringSpan name;
+        const void* manifest;
+    };
+
     void ScanForModules(sl::StringSpan dirpath);
     bool ScanForDrivers(sl::StringSpan filepath);
 
-    sl::Handle<LoadedElf> LoadElf(VMM* vmm, sl::StringSpan filepath, sl::StringSpan driverName);
+    sl::Handle<LoadedElf> LoadElf(VMM* vmm, sl::StringSpan filepath, LoadingDriverInfo* driverInfo = nullptr);
 }

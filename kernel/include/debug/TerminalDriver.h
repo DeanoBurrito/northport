@@ -1,7 +1,5 @@
 #pragma once
 
-#include <devices/GenericDevices.h>
-
 namespace Npk::Debug
 {
     void InitEarlyTerminals();

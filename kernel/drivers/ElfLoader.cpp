@@ -204,7 +204,7 @@ namespace Npk::Drivers
 
     void ScanForModules(sl::StringSpan dirpath)
     {
-        Log("Scanning for kernel modules in \"%s\"", LogLevel::Info, dirpath.Begin());
+        Log("Scanning for kernel modules in \"%s\"", LogLevel::Verbose, dirpath.Begin());
 
         using namespace Filesystem;
         auto dir = VfsLookup(dirpath, KernelFsCtxt);
@@ -333,7 +333,7 @@ namespace Npk::Drivers
         return nullptr;
     }
 
-    sl::Handle<LoadedElf> LoadElf(VMM* vmm, sl::StringSpan filepath, sl::StringSpan driverName)
+    sl::Handle<LoadedElf> LoadElf(VMM* vmm, sl::StringSpan filepath, LoadingDriverInfo* driverInfo)
     {
         const auto shortName = GetShortName(filepath);
         VmObject file = OpenElf(filepath);
@@ -392,10 +392,10 @@ namespace Npk::Drivers
 
         const npk_module_metadata* moduleMetadata = nullptr;
         const npk_driver_manifest* moduleManifest = nullptr;
-        if (!driverName.Empty())
+        if (driverInfo != nullptr)
         {
             moduleMetadata = GetElfModuleMetadata(file, vmo);
-            moduleManifest = GetElfModuleManifest(file, vmo, driverName);
+            moduleManifest = GetElfModuleManifest(file, vmo, driverInfo->name);
             if (moduleMetadata == nullptr || moduleManifest == nullptr)
             {
                 Log("Failed to load module %s, missing metadata header or driver manifest",
@@ -439,6 +439,11 @@ namespace Npk::Drivers
             elfInfo->entryAddr = reinterpret_cast<uintptr_t>(moduleManifest->entry);
             //store the module's symbols in the global symbol storage
             elfInfo->symbolRepo = Debug::LoadElfModuleSymbols(shortName, file, loadBase);
+
+            //driver manager needs access to the manifest to set up the driver control block, also
+            //do some quick validation.
+            VALIDATE_(moduleManifest->process_event != nullptr, {});
+            driverInfo->manifest = moduleManifest;
         }
 
         return sl::Handle(elfInfo);

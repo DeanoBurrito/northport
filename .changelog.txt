@@ -1,3 +1,21 @@
+# current
+- Rewrite of DriverManager, which now makes full use of loadable modules. Drivers can also attach/detach hardware devices.
+    - DriverManager acts as a medium between driver manifests (which describe hardware a driver can use) and device descriptors, which describe how toaccess a device.
+- Added `np-driverlib` library, which contains utility code for C++ drivers targetting the northport kernel. A large chunk of the supporting code for drivers has been moved here (and out of the kernel).
+    - As a result the kernel source tree is slightly smaller.
+- Added ability to bake-in compile-time constants to the kernel, like the git commit the build is based on, c++ flags used to build it, as well as the kernel version.
+    - Some of this information is shown on the stats display.
+- LICENSE file is now copied to initdisk when building.
+- Kernel symbol store now stores some type info about each symbol, like it's visibility (for linking purposes to other modules).
+    - ELF modules now have their symbols added to the kernel symbol store.
+
+- Added VFS::FindChild() to locate a child node directly by it's name.
+    - As a result resolving full filepaths is now done genericly, instead of per-driver.
+
+- Cleaned up some dead code in PciBridge, from before limine had riscv support. Namely allocating BARs (which is now done via UEFI).
+- Fixed message string not making it through panic sequence properly.
+- Fixed misalignment bug when loading driver metadata causing entrypoint to sometimes be wrong.
+
 # v0.2.0
 - Updated to use limine v5:
     - Since the bootloader now supports riscv, the boot shim for that platform was removed. It'll be uploaded as a separate project for anyone who wants to use it.
