@@ -1,4 +1,3 @@
-
 TARGET = np-syslib
 
 CXX_FLAGS = -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
@@ -19,6 +18,7 @@ K_OBJS = $(patsubst %.cpp, $(K_BUILD_DIR)/%.cpp.o, $(CXX_SRCS))
 
 all: $(TARGET_STATIC)
 
+.PHONY: all-kernel clean-kernel
 all-kernel: $(K_TARGET)
 
 $(K_TARGET): $(K_OBJS)
@@ -36,4 +36,5 @@ clean-kernel:
 $(K_BUILD_DIR)/%.cpp.o: %.cpp
 	@printf "$(C_BLUE)[$(TARGET)-k]$(C_RST) Compiling: $<\r\n"
 	$(LOUD)mkdir -p $(@D)
-	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@
+	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -fPIC $(SYSLIB_CXX_FLAGS) -c $< -o $@
+

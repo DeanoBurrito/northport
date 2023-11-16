@@ -42,9 +42,13 @@ export KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fno-pic -fno-
 	-DNP_CLOCK_MS=$(CLOCK_TICK_MS)ul -DNP_KERNEL 
 export KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
+export SYSLIB_CXX_FLAGS += 
 export DRIVER_CXX_FLAGS += -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -ffreestanding -fPIC
-export DRIVER_LD_FLAGS += -nostdlib -shared -znorelro
+	-fno-asynchronous-unwind-tables -ffreestanding -fPIC -fvisibility=hidden \
+	-I$(PROJ_ROOT_DIR)/kernel/include -I$(PROJ_ROOT_DIR)/libs/np-syslib/include \
+	-I$(PROJ_ROOT_DIR)/libs/np-driverlib/include
+export DRIVER_LD_FLAGS += -nostdlib -shared -znorelro \
+	-L$(LIBS_OUTPUT_DIR) --exclude-libs ALL -lknp-syslib -lnp-driverlib
 
 export BUILD_DIR = build
 export CPU_ARCH

@@ -63,24 +63,31 @@ typedef enum
 struct npk_init_tag_
 {
     npk_init_tag_type type;
-    struct npk_init_tag_* next;
+    const struct npk_init_tag_* next;
 };
 typedef struct npk_init_tag_ npk_init_tag;
 
 typedef enum
 {
-    Mmio = 0,
+    Ecam = 0,
     Legacy = 1,
 } npk_pci_addr_type;
 
 typedef struct
 {
+    npk_init_tag header;
+
     npk_pci_addr_type type;
-    uintptr_t addr;
+    uintptr_t segment_base;
+    uint8_t bus;
+    uint8_t device;
+    uint8_t function;
 } npk_init_tag_pci_function;
 
 typedef struct
 {
+    npk_init_tag header;
+
     OWNING const char* node_path;
 } npk_init_tag_dtb_path;
 
@@ -100,11 +107,15 @@ typedef enum
     RemoveDevice = 2,
 } npk_event_type;
 
+typedef struct
+{
+    const npk_init_tag* tags;
+} npk_event_new_device;
 
 typedef struct
 {
-    npk_init_tag* tags;
-} npk_event_new_device;
+    size_t device_id;
+} npk_event_remove_device;
 
 typedef struct 
 {
@@ -120,7 +131,6 @@ typedef struct
 
     REQUIRED void (*entry)();
     REQUIRED bool (*process_event)(npk_event_type type, void* arg);
-    OPTIONAL void (*process_packet)();
 } npk_driver_manifest;
 
 typedef enum
