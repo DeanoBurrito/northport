@@ -3,4 +3,6 @@ build/
 kbuild/
 iso/
 initdisk/drivers/
+initdisk/LICENSE
+BakedConstants.cpp
 compile_flags.txt
