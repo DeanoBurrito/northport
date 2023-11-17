@@ -8,7 +8,7 @@ CXX_SRCS = arch/Helpers.cpp \
 	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp \
 	devices/PciBridge.cpp \
 	drivers/DriverManager.cpp drivers/ElfLoader.cpp drivers/api/General.cpp \
-	drivers/api/Memory.cpp drivers/api/Scheduling.cpp \
+	drivers/api/Memory.cpp drivers/api/Scheduling.cpp drivers/api/Drivers.cpp \
 	events/Dispatch.cpp events/EventQueue.cpp \
 	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TempFs.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \

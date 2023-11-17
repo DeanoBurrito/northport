@@ -275,7 +275,7 @@ namespace Npk::Drivers
             sl::memcopy(apiManifest->load_str, loadString, apiManifest->load_str_len);
             manifest->loadStr = sl::Span<const uint8_t>(loadString, apiManifest->load_str_len);
             
-            DriverManager::Global().Register(manifest);
+            DriverManager::Global().AddManifest(manifest);
             (void)manifest;
             Log("Module %s provides driver: %s v%u.%u.%u", LogLevel::Info, shortName.Begin(),
                 manifest->friendlyName.C_Str(), apiManifest->ver_major, apiManifest->ver_minor,

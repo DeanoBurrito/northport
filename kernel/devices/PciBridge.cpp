@@ -46,7 +46,16 @@ namespace Npk::Devices
 
         sl::Handle<DeviceDescriptor> desc = new DeviceDescriptor();
         desc->friendlyName = sl::String(nameBuff, true);
-        desc->initData = nullptr; //TODO: populate these properly
+
+        npk_init_tag_pci_function* initTag = new npk_init_tag_pci_function();
+        initTag->header.next = nullptr;
+        initTag->header.type = npk_init_tag_type::PciFunction;
+        initTag->segment_base = addr.segmentBase;
+        initTag->bus = addr.bus;
+        initTag->device = addr.device;
+        initTag->function = addr.function;
+        initTag->type = addr.segmentBase == 0 ? npk_pci_addr_type::Legacy : npk_pci_addr_type::Ecam;
+        desc->initData = &initTag->header;
 
         uint8_t* classBuffer = new uint8_t[3]; //TODO: leaking memory?
         classBuffer[0] = type >> 24;
@@ -59,13 +68,13 @@ namespace Npk::Devices
         vendorBuffer[1] = vendor >> 8;
         vendorBuffer[2] = vendor >> 16;
         vendorBuffer[3] = vendor >> 24;
-        DeviceLoadName vendorName { .type = LoadType::PciId, .str = {} };
+        DeviceLoadName vendorName { .type = LoadType::PciId, .str = { vendorBuffer, 4 } };
 
         desc->loadNames.EnsureCapacity(2);
         desc->loadNames.PushBack(className);
         desc->loadNames.PushBack(vendorName);
 
-        DriverManager::Global().AddDevice(desc);
+        DriverManager::Global().AddDescriptor(desc);
     }
 
     void PciBridge::ScanSegment(uintptr_t segmentBase, uint8_t startBus, uint16_t segId, bool ecamAvail)
@@ -87,8 +96,23 @@ namespace Npk::Devices
                 PciAddr addr { .segmentBase = segmentBase, .bus = bus, .device = dev, .function = 0 };
                 if ((ReadReg(addr, PciRegId) & 0xFFFF) == 0xFFFF)
                     continue;
+
+                const uint32_t reg3 = ReadReg(addr, PciRegLatency);
+                const uint8_t headerType = (reg3 >> 16) & 0x7F;
+                if (headerType == 1)
+                {
+                    const uint32_t reg6 = ReadReg(addr, 6);
+                    busses.PushBack((reg6 >> 8) & 0xFF);
+                    continue;
+                }
+                else if (headerType != 0)
+                {
+                    Log("Unknown PCI header type %hu (%02x:%02x:00)", LogLevel::Error, headerType,
+                        bus, dev);
+                    continue;
+                }
                 
-                const size_t funcCount = ((ReadReg(addr, PciRegLatency) >> 16) & 0x80) != 0 ? 8 : 1;
+                const size_t funcCount = ((reg3 >> 16) & 0x80) != 0 ? 8 : 1;
                 for (uint8_t func = 0; func < funcCount; func++)
                 {
                     addr.function = func;

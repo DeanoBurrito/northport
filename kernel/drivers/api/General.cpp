@@ -1,6 +1,7 @@
 #include <drivers/api/Api.h>
 #include <debug/Log.h>
 #include <arch/Platform.h>
+#include <drivers/DriverManager.h>
 
 extern "C"
 {
@@ -9,8 +10,10 @@ extern "C"
     [[gnu::used]]
     void npk_log(REQUIRED const char* str, npk_log_level level)
     {
-        //TODO: print process name if available
-        Log("[DRIVER] %s", static_cast<LogLevel>(level), str);
+        auto driver = Drivers::DriverManager::Global().GetShadow();
+        ASSERT_(driver.Valid());
+
+        Log("(driver:%s) %s", static_cast<LogLevel>(level), driver->friendlyName.C_Str(), str);
     }
 
     [[gnu::used]]

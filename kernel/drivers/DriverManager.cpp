@@ -1,10 +1,19 @@
 #include <drivers/DriverManager.h>
 #include <debug/Log.h>
+#include <debug/Symbols.h>
 #include <memory/Vmm.h>
 #include <tasking/Scheduler.h>
 
 namespace Npk::Drivers
 {
+    constexpr const char* DeviceTypeStrs[] =
+    { 
+        "io",
+        "framebuffer",
+        "gpu",
+        "hid",
+    };
+
     sl::Handle<DriverManifest> DriverManager::LocateDriver(sl::Handle<DeviceDescriptor>& device)
     {
         VALIDATE_(device.Valid(), {});
@@ -46,15 +55,20 @@ namespace Npk::Drivers
 
         auto apiManifest = static_cast<const npk_driver_manifest*>(loadInfo.manifest);
         manifest->ProcessEvent = reinterpret_cast<ProcessEventFunc>(apiManifest->process_event);
-        manifest->ProcessPacket = reinterpret_cast<ProcessPacketFunc>(apiManifest->process_packet);
 
         using namespace Tasking;
         auto entryFunction = reinterpret_cast<ThreadMain>(manifest->runtimeImage->entryAddr);
         manifest->process = Scheduler::Global().CreateProcess();
         auto mainThread = Scheduler::Global().CreateThread(entryFunction, nullptr, manifest->process);
+        mainThread->DriverShadow() = manifest;
         
-        Log("Loaded driver %s: mainThread=%lu, processEvent=%p, processPacket=%p", LogLevel::Info,
-            manifest->friendlyName.C_Str(), mainThread->Id(), manifest->ProcessEvent, manifest->ProcessPacket);
+        using namespace Debug;
+        auto eventHandlerSym = SymbolFromAddr(reinterpret_cast<uintptr_t>(manifest->ProcessEvent), 
+            SymbolFlag::Public | SymbolFlag::Private);
+        const char* handlerName = eventHandlerSym.HasValue() ? eventHandlerSym->name.Begin() : "<unknown>";
+
+        Log("Loaded driver %s: mainThread=%lu, processEvent=%p (%s)", LogLevel::Info,
+            manifest->friendlyName.C_Str(), mainThread->Id(), manifest->ProcessEvent, handlerName);
         mainThread->Start();
         return true;
     }
@@ -65,15 +79,18 @@ namespace Npk::Drivers
         VALIDATE_(device.Valid(), false);
         VALIDATE_(EnsureRunning(driver), false);
 
+        Tasking::Thread::Current().DriverShadow() = driver;
         npk_event_new_device event;
         event.tags = device->initData;
         if (!driver->ProcessEvent(EventType::AddDevice, &event))
         {
+            Tasking::Thread::Current().DriverShadow() = nullptr;
             Log("Failed to attach device %s to driver %s", LogLevel::Error, 
                 device->friendlyName.C_Str(), driver->friendlyName.C_Str());
             return false;
         }
 
+        Tasking::Thread::Current().DriverShadow() = nullptr;
         Log("Attached device %s to driver %s", LogLevel::Verbose, 
             device->friendlyName.C_Str(), driver->friendlyName.C_Str());
         device->attachedDriver = driver;
@@ -94,11 +111,18 @@ namespace Npk::Drivers
 
     void DriverManager::Init()
     {
+        apiIdAlloc = 1; //id 0 is reserved for 'null'.
+
         Log("Driver manager initialized, api version %u.%u.%u", LogLevel::Info,
             NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV);
     }
 
-    bool DriverManager::Register(sl::Handle<DriverManifest> manifest)
+    sl::Handle<DriverManifest> DriverManager::GetShadow()
+    {
+        return Tasking::Thread::Current().DriverShadow();
+    }
+
+    bool DriverManager::AddManifest(sl::Handle<DriverManifest> manifest)
     {
         manifestsLock.WriterLock();
         //check that the manifest doesnt have a conflicting friendly name or load type/string.
@@ -166,12 +190,12 @@ namespace Npk::Drivers
         return true;
     }
 
-    bool DriverManager::Unregister(sl::StringSpan friendlyName)
+    bool DriverManager::RemoveManifest(sl::StringSpan friendlyName)
     {
         ASSERT_UNREACHABLE();
     }
 
-    bool DriverManager::AddDevice(sl::Handle<DeviceDescriptor> device)
+    bool DriverManager::AddDescriptor(sl::Handle<DeviceDescriptor> device)
     {
         //before add descriptor to list of unclaimed devices, see if we can already attach a driver.
         auto foundDriver = LocateDriver(device);
@@ -186,7 +210,33 @@ namespace Npk::Drivers
         return true;
     }
 
-    bool DriverManager::RemoveDevice(sl::Handle<DeviceDescriptor> device)
+    bool DriverManager::RemoveDescriptor(sl::Handle<DeviceDescriptor> device)
+    {
+        ASSERT_UNREACHABLE();
+    }
+
+    bool DriverManager::AddApi(npk_device_api* api)
+    {
+        VALIDATE_(api != nullptr, false);
+
+        auto shadow = GetShadow();
+        VALIDATE(shadow.Valid(), false, "Device APIs cannot be added outside of a driver shadow.");
+
+        DeviceApi* device = new DeviceApi();
+        device->api = api;
+        device->references = 0;
+        sl::NativePtr(&device->api->id).Write(apiIdAlloc++);
+
+        apiTreeLock.WriterLock();
+        apiTree.Insert(device);
+        apiTreeLock.WriterUnlock();
+
+        Log("Device API added: id=%lu, type=%s", LogLevel::Info, device->api->id, 
+            DeviceTypeStrs[device->api->type]);
+        return true;
+    }
+
+    bool DriverManager::RemoveApi(size_t id)
     {
         ASSERT_UNREACHABLE();
     }
