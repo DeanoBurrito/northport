@@ -1,8 +1,10 @@
 #pragma once
 
 #include <drivers/api/Api.h>
+#include <drivers/api/Drivers.h>
 #include <PciAddress.h>
 #include <VmObject.h>
+#include <Locks.h>
 
 namespace QemuVga
 {
@@ -27,10 +29,29 @@ namespace QemuVga
         dl::VmObject framebuffer;
         dl::VmObject mmio;
 
+        sl::TicketLock metadataLock;
+        npk_framebuffer_mode mode;
+        const char* summaryString;
+
         void WriteDispiReg(DispiReg reg, uint16_t data) const;
         uint16_t ReadDispiReg(DispiReg reg) const;
+        void RegenSummary();
 
     public:
         bool Init(const npk_init_tag_pci_function* pciTag);
+        
+        [[gnu::always_inline]]
+        inline npk_framebuffer_mode GetMode()
+        { 
+            sl::ScopedLock scopeLock(metadataLock);
+            return mode; 
+        }
+
+        [[gnu::always_inline]]
+        inline const char* GetSummary()
+        { 
+            sl::ScopedLock scopeLock(metadataLock);
+            return summaryString; 
+        }
     };
 }

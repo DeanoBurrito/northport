@@ -39,15 +39,20 @@ typedef enum
     Io = 0,
     Framebuffer = 1,
     Gpu = 2,
-    Hid = 3,
+    Keyboard = 3,
+    Filesystem = 4,
 } npk_device_api_type;
 
-typedef struct
+struct npk_device_api_
 {
     size_t id;
     npk_device_api_type type;
-    void* driver_data;
-} npk_device_api;
+    OPTIONAL void* driver_data;
+
+    OPTIONAL const char* (*get_summary)(npk_device_api_* api);
+};
+
+typedef struct npk_device_api_ npk_device_api;
 
 typedef struct
 {
@@ -57,13 +62,32 @@ typedef struct
 {
     npk_device_api header;
 
-    bool (*begin_op)(npk_iop* iop, size_t index);
-    bool (*end_op)(npk_iop* iop, size_t index);
+    REQUIRED bool (*begin_op)(npk_device_api* api, npk_iop* iop, size_t index);
+    REQUIRED bool (*end_op)(npk_device_api* api, npk_iop* iop, size_t index);
 } npk_io_device_api;
 
 typedef struct
 {
+    size_t width;
+    size_t height;
+    size_t bpp;
+    size_t stride;
+
+    uint8_t shift_r;
+    uint8_t shift_g;
+    uint8_t shift_b;
+    uint8_t shift_a;
+    uint8_t mask_r;
+    uint8_t mask_g;
+    uint8_t mask_b;
+    uint8_t mask_a;
+} npk_framebuffer_mode;
+
+typedef struct
+{
     npk_device_api header;
+    REQUIRED npk_framebuffer_mode (*get_mode)(npk_device_api* api);
+    OPTIONAL bool (*set_mode)(npk_device_api* api, REQUIRED const npk_framebuffer_mode* mode);
 } npk_framebuffer_device_api;
 
 typedef struct
@@ -74,9 +98,43 @@ typedef struct
 typedef struct
 {
     npk_device_api header;
-} npk_hid_device_api;
+} npk_keyboard_device_api;
 
-bool npk_add_device_api(npk_device_api* api);
+typedef size_t npk_vnode_id;
+
+typedef struct
+{
+} npk_fs_context;
+
+typedef enum
+{
+} npk_vnode_type;
+
+typedef struct
+{
+} npk_vnode;
+
+typedef struct
+{
+    npk_device_api header;
+
+    REQUIRED npk_vnode* (*acquire_node)(npk_device_api* api, npk_vnode_id id);
+    REQUIRED void (*release_node)(npk_device_api* api, npk_vnode_id id);
+    REQUIRED bool (*mount)(npk_device_api* api, npk_vnode_id mountpoint, REQUIRED const npk_fs_context* ctxt);
+    REQUIRED bool (*unmount)(npk_device_api* api);
+
+    REQUIRED npk_vnode_id (*create)(npk_device_api* api, npk_vnode_id dir, npk_vnode_type type, REQUIRED const npk_fs_context* ctxt);
+    REQUIRED bool (*remove)(npk_device_api* api, npk_vnode_id dir, npk_vnode_id node, REQUIRED const npk_fs_context* ctxt);
+    REQUIRED bool (*open)(npk_device_api* api, npk_vnode_id file, REQUIRED const npk_fs_context* ctxt);
+    REQUIRED bool (*close)(npk_device_api* api, npk_vnode_id file, REQUIRED const npk_fs_context* ctxt);
+    REQUIRED bool (*read_write)(npk_device_api* api, npk_vnode_id file, REQUIRED const npk_fs_context* ctxt);
+    REQUIRED bool (*flush)(npk_device_api* api, npk_vnode_id node);
+    REQUIRED bool (*get_child)(npk_device_api* api, npk_vnode_id dir, size_t index, REQUIRED const npk_fs_context* ctxt);
+    REQUIRED bool (*find_child)(npk_device_api* api, npk_vnode_id dir, npk_string name, REQUIRED const npk_fs_context* ctxt);
+    //TODO: get/set props, add props arg to create()
+} npk_filesystem_device_api;
+
+bool npk_add_device_api(REQUIRED npk_device_api* api);
 bool npk_remove_device_api(size_t device_id);
 
 #ifdef __cplusplus

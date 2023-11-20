@@ -1,9 +1,22 @@
 #include <GraphicsAdaptor.h>
 #include <Log.h>
 #include <UnitConverter.h>
+#include <drivers/api/Drivers.h>
 
 namespace QemuVga
 {
+    npk_framebuffer_mode GetModeWrapper(npk_device_api* api)
+    {
+        auto gfx = static_cast<GraphicsAdaptor*>(api->driver_data);
+        return gfx->GetMode();
+    }
+
+    const char* GetSummaryWrapper(npk_device_api* api)
+    {
+        auto gfx = static_cast<GraphicsAdaptor*>(api->driver_data);
+        return gfx->GetSummary();
+    }
+
     constexpr uint16_t DispiDisable = 0x0;
     constexpr uint16_t DispiEnable = 0x1;
     constexpr uint16_t DispiLfbEnabled = 0x40;
@@ -17,6 +30,16 @@ namespace QemuVga
     uint16_t GraphicsAdaptor::ReadDispiReg(DispiReg reg) const
     {
         return mmio->Offset(0x500).Offset((uint16_t)reg << 1).Read<uint16_t>();
+    }
+
+    void GraphicsAdaptor::RegenSummary()
+    {
+        sl::ScopedLock scopeLock(metadataLock);
+
+        //if (summaryString != nullptr)
+        //   delete[] summaryString;
+
+        summaryString = "qemu/bochs extended framebuffer";
     }
 
     bool GraphicsAdaptor::Init(const npk_init_tag_pci_function* pciTag)
@@ -52,13 +75,30 @@ namespace QemuVga
         mmio = dl::VmObject(bar2.length, bar2.base, VmFlag::Mmio | VmFlag::Write);
         VALIDATE_(mmio.Valid(), false);
 
+        //collect mode info and stash it.
         WriteDispiReg(DispiReg::Enable, DispiDisable);
-        const size_t w = ReadDispiReg(DispiReg::XRes);
-        const size_t h = ReadDispiReg(DispiReg::YRes);
-        const size_t bpp = ReadDispiReg(DispiReg::Bpp);
+        mode.width = ReadDispiReg(DispiReg::XRes);
+        mode.height = ReadDispiReg(DispiReg::YRes);
+        mode.bpp = ReadDispiReg(DispiReg::Bpp);
         WriteDispiReg(DispiReg::Enable, DispiEnable | DispiLfbEnabled | DispiNoClearMem);
 
-        Log("Bochs/Qemu extended VGA init: %lux%lu, %lu-bpp", LogLevel::Info, w, h, bpp);
+        mode.stride = mode.width * (mode.bpp / 8);
+        mode.mask_a = mode.shift_a = 0;
+        mode.mask_r = mode.mask_g = mode.mask_b = 0xFF;
+        mode.shift_r = 0;
+        mode.shift_g = 8;
+        mode.shift_b = 16;
+
+        RegenSummary();
+
+        //create a device api so the kernel knows about this framebuffer.
+        npk_framebuffer_device_api* fbApi = new npk_framebuffer_device_api();
+        fbApi->header.type = npk_device_api_type::Framebuffer;
+        fbApi->header.driver_data = this;
+        fbApi->get_mode = GetModeWrapper;
+        fbApi->header.get_summary = GetSummaryWrapper;
+        VALIDATE_(npk_add_device_api(&fbApi->header), false);
+
         return true;
     }
 }

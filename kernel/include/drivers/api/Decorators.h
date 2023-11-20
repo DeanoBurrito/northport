@@ -26,6 +26,8 @@
  * SOFTWARE.
  */
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -33,6 +35,12 @@ extern "C" {
 #define OPTIONAL
 #define REQUIRED
 #define OWNING
+
+typedef struct
+{
+    size_t length;
+    const char* data;
+} npk_string;
 
 #ifdef __cplusplus
 }
