@@ -147,7 +147,7 @@ namespace Npk
             return;
         }
         
-        if (hpetRegs.Valid())
+        if (!hpetRegs.Valid())
         {
             selectedSysTimer = TimerName::Pit;
             IoApic::Route(timerIoApicPin, timerIntVector, CoreLocal().id, TriggerMode::Edge, PinPolarity::High, true);
@@ -263,9 +263,9 @@ namespace Npk
     void PolledSleep(size_t nanoseconds)
     {
         if (hpetRegs.Valid())
-            PitSleep(nanoseconds);
-        else
             HpetSleep(nanoseconds);
+        else
+            PitSleep(nanoseconds);
     }
 
     size_t PollTimer()
