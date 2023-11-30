@@ -64,7 +64,7 @@ namespace Npk::Memory
         node->length = spaceNeeded;
     }
 
-    void PoolAlloc::Expand(size_t minSize, bool takeLock)
+    PoolRegion* PoolAlloc::Expand(size_t minSize, bool takeLock)
     {
         const size_t expandSize = sl::Max(minSize, minAllocSize * PoolMinExpansionScale) + sizeof(PoolRegion) + sizeof(PoolNode);
         auto maybeRegion = VMM::Kernel().Alloc(expandSize, 0, VmFlag::Anon | VmFlag::Write); //TODO: a way for the VMM to communicate it allocated extra anon memory
@@ -108,6 +108,8 @@ namespace Npk::Memory
                 head = region;
             scan->prev = region;
         }
+
+        return region;
     }
 
     void PoolAlloc::Init(size_t minAllocBytes)
@@ -150,8 +152,7 @@ namespace Npk::Memory
 
         if (scan == nullptr)
         {
-            Expand(bytes, true); //true here is the lock's initial state.
-            region = tail;
+            region = Expand(bytes, true); //true here is the lock's initial state.
             Split(region->first, bytes);
             scan = region->first;
         }

@@ -1,6 +1,9 @@
 # current
 - Rewrite of DriverManager, which now makes full use of loadable modules. Drivers can also attach/detach hardware devices.
     - DriverManager acts as a medium between driver manifests (which describe hardware a driver can use) and device descriptors, which describe how toaccess a device.
+    - Drivers now export a number of DeviceAPIs, which act as an interface into a driver from the rest of the system.
+    - Added device APIs for the following things: simple framebuffer, filesystem, IO devices.
+    - Added concept of the 'driver shadow', which is a thread-local pointer that tracks whether the thread is currently running on behalf of a driver. This allows a particular subsystem to know if it's running because the kernel asked it to, or because because of a driver (and which driver). This pointer is always populated for threads under the driver's control, and is set before calling any device API functions - and cleared after they return.
 - Added `np-driverlib` library, which contains utility code for C++ drivers targetting the northport kernel. A large chunk of the supporting code for drivers has been moved here (and out of the kernel).
     - As a result the kernel source tree is slightly smaller.
 - Added ability to bake-in compile-time constants to the kernel, like the git commit the build is based on, c++ flags used to build it, as well as the kernel version.
@@ -15,6 +18,9 @@
 - Cleaned up some dead code in PciBridge, from before limine had riscv support. Namely allocating BARs (which is now done via UEFI).
 - Fixed message string not making it through panic sequence properly.
 - Fixed misalignment bug when loading driver metadata causing entrypoint to sometimes be wrong.
+- Fixed incorrect calculation of resident set size in AnonVmDriver.
+- Fixed accidentally not using PIT for platform-wide timer if HPET is present.
+- Fixed bug in pool heap which assumed that new regions of virtual memory were allocated with ascending base addresses.
 
 # v0.2.0
 - Updated to use limine v5:

@@ -44,7 +44,7 @@ namespace Npk::Memory
         void MergePrev(PoolNode* node);
         void MergeNext(PoolNode* node);
         void Split(PoolNode* node, size_t spaceNeeded);
-        void Expand(size_t minSize, bool takeLock);
+        PoolRegion* Expand(size_t minSize, bool takeLock);
 
     public:
         PoolAlloc() = default;
