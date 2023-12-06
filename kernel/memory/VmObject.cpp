@@ -4,6 +4,11 @@
 
 namespace Npk::Memory
 {
+    Mdl::~Mdl()
+    {
+        vmm->ReleaseMdl(base.raw);
+    }
+
     VmObject::VmObject(VMM* vmm, size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits limits)
     {
         if (vmm == nullptr)
@@ -69,7 +74,7 @@ namespace Npk::Memory
 
     VmObject VmObject::Subdivide(size_t length, bool fromStart)
     {
-        if (length >= size)
+        if (length > size)
             return {};
 
         auto maybeSplit = vmm->Split(base.raw, fromStart ? length : size - length);

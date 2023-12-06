@@ -4,6 +4,8 @@
 #include <Flags.h>
 #include <Optional.h>
 #include <Span.h>
+#include <containers/Vector.h>
+#include <Handle.h>
 
 namespace Npk::Memory { class VirtualMemoryManager; };
 using VMM = Npk::Memory::VirtualMemoryManager;
@@ -45,6 +47,23 @@ namespace Npk::Memory
 
         constexpr VmAllocLimits() : lowerBound(0), upperBound(-1ul), alignment(1)
         {}
+    };
+
+    struct MdlPtr
+    {
+        size_t length;
+        uintptr_t physAddr;
+    };
+
+    struct Mdl
+    {
+        VMM* vmm;
+        size_t references;
+        sl::NativePtr base;
+        size_t length;
+        sl::Vector<MdlPtr> ptrs; //TODO: store inline with flexible array member?
+
+        ~Mdl();
     };
 
     class VmObject

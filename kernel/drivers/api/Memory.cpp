@@ -72,6 +72,39 @@ extern "C"
     }
 
     [[gnu::used]]
+    bool npk_vm_acquire_mdl(REQUIRED npk_mdl* mdl, void* vaddr, size_t length)
+    {
+        if (mdl == nullptr)
+            return false;
+
+        auto handle = VMM::Kernel().AcquireMdl(reinterpret_cast<uintptr_t>(vaddr), length);
+        if (!handle.Valid())
+            return false;
+
+        //TODO: stash handle so it remains valid after this call
+        mdl->addr_space = nullptr; //TODO: allow for mdls to access non-kernel VMMs
+        mdl->virt_base = reinterpret_cast<uintptr_t>(vaddr);
+        mdl->length = length;
+        mdl->ptr_count = handle->ptrs.Size();
+
+        //TODO: some way of marshalling the existing structs rather than creating a copy for driver use?
+        mdl->ptrs = new npk_mdl_ptr[mdl->ptr_count];
+        for (size_t i = 0; i < mdl->ptr_count; i++)
+        {
+            mdl->ptrs[i].length = handle->ptrs[i].length;
+            mdl->ptrs[i].phys_base = handle->ptrs[i].physAddr;
+        }
+
+        return true;
+    }
+
+    [[gnu::used]]
+    void npk_vm_release_mdl(void* vaddr)
+    {
+        VMM::Kernel().ReleaseMdl(reinterpret_cast<uintptr_t>(vaddr));
+    }
+
+    [[gnu::used]]
     bool npk_vm_get_flags(void* vm_ptr, REQUIRED npk_vm_flags* flags)
     {
         if (flags == nullptr)

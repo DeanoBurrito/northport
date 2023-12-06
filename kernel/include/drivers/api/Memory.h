@@ -73,6 +73,21 @@ typedef struct
     npk_file_vm_flags flags;
 } npk_file_vm_arg;
 
+typedef struct
+{
+    size_t length;
+    uintptr_t phys_base;
+} npk_mdl_ptr;
+
+typedef struct
+{
+    void* addr_space;
+    size_t length;
+    uintptr_t virt_base;
+    size_t ptr_count;
+    npk_mdl_ptr* ptrs;
+} npk_mdl;
+
 uintptr_t npk_hhdm_base();
 
 uintptr_t npk_pm_alloc(OPTIONAL npk_pm_limits* limits);
@@ -81,6 +96,8 @@ bool npk_pm_free(uintptr_t paddr);
 bool npk_pm_free_many(uintptr_t paddr, size_t count);
 
 void* npk_vm_alloc(size_t length, void* arg, npk_vm_flags flags, OPTIONAL npk_vm_limits* limits);
+bool npk_vm_acquire_mdl(REQUIRED npk_mdl* mdl, void* vaddr, size_t length);
+void npk_vm_release_mdl(void* vaddr);
 bool npk_vm_free(void* vm_ptr);
 bool npk_vm_get_flags(void* vm_ptr, REQUIRED npk_vm_flags* flags);
 bool npk_vm_set_flags(void* vm_ptr, npk_vm_flags flags);

@@ -446,6 +446,7 @@ namespace Npk::Memory
         vmRange->base = rangeBase;
         vmRange->length = query.length;
         vmRange->flags = flags;
+        vmRange->mdlCount = 0;
 
         //attach the VM driver to this range, store the offset and token.
         VmDriverContext context { .lock = mapLock, .map = hatMap, .range = *vmRange, .stats = stats };
@@ -503,6 +504,7 @@ namespace Npk::Memory
         VmRange* range = FindRange(base);
         if (range == nullptr)
             return false;
+        VALIDATE(range->mdlCount == 0, false, "Cannot free VM range with mdlCount > 0 (it's still in use)");
 
         rangesLock.Lock();
         ranges.Remove(range);
@@ -580,6 +582,7 @@ namespace Npk::Memory
         VmRange* range = FindRange(base);
         if (range == nullptr)
             return {};
+        VALIDATE(range->mdlCount == 0, {}, "Cannot split VM range with mdlCount > 0");
 
         offset += base - (range->base + range->offset);
         using namespace Virtual;
@@ -592,7 +595,7 @@ namespace Npk::Memory
         if (!result.success)
             return {};
 
-        if (offset == range->length)
+        if (result.offset == range->length)
             return range->base + offset; //effectively a no-op
 
         VmRange* newRange = new(AllocMeta(VmmMetaType::Range)) VmRange();
@@ -602,6 +605,7 @@ namespace Npk::Memory
         newRange->flags = range->flags;
         newRange->offset = 0;
         newRange->token = result.tokenHigh;
+        newRange->mdlCount = 0;
 
         range->length = newRange->base - range->base;
         range->token = result.tokenLow;
@@ -635,7 +639,8 @@ namespace Npk::Memory
 
     sl::Opt<uintptr_t> VMM::GetPhysical(uintptr_t vaddr)
     {
-        return GetMap(hatMap, vaddr);
+        size_t ignored;
+        return GetMap(hatMap, vaddr, ignored);
     }
 
     size_t VMM::CopyIn(void* foreignBase, void* localBase, size_t length)
@@ -648,12 +653,13 @@ namespace Npk::Memory
 
         while (count < length)
         {
-            auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count);
+            size_t ignored;
+            auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
             if (!maybePhys.HasValue())
             {
                 if (!HandleFault((uintptr_t)foreignBase + count, VmFaultFlag::Write))
                     return count;
-                maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count);
+                maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
             }
             
             size_t copyLength = sl::Min(PageSize, length - count);
@@ -675,7 +681,8 @@ namespace Npk::Memory
 
         while (count < length)
         {
-            auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count);
+            size_t ignored;
+            auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
             if (!maybePhys)
                 return count;
             
@@ -686,5 +693,56 @@ namespace Npk::Memory
             local.raw += copyLength;
         }
         return count;
+    }
+
+    sl::Handle<Mdl> VMM::AcquireMdl(uintptr_t base, size_t length)
+    {
+        VmRange* range = FindRange(base);
+        if (range == nullptr || length == 0)
+            return {};
+
+        //TODO: store mdlCount in the smallest unit possible (page or group-of-pages level) instead of pinning the entire range.
+        range->mdlCount++;
+
+        //create the mdl list
+        sl::Vector<MdlPtr> ptrs;
+        for (size_t scan = 0; scan < range->length;)
+        {
+            size_t mode = 0;
+
+            //get physical memory or fault it in if necessary
+            auto maybeMap = GetMap(hatMap, base + scan, mode);
+            if (!maybeMap.HasValue())
+            {
+                ASSERT_(HandleFault(base + scan, VmFaultFlag::Write));
+                maybeMap = GetMap(hatMap, base + scan, mode);
+            }
+
+            ASSERT_(maybeMap.HasValue());
+            auto& ptr = ptrs.EmplaceBack();
+            ptr.physAddr = *maybeMap;
+            ptr.length = GetHatLimits().modes[mode].granularity;
+
+            scan += ptr.length;
+        }
+
+        Mdl* mdl = new Mdl();
+        mdl->base = base;
+        mdl->length = length;
+        mdl->vmm = this;
+        mdl->references = 0;
+        mdl->ptrs = sl::Move(ptrs);
+
+        return mdl;
+    }
+
+    void VMM::ReleaseMdl(uintptr_t base)
+    {
+        VmRange* range = FindRange(base);
+        if (range == nullptr)
+            return;
+        ASSERT_(range->mdlCount > 0);
+
+        range->mdlCount--;
     }
 }

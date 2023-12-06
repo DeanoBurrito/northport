@@ -266,7 +266,7 @@ namespace Npk
         return true;
     }
 
-    sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr)
+    sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
     {
         ASSERT_(map != nullptr);
 
@@ -274,6 +274,7 @@ namespace Npk
         if (!path.complete)
             return {};
 
+        mode = path.level - 1;
         const uint64_t offsetMask = GetPageSize((PageSizes)path.level) - 1;
         return (*path.pte & addrMask) | (vaddr & offsetMask);
     }

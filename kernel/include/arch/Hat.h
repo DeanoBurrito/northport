@@ -80,8 +80,8 @@ namespace Npk
     //NOTE: paddr and mode are references and return the previously used values.
     bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush);
 
-    //attempts to return the physical address of a mapping
-    sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr);
+    //attempts to return the physical address and size of a mapping
+    sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr, size_t& mode);
 
     //attempts to update an existing mapping: either flags, physical address of both.
     bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
