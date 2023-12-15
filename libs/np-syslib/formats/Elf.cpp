@@ -44,6 +44,7 @@ namespace sl
         case R_X86_64_32: return { .value = a + s, .length = 4 };
         case R_X86_64_RELATIVE: return { .value = b + a, .length = sizeof(void*) };
         case R_X86_64_JUMP_SLOT: return { .value = s, .length = sizeof(void*) };
+        case R_X86_64_GLOB_DAT: return { .value = s, .length = sizeof(void*) };
 #elif __riscv_xlen == 64
         case R_RISCV_64: return { .value = a + s, .length = 8 };
         case R_RISCV_32: return { .value = a + s, .length = 4 };

@@ -56,18 +56,38 @@ namespace sl
             return Span(data + begin, length);
         }
 
+        Span Find(Span other) const
+        {
+            if (other.size > size || other.Empty())
+                return {};
+
+            for (size_t i = 0; i < size - other.size; i++)
+            {
+                if (data[i] != other.data[0])
+                    continue;
+                auto test = Subspan(i, other.Size());
+                if (test == other)
+                    return test;
+            }
+            
+            return {};
+        }
+
         bool Contains(Span other) const
         {
-            if (size != other.size)
+            if (other.size > size || other.Empty())
                 return false;
 
             for (size_t i = 0; i < size; i++)
             {
-                if (data[i] != other.data[i])
-                    return false;
+                if (data[i] != other.data[0])
+                    continue;
+
+                if (Subspan(i, other.Size()) == other)
+                    return true;
             }
 
-            return true;
+            return false;
         }
     };
 

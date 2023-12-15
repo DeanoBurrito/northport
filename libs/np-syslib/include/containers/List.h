@@ -11,15 +11,13 @@ namespace sl
         {
         private:
             T* head;
+            T* tail;
 
         public:
             using Iterator = T*;
 
-            constexpr FwdList() : head(nullptr)
+            constexpr FwdList() : head(nullptr), tail(nullptr)
             {}
-
-            ~FwdList()
-            { head = nullptr; }
 
             FwdList(const FwdList&) = delete;
             FwdList& operator=(const FwdList&) = delete;
@@ -28,6 +26,9 @@ namespace sl
 
             T& Front()
             { return *head; }
+
+            T& Back()
+            { return *tail; }
 
             Iterator Begin()
             { return head; }
@@ -42,6 +43,18 @@ namespace sl
             {
                 value->next = head;
                 head = value;
+                if (tail == nullptr)
+                    tail = head;
+            }
+
+            void PushBack(T* value)
+            {
+                value->next = nullptr;
+                if (tail == nullptr)
+                    head = value;
+                else
+                    tail->next = value;
+                tail = value;
             }
 
             T* PopFront()
@@ -50,6 +63,8 @@ namespace sl
                     return nullptr;
                 T* temp = head;
                 head = head->next;
+                if (head == nullptr)
+                    tail = nullptr;
                 return temp;
             }
 

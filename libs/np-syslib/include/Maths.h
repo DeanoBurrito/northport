@@ -89,6 +89,70 @@ namespace sl
         return result;
     }
 
+    constexpr inline uint8_t LeToHost(uint8_t value)
+    {
+        return value;
+    }
+
+    constexpr inline uint16_t LeToHost(uint16_t value)
+    {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return value;
+#else
+        return ByteSwap(value);
+#endif
+    }
+
+    constexpr inline uint32_t LeToHost(uint32_t value)
+    {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return value;
+#else
+        return ByteSwap(value);
+#endif
+    }
+
+    constexpr inline uint64_t LeToHost(uint64_t value)
+    {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return value;
+#else
+        return ByteSwap(value);
+#endif
+    }
+
+    constexpr inline uint8_t BeToHost(uint8_t value)
+    {
+        return value;
+    }
+
+    constexpr inline uint16_t BeToHost(uint16_t value)
+    {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return value;
+#else
+        return ByteSwap(value);
+#endif
+    }
+
+    constexpr inline uint32_t BeToHost(uint32_t value)
+    {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return value;
+#else
+        return ByteSwap(value);
+#endif
+    }
+
+    constexpr inline uint64_t BeToHost(uint64_t value)
+    {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return value;
+#else
+        return ByteSwap(value);
+#endif
+    }
+
     template<typename T>
     constexpr inline T SquareRoot(T value)
     {

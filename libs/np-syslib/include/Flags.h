@@ -2,11 +2,10 @@
 
 namespace sl
 {
-    template<typename T>
+    template<typename T, typename BackingInt = unsigned long>
     struct Flags
     {
     private:
-        using BackingInt = unsigned long;
         BackingInt value;
     
     public:
