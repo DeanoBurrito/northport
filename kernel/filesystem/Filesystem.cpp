@@ -1,199 +1,248 @@
 #include <filesystem/Filesystem.h>
-#include <boot/LimineTags.h>
-#include <debug/Log.h>
 #include <filesystem/TempFs.h>
-#include <containers/Vector.h>
-#include <Memory.h>
-#include <formats/Tar.h>
+#include <debug/Log.h>
+#include <drivers/DriverManager.h>
 #include <formats/Url.h>
-#include <UnitConverter.h>
 
 namespace Npk::Filesystem
 {
-    sl::Vector<VfsDriver*> filesystems;
+    constexpr size_t InitialNodeCacheCapacity = 128;
 
-    void LoadInitdiskFile(Node* root, const sl::TarHeader* header)
+    struct VfsCachedNode
     {
-        VALIDATE(root != nullptr,, "Initdisk root is nullptr");
-        VALIDATE(header != nullptr,, "Tar entry is nullptr");
+        VfsNode node;
+        void* driverData;
+        sl::SpinLock busy;
+    };
 
-        auto conv = sl::ConvertUnits(header->SizeBytes());
-        Log("Loading initdisk file: %s (%lu.%lu%sB)", LogLevel::Verbose, 
-            header->Filename().Begin(), conv.major, conv.minor, conv.prefix);
-        
-        const sl::Url filepath = sl::Url::Parse(header->Filename());
-        sl::StringSpan segment {};
-        sl::Handle<Node> parent = root;
+    sl::Handle<Drivers::DeviceApi> rootFs;
+    size_t rootFsId;
+    VfsId rootNodeId;
+    sl::SpinLock nodeCacheLock;
+    sl::Span<VfsCachedNode> nodeCache; //TODO: auto-resizing container like a non-moving dequeue?
 
-        //create any parent directories needed
-        while (true)
-        {
-            segment = filepath.GetNextSeg(segment);
-            if (filepath.GetNextSeg(segment).Empty())
-                break; //last segment is actually the filename, handle that outside the loop
-
-            sl::Handle<Node> dir = parent->FindChild(segment, KernelFsCtxt);
-            if (!dir.Valid())
-            {
-                NodeProps props { .name = segment, .created = sl::TimePoint::Now() };
-                dir = root->Create(NodeType::Directory, props, KernelFsCtxt);
-
-                if (!dir.Valid())
-                {
-                    Log("Initdisk file loading failed: %s", LogLevel::Error, header->Filename().Begin());
-                    return;
-                }
-            }
-            parent = dir;
-        }
-
-        //load the file itself
-        NodeProps props 
-        { 
-            .name = segment, 
-            .created = sl::TimePoint::Now(), 
-            .size = header->SizeBytes() 
-        };
-        sl::Handle<Node> file = parent->Create(NodeType::File, props, KernelFsCtxt);
-        if (!file.Valid())
-        {
-            Log("Initdisk file loading failed: %s", LogLevel::Error, header->Filename().Begin());
-            return;
-        }
-
-        RwPacket writePacket { .write = true, .length = header->SizeBytes() };
-        //NOTE: this is okay, since we're only reading from the buffer.
-        writePacket.buffer = const_cast<void*>(header->Data()); //TODO: memory map and write directory to the filecache
-        if (size_t written = file->ReadWrite(writePacket, KernelFsCtxt) != header->SizeBytes())
-        {
-
-            Log("Initdisk file wrote %lu (out of %lu) bytes.", LogLevel::Error, 
-                written, header->SizeBytes());
-        }
-    }
-
-    void PrintVfsNode(sl::Handle<Node>& node, size_t level)
-    {
-        NodeProps props {};
-        node->GetProps(props, KernelFsCtxt);
-        Log("%*c%s%s (%lu bytes)", LogLevel::Debug, (int)level * 2, ' ', 
-            props.name.C_Str(), node->type == NodeType::Directory ? "/" : "", props.size);
-
-        if (node->type != NodeType::Directory)
-            return;
-
-        for (size_t i = 0; true; i++)
-        {
-            auto child = node->GetChild(i, KernelFsCtxt);
-            if (!child.Valid())
-                break;
-
-            PrintVfsNode(child, level + 1);
-        }
-    }
-
-    void LoadInitdisk(VfsDriver* mountpoint, void* base, size_t length)
-    {
-        VALIDATE(mountpoint != nullptr,, "Bad mountpoint");
-        VALIDATE(base != nullptr,, "Bad initdisk base address");
-        
-        size_t filesLoaded = 0;
-        const sl::TarHeader* scan = static_cast<sl::TarHeader*>(base);
-        while ((uintptr_t)scan < (uintptr_t)base + length)
-        {
-            if (scan->IsZero() && scan->Next()->IsZero())
-                break; //two zero sectors indicate the end of the archive
-
-            if (scan->Type() != sl::TarEntryType::File)
-            {
-                scan = scan->Next();
-                continue;
-            }
-
-            LoadInitdiskFile(mountpoint->Root(), scan);
-            filesLoaded++;
-            scan = scan->Next();
-        }
-
-        Log("Initdisk loaded %lu files.", LogLevel::Info, filesLoaded);
-    }
-
-    void TryFindInitdisk()
-    {
-        if (Boot::modulesRequest.response == nullptr)
-            return;
-
-        const auto* resp = Boot::modulesRequest.response;
-        for (size_t i = 0; i < resp->module_count; i++)
-        {
-            const auto* module = resp->modules[i];
-            const size_t nameLen = sl::memfirst(module->cmdline, 0, 0);
-            if (sl::memcmp(module->cmdline, "northport-initdisk", nameLen) != 0)
-                continue;
-            
-            Log("Loading module \"%s\" (@ 0x%lx) as initdisk.", LogLevel::Info, 
-                module->cmdline, (uintptr_t)module->address);
-            
-            //create a mountpoint for the initdisk under `/initdisk/`
-            NodeProps mountProps { .name = "initdisk" };
-            auto mountpoint = RootFs()->Root()->Create(NodeType::Directory, mountProps, KernelFsCtxt);
-            ASSERT(mountpoint, "Failed to create initdisk mountpoint");
-
-            //create filesystem, load module as initdisk
-            TempFs* initdiskFs = new TempFs();
-            LoadInitdisk(initdiskFs, module->address, module->size);
-
-            //mount it!
-            filesystems.EmplaceBack(initdiskFs);
-            MountArgs mountArgs {};
-            const bool mounted = initdiskFs->Mount(*mountpoint, mountArgs);
-
-            if (!mounted)
-            {
-                Log("Mounting initdisk failed, freeing resources.", LogLevel::Debug);
-                initdiskFs->Unmount(); //try to unmount, since we dont know how far the mounting process got
-                filesystems.PopBack();
-                delete initdiskFs;
-            }
-
-            //only load the first module with this name for now, since we dont support
-            //multiple init ramdisks.
-            break;
-        }
-    }
-    
     void InitVfs()
     {
-        const bool noRootFs = true; //TODO: set this if no config data for mounting the root fs is found.
-        if (noRootFs)
-        {
-            filesystems.EmplaceBack(new TempFs());
-            Log("VFS initialized: No root filesystem found, using tempfs.", LogLevel::Info);
-        }
-        else
-            ASSERT_UNREACHABLE()
+        nodeCache = sl::Span<VfsCachedNode>(new VfsCachedNode[InitialNodeCacheCapacity], InitialNodeCacheCapacity);
+        rootFsId = CreateTempFs("root tempfs");
+        rootFs = Drivers::DriverManager::Global().GetApi(rootFsId);
+        auto* rootApi = reinterpret_cast<npk_filesystem_device_api*>(rootFs->api);
+        rootNodeId = { .driverId = rootFsId, .vnodeId = rootApi->get_root(rootFs->api) };
 
-        TryFindInitdisk();
-        sl::Handle<Node> rootHandle = RootFs()->Root();
-        PrintVfsNode(rootHandle, 0);
+        Log("VFS initialized, no root filesystem found.", LogLevel::Info);
     }
 
-    VfsDriver* RootFs()
+    sl::Opt<VfsId> VfsLookup(sl::StringSpan filepath)
     {
-        return filesystems.Size() > 0 ? filesystems[0] : nullptr;
-    }
-
-    sl::Handle<Node> VfsLookup(sl::StringSpan path, const FsContext& context)
-    {
-        VfsDriver* root = RootFs();
-        if (root == nullptr)
+        if (filepath.Empty() || filepath[0] != '/')
             return {};
-
-        if (path[0] == '/')
-            path = path.Subspan(1, path.Size() - 1);
-        if (path.Empty())
-            return root->Root();
         
-        return root->Resolve(path, context);
+        const sl::Url url = sl::Url::Parse(filepath);
+        sl::StringSpan segment = url.GetNextSeg();
+        auto selectedNode = VfsGetNode(rootNodeId);
+
+        while (!segment.Empty())
+        {
+            if (!selectedNode.Valid())
+                return {};
+            auto childId = VfsFindChild(selectedNode->id, segment);
+            if (!childId.HasValue())
+                return {};
+
+            selectedNode = VfsGetNode(*childId);
+            segment = url.GetNextSeg(segment);
+        }
+
+        return selectedNode->id;
+    }
+
+    sl::Handle<VfsNode, sl::NoHandleDtor> VfsGetNode(VfsId id)
+    {
+        sl::ScopedLock scopeLock(nodeCacheLock); //TODO: go lockless? ;)
+
+        //TODO: hashmap, or anything better than this
+        for (size_t i = 0; i < nodeCache.Size(); i++)
+        {
+            if (nodeCache[i].node.id.driverId != id.driverId)
+                continue;
+            if (nodeCache[i].node.id.vnodeId != id.vnodeId)
+                continue;
+
+            //TODO: what happens if the busy flag is set for a slot we're returning? Possible use-after-free?
+            Log("NodeCache hit: slot %lu, %lu:%lu", LogLevel::Debug, i, id.driverId, id.vnodeId);
+            return &nodeCache[i].node;
+        }
+
+        //node wasnt found in cache, find a free slot
+        sl::Opt<size_t> allocIndex {};
+        for (size_t i = 0; i < nodeCache.Size(); i++)
+        {
+            if (nodeCache[i].node.references != 0)
+                continue; //node is in use elsewhere, dont touch it.
+
+            if (!allocIndex.HasValue() && nodeCache[i].busy.TryLock())
+                allocIndex = i;
+            else if (allocIndex.HasValue() && nodeCache[*allocIndex].node.id.vnodeId != 0
+                && nodeCache[i].node.id.vnodeId == 0 && nodeCache[i].busy.TryLock())
+            {
+                nodeCache[*allocIndex].busy.Unlock();
+                allocIndex = i;
+            }
+
+            if (allocIndex.HasValue() && nodeCache[*allocIndex].node.id.vnodeId == 0)
+                break;
+        }
+        VALIDATE_(allocIndex.HasValue(), {});
+        auto& store = nodeCache[*allocIndex];
+
+        //if slot is already occupied by a node, inform the fs driver it's time to cleanup a little bit
+        if (store.node.id.driverId != 0)
+        {
+            Log("NodeCache eviction: slot %lu, %lu:%lu", LogLevel::Debug, *allocIndex, 
+                store.node.id.driverId, store.node.id.vnodeId);
+            auto driver = Drivers::DriverManager::Global().GetApi(store.node.id.driverId);
+            auto* fsApi = reinterpret_cast<const npk_filesystem_device_api*>(driver->api);
+            ASSERT_(fsApi->exit_cache(driver->api, store.node.id.vnodeId, store.driverData));
+            store.driverData = nullptr;
+            //TODO: handle `exit_cache()` returning false, we should retry the search for a free slot in the cache.
+        }
+
+        //load new node into slot
+        auto driver = Drivers::DriverManager::Global().GetApi(id.driverId);
+        VALIDATE_(driver.Valid(), {});
+        auto* fsApi = reinterpret_cast<const npk_filesystem_device_api*>(driver->api);
+
+        new(&store.node) VfsNode();
+        store.node.metadataLock.WriterLock();
+        store.node.id = id;
+        store.node.type = static_cast<NodeType>(fsApi->enter_cache(driver->api, id.vnodeId, &store.driverData));
+        //TODO: locate/create a FileCache instance for this node
+        //TODO: populate bond field
+        store.node.metadataLock.WriterUnlock();
+
+        //acquire a handle to the new node, *then* release the busy lock
+        sl::Handle<VfsNode, sl::NoHandleDtor> handle = &store.node;
+        store.busy.Unlock();
+
+        Log("NodeCache load: slot %lu, %lu:%lu", LogLevel::Debug, *allocIndex, store.node.id.driverId, store.node.id.vnodeId);
+        if (handle->type == NodeType::Link)
+            return VfsGetNode(handle->bond);
+        return handle;
+    }
+
+    sl::String VfsGetPath(VfsId id)
+    {
+        ASSERT_UNREACHABLE()
+    }
+
+    static bool MountingConditionsMet(sl::Handle<VfsNode, sl::NoHandleDtor> node, sl::Handle<Drivers::DeviceApi> driver)
+    {
+        VALIDATE_(node->type == NodeType::Directory, false);
+        VALIDATE_(node->bond.driverId == 0 && node->bond.vnodeId == 0, false);
+        auto nodeDriver = Drivers::DriverManager::Global().GetApi(node->id.driverId);
+        auto* fsApi = reinterpret_cast<const npk_filesystem_device_api*>(driver->api);
+        size_t childCount = 0;
+        VALIDATE_(fsApi->get_dir_listing(nodeDriver->api, node->id.vnodeId, &childCount, nullptr), false);
+        VALIDATE_(childCount == 0, false);
+
+        VALIDATE_(driver->api->type == npk_device_api_type::Filesystem, false);
+
+        return true;
+    }
+
+    bool VfsMount(VfsId mountpoint, size_t fsDriverId)
+    {
+        auto target = VfsGetNode(mountpoint);
+        VALIDATE_(target.Valid(), false);
+        auto driver = Drivers::DriverManager::Global().GetApi(fsDriverId);
+        VALIDATE_(driver.Valid(), false);
+
+        target->metadataLock.WriterLock();
+        if (!MountingConditionsMet(target, driver))
+        {
+            target->metadataLock.WriterUnlock();
+            return false;
+        }
+
+        target->type = NodeType::Link;
+        target->bond.driverId = driver->api->id;
+        auto* driverApi = reinterpret_cast<npk_filesystem_device_api*>(driver->api);
+        target->bond.vnodeId = driverApi->get_root(driver->api);
+        target->metadataLock.WriterUnlock();
+
+        Log("Mounted filesystem %lu at %lu.%lu", LogLevel::Debug, target->bond.driverId, mountpoint.driverId, mountpoint.vnodeId);
+        return true;
+    }
+
+    sl::Opt<VfsId> VfsCreate(VfsId dir, NodeType type, sl::StringSpan name)
+    {
+        auto parent = VfsGetNode(dir);
+        VALIDATE_(parent.Valid(), {});
+        auto driver = Drivers::DriverManager::Global().GetApi(dir.driverId);
+        VALIDATE_(driver.Valid(), {});
+
+        parent->metadataLock.WriterLock();
+        VALIDATE_(parent->type == NodeType::Directory, {});
+        
+        //everything checks out, call the filesystem driver and ask it to actually create the file.
+        auto* api = reinterpret_cast<npk_filesystem_device_api*>(driver->api);
+        const npk_string apiName = { .length = name.Size(), .data = name.Begin() };
+        const npk_handle handle = api->create(&api->header, dir.vnodeId, 
+            static_cast<npk_fsnode_type>(type), apiName);
+        if (handle == NPK_INVALID_HANDLE)
+        {
+            parent->metadataLock.WriterUnlock();
+            return {};
+        }
+
+        parent->metadataLock.WriterUnlock();
+        return VfsId { .driverId = dir.driverId, .vnodeId = handle };
+    }
+
+    bool VfsRemove(VfsId dir, VfsId node)
+    {
+        auto parent = VfsGetNode(dir);
+        VALIDATE_(parent.Valid(), {});
+
+        ASSERT_UNREACHABLE();
+    }
+
+    sl::Opt<VfsId> VfsFindChild(VfsId dir, sl::StringSpan name)
+    {
+        VALIDATE_(!name.Empty(), {});
+        auto dirNode = VfsGetNode(dir);
+        VALIDATE_(dirNode.Valid(), {});
+
+        //if starting node is a link, follow it
+        dirNode->metadataLock.ReaderLock();
+        if (dirNode->type == NodeType::Link)
+        {
+            auto overlay = VfsGetNode(dirNode->bond);
+            dirNode->metadataLock.ReaderUnlock();
+            overlay->metadataLock.ReaderLock();
+            dirNode = overlay;
+        }
+        (void)dir; //this ID may be incorrect after following a link
+
+        auto driver = Drivers::DriverManager::Global().GetApi(dirNode->id.driverId);
+        VALIDATE_(driver.Valid(), {});
+        auto* fsApi = reinterpret_cast<npk_filesystem_device_api*>(driver->api);
+        const npk_string apiName { .length = name.Size(), .data = name.Begin() };
+        const npk_handle found = fsApi->find_child(driver->api, dirNode->id.vnodeId, apiName);
+
+        dirNode->metadataLock.ReaderUnlock();
+        if (found == NPK_INVALID_HANDLE)
+            return {};
+        return VfsId { .driverId = driver->api->id, .vnodeId = found };
+    }
+
+    sl::Opt<NodeAttribs> VfsGetAttribs(VfsId node)
+    {
+        ASSERT_UNREACHABLE();
+    }
+
+    sl::Opt<DirListing> VfsGetDirListing(VfsId node)
+    {
+        ASSERT_UNREACHABLE();
     }
 }

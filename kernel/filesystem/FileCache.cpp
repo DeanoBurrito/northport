@@ -37,9 +37,9 @@ namespace Npk::Filesystem
     FileCacheInfo GetFileCacheInfo()
     { return cacheInfo; }
 
-    sl::Handle<FileCacheUnit> GetFileCache(FileCache* cache, size_t offset, bool createNew)
+    sl::Handle<FileCacheUnit> GetFileCache(sl::Handle<FileCache> cache, size_t offset, bool createNew)
     {
-        VALIDATE(cache != nullptr, {}, "FileCache is nullptr");
+        VALIDATE_(cache.Valid(), {});
         
         offset = sl::AlignDown(offset, cacheInfo.unitSize);
         for (auto it = cache->units.Begin(); it != cache->units.End(); ++it)

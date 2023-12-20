@@ -26,25 +26,29 @@
  * SOFTWARE.
  */
 
+#include <stdint.h>
 #include <stddef.h>
+#include "Decorators.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define OPTIONAL
-#define REQUIRED
-#define OWNING
-
-typedef size_t npk_handle;
-
-#define NPK_INVALID_HANDLE ((npk_handle)0)
-
 typedef struct
 {
-    size_t length;
-    const char* data;
-} npk_string;
+    npk_handle device_api;
+    npk_handle node_id;
+} npk_fs_id;
+
+typedef enum
+{
+    File = 0,
+    Directory = 1,
+    Link = 2,
+} npk_fsnode_type;
+
+npk_fs_id npk_fs_root();
+npk_fs_id npk_fs_lookup(npk_string path);
 
 #ifdef __cplusplus
 }

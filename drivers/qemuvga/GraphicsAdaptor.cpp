@@ -11,7 +11,7 @@ namespace QemuVga
         return gfx->GetMode();
     }
 
-    const char* GetSummaryWrapper(npk_device_api* api)
+    npk_string GetSummaryWrapper(npk_device_api* api)
     {
         auto gfx = static_cast<GraphicsAdaptor*>(api->driver_data);
         return gfx->GetSummary();
@@ -21,6 +21,8 @@ namespace QemuVga
     constexpr uint16_t DispiEnable = 0x1;
     constexpr uint16_t DispiLfbEnabled = 0x40;
     constexpr uint16_t DispiNoClearMem = 0x80;
+
+    constexpr const char builtinSummary[] = "qemu/bochs extended framebuffer";
 
     void GraphicsAdaptor::WriteDispiReg(DispiReg reg, uint16_t data) const
     {
@@ -39,7 +41,8 @@ namespace QemuVga
         //if (summaryString != nullptr)
         //   delete[] summaryString;
 
-        summaryString = "qemu/bochs extended framebuffer";
+        summaryString.length = sizeof(builtinSummary);
+        summaryString.data = builtinSummary;
     }
 
     bool GraphicsAdaptor::Init(const npk_init_tag_pci_function* pciTag)

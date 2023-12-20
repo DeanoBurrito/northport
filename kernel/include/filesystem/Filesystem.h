@@ -1,10 +1,60 @@
 #pragma once
 
-#include <filesystem/Vfs.h>
+#include <filesystem/FileCache.h>
+#include <Locks.h>
+#include <Handle.h>
+#include <Optional.h>
+#include <containers/Vector.h>
+#include <String.h>
 
 namespace Npk::Filesystem
 {
+    struct VfsId
+    {
+        size_t driverId;
+        size_t vnodeId;
+    };
+
+    enum class NodeType : size_t
+    {
+        File = 0,
+        Directory = 1,
+        Link = 2,
+    };
+
+    struct NodeAttribs
+    {
+        NodeType type; //duplicate of node field in node struct, here for accessibility
+        size_t size;
+        sl::String name;
+    };
+
+    struct VfsNode
+    {
+        sl::Atomic<size_t> references;
+        sl::RwLock metadataLock;
+
+        NodeType type;
+        sl::Handle<FileCache> cache;
+
+        VfsId id;
+        VfsId bond;
+    };
+
+    struct DirListing
+    {
+        sl::Vector<VfsId> children;
+    };
+
     void InitVfs();
-    VfsDriver* RootFs();
-    sl::Handle<Node> VfsLookup(sl::StringSpan path, const FsContext& context);
+    sl::Opt<VfsId> VfsLookup(sl::StringSpan filepath);
+    sl::Handle<VfsNode, sl::NoHandleDtor> VfsGetNode(VfsId id);
+    sl::String VfsGetPath(VfsId id);
+
+    bool VfsMount(VfsId mountpoint, size_t fsDriverId);
+    sl::Opt<VfsId> VfsCreate(VfsId dir, NodeType type, sl::StringSpan name);
+    bool VfsRemove(VfsId dir, VfsId node);
+    sl::Opt<VfsId> VfsFindChild(VfsId dir, sl::StringSpan name);
+    sl::Opt<NodeAttribs> VfsGetAttribs(VfsId node);
+    sl::Opt<DirListing> VfsGetDirListing(VfsId node);
 }

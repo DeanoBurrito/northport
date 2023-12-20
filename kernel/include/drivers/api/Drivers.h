@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "Decorators.h"
+#include "Filesystem.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,7 +50,7 @@ struct npk_device_api_
     npk_device_api_type type;
     OPTIONAL void* driver_data;
 
-    OPTIONAL const char* (*get_summary)(npk_device_api_* api);
+    OPTIONAL npk_string (*get_summary)(npk_device_api_* api);
 };
 
 typedef struct npk_device_api_ npk_device_api;
@@ -100,38 +101,25 @@ typedef struct
     npk_device_api header;
 } npk_keyboard_device_api;
 
-typedef size_t npk_vnode_id;
-
 typedef struct
 {
-} npk_fs_context;
-
-typedef enum
-{
-} npk_vnode_type;
-
-typedef struct
-{
-} npk_vnode;
+    OWNING npk_string name;
+} npk_dir_entry;
 
 typedef struct
 {
     npk_device_api header;
 
-    REQUIRED npk_vnode* (*acquire_node)(npk_device_api* api, npk_vnode_id id);
-    REQUIRED void (*release_node)(npk_device_api* api, npk_vnode_id id);
-    REQUIRED bool (*mount)(npk_device_api* api, npk_vnode_id mountpoint, REQUIRED const npk_fs_context* ctxt);
+    REQUIRED npk_fsnode_type (*enter_cache)(npk_device_api* api, npk_handle id, void** driver_data);
+    REQUIRED bool (*exit_cache)(npk_device_api* api, npk_handle id, void* data);
+    REQUIRED npk_handle (*get_root)(npk_device_api* api);
+    REQUIRED bool (*mount)(npk_device_api* api);
     REQUIRED bool (*unmount)(npk_device_api* api);
 
-    REQUIRED npk_vnode_id (*create)(npk_device_api* api, npk_vnode_id dir, npk_vnode_type type, REQUIRED const npk_fs_context* ctxt);
-    REQUIRED bool (*remove)(npk_device_api* api, npk_vnode_id dir, npk_vnode_id node, REQUIRED const npk_fs_context* ctxt);
-    REQUIRED bool (*open)(npk_device_api* api, npk_vnode_id file, REQUIRED const npk_fs_context* ctxt);
-    REQUIRED bool (*close)(npk_device_api* api, npk_vnode_id file, REQUIRED const npk_fs_context* ctxt);
-    REQUIRED bool (*read_write)(npk_device_api* api, npk_vnode_id file, REQUIRED const npk_fs_context* ctxt);
-    REQUIRED bool (*flush)(npk_device_api* api, npk_vnode_id node);
-    REQUIRED bool (*get_child)(npk_device_api* api, npk_vnode_id dir, size_t index, REQUIRED const npk_fs_context* ctxt);
-    REQUIRED bool (*find_child)(npk_device_api* api, npk_vnode_id dir, npk_string name, REQUIRED const npk_fs_context* ctxt);
-    //TODO: get/set props, add props arg to create()
+    REQUIRED npk_handle (*create)(npk_device_api* api, npk_handle dir, npk_fsnode_type type, npk_string name);
+    REQUIRED bool (*remove)(npk_device_api* api, npk_handle dir, npk_handle node);
+    REQUIRED npk_handle (*find_child)(npk_device_api* api, npk_handle dir, npk_string name);
+    REQUIRED bool (*get_dir_listing)(npk_device_api* api, npk_handle dir, REQUIRED size_t* count, OPTIONAL npk_dir_entry** listing);
 } npk_filesystem_device_api;
 
 bool npk_add_device_api(REQUIRED npk_device_api* api);

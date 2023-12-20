@@ -1,7 +1,7 @@
 #pragma once
 
-#include <filesystem/Vfs.h>
 #include <memory/virtual/VmDriver.h>
+#include <filesystem/Filesystem.h>
 
 namespace Npk::Memory::Virtual
 {
@@ -9,9 +9,10 @@ namespace Npk::Memory::Virtual
     {
         VfsVmLink* next;
 
+        Filesystem::VfsId node;
         size_t fileOffset;
-        sl::Handle<Filesystem::Node> vfsNode;
-        bool readonly;
+        bool isReadonly;
+        bool isPrivate;
     };
 
     enum class VfsFeature : uintptr_t

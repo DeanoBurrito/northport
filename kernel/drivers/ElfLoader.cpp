@@ -40,15 +40,15 @@ namespace Npk::Drivers
 
     static VmObject OpenElf(sl::StringSpan filepath)
     {
-        auto node = Filesystem::VfsLookup(filepath, Filesystem::KernelFsCtxt);
-        Filesystem::NodeProps props;
-        VALIDATE_(node.Valid(), {});
-        VALIDATE_(node->type == Filesystem::NodeType::File, {});
-        VALIDATE_(node->GetProps(props, Filesystem::KernelFsCtxt), {});
+        auto fileId = Filesystem::VfsLookup(filepath);
+        VALIDATE_(fileId.HasValue(), {});
+        auto attribs = Filesystem::VfsGetAttribs(*fileId);
+        VALIDATE_(attribs.HasValue(), {});
+        VALIDATE_(attribs->type == Filesystem::NodeType::File, {});
 
         Memory::VmoFileInitArg vmoArg {};
         vmoArg.filepath = filepath;
-        VmObject file(props.size, reinterpret_cast<uintptr_t>(&vmoArg), VmFlag::File);
+        VmObject file(attribs->size, reinterpret_cast<uintptr_t>(&vmoArg), VmFlag::File);
         VALIDATE_(file.Valid(), {});
 
         VALIDATE_(sl::ValidateElfHeader(file->ptr, sl::ET_DYN), {});
@@ -207,27 +207,22 @@ namespace Npk::Drivers
         Log("Scanning for kernel modules in \"%s\"", LogLevel::Verbose, dirpath.Begin());
 
         using namespace Filesystem;
-        auto dir = VfsLookup(dirpath, KernelFsCtxt);
-        VALIDATE_(dir.Valid(),);
-        VALIDATE_(dir->type == NodeType::Directory,);
+        auto dirId = VfsLookup(dirpath);
+        VALIDATE_(dirId.HasValue(),);
 
+        auto dirList = VfsGetDirListing(*dirId);
+        VALIDATE_(dirList.HasValue(), );
+        
         size_t found = 0;
-        for (size_t i = 0; true; i++)
+        for (size_t i = 0; i < dirList->children.Size(); i++)
         {
-            auto child = dir->GetChild(i, KernelFsCtxt);
+            auto child = VfsGetNode(dirList->children[i]);
             if (!child.Valid())
-                break;
+                continue;
             if (child->type != NodeType::File)
                 continue;
 
-            NodeProps props;
-            if (!child->GetProps(props, KernelFsCtxt))
-                continue;
-
-            sl::String filepath(dirpath);
-            if (!filepath.EndsWith('/'))
-                filepath += '/';
-            filepath += props.name;
+            const sl::String filepath = VfsGetPath(dirList->children[i]);
             if (ScanForDrivers(filepath.Span()))
                 found++;
         }

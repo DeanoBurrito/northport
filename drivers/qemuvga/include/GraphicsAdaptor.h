@@ -31,7 +31,7 @@ namespace QemuVga
 
         sl::TicketLock metadataLock;
         npk_framebuffer_mode mode;
-        const char* summaryString;
+        npk_string summaryString;
 
         void WriteDispiReg(DispiReg reg, uint16_t data) const;
         uint16_t ReadDispiReg(DispiReg reg) const;
@@ -48,7 +48,7 @@ namespace QemuVga
         }
 
         [[gnu::always_inline]]
-        inline const char* GetSummary()
+        inline npk_string GetSummary()
         { 
             sl::ScopedLock scopeLock(metadataLock);
             return summaryString; 

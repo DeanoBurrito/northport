@@ -44,7 +44,7 @@ namespace Npk::Drivers
 
         sl::Handle<LoadedElf> runtimeImage;
         sl::LinkedList<sl::Handle<DeviceDescriptor>> devices;
-        sl::LinkedList<npk_device_api*> apis;
+        sl::LinkedList<sl::Handle<DeviceApi>> apis;
         Tasking::Process* process;
 
         ProcessEventFunc ProcessEvent;
@@ -82,6 +82,15 @@ namespace Npk::Drivers
 
     using DeviceApiTree = sl::RBTree<DeviceApi, &DeviceApi::hook, DeviceApiLess>;
 
+    struct DriverStats
+    {
+        size_t manifestCount;
+        size_t loadedCount;
+        size_t unclaimedDescriptors;
+        size_t totalDescriptors;
+        size_t apiCount;
+    };
+
     class DriverManager
     {
     private:
@@ -92,6 +101,10 @@ namespace Npk::Drivers
         sl::LinkedList<sl::Handle<DeviceDescriptor>> devices;
         DeviceApiTree apiTree;
 
+        sl::SpinLock orphanLock;
+        sl::LinkedList<sl::Handle<DeviceApi>> orphanApis;
+
+        DriverStats stats;
         sl::Atomic<size_t> apiIdAlloc;
 
         sl::Handle<DriverManifest> LocateDriver(sl::Handle<DeviceDescriptor>& device);
@@ -99,10 +112,14 @@ namespace Npk::Drivers
         bool AttachDevice(sl::Handle<DriverManifest>& driver, sl::Handle<DeviceDescriptor>& device);
         bool DetachDevice(sl::Handle<DeviceDescriptor>& device);
 
+        void SetShadow(sl::Handle<DriverManifest> shadow) const;
+
     public:
         static DriverManager& Global();
 
         void Init();
+        void PrintInfo();
+        DriverStats GetStats() const;
         sl::Handle<DriverManifest> GetShadow();
 
         bool AddManifest(sl::Handle<DriverManifest> manifest);
@@ -111,7 +128,8 @@ namespace Npk::Drivers
         bool AddDescriptor(sl::Handle<DeviceDescriptor> device);
         bool RemoveDescriptor(sl::Handle<DeviceDescriptor> device);
 
-        bool AddApi(npk_device_api* api);
+        bool AddApi(npk_device_api* api, bool noOwner = false);
         bool RemoveApi(size_t id);
+        sl::Handle<DeviceApi> GetApi(size_t id);
     };
 }

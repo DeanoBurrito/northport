@@ -68,7 +68,7 @@ typedef enum
 
 typedef struct
 {
-    const char* filepath;
+    npk_string filepath;
     size_t file_offset;
     npk_file_vm_flags flags;
 } npk_file_vm_arg;

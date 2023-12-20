@@ -18,6 +18,7 @@ namespace Npk::Filesystem
 
     struct FileCache
     {
+        sl::Atomic<size_t> references;
         sl::LinkedList<FileCacheUnit> units; //TODO: rbtree?
     };
 
@@ -35,5 +36,5 @@ namespace Npk::Filesystem
     //is using.
     FileCacheInfo GetFileCacheInfo();
 
-    sl::Handle<FileCacheUnit> GetFileCache(FileCache* cache, size_t offset, bool createNew);
+    sl::Handle<FileCacheUnit> GetFileCache(sl::Handle<FileCache> cache, size_t offset, bool createNew);
 }

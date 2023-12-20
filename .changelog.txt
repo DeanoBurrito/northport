@@ -9,11 +9,18 @@
 - Added ability to bake-in compile-time constants to the kernel, like the git commit the build is based on, c++ flags used to build it, as well as the kernel version.
     - Some of this information is shown on the stats display.
 - LICENSE file is now copied to initdisk when building.
+- Any enabled first-party drivers are added to the initdisk.
 - Kernel symbol store now stores some type info about each symbol, like it's visibility (for linking purposes to other modules).
     - ELF modules now have their symbols added to the kernel symbol store.
 
-- Added VFS::FindChild() to locate a child node directly by it's name.
-    - As a result resolving full filepaths is now done genericly, instead of per-driver.
+- VFS rewrite to a better design.
+    - The previous VFS was mostly the same as the original northport, which assumed all drivers were inside the kernel and had access to language features (like inheritence).
+    - New VFS is written with the device API as it's primary interface, and operations on the VFS happen through global functions that wrap the driver functions.
+        - As a result of the global functions, some portions of operations are now done generically (like detecting name conflicts in `create()` or resolving node names).
+        - The rewritten tempfs uses the filesystem device API now.
+    - New VFS uses `VfsId`s to refer to vfs nodes, whether they're loaded in memory or not. To compliment this, vfs nodes (and their metadata) are now cached in memory similar to file contents, and can be evicted from memory if the cache grows too large.
+        - File metadata is now fully transient, file contents are not (yet).
+- VFS is exposed via kernel module API.
 
 - Cleaned up some dead code in PciBridge, from before limine had riscv support. Namely allocating BARs (which is now done via UEFI).
 - Fixed message string not making it through panic sequence properly.

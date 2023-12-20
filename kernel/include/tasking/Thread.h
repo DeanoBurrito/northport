@@ -23,6 +23,7 @@ namespace Npk::Tasking
     class Thread
     {
     friend Scheduler;
+    friend Drivers::DriverManager;
     private:
         TrapFrame* frame;
         ExtendedRegs* extRegs;
@@ -50,10 +51,6 @@ namespace Npk::Tasking
         [[gnu::always_inline]]
         inline size_t Id() const
         { return id; }
-
-        [[gnu::always_inline]]
-        inline sl::Handle<Drivers::DriverManifest>& DriverShadow()
-        { return driverShadow; }
 
         [[gnu::always_inline]]
         inline Process& Parent() const

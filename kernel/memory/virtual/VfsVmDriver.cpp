@@ -8,7 +8,7 @@
 
 namespace Npk::Memory::Virtual
 {
-    constexpr size_t FaultMaxMapAhead = 8;
+    constexpr size_t FaultMaxMapAhead = 2 * 0x1000;
 
     void VfsVmDriver::Init(uintptr_t enableFeatures)
     { 
@@ -26,25 +26,30 @@ namespace Npk::Memory::Virtual
         auto link = static_cast<VfsVmLink*>(context.range.token);
         ASSERT(link != nullptr, "VFS link is nullptr");
         
-        FileCache* cache = link->vfsNode->link.cache;
-        ASSERT(cache != nullptr, "Bad filecache pointer on vnode");
+        auto node = VfsGetNode(link->node);
+        VALIDATE_(node.Valid(), { .goodFault = false });
+        auto cache = node->cache;
+        VALIDATE_(cache.Valid(), { .goodFault = false });
 
         const FileCacheInfo fcInfo = GetFileCacheInfo();
         const size_t granuleSize = GetHatLimits().modes[fcInfo.hatMode].granularity;
-        where = sl::AlignDown(where, granuleSize);
-        const size_t mappingLength = sl::Min(FaultMaxMapAhead * granuleSize, context.range.Top() - where);
         const HatFlags hatFlags = ConvertFlags(context.range.flags);
 
-        auto cachePart = GetFileCache(cache, where - context.range.base + link->fileOffset, !link->readonly);
-        for (size_t offset = where - context.range.base; offset < mappingLength; offset += granuleSize)
+        where = sl::AlignDown(where, granuleSize);
+        const size_t mapLength = sl::Min(FaultMaxMapAhead, context.range.Top() - where);
+        const uintptr_t mappingOffset = where - context.range.base;
+
+        sl::ScopedLock scopeLock(context.lock);
+        auto cachePart = GetFileCache(cache, where - context.range.base + link->fileOffset, !link->isReadonly);
+        for (size_t i = 0; i < mapLength; i += granuleSize)
         {
-            if (offset % fcInfo.unitSize == 0)
+            if (i % fcInfo.unitSize == 0)
             {
-                cachePart = GetFileCache(cache, offset + link->fileOffset, !link->readonly);
-                ASSERT(cachePart.Valid(), "FileCache fetch from backing store not implemented yet");
+                cachePart = GetFileCache(cache, link->fileOffset + mappingOffset + i, !link->isReadonly);
+                VALIDATE_(cachePart.Valid(), { .goodFault = false });
             }
 
-            Map(context.map, offset + context.range.base, cachePart->physBase + (offset % fcInfo.unitSize),
+            Map(context.map, context.range.base + mappingOffset + i, cachePart->physBase + (i % fcInfo.unitSize), 
                 fcInfo.hatMode, hatFlags, false);
             context.stats.fileResidentSize += granuleSize;
         }
@@ -60,8 +65,11 @@ namespace Npk::Memory::Virtual
         //do a tentative check that the file exists, and is actually a file.
         //NOTE: this looks like a toctou bug, but its only an optimization - the authoratative check
         //is performed in Attach().
-        auto file = VfsLookup(arg->filepath, KernelFsCtxt);
-        if (!file.Valid() || file->type != NodeType::File)
+        auto file = VfsLookup(arg->filepath);
+        if (!file.HasValue())
+            return { .success = false };
+        auto attribs = VfsGetAttribs(*file);
+        if (!attribs.HasValue() || attribs->type != NodeType::File)
             return { .success = false };
 
         QueryResult result;
@@ -93,24 +101,23 @@ namespace Npk::Memory::Virtual
         using namespace Filesystem;
         auto arg = reinterpret_cast<const VmoFileInitArg*>(attachArg);
 
-        auto fileHandle = VfsLookup(arg->filepath, KernelFsCtxt);
-        if (!fileHandle.Valid()) //assert whether we obtained a handle to the file or not.
+        auto fileId = VfsLookup(arg->filepath);
+        if (!fileId.HasValue())
             return { .success = false };
-        if (fileHandle->type != NodeType::File)
+        auto node = VfsGetNode(*fileId);
+        if (!node.Valid() || node->type != NodeType::File)
             return { .success = false };
-        if (!fileHandle->Open(KernelFsCtxt))
-            return { .success = false };
+        //TODO: should we call open() here? do we *need* to?
 
-        FileCache* cache = fileHandle->link.cache;
-
+        auto cache = node->cache;
         VfsVmLink* link = new VfsVmLink();
-        link->readonly = !context.range.flags.Has(VmFlag::Write);
-        link->vfsNode = sl::Move(fileHandle);
+        link->isReadonly = !context.range.flags.Has(VmFlag::Write);
+        link->isPrivate = false; //TODO: private mappings
+        link->node = *fileId;
         link->fileOffset = arg->offset;
-        (void)fileHandle;
 
         const size_t granuleSize = GetHatLimits().modes[query.hatMode].granularity;
-        const AttachResult result 
+        const AttachResult result
         {
             .token = link,
             .offset = arg->offset % granuleSize,
@@ -118,7 +125,7 @@ namespace Npk::Memory::Virtual
         };
         context.stats.fileWorkingSize += context.range.length - result.offset;
 
-        //we found the file and were able to open it, next step depends on our backing strategy.
+        //we found the file and were able to acquire it's cache, next step depends on our backing strategy.
         //if we're mapping on a page fault then we can exit now. Otherwise map the entire
         //file cache contents.
         if (features.faultHandler && !arg->noDeferBacking)
@@ -129,7 +136,7 @@ namespace Npk::Memory::Virtual
         sl::ScopedLock scopeLock(context.lock);
         for (size_t i = 0; i < context.range.length; i += granuleSize)
         {
-            auto handle = GetFileCache(cache, arg->offset + i, !link->readonly);
+            auto handle = GetFileCache(cache, arg->offset + i, !link->isReadonly);
             if (!handle.Valid())
                 break;
             Map(context.map, context.range.base + i, handle->physBase, query.hatMode, hatFlags, false);
