@@ -2,6 +2,10 @@
 
 namespace sl
 {
+    template<typename T>
+    inline void NoHandleDtor(T*)
+    {}
+
     template<typename T, void (*Dtor)(T*) = nullptr>
     class Handle
     {

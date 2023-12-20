@@ -31,27 +31,26 @@ namespace sl
         static_assert(__is_trivially_copyable(T), "Bad atomic type, must be trivally copyable");
 
     public:
-        constexpr Atomic() : value{} 
+        constexpr Atomic() noexcept : value{} 
         {}
 
-        ~Atomic() = default;
         Atomic(const Atomic&) = delete;
         Atomic& operator=(const Atomic&) = delete;
         Atomic& operator=(const Atomic&) volatile = delete;
 
-        constexpr Atomic(T initialValue) : value(initialValue)
+        constexpr Atomic(T initialValue) noexcept : value(initialValue)
         {}
 
-        operator T() const
+        operator T() const noexcept
         { return Load(); }
 
-        operator T() const volatile
+        operator T() const volatile noexcept
         { return Load(); }
 
-        T operator=(T incoming)
+        T operator=(T incoming) noexcept
         { Store(incoming); return value; }
 
-        T operator=(T incoming) volatile
+        T operator=(T incoming) volatile noexcept
         { Store(incoming); return value; }
 
         bool IsLockFree() const
