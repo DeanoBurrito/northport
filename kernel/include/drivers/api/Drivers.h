@@ -103,8 +103,10 @@ typedef struct
 
 typedef struct
 {
-    OWNING npk_string name;
-} npk_dir_entry;
+    npk_device_api* api;
+    npk_handle node_id;
+    void* node_data;
+} npk_fs_context;
 
 typedef struct
 {
@@ -116,10 +118,12 @@ typedef struct
     REQUIRED bool (*mount)(npk_device_api* api);
     REQUIRED bool (*unmount)(npk_device_api* api);
 
-    REQUIRED npk_handle (*create)(npk_device_api* api, npk_handle dir, npk_fsnode_type type, npk_string name);
-    REQUIRED bool (*remove)(npk_device_api* api, npk_handle dir, npk_handle node);
-    REQUIRED npk_handle (*find_child)(npk_device_api* api, npk_handle dir, npk_string name);
-    REQUIRED bool (*get_dir_listing)(npk_device_api* api, npk_handle dir, REQUIRED size_t* count, OPTIONAL npk_dir_entry** listing);
+    REQUIRED npk_handle (*create)(npk_fs_context context, npk_fsnode_type type, npk_string name);
+    REQUIRED bool (*remove)(npk_fs_context context, npk_handle dir);
+    REQUIRED npk_handle (*find_child)(npk_fs_context context, npk_string name);
+    REQUIRED bool (*get_attribs)(npk_fs_context context, npk_fs_attribs* attribs);
+    REQUIRED bool (*set_attribs)(npk_fs_context context, const npk_fs_attribs* attribs);
+    REQUIRED bool (*read_dir)(npk_fs_context context, size_t* count, npk_dir_entry** listing);
 } npk_filesystem_device_api;
 
 bool npk_add_device_api(REQUIRED npk_device_api* api);

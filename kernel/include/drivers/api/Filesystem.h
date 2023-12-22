@@ -47,6 +47,17 @@ typedef enum
     Link = 2,
 } npk_fsnode_type;
 
+typedef struct
+{
+    size_t size;
+    npk_string name;
+} npk_fs_attribs;
+
+typedef struct
+{
+    npk_fs_id id;
+} npk_dir_entry;
+
 npk_fs_id npk_fs_root();
 npk_fs_id npk_fs_lookup(npk_string path);
 

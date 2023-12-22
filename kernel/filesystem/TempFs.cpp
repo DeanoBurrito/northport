@@ -15,6 +15,7 @@ namespace Npk::Filesystem
         NodeType type;
         size_t id;
         sl::String name;
+        size_t size;
     };
 
     struct TempFsData
@@ -64,14 +65,14 @@ namespace Npk::Filesystem
         return false;
     }
 
-    npk_handle TempFsCreate(npk_device_api* api, npk_handle dir, npk_fsnode_type type, npk_string name)
+    npk_handle TempFsCreate(npk_fs_context context, npk_fsnode_type type, npk_string name)
     {
-        dir -= 1;
-        TempFsData* data = static_cast<TempFsData*>(api->driver_data);
-        ASSERT_(dir < data->nodes.Size());
+        context.node_id -= 1;
+        TempFsData* data = static_cast<TempFsData*>(context.api->driver_data);
+        ASSERT_(context.node_id < data->nodes.Size());
 
         data->lock.WriterLock();
-        auto parent = data->nodes[dir];
+        auto parent = data->nodes[context.node_id];
         parent->lock.WriterLock();
         data->lock.WriterUnlock();
         
@@ -84,6 +85,7 @@ namespace Npk::Filesystem
         child->parent = *parent;
         child->type = static_cast<NodeType>(type);
         child->name = sl::StringSpan(name.data, name.length);
+        child->size = 0;
         parent->children.PushBack(child);
 
         //assign a local vnode id for this node
@@ -100,51 +102,90 @@ namespace Npk::Filesystem
             id = data->nodes.Size();
             data->nodes.PushBack(child);
         }
+        child->id = *id;
 
         parent->lock.WriterUnlock();
         return *id + 1;
     }
 
-    bool TempFsRemove(npk_device_api* api, npk_handle dir, npk_handle node)
+    bool TempFsRemove(npk_fs_context context, npk_handle dir)
     {
         ASSERT_UNREACHABLE();
     }
 
-    npk_handle TempFsFindChild(npk_device_api* api, npk_handle dir, npk_string name)
+    npk_handle TempFsFindChild(npk_fs_context context, npk_string name)
     {
         if (name.data == nullptr || name.length == 0)
             return NPK_INVALID_HANDLE;
 
-        dir -= 1;
-        TempFsData* data = static_cast<TempFsData*>(api->driver_data);
-        ASSERT_(dir < data->nodes.Size());
-        ASSERT_(data->nodes[dir].Valid());
+        context.node_id -= 1;
+        TempFsData* data = static_cast<TempFsData*>(context.api->driver_data);
+        ASSERT_(context.node_id < data->nodes.Size());
+        ASSERT_(data->nodes[context.node_id].Valid());
 
         const sl::StringSpan nameSpan(name.data, name.length);
-        auto& node = data->nodes[dir];
+        auto node = data->nodes[context.node_id];
+
+        //handle special cases of "." and ".."
+        if (nameSpan[0] == '.')
+        {
+            if (nameSpan.Size() == 1)
+                return context.node_id + 1;
+            if (nameSpan.Size() == 2 && nameSpan[1] == '.')
+                return node->parent != nullptr ? node->parent->id + 1 : NPK_INVALID_HANDLE;
+        }
+
         for (size_t i = 0; i < node->children.Size(); i++)
         {
-            auto& child = node->children[i];
+            auto child = node->children[i];
             if (child->name.Span() != nameSpan)
                 continue;
 
-            return child->id;
+            return child->id + 1;
         }
 
         return NPK_INVALID_HANDLE;
     }
 
-    bool TempFsGetDirListing(npk_device_api* api, npk_handle dir, size_t* count, npk_dir_entry** listing)
+    bool TempFsGetAttribs(npk_fs_context context, npk_fs_attribs* attribs)
+    {
+        context.node_id -= 1;
+        TempFsData* data = static_cast<TempFsData*>(context.api->driver_data);
+
+        ASSERT_(attribs != nullptr);
+        ASSERT_(context.node_id < data->nodes.Size());
+        ASSERT_(data->nodes[context.node_id].Valid());
+
+        auto node = data->nodes[context.node_id];
+        attribs->size = node->size;
+        attribs->name = npk_string { .length = node->name.Size(), .data = node->name.C_Str() };
+        return true;
+    }
+
+    bool TempFsSetAttribs(npk_fs_context context, const npk_fs_attribs* attribs)
+    {
+        ASSERT_UNREACHABLE();
+    }
+
+    bool TempFsReadDir(npk_fs_context context, size_t* count, npk_dir_entry** listing)
     {
         VALIDATE_(count != nullptr, false);
 
-        dir -= 1;
-        TempFsData* data = static_cast<TempFsData*>(api->driver_data);
-        ASSERT_(dir < data->nodes.Size());
-        ASSERT_(data->nodes[dir].Valid());
+        context.node_id -= 1;
+        TempFsData* data = static_cast<TempFsData*>(context.api->driver_data);
+        ASSERT_(context.node_id < data->nodes.Size());
+        ASSERT_(data->nodes[context.node_id].Valid());
 
-        *count = data->nodes[dir]->children.Size();
-        ASSERT(listing == nullptr, "Not implemented");
+        auto node = data->nodes[context.node_id];
+        *count = node->children.Size();
+        if (listing == nullptr)
+            return true;
+
+        npk_dir_entry* buffer = new npk_dir_entry[node->children.Size()];
+        for (size_t i = 0; i < node->children.Size(); i++)
+            buffer[i].id = { .device_api = context.api->id, .node_id = node->children[i]->id + 1 };
+        *listing = buffer;
+
         return true;
     }
 
@@ -167,7 +208,9 @@ namespace Npk::Filesystem
         .create = TempFsCreate,
         .remove = TempFsRemove,
         .find_child = TempFsFindChild,
-        .get_dir_listing = TempFsGetDirListing,
+        .get_attribs = TempFsGetAttribs,
+        .set_attribs = TempFsSetAttribs,
+        .read_dir = TempFsReadDir,
     };
 
     size_t CreateTempFs(sl::StringSpan tag)
@@ -182,7 +225,7 @@ namespace Npk::Filesystem
         data->tag = tag;
         rootNode->type = NodeType::Directory;
         rootNode->parent = nullptr;
-        rootNode->id = 1;
+        rootNode->id = 0;
 
         ASSERT(Drivers::DriverManager::Global().AddApi(&tempFs->header, true), "Failed to create tempfs.");
 

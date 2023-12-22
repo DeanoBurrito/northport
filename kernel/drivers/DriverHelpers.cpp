@@ -45,11 +45,11 @@ namespace Npk::Drivers
             return false;
         if (fsApi->exit_cache == nullptr)
             return false;
+        if (fsApi->get_root == nullptr)
+            return false;
         if (fsApi->mount == nullptr)
             return false;
         if (fsApi->unmount == nullptr)
-            return false;
-        if (fsApi->get_root == nullptr)
             return false;
         if (fsApi->create == nullptr)
             return false;
@@ -57,7 +57,11 @@ namespace Npk::Drivers
             return false;
         if (fsApi->find_child == nullptr)
             return false;
-        if (fsApi->get_dir_listing == nullptr)
+        if (fsApi->get_attribs == nullptr) 
+            return false;
+        if (fsApi->set_attribs == nullptr)
+            return false;
+        if (fsApi->read_dir == nullptr)
             return false;
 
         return true;

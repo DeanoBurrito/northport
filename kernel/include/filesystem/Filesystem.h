@@ -36,19 +36,27 @@ namespace Npk::Filesystem
 
         NodeType type;
         sl::Handle<FileCache> cache;
+        void* driverData;
 
         VfsId id;
         VfsId bond;
     };
 
-    struct DirListing
+    struct DirEntry
     {
-        sl::Vector<VfsId> children;
+        VfsId id;
     };
+
+    struct DirEntries
+    {
+        sl::Vector<DirEntry> children;
+    };
+
+    void PrintNode(VfsId id, size_t indent);
 
     void InitVfs();
     sl::Opt<VfsId> VfsLookup(sl::StringSpan filepath);
-    sl::Handle<VfsNode, sl::NoHandleDtor> VfsGetNode(VfsId id);
+    sl::Handle<VfsNode, sl::NoHandleDtor> VfsGetNode(VfsId id, bool followLink); //TODO: does this function need to be public?
     sl::String VfsGetPath(VfsId id);
 
     bool VfsMount(VfsId mountpoint, size_t fsDriverId);
@@ -56,5 +64,5 @@ namespace Npk::Filesystem
     bool VfsRemove(VfsId dir, VfsId node);
     sl::Opt<VfsId> VfsFindChild(VfsId dir, sl::StringSpan name);
     sl::Opt<NodeAttribs> VfsGetAttribs(VfsId node);
-    sl::Opt<DirListing> VfsGetDirListing(VfsId node);
+    sl::Opt<DirEntries> VfsReadDir(VfsId node);
 }

@@ -210,19 +210,19 @@ namespace Npk::Drivers
         auto dirId = VfsLookup(dirpath);
         VALIDATE_(dirId.HasValue(),);
 
-        auto dirList = VfsGetDirListing(*dirId);
+        auto dirList = VfsReadDir(*dirId);
         VALIDATE_(dirList.HasValue(), );
         
         size_t found = 0;
         for (size_t i = 0; i < dirList->children.Size(); i++)
         {
-            auto child = VfsGetNode(dirList->children[i]);
-            if (!child.Valid())
+            auto attribs = VfsGetAttribs(dirList->children[i].id);
+            if (!attribs.HasValue())
                 continue;
-            if (child->type != NodeType::File)
+            if (attribs->type != NodeType::File)
                 continue;
 
-            const sl::String filepath = VfsGetPath(dirList->children[i]);
+            const sl::String filepath = VfsGetPath(dirList->children[i].id);
             if (ScanForDrivers(filepath.Span()))
                 found++;
         }

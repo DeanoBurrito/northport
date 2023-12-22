@@ -26,7 +26,7 @@ namespace Npk::Memory::Virtual
         auto link = static_cast<VfsVmLink*>(context.range.token);
         ASSERT(link != nullptr, "VFS link is nullptr");
         
-        auto node = VfsGetNode(link->node);
+        auto node = VfsGetNode(link->node, true);
         VALIDATE_(node.Valid(), { .goodFault = false });
         auto cache = node->cache;
         VALIDATE_(cache.Valid(), { .goodFault = false });
@@ -104,10 +104,9 @@ namespace Npk::Memory::Virtual
         auto fileId = VfsLookup(arg->filepath);
         if (!fileId.HasValue())
             return { .success = false };
-        auto node = VfsGetNode(*fileId);
+        auto node = VfsGetNode(*fileId, true);
         if (!node.Valid() || node->type != NodeType::File)
             return { .success = false };
-        //TODO: should we call open() here? do we *need* to?
 
         auto cache = node->cache;
         VfsVmLink* link = new VfsVmLink();
