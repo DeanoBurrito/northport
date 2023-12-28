@@ -8,6 +8,7 @@
 #include <containers/RBTree.h>
 #include <Flags.h>
 #include <Atomic.h>
+#include <Handle.h>
 
 namespace Npk
 {
@@ -198,3 +199,5 @@ namespace Npk::Memory
         void ReleaseMdl(uintptr_t base);
     };
 }
+
+using VMM = Npk::Memory::VirtualMemoryManager;

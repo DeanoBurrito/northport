@@ -69,13 +69,13 @@ namespace QemuVga
         //map the framebuffer into virtual memory
         const auto bar0 = pciAddr.ReadBar(0);
         VALIDATE(bar0.length != 0, false, "BAR0 should contain framebuffer");
-        framebuffer = dl::VmObject(bar0.length, bar0.base, VmFlag::Mmio | VmFlag::Write);
+        framebuffer = dl::VmObject(bar0.length, bar0.base, dl::VmFlag::Mmio | dl::VmFlag::Write);
         VALIDATE_(framebuffer.Valid(), false);
 
         //map bar2, which contains out qemu/bochs extension registers.
         const auto bar2 = pciAddr.ReadBar(2);
         VALIDATE_(bar2.length != 0, false);
-        mmio = dl::VmObject(bar2.length, bar2.base, VmFlag::Mmio | VmFlag::Write);
+        mmio = dl::VmObject(bar2.length, bar2.base, dl::VmFlag::Mmio | dl::VmFlag::Write);
         VALIDATE_(mmio.Valid(), false);
 
         //collect mode info and stash it.

@@ -4,20 +4,27 @@
 #include <Flags.h>
 #include <Optional.h>
 #include <Span.h>
+#include <containers/Vector.h>
 
 #ifdef NP_KERNEL
+#include <filesystem/Filesystem.h>
 
 /* This interface is provided by np-driverlib but it is also used within the kernel, 
  * albiet with a different implementation under the hood. This just makes it easier
  * to reason about driver code since VmObjects share the same properties.
  */
-namespace Npk::Memory { class VirtualMemoryManager; };
-using VMM = Npk::Memory::VirtualMemoryManager;
+namespace Npk::Memory 
+{
+class VirtualMemoryManager;
 
-#endif
+using VMM = Npk::Memory::VirtualMemoryManager;
+#else
+#include <drivers/api/Filesystem.h>
 
 namespace dl
 {
+#endif
+
     enum class VmFlag : size_t
     {
         Write = 0,
@@ -35,11 +42,16 @@ namespace dl
 
     struct VmFileArg
     {
+#ifdef NP_KERNEL
+        Npk::Filesystem::VfsId id;
+#else
+        npk_fs_id id;
+#endif
         sl::StringSpan filepath;
         size_t offset;
         bool noDeferBacking;
 
-        constexpr VmFileArg() : filepath(), offset(0), noDeferBacking(false)
+        constexpr VmFileArg() : id(), offset(0), noDeferBacking(false)
         {}
     };
 
@@ -51,6 +63,25 @@ namespace dl
 
         constexpr VmAllocLimits() : lowerBound(0), upperBound(-1ul), alignment(1)
         {}
+    };
+
+    struct MdlPtr
+    {
+        size_t length;
+        uintptr_t physAddr;
+    };
+
+    struct Mdl
+    {
+#ifdef NP_KERNEL
+        VMM* vmm;
+#endif
+        size_t references;
+        sl::NativePtr base;
+        size_t length;
+        sl::Vector<MdlPtr> ptrs; //TODO: store inline with flexible array member?
+
+        ~Mdl();
     };
 
     class VmObject
@@ -149,11 +180,15 @@ namespace dl
     };
 }
 
-using dl::VmFlag;
-using dl::VmFlags;
-
 #ifdef NP_KERNEL
-//VmObjects are first-class within the kernel, since they're integral to a lot of things.
-//Everywhere else they're just a util provided by np-driverlib.
-using dl::VmObject;
+using Npk::Memory::VMM;
+using Npk::Memory::VmObject;
+using Npk::Memory::VmFlag;
+using Npk::Memory::VmFlagTypeMask;
+using Npk::Memory::VmFlags;
+using Npk::Memory::VmFileArg;
+using Npk::Memory::VmAllocLimits;
+using Npk::Memory::MdlPtr;
+using Npk::Memory::Mdl;
 #endif
+

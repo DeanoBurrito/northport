@@ -1,7 +1,7 @@
 #include <memory/virtual/VfsVmDriver.h>
 #include <boot/CommonInit.h>
 #include <debug/Log.h>
-#include <filesystem/Filesystem.h>
+#include <filesystem/TreeCache.h>
 #include <filesystem/FileCache.h>
 #include <Memory.h>
 #include <Maths.h>
@@ -26,7 +26,7 @@ namespace Npk::Memory::Virtual
         auto link = static_cast<VfsVmLink*>(context.range.token);
         ASSERT(link != nullptr, "VFS link is nullptr");
         
-        auto node = VfsGetNode(link->node, true);
+        auto node = GetVfsNode(link->node, true);
         VALIDATE_(node.Valid(), { .goodFault = false });
         auto cache = node->cache;
         VALIDATE_(cache.Valid(), { .goodFault = false });
@@ -40,16 +40,18 @@ namespace Npk::Memory::Virtual
         const uintptr_t mappingOffset = where - context.range.base;
 
         sl::ScopedLock scopeLock(context.lock);
-        auto cachePart = GetFileCache(cache, where - context.range.base + link->fileOffset, !link->isReadonly);
+        auto cachePart = GetFileCacheUnit(cache, where - context.range.base + link->fileOffset);
+        VALIDATE_(cachePart.Valid(), { .goodFault = false });
+
         for (size_t i = 0; i < mapLength; i += granuleSize)
         {
             if (i % fcInfo.unitSize == 0)
             {
-                cachePart = GetFileCache(cache, link->fileOffset + mappingOffset + i, !link->isReadonly);
+                cachePart = GetFileCacheUnit(cache, link->fileOffset + mappingOffset + i);
                 VALIDATE_(cachePart.Valid(), { .goodFault = false });
             }
 
-            Map(context.map, context.range.base + mappingOffset + i, cachePart->physBase + (i % fcInfo.unitSize), 
+            Map(context.map, context.range.base + mappingOffset + i, cachePart->physBase + ((i + mappingOffset + link->fileOffset) % fcInfo.unitSize), 
                 fcInfo.hatMode, hatFlags, false);
             context.stats.fileResidentSize += granuleSize;
         }
@@ -60,15 +62,24 @@ namespace Npk::Memory::Virtual
     QueryResult VfsVmDriver::Query(size_t length, VmFlags flags, uintptr_t attachArg)
     {
         using namespace Filesystem;
-        auto arg = reinterpret_cast<const VmoFileInitArg*>(attachArg);
+        auto arg = reinterpret_cast<const VmFileArg*>(attachArg);
 
         //do a tentative check that the file exists, and is actually a file.
         //NOTE: this looks like a toctou bug, but its only an optimization - the authoratative check
         //is performed in Attach().
-        auto file = VfsLookup(arg->filepath);
-        if (!file.HasValue())
+        VfsId fileId { .driverId = 0 };
+        if (arg->id.driverId != 0)
+            fileId = arg->id;
+        else if (!arg->filepath.Empty())
+        {
+            auto maybeId = VfsLookup(arg->filepath);
+            if (maybeId)
+                fileId = *maybeId;
+        }
+        if (fileId.driverId == 0)
             return { .success = false };
-        auto attribs = VfsGetAttribs(*file);
+
+        auto attribs = VfsGetAttribs(fileId);
         if (!attribs.HasValue() || attribs->type != NodeType::File)
             return { .success = false };
 
@@ -92,6 +103,7 @@ namespace Npk::Memory::Virtual
 
     SplitResult VfsVmDriver::Split(VmDriverContext& context, size_t offset)
     {
+        (void)context; (void)offset;
         //TODO:
         ASSERT_UNREACHABLE();
     }
@@ -99,12 +111,21 @@ namespace Npk::Memory::Virtual
     AttachResult VfsVmDriver::Attach(VmDriverContext& context, const QueryResult& query, uintptr_t attachArg)
     {
         using namespace Filesystem;
-        auto arg = reinterpret_cast<const VmoFileInitArg*>(attachArg);
+        auto arg = reinterpret_cast<const VmFileArg*>(attachArg);
 
-        auto fileId = VfsLookup(arg->filepath);
-        if (!fileId.HasValue())
+        VfsId fileId { .driverId = 0 };
+        if (arg->id.driverId != 0)
+            fileId = arg->id;
+        else if (!arg->filepath.Empty())
+        {
+            auto maybeId = VfsLookup(arg->filepath);
+            if (maybeId)
+                fileId = *maybeId;
+        }
+        if (fileId.driverId == 0)
             return { .success = false };
-        auto node = VfsGetNode(*fileId, true);
+
+        auto node = GetVfsNode(fileId, true);
         if (!node.Valid() || node->type != NodeType::File)
             return { .success = false };
 
@@ -112,9 +133,10 @@ namespace Npk::Memory::Virtual
         VfsVmLink* link = new VfsVmLink();
         link->isReadonly = !context.range.flags.Has(VmFlag::Write);
         link->isPrivate = false; //TODO: private mappings
-        link->node = *fileId;
+        link->node = fileId;
         link->fileOffset = arg->offset;
 
+        const FileCacheInfo fcInfo = GetFileCacheInfo();
         const size_t granuleSize = GetHatLimits().modes[query.hatMode].granularity;
         const AttachResult result
         {
@@ -135,10 +157,12 @@ namespace Npk::Memory::Virtual
         sl::ScopedLock scopeLock(context.lock);
         for (size_t i = 0; i < context.range.length; i += granuleSize)
         {
-            auto handle = GetFileCache(cache, arg->offset + i, !link->isReadonly);
+            auto handle = GetFileCacheUnit(cache, arg->offset + i);
             if (!handle.Valid())
                 break;
-            Map(context.map, context.range.base + i, handle->physBase, query.hatMode, hatFlags, false);
+
+            Map(context.map, context.range.base + i, handle->physBase + (i % fcInfo.unitSize), 
+                query.hatMode, hatFlags, false);
             context.stats.fileResidentSize += granuleSize;
         }
 

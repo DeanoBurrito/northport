@@ -46,7 +46,7 @@ namespace Npk::Drivers
         VALIDATE_(attribs.HasValue(), {});
         VALIDATE_(attribs->type == Filesystem::NodeType::File, {});
 
-        Memory::VmoFileInitArg vmoArg {};
+        VmFileArg vmoArg {};
         vmoArg.filepath = filepath;
         VmObject file(attribs->size, reinterpret_cast<uintptr_t>(&vmoArg), VmFlag::File);
         VALIDATE_(file.Valid(), {});
