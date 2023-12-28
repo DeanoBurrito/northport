@@ -33,6 +33,8 @@ namespace Npk::Filesystem
 
     npk_fsnode_type TempFsEnterCache(npk_device_api* api, npk_handle id, void** driver_data)
     {
+        (void)driver_data;
+
         id -= 1;
         TempFsData* data = static_cast<TempFsData*>(api->driver_data);
         ASSERT_(id < data->nodes.Size());
@@ -162,9 +164,22 @@ namespace Npk::Filesystem
         return true;
     }
 
-    bool TempFsSetAttribs(npk_fs_context context, const npk_fs_attribs* attribs)
+    bool TempFsSetAttribs(npk_fs_context context, const npk_fs_attribs* attribs, npk_fs_attrib_flags flags)
     {
-        ASSERT_UNREACHABLE();
+        context.node_id -= 1;
+        TempFsData* data = static_cast<TempFsData*>(context.api->driver_data);
+        ASSERT_(context.node_id < data->nodes.Size());
+        ASSERT_(attribs != nullptr);
+
+        auto node = data->nodes[context.node_id];
+        if ((flags & FsAttribSize) != 0)
+            node->size = attribs->size;
+        if ((flags & FsAttribName) != 0)
+            node->name = sl::StringSpan(attribs->name.data, attribs->name.length);
+        if ((flags & FsAttribCaps) != 0)
+            Log("tempFS doesnt implement capabilities yet: TODO:", LogLevel::Error);
+
+        return true;
     }
 
     bool TempFsReadDir(npk_fs_context context, size_t* count, npk_dir_entry** listing)

@@ -4,6 +4,7 @@
 #include <boot/LimineTags.h>
 #include <debug/Log.h>
 #include <drivers/DriverManager.h>
+#include <memory/VmObject.h>
 #include <formats/Tar.h>
 #include <formats/Url.h>
 #include <Memory.h>
@@ -34,7 +35,19 @@ namespace Npk::Filesystem
 
         auto fileId = VfsCreate(parent, NodeType::File, segment);
         VALIDATE_(fileId.HasValue(), );
-        //TODO: add contents to files (migrate initdisk pages to filecache)
+
+        NodeAttribs attribs {};
+        attribs.size = file->SizeBytes();
+        VALIDATE_(VfsSetAttribs(*fileId, attribs, NodeAttribFlag::Size), );
+        
+        VmFileArg vmoArg {};
+        vmoArg.id = *fileId;
+        vmoArg.noDeferBacking = true;
+
+        VmObject fileVmo(file->SizeBytes(), vmoArg, VmFlag::File | VmFlag::Write);
+        VALIDATE_(fileVmo.Valid(), );
+        sl::memcopy(file->Data(), fileVmo->ptr, file->SizeBytes());
+        //TODO: migrate initdisk pages to filecache, instead of copying
     }
 
     void PopulateInitdiskFiles(npk_filesystem_device_api* fsApi, void* base, size_t length)
@@ -94,6 +107,7 @@ namespace Npk::Filesystem
 
             PopulateInitdiskFiles(fsApi, module->address, module->size);
             Log("Initdisk files populated, mounted at \"/initdisk/\"", LogLevel::Info);
+            PrintNode({ .driverId = 1, .vnodeId = 1 }, 0);
         }
     }
 }

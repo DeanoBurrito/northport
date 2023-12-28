@@ -1,4 +1,4 @@
-KERNEL_CXX_FLAGS += -I../libs/np-syslib/include
+KERNEL_CXX_FLAGS += -I../libs/np-syslib/include -I../libs/np-driverlib/include
 
 CXX_SRCS = arch/Helpers.cpp \
 	boot/CommonInit.cpp boot/LimineTags.cpp \
@@ -11,8 +11,8 @@ CXX_SRCS = arch/Helpers.cpp \
 	drivers/api/General.cpp drivers/api/Memory.cpp drivers/api/Scheduling.cpp \
 	drivers/api/Drivers.cpp drivers/api/Filesystem.cpp \
 	events/Dispatch.cpp events/EventQueue.cpp \
-	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TempFs.cpp \
-	filesystem/InitDisk.cpp \
+	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TreeCache.cpp \
+	filesystem/TempFs.cpp filesystem/InitDisk.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
 	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \

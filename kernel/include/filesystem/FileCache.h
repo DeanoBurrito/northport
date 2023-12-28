@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem/Filesystem.h>
 #include <stddef.h>
 #include <Atomic.h>
 #include <Handle.h>
@@ -8,18 +9,29 @@
 
 namespace Npk::Filesystem
 {
+    struct FileCache;
+
     struct FileCacheUnit
     {
+        sl::Atomic<size_t> references;
+        FileCache* owner;
         uintptr_t physBase;
         size_t offset;
-        sl::Atomic<size_t> references;
-        //TODO: track dirty state
+        //TODO: track dirty and writeback-enable states
     };
+
+    void CleanupFileCacheUnit(FileCacheUnit* unit);
+
+    using FileCacheUnitHandle = sl::Handle<FileCacheUnit, CleanupFileCacheUnit>;
 
     struct FileCache
     {
         sl::Atomic<size_t> references;
-        sl::LinkedList<FileCacheUnit> units; //TODO: rbtree?
+        VfsId id;
+
+        sl::SpinLock lock;
+        size_t length;
+        sl::LinkedList<FileCacheUnitHandle> units; //TODO: more efficient datastructure (rbtree?)
     };
 
     struct FileCacheInfo
@@ -36,5 +48,7 @@ namespace Npk::Filesystem
     //is using.
     FileCacheInfo GetFileCacheInfo();
 
-    sl::Handle<FileCacheUnit> GetFileCache(sl::Handle<FileCache> cache, size_t offset, bool createNew);
+    bool SetFileCacheLength(sl::Handle<FileCache> cache, size_t length);
+    sl::Handle<FileCache> GetFileCache(VfsId id);
+    FileCacheUnitHandle GetFileCacheUnit(sl::Handle<FileCache> cache, size_t fileOffset);
 }

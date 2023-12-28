@@ -108,6 +108,13 @@ typedef struct
     void* node_data;
 } npk_fs_context;
 
+typedef enum
+{
+    FsAttribSize = 1 << 0,
+    FsAttribName = 1 << 1,
+    FsAttribCaps = 1 << 2,
+} npk_fs_attrib_flags;
+
 typedef struct
 {
     npk_device_api header;
@@ -122,7 +129,7 @@ typedef struct
     REQUIRED bool (*remove)(npk_fs_context context, npk_handle dir);
     REQUIRED npk_handle (*find_child)(npk_fs_context context, npk_string name);
     REQUIRED bool (*get_attribs)(npk_fs_context context, npk_fs_attribs* attribs);
-    REQUIRED bool (*set_attribs)(npk_fs_context context, const npk_fs_attribs* attribs);
+    REQUIRED bool (*set_attribs)(npk_fs_context context, const npk_fs_attribs* attribs, npk_fs_attrib_flags flags);
     REQUIRED bool (*read_dir)(npk_fs_context context, size_t* count, npk_dir_entry** listing);
 } npk_filesystem_device_api;
 

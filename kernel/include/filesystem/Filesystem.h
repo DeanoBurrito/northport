@@ -1,10 +1,9 @@
 #pragma once
 
-#include <filesystem/FileCache.h>
 #include <Locks.h>
-#include <Handle.h>
 #include <Optional.h>
 #include <containers/Vector.h>
+#include <Flags.h>
 #include <String.h>
 
 namespace Npk::Filesystem
@@ -29,18 +28,14 @@ namespace Npk::Filesystem
         sl::String name;
     };
 
-    struct VfsNode
+    enum class NodeAttribFlag : size_t
     {
-        sl::Atomic<size_t> references;
-        sl::RwLock metadataLock;
-
-        NodeType type;
-        sl::Handle<FileCache> cache;
-        void* driverData;
-
-        VfsId id;
-        VfsId bond;
+        Size = 0,
+        Name = 1,
+        Caps = 2,
     };
+
+    using NodeAttribFlags = sl::Flags<NodeAttribFlag>;
 
     struct DirEntry
     {
@@ -56,7 +51,6 @@ namespace Npk::Filesystem
 
     void InitVfs();
     sl::Opt<VfsId> VfsLookup(sl::StringSpan filepath);
-    sl::Handle<VfsNode, sl::NoHandleDtor> VfsGetNode(VfsId id, bool followLink); //TODO: does this function need to be public?
     sl::String VfsGetPath(VfsId id);
 
     bool VfsMount(VfsId mountpoint, size_t fsDriverId);
@@ -64,5 +58,6 @@ namespace Npk::Filesystem
     bool VfsRemove(VfsId dir, VfsId node);
     sl::Opt<VfsId> VfsFindChild(VfsId dir, sl::StringSpan name);
     sl::Opt<NodeAttribs> VfsGetAttribs(VfsId node);
+    bool VfsSetAttribs(VfsId node, const NodeAttribs& attribs, NodeAttribFlags selected);
     sl::Opt<DirEntries> VfsReadDir(VfsId node);
 }

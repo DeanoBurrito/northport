@@ -1,5 +1,8 @@
 #include <filesystem/Filesystem.h>
 #include <filesystem/TempFs.h>
+#include <filesystem/FileCache.h>
+#include <filesystem/TreeCache.h>
+#include <filesystem/InitDisk.h>
 #include <debug/Log.h>
 #include <drivers/DriverManager.h>
 #include <memory/Heap.h>
@@ -7,14 +10,6 @@
 
 namespace Npk::Filesystem
 {
-    constexpr size_t InitialNodeCacheCapacity = 128;
-
-    struct VfsCachedNode
-    {
-        VfsNode node;
-        sl::SpinLock busy;
-    };
-
     struct VfsMountInfo
     {
         VfsId occludedDir;
@@ -25,13 +20,11 @@ namespace Npk::Filesystem
     sl::Vector<VfsMountInfo> mountpoints;
     sl::Handle<Drivers::DeviceApi> rootFs;
     VfsId rootNodeId;
-    sl::SpinLock nodeCacheLock;
-    sl::Span<VfsCachedNode> nodeCache; //TODO: auto-resizing container like a non-moving dequeue?
 
     void PrintNode(VfsId id, size_t indent)
     {
         constexpr const char* NodeTypeStrs[] = { "file", "dir", "link/mount" };
-        auto node = VfsGetNode(id, true);
+        auto node = GetVfsNode(id, true);
         ASSERT_(node.Valid());
         id = node->id;
 
@@ -57,7 +50,9 @@ namespace Npk::Filesystem
 
     void InitVfs()
     {
-        nodeCache = sl::Span<VfsCachedNode>(new VfsCachedNode[InitialNodeCacheCapacity], InitialNodeCacheCapacity);
+        InitTreeCache();
+        InitFileCache();
+
         const size_t rootFsId = CreateTempFs("root tempfs");
         rootFs = Drivers::DriverManager::Global().GetApi(rootFsId);
         auto* rootApi = reinterpret_cast<npk_filesystem_device_api*>(rootFs->api);
@@ -68,6 +63,8 @@ namespace Npk::Filesystem
         rootMountInfo.occludedDir = VfsId { .driverId = 0, .vnodeId = 0 };
 
         Log("VFS initialized, no root filesystem found.", LogLevel::Info);
+
+        TryLoadInitdisk();
     }
 
     sl::Opt<VfsId> VfsLookup(sl::StringSpan filepath)
@@ -77,7 +74,7 @@ namespace Npk::Filesystem
         
         const sl::Url url = sl::Url::Parse(filepath);
         sl::StringSpan segment = url.GetNextSeg();
-        auto selectedNode = VfsGetNode(rootNodeId, true);
+        auto selectedNode = GetVfsNode(rootNodeId, true);
 
         while (!segment.Empty())
         {
@@ -87,90 +84,11 @@ namespace Npk::Filesystem
             if (!childId.HasValue())
                 return {};
 
-            selectedNode = VfsGetNode(*childId, true);
+            selectedNode = GetVfsNode(*childId, true);
             segment = url.GetNextSeg(segment);
         }
 
         return selectedNode->id;
-    }
-
-    static sl::Handle<VfsNode, sl::NoHandleDtor> GetNodeFromCache(VfsId id)
-    {
-        if (id.driverId == 0)
-            return {};
-
-        sl::ScopedLock scopeLock(nodeCacheLock); //TODO: go lockless? ;)
-
-        //TODO: hashmap, or anything better than this
-        for (size_t i = 0; i < nodeCache.Size(); i++)
-        {
-            if (nodeCache[i].node.id.driverId != id.driverId)
-                continue;
-            if (nodeCache[i].node.id.vnodeId != id.vnodeId)
-                continue;
-
-            //TODO: what happens if the busy flag is set for a slot we're returning? Possible use-after-free?
-            return &nodeCache[i].node;
-        }
-
-        //node wasnt found in cache, find a free slot
-        sl::Opt<size_t> allocIndex {};
-        for (size_t i = 0; i < nodeCache.Size(); i++)
-        {
-            if (nodeCache[i].node.references != 0)
-                continue; //node is in use elsewhere, dont touch it.
-
-            if (!allocIndex.HasValue() && nodeCache[i].busy.TryLock())
-                allocIndex = i;
-            else if (allocIndex.HasValue() && nodeCache[*allocIndex].node.id.vnodeId != 0
-                && nodeCache[i].node.id.vnodeId == 0 && nodeCache[i].busy.TryLock())
-            {
-                nodeCache[*allocIndex].busy.Unlock();
-                allocIndex = i;
-            }
-
-            if (allocIndex.HasValue() && nodeCache[*allocIndex].node.id.vnodeId == 0)
-                break;
-        }
-        VALIDATE_(allocIndex.HasValue(), {});
-        auto& store = nodeCache[*allocIndex];
-
-        //if slot is already occupied by a node, inform the fs driver it's time to cleanup a little bit
-        if (store.node.id.driverId != 0)
-        {
-            auto driver = Drivers::DriverManager::Global().GetApi(store.node.id.driverId);
-            auto* fsApi = reinterpret_cast<const npk_filesystem_device_api*>(driver->api);
-            ASSERT_(fsApi->exit_cache(driver->api, store.node.id.vnodeId, store.node.driverData));
-            store.node.driverData = nullptr;
-            //TODO: handle `exit_cache()` returning false, we should retry the search for a free slot in the cache.
-        }
-
-        //load new node into slot
-        auto driver = Drivers::DriverManager::Global().GetApi(id.driverId);
-        VALIDATE_(driver.Valid(), {});
-        auto* fsApi = reinterpret_cast<const npk_filesystem_device_api*>(driver->api);
-
-        new(&store.node) VfsNode();
-        store.node.metadataLock.WriterLock();
-        store.node.id = id;
-        store.node.type = static_cast<NodeType>(fsApi->enter_cache(driver->api, id.vnodeId, &store.node.driverData));
-        //TODO: locate/create a FileCache instance for this node
-        //TODO: populate bond field
-        store.node.metadataLock.WriterUnlock();
-
-        //acquire a handle to the new node, *then* release the busy lock
-        sl::Handle<VfsNode, sl::NoHandleDtor> handle = &store.node;
-        store.busy.Unlock();
-
-        return handle;
-    }
-
-    sl::Handle<VfsNode, sl::NoHandleDtor> VfsGetNode(VfsId id, bool followLink)
-    {
-        auto node = GetNodeFromCache(id);
-        if (followLink && node.Valid() && node->type == NodeType::Link)
-            return GetNodeFromCache(node->bond);
-        return node;
     }
 
     sl::String VfsGetPath(VfsId id)
@@ -233,7 +151,7 @@ namespace Npk::Filesystem
 
     bool VfsMount(VfsId mountpoint, size_t fsDriverId)
     {
-        auto target = VfsGetNode(mountpoint, true);
+        auto target = GetVfsNode(mountpoint, true);
         VALIDATE_(target.Valid(), false);
         mountpoint= target->id;
         auto driver = Drivers::DriverManager::Global().GetApi(fsDriverId);
@@ -276,7 +194,7 @@ namespace Npk::Filesystem
         while (!name.Empty() && name[name.Size() - 1] == 0)
             name = name.Subspan(0, name.Size() - 1);
 
-        auto parent = VfsGetNode(dir, true);
+        auto parent = GetVfsNode(dir, true);
         VALIDATE_(parent.Valid(), {});
         dir = parent->id;
         auto driver = Drivers::DriverManager::Global().GetApi(dir.driverId);
@@ -307,7 +225,7 @@ namespace Npk::Filesystem
 
     bool VfsRemove(VfsId dir, VfsId node)
     {
-        auto parent = VfsGetNode(dir, true);
+        auto parent = GetVfsNode(dir, true);
         VALIDATE_(parent.Valid(), {});
 
         ASSERT_UNREACHABLE();
@@ -319,7 +237,7 @@ namespace Npk::Filesystem
             name = name.Subspan(0, name.Size() - 1);
 
         VALIDATE_(!name.Empty(), {});
-        auto dirNode = VfsGetNode(dir, true);
+        auto dirNode = GetVfsNode(dir, true);
         VALIDATE_(dirNode.Valid(), {});
 
         auto driver = Drivers::DriverManager::Global().GetApi(dirNode->id.driverId);
@@ -349,7 +267,7 @@ namespace Npk::Filesystem
 
             //re-acquire node and driver handles, since we've changed drivers
             dir = *parentId;
-            dirNode = VfsGetNode(dir, false);
+            dirNode = GetVfsNode(dir, false);
             VALIDATE_(dirNode.Valid(), {});
             driver = Drivers::DriverManager::Global().GetApi(dirNode->id.driverId);
             VALIDATE_(driver.Valid(), {});
@@ -374,7 +292,7 @@ namespace Npk::Filesystem
 
     sl::Opt<NodeAttribs> VfsGetAttribs(VfsId node)
     {
-        auto vfsNode = VfsGetNode(node, false);
+        auto vfsNode = GetVfsNode(node, false);
         VALIDATE_(vfsNode.Valid(), {});
         auto driver = Drivers::DriverManager::Global().GetApi(vfsNode->id.driverId);
         VALIDATE_(driver.Valid(), {});
@@ -399,19 +317,20 @@ namespace Npk::Filesystem
                 return {};
 
             node = *occludedId;
-            vfsNode = VfsGetNode(node, false);
+            vfsNode = GetVfsNode(node, false);
             VALIDATE_(vfsNode.Valid(), {});
             driver = Drivers::DriverManager::Global().GetApi(vfsNode->id.driverId);
             VALIDATE_(driver.Valid(), {});
             fsApi = reinterpret_cast<const npk_filesystem_device_api*>(driver->api);
         }
 
-        vfsNode->metadataLock.ReaderLock();
         npk_fs_context context {};
         context.api = driver->api;
         context.node_id = vfsNode->id.vnodeId;
         context.node_data = vfsNode->driverData;
         npk_fs_attribs attribStore {};
+
+        vfsNode->metadataLock.ReaderLock();
 
         if (!fsApi->get_attribs(context, &attribStore))
         {
@@ -428,9 +347,41 @@ namespace Npk::Filesystem
         return attribs;
     }
 
+    bool VfsSetAttribs(VfsId node, const NodeAttribs& attribs, NodeAttribFlags selected)
+    {
+        auto vfsNode = GetVfsNode(node, true);
+        VALIDATE_(vfsNode.Valid(), false);
+        node = vfsNode->id;
+        auto driver = Drivers::DriverManager::Global().GetApi(node.driverId);
+        VALIDATE_(driver.Valid(), false);
+        auto* fsApi = reinterpret_cast<const npk_filesystem_device_api*>(driver->api);
+
+        npk_fs_attribs apiAttribs {};
+        apiAttribs.size = attribs.size;
+        apiAttribs.name = npk_string { .length = attribs.name.Size(), .data = attribs.name.C_Str() };
+        const auto apiFlags = static_cast<const npk_fs_attrib_flags>(selected.Raw());
+        
+        npk_fs_context context {};
+        context.api = driver->api;
+        context.node_id = vfsNode->id.vnodeId;
+        context.node_data = vfsNode->driverData;
+
+        vfsNode->metadataLock.WriterLock();
+        if (!fsApi->set_attribs(context, &apiAttribs, apiFlags))
+        {
+            vfsNode->metadataLock.WriterUnlock();
+            return false;
+        };
+
+        vfsNode->metadataLock.WriterUnlock();
+        if (vfsNode->type == NodeType::File && selected.Has(NodeAttribFlag::Size))
+            SetFileCacheLength(vfsNode->cache, attribs.size);
+        return true;
+    }
+
     sl::Opt<DirEntries> VfsReadDir(VfsId dir)
     {
-        auto node = VfsGetNode(dir, true);
+        auto node = GetVfsNode(dir, true);
         VALIDATE_(node.Valid(), {});
         dir = node->id;
         auto driver = Drivers::DriverManager::Global().GetApi(dir.driverId);

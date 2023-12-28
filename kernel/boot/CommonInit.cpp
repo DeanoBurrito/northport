@@ -12,8 +12,6 @@
 #include <drivers/DriverManager.h>
 #include <drivers/ElfLoader.h>
 #include <filesystem/Filesystem.h>
-#include <filesystem/FileCache.h>
-#include <filesystem/InitDisk.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
@@ -88,9 +86,7 @@ namespace Npk
 
         ScanGlobalTopology();
         Drivers::DriverManager::Global().Init();
-        Filesystem::InitFileCache();
         Filesystem::InitVfs();
-        Filesystem::TryLoadInitdisk();
 
         Interrupts::InterruptManager::Global().Init();
         Tasking::Scheduler::Global().Init();
