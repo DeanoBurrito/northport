@@ -1,7 +1,6 @@
 #include <drivers/DriverManager.h>
 #include <drivers/DriverHelpers.h>
 #include <debug/Log.h>
-#include <debug/Symbols.h>
 #include <memory/Vmm.h>
 #include <tasking/Scheduler.h>
 
@@ -34,11 +33,20 @@ namespace Npk::Drivers
         Log("|   ## symbols: pub=%lu priv=%lu other=%lu", LogLevel::Debug, symStore->publicFunctions.Size(),
             symStore->privateFunctions.Size(), symStore->nonFunctions.Size());
 
-        for (auto it = manifest.devices.Begin(); it != manifest.devices.End(); ++it)
+        for (auto it = manifest.providedDevices.Begin(); it != manifest.providedDevices.End(); ++it)
         {
-            auto& dev = *it;
-            Log("|   -> (dev) %s", LogLevel::Debug, dev->friendlyName.C_Str());
+            auto dev = *it;
+            Log("|   <- (dev %lu) %.*s", LogLevel::Debug, dev->id, 
+                (int)dev->apiDesc->friendly_name.length, dev->apiDesc->friendly_name.data);
         }
+
+        for (auto it = manifest.consumedDevices.Begin(); it != manifest.consumedDevices.End(); ++it)
+        {
+            auto dev = *it;
+            Log("|   -> (dev %lu) %.*s", LogLevel::Debug, dev->id,
+                (int)dev->apiDesc->friendly_name.length, dev->apiDesc->friendly_name.data);
+        }
+
         for (auto it = manifest.apis.Begin(); it != manifest.apis.End(); ++it)
         {
             auto& api = *it;
@@ -64,16 +72,18 @@ namespace Npk::Drivers
     sl::Handle<DriverManifest> DriverManager::LocateDriver(sl::Handle<DeviceDescriptor>& device)
     {
         VALIDATE_(device.Valid(), {});
+        sl::Span<npk_load_name> loadNames(device->apiDesc->load_names, device->apiDesc->load_name_count);
 
         manifestsLock.ReaderLock();
         for (auto it = manifests.Begin(); it != manifests.End(); ++it)
         {
             auto scan = *it;
-            for (size_t i = 0; i < device->loadNames.Size(); i++)
+            for (size_t i = 0; i < loadNames.Size(); i++)
             {
-                if (device->loadNames[i].type != scan->loadType)
+                sl::Span<const uint8_t> loadName(loadNames[i].str, loadNames[i].length);
+                if (static_cast<LoadType>(loadNames[i].type) != scan->loadType)
                     continue;
-                if (device->loadNames[i].str != scan->loadStr)
+                if (loadName != scan->loadStr)
                     continue;
 
                 manifestsLock.ReaderUnlock();
@@ -105,7 +115,7 @@ namespace Npk::Drivers
 
         using namespace Tasking;
         auto entryFunction = reinterpret_cast<ThreadMain>(manifest->runtimeImage->entryAddr);
-        manifest->process = Scheduler::Global().CreateProcess();
+        manifest->process = Scheduler::Global().CreateProcess(manifest->friendlyName.Span());
         auto mainThread = Scheduler::Global().CreateThread(entryFunction, nullptr, manifest->process);
         mainThread->lock.Lock();
         mainThread->driverShadow = manifest;
@@ -114,10 +124,9 @@ namespace Npk::Drivers
         using namespace Debug;
         auto eventHandlerSym = SymbolFromAddr(reinterpret_cast<uintptr_t>(manifest->ProcessEvent), 
             SymbolFlag::Public | SymbolFlag::Private);
-        const char* handlerName = eventHandlerSym.HasValue() ? eventHandlerSym->name.Begin() : "<unknown>";
 
-        Log("Loaded driver %s: mainThread=%lu, processEvent=%p (%s)", LogLevel::Info,
-            manifest->friendlyName.C_Str(), mainThread->Id(), manifest->ProcessEvent, handlerName);
+        Log("Loaded driver %s: mainThread=%lu, processEvent=%p", LogLevel::Info,
+            manifest->friendlyName.C_Str(), mainThread->Id(), manifest->ProcessEvent);
         mainThread->Start();
         stats.loadedCount++;
         return true;
@@ -131,23 +140,24 @@ namespace Npk::Drivers
 
         SetShadow(driver);
         npk_event_new_device event;
-        event.tags = device->initData;
+        const auto* api = device->apiDesc;
+        event.tags = api->init_data;
         if (!driver->ProcessEvent(EventType::AddDevice, &event))
         {
             SetShadow(nullptr);
-            Log("Failed to attach device %s to driver %s", LogLevel::Error, 
-                device->friendlyName.C_Str(), driver->friendlyName.C_Str());
+            Log("Driver %s refused descriptor %lu (%.*s)", LogLevel::Error, driver->friendlyName.C_Str(),
+                device->id, (int)api->friendly_name.length, api->friendly_name.data);
             return false;
         }
 
         SetShadow(nullptr);
-        Log("Attached device %s to driver %s", LogLevel::Verbose, 
-            device->friendlyName.C_Str(), driver->friendlyName.C_Str());
+        Log("Driver %s attached descriptor %lu (%.*s)", LogLevel::Verbose, driver->friendlyName.C_Str(),
+                device->id, (int)api->friendly_name.length, api->friendly_name.data);
         device->attachedDriver = driver;
         stats.unclaimedDescriptors--;
 
         sl::ScopedLock scopeLock(driver->lock);
-        driver->devices.PushBack(device);
+        driver->consumedDevices.PushBack(device);
         return true;
     }
 
@@ -170,7 +180,7 @@ namespace Npk::Drivers
     void DriverManager::Init()
     {
         stats = {};
-        apiIdAlloc = 1; //id 0 is reserved for 'null'.
+        idAlloc = 1; //id 0 is reserved for 'null'.
 
         Log("Driver manager initialized, api version %u.%u.%u", LogLevel::Info,
             NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV);
@@ -231,19 +241,22 @@ namespace Npk::Drivers
         while (true)
         {
             bool finishedEarly = false;
-            for (auto it = devices.Begin(); it != devices.End(); ++it)
+            for (auto it = unclaimedDevices.Begin(); it != unclaimedDevices.End(); ++it)
             {
                 auto& device = *it;
-                for (size_t i = 0; i < device->loadNames.Size(); i++)
+                sl::Span<npk_load_name> loadNames(device->apiDesc->load_names, device->apiDesc->load_name_count);
+
+                for (size_t i = 0; i < loadNames.Size(); i++)
                 {
-                    if (device->loadNames[i].type != manifest->loadType)
+                    sl::Span<const uint8_t> loadName(loadNames[i].str, loadNames[i].length);
+                    if (static_cast<LoadType>(loadNames[i].type) != manifest->loadType)
                         continue;
-                    if (device->loadNames[i].str != manifest->loadStr)
+                    if (loadName != manifest->loadStr)
                         continue;
 
                     if (AttachDevice(manifest, device))
                     {
-                        devices.Erase(it);
+                        unclaimedDevices.Erase(it);
                         finishedEarly = true;
                         break;
                     }
@@ -262,68 +275,79 @@ namespace Npk::Drivers
         ASSERT_UNREACHABLE();
     }
 
-    bool DriverManager::AddDescriptor(sl::Handle<DeviceDescriptor> device)
+    size_t DriverManager::AddDescriptor(npk_device_desc* descriptor)
     {
+        VALIDATE_(descriptor != nullptr, NPK_INVALID_HANDLE);
+
+        sl::Handle<DeviceDescriptor> desc = new DeviceDescriptor();
+        desc->apiDesc = descriptor;
+        desc->sourceDriver = GetShadow();
+        desc->attachedDriver = nullptr;
+        desc->id = idAlloc++;
+
         stats.totalDescriptors++;
         stats.unclaimedDescriptors++;
 
-        //before add descriptor to list of unclaimed devices, see if we can already attach a driver.
-        auto foundDriver = LocateDriver(device);
-        if (foundDriver.Valid() && AttachDevice(foundDriver, device))
-            return true;
+        sl::StringSpan srcName = "Kernel";
+        if (desc->sourceDriver.Valid())
+            srcName = desc->sourceDriver->friendlyName.Span();
+        Log("%.*s added device desc (id=%lu) %.*s", LogLevel::Info, (int)srcName.Size(),
+            srcName.Begin(), desc->id, (int)desc->apiDesc->friendly_name.length,
+            desc->apiDesc->friendly_name.data);
 
-        //no driver currently available, stash descriptor for later (or never).
+        //try find a driver for our descriptor and load it.
+        auto foundDriver = LocateDriver(desc);
+        if (foundDriver.Valid() && AttachDevice(foundDriver, desc))
+            return desc->id;
+
+        //no driver found, add it to the unclaimed list.
         devicesLock.WriterLock();
-        devices.PushBack(device);
+        unclaimedDevices.PushBack(desc);
         devicesLock.WriterUnlock();
-        Log("New unclaimed device: %s", LogLevel::Verbose, device->friendlyName.C_Str());
-        return true;
+
+        return desc->id;
     }
 
-    bool DriverManager::RemoveDescriptor(sl::Handle<DeviceDescriptor> device)
+    sl::Opt<void*> DriverManager::RemoveDescriptor(size_t descriptorId)
     {
         ASSERT_UNREACHABLE();
     }
 
-    bool DriverManager::AddApi(npk_device_api* api, bool noOwner)
+    bool DriverManager::AddApi(npk_device_api* api, size_t parentApi, sl::Handle<DriverManifest> owner)
     {
         VALIDATE_(api != nullptr, false);
+        VALIDATE(VerifyDeviceApi(api), false, "Malformed device API struct (unassigned function pointers?)");
 
-        sl::Handle<DriverManifest> shadow {};
-        if (!noOwner)
-        {
-            shadow = GetShadow();
-            VALIDATE_(shadow.Valid(), false);
-        }
-
-        if (!VerifyDeviceApi(api)) //check that the device api is implemented per-spec.
-            return false;
+        auto parentHandle = GetApi(parentApi);
+        if (parentApi != NPK_INVALID_HANDLE)
+            VALIDATE_(parentHandle.Valid(), false);
 
         DeviceApi* device = new DeviceApi();
         device->api = api;
         device->references = 0;
-        sl::NativePtr(&device->api->id).Write<size_t>(apiIdAlloc++);
+        if (parentHandle.Valid())
+            device->parent = parentHandle;
+        sl::NativePtr(&device->api->id).Write<size_t>(idAlloc++);
 
         apiTreeLock.WriterLock();
         apiTree.Insert(device);
         apiTreeLock.WriterUnlock();
-        if (noOwner)
+
+        if (owner.Valid())
+            owner->apis.PushBack(device);
+        else
         {
             sl::ScopedLock scopeLock(orphanLock);
             orphanApis.PushBack(device);
         }
-        else
-            shadow->apis.PushBack(device);
 
-        sl::StringSpan summaryStr = "get_summary() not implemented.";
+        npk_string summary {};
         if (api->get_summary != nullptr)
-        {
-            npk_string apiSummaryStr = api->get_summary(api);
-            summaryStr = { apiSummaryStr.data, apiSummaryStr.length };
-        }
+            summary = api->get_summary(api);
 
-        Log("Device API added %s: id=%lu, type=%s, %.*s", LogLevel::Info, noOwner ? "(unowned)" : "", 
-            api->id, DeviceTypeStrs[api->type], (int)summaryStr.SizeBytes(), summaryStr.Begin());
+        sl::StringSpan ownerStr = owner.Valid() ? owner->friendlyName.Span() : "Kernel";
+        Log("%.*s added device API, id=%lu, type=%s, summary: %.*s", LogLevel::Info, (int)ownerStr.Size(),
+            ownerStr.Begin(), api->id, DeviceTypeStrs[api->type], (int)summary.length, summary.data);
 
         stats.apiCount++;
         return true;

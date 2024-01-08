@@ -133,7 +133,7 @@ typedef struct
     REQUIRED bool (*read_dir)(npk_fs_context context, size_t* count, npk_dir_entry** listing);
 } npk_filesystem_device_api;
 
-bool npk_add_device_api(REQUIRED npk_device_api* api);
+bool npk_add_device_api(REQUIRED npk_device_api* api, npk_handle parent);
 bool npk_remove_device_api(size_t device_id);
 
 #ifdef __cplusplus

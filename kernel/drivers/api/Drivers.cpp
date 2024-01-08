@@ -1,5 +1,6 @@
 #include <drivers/api/Drivers.h>
 #include <drivers/DriverManager.h>
+#include <debug/Log.h>
 
 extern "C"
 {
@@ -7,9 +8,12 @@ extern "C"
     using namespace Npk::Drivers;
 
     [[gnu::used]]
-    bool npk_add_device_api(npk_device_api* api)
+    bool npk_add_device_api(npk_device_api* api, npk_handle parent)
     {
-        return DriverManager::Global().AddApi(api);
+        auto shadow = DriverManager::Global().GetShadow();
+        ASSERT_(shadow.Valid());
+
+        return DriverManager::Global().AddApi(api, parent, shadow);
     }
 
     [[gnu::used]]

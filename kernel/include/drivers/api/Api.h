@@ -39,7 +39,7 @@ extern "C" {
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
 #define NP_MODULE_API_VER_MINOR 2
-#define NP_MODULE_API_VER_REV 0
+#define NP_MODULE_API_VER_REV 1
 
 /* Various GUIDs used by the API */
 #define NP_MODULE_META_START_GUID { 0x11, 0xfc, 0x92, 0x87, 0x64, 0xc0, 0x4b, 0xaf, 0x9e, 0x59, 0x31, 0x64, 0xbf, 0xf9, 0xfa, 0x5a }
@@ -58,6 +58,7 @@ typedef enum
 {
     PciFunction = 0,
     DtbPath = 1,
+    PciHostAdaptor = 2,
 } npk_init_tag_type;
 
 struct npk_init_tag_
@@ -67,18 +68,11 @@ struct npk_init_tag_
 };
 typedef struct npk_init_tag_ npk_init_tag;
 
-typedef enum
-{
-    Ecam = 0,
-    Legacy = 1,
-} npk_pci_addr_type;
-
 typedef struct
 {
     npk_init_tag header;
 
-    npk_pci_addr_type type;
-    uintptr_t segment_base;
+    uint16_t segment;
     uint8_t bus;
     uint8_t device;
     uint8_t function;
@@ -88,8 +82,25 @@ typedef struct
 {
     npk_init_tag header;
 
-    OWNING const char* node_path;
+    npk_string node_path;
 } npk_init_tag_dtb_path;
+
+typedef enum
+{
+    Ecam,
+    X86PortIo,
+} npk_pci_host_type;
+
+typedef struct
+{
+    npk_init_tag header;
+
+    npk_pci_host_type type;
+    uintptr_t base_addr;
+    uint16_t id;
+    uint8_t first_bus;
+    uint8_t last_bus;
+} npk_init_tag_pci_host;
 
 typedef enum
 {
@@ -97,7 +108,8 @@ typedef enum
     Always = 1,
     PciClass = 2,
     PciId = 3,
-    DtbCompat = 4,
+    PciHost = 4,
+    DtbCompat = 5,
 } npk_load_type;
 
 typedef enum

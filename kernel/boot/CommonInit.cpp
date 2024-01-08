@@ -8,7 +8,6 @@
 #include <debug/TerminalDriver.h>
 #include <debug/Symbols.h>
 #include <debug/BakedConstants.h>
-#include <devices/PciBridge.h>
 #include <drivers/DriverManager.h>
 #include <drivers/ElfLoader.h>
 #include <filesystem/Filesystem.h>
@@ -120,8 +119,41 @@ namespace Npk
 
     void InitThread(void*)
     {
-        Devices::PciBridge::Global().Init();
         Drivers::ScanForModules("/initdisk/drivers/");
+
+        //check for PCI controllers presenting themselves via MCFG
+        using namespace Config;
+        if (auto maybeMcfg = FindAcpiTable(SigMcfg); maybeMcfg.HasValue())
+        {
+            auto* mcfg = static_cast<const Mcfg*>(*maybeMcfg);
+            const size_t segmentCount = (mcfg->length - sizeof(Mcfg)) / sizeof(McfgSegment);
+            for (size_t i = 0; i < segmentCount; i++)
+            {
+                const McfgSegment* segment = &mcfg->segments[i];
+
+                npk_load_name* loadName = new npk_load_name();
+                loadName->length = 0;
+                loadName->type = npk_load_type::PciHost;
+
+                npk_init_tag_pci_host* initTag = new npk_init_tag_pci_host();
+                initTag->header.type = npk_init_tag_type::PciHostAdaptor;
+                initTag->type = npk_pci_host_type::Ecam;
+                initTag->base_addr = segment->base;
+                initTag->id = segment->id;
+                initTag->first_bus = segment->firstBus;
+                initTag->last_bus = segment->lastBus;
+
+                npk_device_desc* descriptor = new npk_device_desc();
+                descriptor->load_name_count = 1;
+                descriptor->load_names = loadName;
+                descriptor->init_data = &initTag->header;
+                
+                Drivers::DriverManager::Global().AddDescriptor(descriptor);
+            }
+        }
+        //TODO: if x86, check for pci controller over port io
+
+        Drivers::DriverManager::Global().PrintInfo();
 
         Tasking::Thread::Current().Exit(0);
     }

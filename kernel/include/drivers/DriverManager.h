@@ -8,6 +8,7 @@
 #include <drivers/ElfLoader.h>
 #include <drivers/api/Api.h>
 #include <drivers/api/Drivers.h>
+#include <drivers/api/Devices.h>
 #include <tasking/Process.h>
 
 namespace Npk::Drivers
@@ -43,7 +44,8 @@ namespace Npk::Drivers
         sl::Span<const uint8_t> loadStr;
 
         sl::Handle<LoadedElf> runtimeImage;
-        sl::LinkedList<sl::Handle<DeviceDescriptor>> devices;
+        sl::LinkedList<sl::Handle<DeviceDescriptor>> consumedDevices;
+        sl::LinkedList<sl::Handle<DeviceDescriptor>> providedDevices;
         sl::LinkedList<sl::Handle<DeviceApi>> apis;
         Tasking::Process* process;
 
@@ -59,10 +61,10 @@ namespace Npk::Drivers
     struct DeviceDescriptor
     {
         sl::Atomic<size_t> references;
-        sl::String friendlyName;
-        sl::Vector<DeviceLoadName> loadNames;
-        npk_init_tag* initData;
+        npk_device_desc* apiDesc;
+        size_t id;
 
+        sl::Handle<DriverManifest> sourceDriver;
         sl::Handle<DriverManifest> attachedDriver;
     };
 
@@ -70,6 +72,7 @@ namespace Npk::Drivers
     {
         sl::Atomic<size_t> references;
         sl::RBTreeHook hook;
+        sl::Handle<DeviceApi> parent;
 
         npk_device_api* api;
     };
@@ -98,14 +101,14 @@ namespace Npk::Drivers
         sl::RwLock devicesLock;
         sl::RwLock apiTreeLock;
         sl::LinkedList<sl::Handle<DriverManifest>> manifests;
-        sl::LinkedList<sl::Handle<DeviceDescriptor>> devices;
+        sl::LinkedList<sl::Handle<DeviceDescriptor>> unclaimedDevices;
         DeviceApiTree apiTree;
 
         sl::SpinLock orphanLock;
         sl::LinkedList<sl::Handle<DeviceApi>> orphanApis;
 
         DriverStats stats;
-        sl::Atomic<size_t> apiIdAlloc;
+        sl::Atomic<size_t> idAlloc;
 
         sl::Handle<DriverManifest> LocateDriver(sl::Handle<DeviceDescriptor>& device);
         bool EnsureRunning(sl::Handle<DriverManifest>& manifest);
@@ -125,10 +128,10 @@ namespace Npk::Drivers
         bool AddManifest(sl::Handle<DriverManifest> manifest);
         bool RemoveManifest(sl::StringSpan friendlyName);
 
-        bool AddDescriptor(sl::Handle<DeviceDescriptor> device);
-        bool RemoveDescriptor(sl::Handle<DeviceDescriptor> device);
+        size_t AddDescriptor(npk_device_desc* descriptor);
+        sl::Opt<void*> RemoveDescriptor(size_t descriptorId);
 
-        bool AddApi(npk_device_api* api, bool noOwner = false);
+        bool AddApi(npk_device_api* api, size_t parentId, sl::Handle<DriverManifest> owner);
         bool RemoveApi(size_t id);
         sl::Handle<DeviceApi> GetApi(size_t id);
     };
