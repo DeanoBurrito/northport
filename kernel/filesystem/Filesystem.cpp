@@ -134,7 +134,7 @@ namespace Npk::Filesystem
         VALIDATE_(node->type == NodeType::Directory, false);
         VALIDATE_(node->bond.driverId == 0 && node->bond.vnodeId == 0, false);
         auto nodeDriver = Drivers::DriverManager::Global().GetApi(node->id.driverId);
-        auto* fsApi = reinterpret_cast<const npk_filesystem_device_api*>(driver->api);
+        auto* fsApi = reinterpret_cast<const npk_filesystem_device_api*>(nodeDriver->api);
         size_t childCount = 0;
 
         npk_fs_context context {};
@@ -409,13 +409,14 @@ namespace Npk::Filesystem
             node->metadataLock.ReaderUnlock();
             return {};
         }
+        node->metadataLock.ReaderUnlock();
 
         DirEntries listing {};
         listing.children.EnsureCapacity(childCount);
         for (size_t i = 0; i < childCount; i++)
         {
             auto& elem = listing.children.EmplaceBack();
-            elem.id = VfsId { .driverId = entries[i].id.device_api, .vnodeId = entries[i].id.node_id };
+            elem.id = VfsId { .driverId = entries[i].id.device_id, .vnodeId = entries[i].id.node_id };
         }
         Npk::Memory::Heap::Global().Free(entries, childCount * sizeof(npk_dir_entry));
 

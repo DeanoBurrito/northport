@@ -198,7 +198,7 @@ namespace Npk::Filesystem
 
         npk_dir_entry* buffer = new npk_dir_entry[node->children.Size()];
         for (size_t i = 0; i < node->children.Size(); i++)
-            buffer[i].id = { .device_api = context.api->id, .node_id = node->children[i]->id + 1 };
+            buffer[i].id = { .device_id = context.api->id, .node_id = node->children[i]->id + 1 };
         *listing = buffer;
 
         return true;
@@ -242,7 +242,7 @@ namespace Npk::Filesystem
         rootNode->parent = nullptr;
         rootNode->id = 0;
 
-        ASSERT(Drivers::DriverManager::Global().AddApi(&tempFs->header, true), "Failed to create tempfs.");
+        ASSERT(Drivers::DriverManager::Global().AddApi(&tempFs->header, 0, {}), "Failed to create tempfs.");
 
         return tempFs->header.id;
     }

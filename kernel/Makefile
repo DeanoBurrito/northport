@@ -6,10 +6,9 @@ CXX_SRCS = arch/Helpers.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
 	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp \
-	devices/PciBridge.cpp \
 	drivers/DriverManager.cpp drivers/DriverHelpers.cpp drivers/ElfLoader.cpp \
 	drivers/api/General.cpp drivers/api/Memory.cpp drivers/api/Scheduling.cpp \
-	drivers/api/Drivers.cpp drivers/api/Filesystem.cpp \
+	drivers/api/Drivers.cpp drivers/api/Devices.cpp drivers/api/Filesystem.cpp \
 	events/Dispatch.cpp events/EventQueue.cpp \
 	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TreeCache.cpp \
 	filesystem/TempFs.cpp filesystem/InitDisk.cpp \

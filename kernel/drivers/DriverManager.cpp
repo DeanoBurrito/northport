@@ -115,7 +115,7 @@ namespace Npk::Drivers
 
         using namespace Tasking;
         auto entryFunction = reinterpret_cast<ThreadMain>(manifest->runtimeImage->entryAddr);
-        manifest->process = Scheduler::Global().CreateProcess(manifest->friendlyName.Span());
+        manifest->process = Scheduler::Global().CreateProcess();
         auto mainThread = Scheduler::Global().CreateThread(entryFunction, nullptr, manifest->process);
         mainThread->lock.Lock();
         mainThread->driverShadow = manifest;
