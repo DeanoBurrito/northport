@@ -18,6 +18,7 @@
 #include <memory/Heap.h>
 #include <tasking/Clock.h>
 #include <tasking/Scheduler.h>
+#include <NanoPrintf.h>
 #include <UnitConverter.h>
 
 namespace Npk
@@ -147,6 +148,16 @@ namespace Npk
                 descriptor->load_name_count = 1;
                 descriptor->load_names = loadName;
                 descriptor->init_data = &initTag->header;
+
+                constexpr const char NameFormat[] = "ECAM segment %u (paddr=0x%lx), busses %u-%u";
+                const size_t friendlyNameLen = npf_snprintf(nullptr, 0, NameFormat, segment->id, 
+                    segment->base, segment->firstBus, segment->lastBus);
+                char* friendlyNameBuff = new char[friendlyNameLen + 1];
+                npf_snprintf(friendlyNameBuff, friendlyNameLen + 1, NameFormat, segment->id, 
+                    segment->base, segment->firstBus, segment->lastBus);
+                descriptor->friendly_name.length = friendlyNameLen;
+                descriptor->friendly_name.data = friendlyNameBuff;
+                //NOTE: the descriptor owns the string buffer, so we're not leaking anything here.
                 
                 Drivers::DriverManager::Global().AddDescriptor(descriptor);
             }

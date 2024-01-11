@@ -142,6 +142,8 @@ namespace Npk::Drivers
         npk_event_new_device event;
         const auto* api = device->apiDesc;
         event.tags = api->init_data;
+        event.descriptor_id = device->id;
+
         if (!driver->ProcessEvent(EventType::AddDevice, &event))
         {
             SetShadow(nullptr);
@@ -285,13 +287,19 @@ namespace Npk::Drivers
         desc->attachedDriver = nullptr;
         desc->id = idAlloc++;
 
+        if (desc->sourceDriver.Valid())
+        {
+            sl::ScopedLock scopeLock(desc->sourceDriver->lock);
+            desc->sourceDriver->providedDevices.PushBack(desc);
+        }
+
         stats.totalDescriptors++;
         stats.unclaimedDescriptors++;
 
-        sl::StringSpan srcName = "Kernel";
+        sl::StringSpan srcName = "kernel";
         if (desc->sourceDriver.Valid())
             srcName = desc->sourceDriver->friendlyName.Span();
-        Log("%.*s added device desc (id=%lu) %.*s", LogLevel::Info, (int)srcName.Size(),
+        Log("New descriptor added by %.*s, id=%lu: %.*s", LogLevel::Info, (int)srcName.Size(),
             srcName.Begin(), desc->id, (int)desc->apiDesc->friendly_name.length,
             desc->apiDesc->friendly_name.data);
 

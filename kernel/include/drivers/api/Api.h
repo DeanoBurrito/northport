@@ -39,7 +39,7 @@ extern "C" {
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
 #define NP_MODULE_API_VER_MINOR 2
-#define NP_MODULE_API_VER_REV 1
+#define NP_MODULE_API_VER_REV 2
 
 /* Various GUIDs used by the API */
 #define NP_MODULE_META_START_GUID { 0x11, 0xfc, 0x92, 0x87, 0x64, 0xc0, 0x4b, 0xaf, 0x9e, 0x59, 0x31, 0x64, 0xbf, 0xf9, 0xfa, 0x5a }
@@ -122,6 +122,7 @@ typedef enum
 typedef struct
 {
     const npk_init_tag* tags;
+    npk_handle descriptor_id;
 } npk_event_new_device;
 
 typedef struct

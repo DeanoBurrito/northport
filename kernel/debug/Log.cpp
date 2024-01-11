@@ -348,7 +348,7 @@ extern "C"
                 shadowName = shadow->friendlyName.C_Str();
 
             PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu, procName=%s",
-                thread.Id(), shadowName, process.Id(), process.Name().Begin());
+                thread.Id(), shadowName, process.Id(), "n/a");
         }
         else
             PanicWrite("Thread information not available.\r\n");
