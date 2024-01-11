@@ -4,7 +4,7 @@ CXX_SRCS = arch/Helpers.cpp \
 	boot/CommonInit.cpp boot/LimineTags.cpp \
 	config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
-	debug/Log.cpp debug/NanoPrintf.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
+	debug/Log.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
 	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp \
 	drivers/DriverManager.cpp drivers/DriverHelpers.cpp drivers/ElfLoader.cpp \
 	drivers/api/General.cpp drivers/api/Memory.cpp drivers/api/Scheduling.cpp \

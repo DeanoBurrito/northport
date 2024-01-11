@@ -1,13 +1,14 @@
 #include <debug/Log.h>
 #include <arch/Platform.h>
-#include <debug/NanoPrintf.h>
 #include <debug/Symbols.h>
+#include <drivers/DriverManager.h>
 #include <interrupts/Ipi.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Thread.h>
 #include <containers/Queue.h>
+#include <NanoPrintf.h>
 #include <Locks.h>
 #include <Memory.h>
 #include <Maths.h>
@@ -326,15 +327,28 @@ extern "C"
         static_assert((size_t)RunLevel::Normal == 0, "RunLevel integer representation updated.");
         static_assert((size_t)RunLevel::IntHandler == 2, "RunLevel integer representation updated.");
         
-        CoreLocalInfo& clb = CoreLocal();
-        PanicWrite("Processor %lu: runLevel=%s, logBuffer=0x%lx\r\n", 
-            clb.id, RunLevelStrs[(size_t)clb.runLevel], (uintptr_t)clb[LocalPtr::Log]);
+        if (CoreLocalAvailable())
+        {
+            CoreLocalInfo& clb = CoreLocal();
+            PanicWrite("Processor %lu: runLevel=%s, logBuffer=0x%lx\r\n", 
+                clb.id, RunLevelStrs[(size_t)clb.runLevel], (uintptr_t)clb[LocalPtr::Log]);
+        }
+        else
+            PanicWrite("Core-local information not available.\r\n");
 
         //print thread-local info
         if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
         {
-            Tasking::Thread& thread = *static_cast<Tasking::Thread*>(CoreLocal()[LocalPtr::Thread]);
-            PanicWrite("Thread: %lu, name=<unimplemented>\r\n", thread.Id());
+            auto& thread = Tasking::Thread::Current();
+            auto& process = thread.Parent();
+
+            const char* shadowName = "<none>";
+            auto shadow = Drivers::DriverManager::Global().GetShadow();
+            if (shadow.Valid())
+                shadowName = shadow->friendlyName.C_Str();
+
+            PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu, procName=%s",
+                thread.Id(), shadowName, process.Id(), process.Name().Begin());
         }
         else
             PanicWrite("Thread information not available.\r\n");
@@ -352,10 +366,6 @@ extern "C"
             PanicWrite("%3u: 0x%lx %s+0x%lu\r\n", i, addr, symbolName, symbolOffset);
         }
         
-        //dump the VMM ranges
-        // PanicWrite("\r\nKernel VM Ranges:\r\n");
-        // VMM::Kernel().PrintRanges(PanicWrite);
-
         PanicWrite("\r\nSystem has halted indefinitely, manual reset required.\r\n");
         Halt();
     }

@@ -8,4 +8,4 @@
 
 #define NANOPRINTF_IMPLEMENTATION
 
-#include <debug/NanoPrintf.h>
+#include <NanoPrintf.h>

@@ -3,7 +3,7 @@ TARGET = np-syslib
 CXX_FLAGS = -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
 	-fsized-deallocation -fno-asynchronous-unwind-tables -Iinclude -ffreestanding
 
-CXX_SRCS = Memory.cpp String.cpp UnitConverter.cpp Time.cpp Random.cpp \
+CXX_SRCS = Memory.cpp String.cpp UnitConverter.cpp Time.cpp Random.cpp NanoPrintf.cpp \
 	formats/Tar.cpp formats/Url.cpp formats/Elf.cpp
 
 include $(PROJ_ROOT_DIR)/misc/BuildCommon.mk

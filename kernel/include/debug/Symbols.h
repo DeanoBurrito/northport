@@ -38,9 +38,18 @@ namespace Npk::Debug
         sl::Vector<KernelSymbol> nonFunctions; //all other symbols
     };
 
+    struct SymbolStats
+    {
+        size_t publicCount;
+        size_t privateCount;
+        size_t otherCount;
+    };
+
     using SymbolFlags = sl::Flags<SymbolFlag>;
 
+    SymbolStats GetSymbolStats();
     void LoadKernelSymbols();
+
     sl::Handle<SymbolRepo> LoadElfModuleSymbols(sl::StringSpan name, VmObject& file, uintptr_t loadBase);
     sl::Opt<KernelSymbol> SymbolFromAddr(uintptr_t addr, SymbolFlags flags);
     sl::Opt<KernelSymbol> SymbolFromName(sl::StringSpan name, SymbolFlags flags);

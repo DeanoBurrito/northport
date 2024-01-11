@@ -104,6 +104,12 @@ namespace Npk::Debug
 
     sl::RwLock repoListLock;
     sl::LinkedList<SymbolRepo> symbolRepos;
+    SymbolStats totalStats;
+
+    SymbolStats GetSymbolStats()
+    {
+        return totalStats;
+    }
 
     void LoadKernelSymbols()
     {
@@ -121,6 +127,10 @@ namespace Npk::Debug
 
         void* kernelFileAddr = Boot::kernelFileRequest.response->kernel_file->address;
         ProcessElfSymbolTables(kernelFileAddr, repo, 0);
+
+        totalStats.publicCount = repo.publicFunctions.Size();
+        totalStats.privateCount = repo.privateFunctions.Size();
+        totalStats.otherCount = repo.nonFunctions.Size();
     }
 
     sl::Handle<SymbolRepo> LoadElfModuleSymbols(sl::StringSpan name, VmObject& file, uintptr_t loadBase)
@@ -129,9 +139,13 @@ namespace Npk::Debug
         SymbolRepo& repo = symbolRepos.EmplaceBack();
         repo.name = name;
         ProcessElfSymbolTables(file->ptr, repo, loadBase);
+
+        totalStats.publicCount += repo.publicFunctions.Size();
+        totalStats.privateCount += repo.privateFunctions.Size();
+        totalStats.otherCount += repo.nonFunctions.Size();
         repoListLock.WriterUnlock();
 
-        return sl::Handle<SymbolRepo>(&repo); //TODO: delete[] wont properly remove repo from list
+        return sl::Handle<SymbolRepo>(&repo); //TODO: delete[] wont properly remove repo from list (or fix symbol counts)
     }
 
     sl::Opt<KernelSymbol> LocateSymbol(sl::Opt<uintptr_t> addr, sl::StringSpan name, SymbolFlags flags)

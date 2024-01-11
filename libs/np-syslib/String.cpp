@@ -122,7 +122,7 @@ namespace sl
     { return buffer; }
 
     bool String::IsEmpty() const
-    { return length > 0; }
+    { return length == 0; }
 
     size_t String::Size() const
     { return length; }

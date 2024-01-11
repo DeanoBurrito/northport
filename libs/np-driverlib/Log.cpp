@@ -1,17 +1,6 @@
 #include <Log.h>
 #include <drivers/api/Api.h>
-
-#define NANOPRINTF_USE_FIELD_WIDTH_FORMAT_SPECIFIERS 1
-#define NANOPRINTF_USE_PRECISION_FORMAT_SPECIFIERS 1
-#define NANOPRINTF_USE_FLOAT_FORMAT_SPECIFIERS 0
-#define NANOPRINTF_USE_LARGE_FORMAT_SPECIFIERS 0
-#define NANOPRINTF_USE_BINARY_FORMAT_SPECIFIERS 0
-#define NANOPRINTF_USE_WRITEBACK_FORMAT_SPECIFIERS 0
-#define NANOPRINTF_SNPRINTF_SAFE_TRIM_STRING_ON_OVERFLOW 1
-//TODO: time to a way to manage external dependencies like nanoprintf, limine.h?, also single npf config
-
-#define NANOPRINTF_IMPLEMENTATION
-#include <debug/NanoPrintf.h>
+#include <NanoPrintf.h>
 
 namespace dl
 {

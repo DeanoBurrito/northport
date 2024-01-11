@@ -1,8 +1,8 @@
 #include <arch/Cpu.h>
 #include <debug/Log.h>
-#include <debug/NanoPrintf.h>
 #include <config/AcpiTables.h>
 #include <config/DeviceTree.h>
+#include <NanoPrintf.h>
 #include <Bitmap.h>
 #include <Span.h>
 #include <Maths.h>
@@ -78,6 +78,7 @@ namespace Npk
                 if (node->type != RhctNodeType::IsaString)
                     continue;
 
+                //TODO: this is hilariously broken, we need to be sensitive to underscores (look at searching for single letter extensions)
                 auto isaNode = static_cast<const RhctNodes::IsaStringNode*>(node);
                 isaString = sl::StringSpan(reinterpret_cast<const char*>(isaNode->str), isaNode->strLength);
                 break;

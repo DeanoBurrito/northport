@@ -1,28 +1,30 @@
 #include <debug/TerminalDriver.h>
 #include <debug/Terminal.h>
 #include <debug/Log.h>
-#include <debug/NanoPrintf.h>
 #include <boot/LimineTags.h>
 #include <containers/List.h>
 #include <UnitConverter.h>
+#include <NanoPrintf.h>
 
 //these headers are needed to gather the info required for the stats display
 #include <debug/BakedConstants.h>
-#include <drivers/api/Api.h>
+#include <debug/Symbols.h>
 #include <memory/Vmm.h>
-#include <filesystem/FileCache.h>
+#include <drivers/DriverManager.h>
 
 namespace Npk::Debug
 {
     constexpr const char VersionFormatStr[] = "Kernel v%lu.%lu.%lu (api v%u.%u.%u)";
     constexpr const char VmmFormatStr[] = "[VMM] faults=%lu, anon=%lu.%lu%sB/%lu.%lu%sB (%lu), file=%lu.%lu%sB/%lu.%lu%sB (%lu), mmio=%lu.%lu%sB (%lu)";
-    constexpr const char FileCacheFormatStr[] = "[FCache] size=%lu%sB (0x%lx * %lu)";
+    constexpr const char SymsFormatStr[] = "[Syms] pub=%lu priv=%lu other=%lu";
+    constexpr const char DriversFormatStr[] = "[Dnd] drivers=%lu/%lu devices=%lu/%lu apis=%lu";
     //TODO: other info to track and display
     //- interrupts per second, and execution time outside of scheduler (int handlers, dpcs)
     //- PMM and file cache usage.
     constexpr const char VersionPreStr[] = "\e[1;1H";
     constexpr const char VmmPreStr[] = "\e[2;1H";
-    constexpr const char FileCachePreStr[] = "\e[1;32H";
+    constexpr const char SymsPreStr[] = "\e[2;91H";
+    constexpr const char DriversPreStr[] = "\e[1;28H";
 
     constexpr size_t StatsFormatBuffSize = 128;
 
@@ -55,10 +57,8 @@ namespace Npk::Debug
         auto fileRss = sl::ConvertUnits(vmmStats.fileResidentSize, sl::UnitBase::Binary);
         auto mmioWss = sl::ConvertUnits(vmmStats.mmioWorkingSize, sl::UnitBase::Binary);
 
-        auto fcInfo = Filesystem::GetFileCacheInfo();
-        if (fcInfo.unitSize == 0)
-            fcInfo.unitSize = fcInfo.modeMultiple = 1; //hack because terminals can start before file cache is initalized.
-        auto fcUnitSizeConv = sl::ConvertUnits(fcInfo.unitSize, sl::UnitBase::Binary);
+        auto symsInfo = GetSymbolStats();
+        auto driverInfo = Drivers::DriverManager::Global().GetStats();
 
         for (auto it = termHeads.Begin(); it != termHeads.End(); it = it->next)
         {
@@ -72,10 +72,16 @@ namespace Npk::Debug
                 mmioWss.major, mmioWss.minor, mmioWss.prefix, vmmStats.mmioRanges);
             it->statsRenderer.Write(formatBuff, vmmLen);
 
-            it->statsRenderer.Write(FileCachePreStr, sizeof(FileCachePreStr));
-            const size_t fileCacheLen = npf_snprintf(formatBuff, StatsFormatBuffSize, FileCacheFormatStr,
-                fcUnitSizeConv.major, fcUnitSizeConv.prefix, fcInfo.unitSize / fcInfo.modeMultiple, fcInfo.modeMultiple);
-            it->statsRenderer.Write(formatBuff, fileCacheLen);
+            it->statsRenderer.Write(SymsPreStr, sizeof(SymsPreStr));
+            const size_t symsLen = npf_snprintf(formatBuff, StatsFormatBuffSize, SymsFormatStr,
+                symsInfo.publicCount, symsInfo.privateCount, symsInfo.otherCount);
+            it->statsRenderer.Write(formatBuff, symsLen);
+
+            it->statsRenderer.Write(DriversPreStr, sizeof(DriversPreStr));
+            const size_t dndLen = npf_snprintf(formatBuff, StatsFormatBuffSize, DriversFormatStr,
+                driverInfo.loadedCount, driverInfo.manifestCount, driverInfo.totalDescriptors - driverInfo.unclaimedDescriptors, 
+                driverInfo.totalDescriptors, driverInfo.apiCount);
+            it->statsRenderer.Write(formatBuff, dndLen);
         }
     }
 
