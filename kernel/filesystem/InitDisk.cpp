@@ -107,7 +107,7 @@ namespace Npk::Filesystem
 
             PopulateInitdiskFiles(fsApi, module->address, module->size);
             Log("Initdisk files populated, mounted at \"/initdisk/\"", LogLevel::Info);
-            PrintNode({ .driverId = 1, .vnodeId = 1 }, 0);
+            PrintNode(*VfsLookup("/"), 0);
         }
     }
 }

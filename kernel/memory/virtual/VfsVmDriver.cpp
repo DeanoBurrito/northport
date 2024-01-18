@@ -67,7 +67,7 @@ namespace Npk::Memory::Virtual
         //do a tentative check that the file exists, and is actually a file.
         //NOTE: this looks like a toctou bug, but its only an optimization - the authoratative check
         //is performed in Attach().
-        VfsId fileId { .driverId = 0 };
+        VfsId fileId { .driverId = 0, .vnodeId = 0 };
         if (arg->id.driverId != 0)
             fileId = arg->id;
         else if (!arg->filepath.Empty())
@@ -113,7 +113,7 @@ namespace Npk::Memory::Virtual
         using namespace Filesystem;
         auto arg = reinterpret_cast<const VmFileArg*>(attachArg);
 
-        VfsId fileId { .driverId = 0 };
+        VfsId fileId { .driverId = 0, .vnodeId = 0 };
         if (arg->id.driverId != 0)
             fileId = arg->id;
         else if (!arg->filepath.Empty())

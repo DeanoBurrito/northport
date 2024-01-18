@@ -778,7 +778,7 @@ def:
 
     Vector2 Terminal::CalculateFontSize(const GTStyle& style)
     {
-        return { 8, 14 };
+        return { 8ul + style.fontSpacing, 14ul + style.fontSpacing };
     };
 
     bool Terminal::Init(const GTStyle& style, const GTFramebuffer& framebuffer)

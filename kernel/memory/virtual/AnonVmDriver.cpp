@@ -161,7 +161,8 @@ namespace Npk::Memory::Virtual
             Map(context.map, context.range.base + i, phys, 0, hatFlags, false);
         }
 
-        context.stats.anonResidentSize += context.range.length;
+        if (!doZeroPage)
+            context.stats.anonResidentSize += context.range.length;
         return result;
     }
 

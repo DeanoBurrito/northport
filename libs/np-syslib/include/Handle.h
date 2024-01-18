@@ -71,10 +71,10 @@ namespace sl
             return *this;
         }
 
-        constexpr operator bool()
+        constexpr operator bool() const
         { return ptr != nullptr; }
 
-        constexpr bool Valid()
+        constexpr bool Valid() const
         { return ptr != nullptr; }
 
         constexpr const T* operator*() const
