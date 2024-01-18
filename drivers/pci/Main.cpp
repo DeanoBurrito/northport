@@ -1,16 +1,10 @@
 #include <drivers/api/Api.h>
-#include <drivers/api/Scheduling.h>
 #include <PciSegment.h>
 #include <NameLookup.h>
 #include <Log.h>
 #include <containers/LinkedList.h>
 
 sl::LinkedList<Pci::PciSegment> pciSegments;
-
-void DriverEntry()
-{
-    npk_thread_exit(0);
-}
 
 bool ProcessEvent(npk_event_type type, void* arg)
 {
@@ -63,6 +57,5 @@ NPK_METADATA const npk_driver_manifest driverManifest
     .load_str_len = sizeof(loadStr),
     .load_str = loadStr,
     .friendly_name = friendlyName,
-    .entry = DriverEntry,
     .process_event = ProcessEvent
 };

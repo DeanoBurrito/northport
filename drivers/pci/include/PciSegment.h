@@ -1,6 +1,7 @@
 #pragma once
 
 #include <drivers/api/Api.h>
+#include <drivers/api/Drivers.h>
 #include <VmObject.h>
 
 namespace Pci
@@ -17,6 +18,8 @@ namespace Pci
         sl::Vector<PciBusAccess> busAccess;
         uintptr_t base;
         uint16_t id;
+        
+        npk_io_device_api ioApi;
 
         void* CalculateAddress(void* busAccess, uint8_t dev, uint8_t func);
         void RegisterDescriptor(void* addr, uint8_t bus, uint8_t dev, uint8_t func);

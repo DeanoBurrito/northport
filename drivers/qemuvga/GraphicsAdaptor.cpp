@@ -38,32 +38,26 @@ namespace QemuVga
     {
         sl::ScopedLock scopeLock(metadataLock);
 
-        //if (summaryString != nullptr)
-        //   delete[] summaryString;
-
         summaryString.length = sizeof(builtinSummary);
         summaryString.data = builtinSummary;
     }
 
-    bool GraphicsAdaptor::Init(const npk_init_tag_pci_function* pciTag)
+    bool GraphicsAdaptor::Init(const npk_event_new_device* event)
     {
-        switch (pciTag->type)
+        const npk_init_tag* scan = event->tags;
+        while (scan != nullptr)
         {
-        case npk_pci_addr_type::Ecam:
-            pciAddr = dl::PciAddress::FromEcam(pciTag->segment_base, pciTag->bus, 
-                pciTag->device, pciTag->function);
-            break;
-        case npk_pci_addr_type::Legacy:
-            pciAddr = dl::PciAddress::FromLegacy(pciTag->bus, pciTag->device, pciTag->function);
-            break;
-        default:
-            Log("Unknown PCI transport: %u", LogLevel::Error, pciTag->type);
-            return false;
+            if (scan->type == npk_init_tag_type::PciFunction)
+            {
+                auto pciTag = reinterpret_cast<const npk_init_tag_pci_function*>(scan);
+                Log("PCI address: %02x::%02x:%02x:%01x", LogLevel::Debug, pciTag->segment,
+                    pciTag->bus, pciTag->device, pciTag->function);
+                break;
+            }
+            scan = scan->next;
         }
-
-        Log("Accessed via %s: 0x%lx::%02x:%02x:%01x", LogLevel::Verbose, 
-            pciTag->type == npk_pci_addr_type::Ecam ? "ECAM" : "legacy-IO", 
-            pciTag->segment_base, pciTag->bus, pciTag->device, pciTag->function);
+        descriptorId = event->descriptor_id;
+        pciAddr = dl::PciAddress(descriptorId);
 
         pciAddr.MemorySpaceEnable(true);
         //map the framebuffer into virtual memory

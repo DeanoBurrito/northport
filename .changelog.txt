@@ -1,11 +1,29 @@
 # current
-- Rewrite of DriverManager, which now makes full use of loadable modules. Drivers can also attach/detach hardware devices.
-    - DriverManager acts as a medium between driver manifests (which describe hardware a driver can use) and device descriptors, which describe how toaccess a device.
-    - Drivers now export a number of DeviceAPIs, which act as an interface into a driver from the rest of the system.
-    - Added device APIs for the following things: simple framebuffer, filesystem, IO devices.
-    - Added concept of the 'driver shadow', which is a thread-local pointer that tracks whether the thread is currently running on behalf of a driver. This allows a particular subsystem to know if it's running because the kernel asked it to, or because because of a driver (and which driver). This pointer is always populated for threads under the driver's control, and is set before calling any device API functions - and cleared after they return.
+- Added IO subsystem, with support for stacking IO device APIs.
+    - Device APIs can be layered, allowing transport drivers and device drivers to be combined (or not) as necessary.
+    - IO subsystem uses 'packets' (referred to as IO packets/IOPs) to represent each operation and its status.
+        - Currently these must be executed synchronously, but the API is built around them being async.
+
+- Rewrite of driver subsystem: drivers are now external programs to the kernel, loaded from modules.
+    - Subsystem now has 3 main moving parts and a manager within the kernel (DriverManager).
+    - Driver manifests represent a driver program, the program can be loaded/unloaded as necessary.
+    - Device descriptors represent an abstract piece of hardware or software within the system that the kernel doesn't understand how to use.
+    - Device APIs are a table of function pointers provided by a driver to the kernel, so that the kernel can interact with a piece of hardware in a known way.
+    - The workflow is that the driver manager matches unclaimed descriptors with driver manifests, and then marks the descriptor as under the control of that driver. Once the driver has performed some setup, it should export a number of device APIs back to the kernel, so that the hardware can be used.
+    - Drivers can also register unclaimed descriptors, so support for new busses and transports can be easily added.
+    - Some basic device APIs were added: IO, framebuffer and filesystem.
+    - Added concept of a 'driver shadow', which is a thread-local pointer that tracks whether the current thread is executing on behalf of a driver or not. It allows for tracking per-driver state as it were global, from the driver's point of view.
+    - Added device node tree, which tracks the relationships between descriptors, device apis and loaded driver instances.
+
 - Added `np-driverlib` library, which contains utility code for C++ drivers targetting the northport kernel. A large chunk of the supporting code for drivers has been moved here (and out of the kernel).
     - As a result the kernel source tree is slightly smaller.
+- Added external drivers:
+    - PCI driver moved from kernel to be an external driver. It currently supports ECAM (pci-over-mmio) and x86 port IO.
+        - It will make use of a `pci.ids` file if available to resolve vendor/device ids to human readable strings.
+    - Qemu/bochs extended VGA.
+    - Qemu fw_cfg interface, both as a filesystem and a framebuffer for the ramfb file.
+    - Removed previously built-in drivers: qemu/bochs vga, nvme, and virtio devices.
+
 - Added ability to bake-in compile-time constants to the kernel, like the git commit the build is based on, c++ flags used to build it, as well as the kernel version.
     - Some of this information is shown on the stats display.
 - LICENSE file is now copied to initdisk when building.
@@ -13,21 +31,23 @@
 - Kernel symbol store now stores some type info about each symbol, like it's visibility (for linking purposes to other modules).
     - ELF modules now have their symbols added to the kernel symbol store.
 
-- VFS rewrite to a better design.
+- Rewrite of VFS, in order to support new driver API.
     - The previous VFS was mostly the same as the original northport, which assumed all drivers were inside the kernel and had access to language features (like inheritence).
     - New VFS is written with the device API as it's primary interface, and operations on the VFS happen through global functions that wrap the driver functions.
-        - As a result of the global functions, some portions of operations are now done generically (like detecting name conflicts in `create()` or resolving node names).
+        - As a result of the global functions, some portions of operations are now done generically.
         - The rewritten tempfs uses the filesystem device API now.
     - New VFS uses `VfsId`s to refer to vfs nodes, whether they're loaded in memory or not. To compliment this, vfs nodes (and their metadata) are now cached in memory similar to file contents, and can be evicted from memory if the cache grows too large.
         - File metadata is now fully transient, file contents are not (yet).
+    - FileCaches (used to store a file's contents in memory) can be located by a file's VfsId.
 - VFS is exposed via kernel module API.
 
-- Cleaned up some dead code in PciBridge, from before limine had riscv support. Namely allocating BARs (which is now done via UEFI).
 - Fixed message string not making it through panic sequence properly.
 - Fixed misalignment bug when loading driver metadata causing entrypoint to sometimes be wrong.
 - Fixed incorrect calculation of resident set size in AnonVmDriver.
 - Fixed accidentally not using PIT for platform-wide timer if HPET is present.
 - Fixed bug in pool heap which assumed that new regions of virtual memory were allocated with ascending base addresses.
+- Moved nanoprintf from kernel to syslib, so the same implementation is available to drivers. Previously we have separate versions per-program.
+    - Nanoprintf implementation also updated to use the latest upstream version, at time of writing.
 
 # v0.2.0
 - Updated to use limine v5:

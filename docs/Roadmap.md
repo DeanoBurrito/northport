@@ -6,6 +6,7 @@
             - [x] Timers.
             - [x] Interrupts.
             - [x] MMU.
+            - [ ] System topology.
         - [x] x86_64:
             - [x] Core (paging, interrupts).
             - [x] Timers (LAPIC, TSC, HPET, PIT).
@@ -15,7 +16,7 @@
             - [x] Core (paging, interrupts).
             - [x] Timer (SBI, sstc).
             - [ ] Map cpu topology.
-            - [ ] F/D/Q and V extension support.
+            - [x] F/D/Q and V extension support.
             - [ ] AIA (imsic, aplic) and ACLINT support.
     - [x] Core Layer:
         - [x] Logging Infrastructure:
@@ -62,10 +63,8 @@
         - [x] Virtual filesystem.
             - [x] TempFS, backed only by ram.
             - [x] Initdisk (stored in a TempFS).
+            - [x] Tree-data cache.
             - [x] Page-cache.
-            - [ ] Ext2/3/4 driver.
-            - [ ] FAT driver.
-            - [ ] NTFS driver?
     - [ ] Support Layer:
         - [ ] IPC.
             - [ ] Shared memory.
@@ -76,11 +75,10 @@
         - [x] Peripheral discovery.
             - [x] ACPI table parser.
             - [x] DTB parser.
-            - [x] PCI enumeration.
-                - [ ] PCIe.
-        - [ ] Driver management:
+        - [x] IO Manager.
+        - [x] Driver management:
             - [x] Scanning and loading ELF-based drivers.
-            - [x] Native ABI.
+            - [x] ABI and C-level API.
             - [ ] Operation queues.
             - [ ] Example drivers in other languages.
         - [ ] Media stacks:
@@ -91,11 +89,15 @@
         - [x] Driver API binds.
         - [ ] System calls.
 
-- Device drivers:
-    - [ ] x86 jank: ps2 peripherals, bochs VGA.
+- Drivers:
+    - [x] PCI.
+        - [ ] PCIe and error reporting support.
+        - [ ] Power management.
+    - [ ] x86 jank: ps2 peripherals.
+    - [x] Bochs/qemu VGA.
     - [ ] AHCI.
     - [x] NVMe.
-        - [ ] Port to new API.
+    - [x] FwCfg and ramfb.
     - [x] Virtio:
         - [x] Transport layer (PCI, MMIO).
         - [x] Modern and legacy version support.
@@ -104,10 +106,17 @@
         - [ ] Network.
         - [ ] Input.
         - [ ] Filesystem.
+    - [ ] Ext2/3/4.
+    - [ ] FAT filesystems.
+    - [ ] NTFS (?).
     - [ ] XHCI (usb3).
     - [ ] E1000(e) NIC.
     - [ ] AC97 audio.
     - [ ] iHD audio.
+    - [ ] Ports:
+        - [ ] LAI
+        - [ ] LIL
+        - [ ] ACPICA
 
 - np-syslib:
     - [ ] Containers:

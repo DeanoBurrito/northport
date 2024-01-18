@@ -1,15 +1,10 @@
 #include <drivers/api/Api.h>
-#include <drivers/api/Scheduling.h>
 #include <containers/Vector.h>
 #include <Log.h>
 #include <GraphicsAdaptor.h>
 
 sl::Vector<QemuVga::GraphicsAdaptor> gpus;
 
-void DriverEntry()
-{
-    npk_thread_exit(0);
-}
 
 bool ProcessEvent(npk_event_type type, void* arg)
 {
@@ -19,18 +14,7 @@ bool ProcessEvent(npk_event_type type, void* arg)
         {
             auto event = static_cast<const npk_event_new_device*>(arg);
             auto& gpu = gpus.EmplaceBack();
-            
-            const npk_init_tag* scan = event->tags;
-            while (scan != nullptr)
-            {
-                if (scan->type == npk_init_tag_type::PciFunction)
-                    break;
-                scan = scan->next;
-            }
-
-            VALIDATE(scan != nullptr, false, "QemuVga needs a PCI address to initialize.");
-            auto pciTag = reinterpret_cast<const npk_init_tag_pci_function*>(scan);
-            return gpu.Init(pciTag);
+            return gpu.Init(event);
         }
     default:
         Log("Unknown event type %u, ignoring.", LogLevel::Warning, type);
@@ -60,6 +44,5 @@ NPK_METADATA const npk_driver_manifest driverManifest
     .load_str_len = sizeof(loadStr),
     .load_str = loadStr,
     .friendly_name = friendlyName,
-    .entry = DriverEntry,
     .process_event = ProcessEvent
 };

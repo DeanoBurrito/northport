@@ -25,9 +25,10 @@ namespace QemuVga
     class GraphicsAdaptor
     {
     private:
-        dl::PciAddress pciAddr;
         dl::VmObject framebuffer;
         dl::VmObject mmio;
+        dl::PciAddress pciAddr;
+        npk_handle descriptorId;
 
         sl::TicketLock metadataLock;
         npk_framebuffer_mode mode;
@@ -38,7 +39,7 @@ namespace QemuVga
         void RegenSummary();
 
     public:
-        bool Init(const npk_init_tag_pci_function* pciTag);
+        bool Init(const npk_event_new_device* event);
         
         [[gnu::always_inline]]
         inline npk_framebuffer_mode GetMode()

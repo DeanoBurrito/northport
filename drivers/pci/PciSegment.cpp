@@ -8,6 +8,36 @@
 
 namespace Pci
 {
+    bool BeginOp(npk_device_api* api, npk_iop_context* context, npk_iop_frame* iop_frame)
+    {
+        auto segment = static_cast<PciSegment*>(api->driver_data);
+        //TODO: support variable-sized and misaligned operations, a base-level driver like this should be flexible!
+
+        sl::NativePtr buffPtr = iop_frame->buffer;
+        switch (context->op_type)
+        {
+        case npk_iop_type::Read:
+            {
+                const uint32_t reg = segment->ReadReg(iop_frame->descriptor_data, iop_frame->addr / 4);
+                buffPtr.Write(reg);
+                break;
+            }
+        case npk_iop_type::Write:
+            {
+                segment->WriteReg(iop_frame->descriptor_data, iop_frame->addr / 4, buffPtr.Read<uint32_t>());
+                break;
+            }
+            break;
+        default:
+            return false;
+        }
+
+        return true;
+    }
+
+    bool EndOp(npk_device_api* api, npk_iop_context* context, npk_iop_frame* iop_frame)
+    { return true; (void)api; (void)context; (void)iop_frame; } //no-op
+
     //4K per function, 8 functions per device, 32 devices per bus.
     constexpr size_t EcamBusWindowSize = 0x1000 * 8 * 32;
     constexpr const char NameFormatStr[] = "pci@%x::%02x:%02x:%01x (id=%04x:%04x c=%02x:%02x:%02x)";
@@ -92,6 +122,15 @@ namespace Pci
         id = host->id;
         base = host->base_addr;
         //TODO: add support for x86 port io
+
+        //create IO device API for the kernel, this will be the 'transport api' for PCI devices we create.
+        ioApi.header.type = npk_device_api_type::Io;
+        ioApi.header.driver_data = this;
+        ioApi.begin_op = BeginOp;
+        ioApi.end_op = EndOp;
+        ioApi.header.get_summary = nullptr;
+        VALIDATE_(npk_add_device_api(&ioApi.header), false);
+        VALIDATE_(npk_set_transport_api(ioApi.header.id), false);
 
         sl::Vector<uint8_t> busses {};
         busses.PushBack(host->first_bus);
