@@ -1,49 +1,34 @@
 #include <PciAddress.h>
 #include <Log.h>
-#include <NativePtr.h>
-#include <drivers/api/Memory.h>
-#include <drivers/api/Api.h>
-
-#ifdef __x86_64__
-    #define DL_LEGACY_PCI_SUPPORT
-#endif
+#include <drivers/api/Io.h>
 
 namespace dl
 {
-    constexpr uintptr_t PciLegacyPoison = 0x7777'7777;
-
-    PciAddress PciAddress::FromEcam(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t func)
-    {
-        const uintptr_t physAddr = segmentBase + ((bus << 20) | (device << 15) | (func << 12));
-
-        //TODO: freeing of config space address
-        auto addr = npk_vm_alloc(0x1000, (void*)physAddr, static_cast<npk_vm_flags>(VmMmio | VmWrite), nullptr);
-        VALIDATE_(addr != nullptr, {});
-        return PciAddress(reinterpret_cast<uintptr_t>(addr));
-    }
-
-    PciAddress PciAddress::FromLegacy(uint8_t bus, uint8_t device, uint8_t func)
-    {
-        const uintptr_t addr = (PciLegacyPoison << 32) | (bus << 16) | (device << 11) | (func << 8);
-        return PciAddress(addr);
-    }
-
     void PciAddress::Write(size_t offset, uint32_t value) const
     {
-#ifdef DL_LEGACY_PCI_SUPPORT
-        if ((addr >> 32) == PciLegacyPoison)
-            return npk_pci_legacy_write32((addr & 0xFFFF'FFFF) | (offset & 0xFF), value);
-#endif
-        sl::NativePtr(addr).Offset(offset & 0xFFF).Write<uint32_t>(value);
+        npk_iop_beginning iop {};
+        iop.type = npk_iop_type::Write;
+        iop.device_api_id = apiId;
+        iop.length = sizeof(uint32_t);
+        iop.buffer = &value;
+        iop.addr = offset;
+
+        VALIDATE_(npk_end_iop(npk_begin_iop(&iop)), );
     }
 
     uint32_t PciAddress::Read(size_t offset) const
     {
-#ifdef DL_LEGACY_PCI_SUPPORT
-        if ((addr >> 32) == PciLegacyPoison)
-            return npk_pci_legacy_read32((addr & 0xFFFF'FFFF) | (offset & 0xFF));
-#endif
-        return sl::NativePtr(addr).Offset(offset & 0xFFF).Read<uint32_t>();
+        uint32_t value = 0;
+
+        npk_iop_beginning iop {};
+        iop.type = npk_iop_type::Read;
+        iop.device_api_id = apiId;
+        iop.length = sizeof(uint32_t);
+        iop.buffer = &value;
+        iop.addr = offset;
+
+        VALIDATE_(npk_end_iop(npk_begin_iop(&iop)), 0);
+        return value;
     }
 
     PciBar PciAddress::ReadBar(uint8_t index, bool noSize) const

@@ -18,17 +18,14 @@ namespace dl
     class PciAddress
     {
     private:
-        uintptr_t addr;
+        size_t apiId;
 
     public:
-        constexpr PciAddress() : addr(0)
+        constexpr PciAddress() : apiId(0)
         {}
 
-        constexpr PciAddress(uintptr_t addr) : addr(addr)
+        constexpr PciAddress(size_t apiId) : apiId(apiId)
         {}
-
-        static PciAddress FromEcam(uintptr_t segmentBase, uint8_t bus, uint8_t device, uint8_t func);
-        static PciAddress FromLegacy(uint8_t bus, uint8_t device, uint8_t func);
 
         void Write(size_t offset, uint32_t value) const;
         uint32_t Read(size_t offset) const;

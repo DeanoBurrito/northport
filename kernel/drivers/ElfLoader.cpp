@@ -431,8 +431,6 @@ namespace Npk::Drivers
         if (moduleMetadata != nullptr)
         {
             //get the entry point from the module metadata
-            elfInfo->entryAddr = reinterpret_cast<uintptr_t>(moduleManifest->entry);
-            //store the module's symbols in the global symbol storage
             elfInfo->symbolRepo = Debug::LoadElfModuleSymbols(shortName, file, loadBase);
 
             //driver manager needs access to the manifest to set up the driver control block, also

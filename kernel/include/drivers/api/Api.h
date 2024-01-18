@@ -39,7 +39,7 @@ extern "C" {
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
 #define NP_MODULE_API_VER_MINOR 2
-#define NP_MODULE_API_VER_REV 2
+#define NP_MODULE_API_VER_REV 3
 
 /* Various GUIDs used by the API */
 #define NP_MODULE_META_START_GUID { 0x11, 0xfc, 0x92, 0x87, 0x64, 0xc0, 0x4b, 0xaf, 0x9e, 0x59, 0x31, 0x64, 0xbf, 0xf9, 0xfa, 0x5a }
@@ -114,9 +114,10 @@ typedef enum
 
 typedef enum
 {
-    Exit = 0,
-    AddDevice = 1,
-    RemoveDevice = 2,
+    Init = 0,
+    Exit = 1,
+    AddDevice = 2,
+    RemoveDevice = 3,
 } npk_event_type;
 
 typedef struct
@@ -142,7 +143,6 @@ typedef struct
     REQUIRED const uint8_t* load_str;
     REQUIRED const char* friendly_name;
 
-    REQUIRED void (*entry)();
     REQUIRED bool (*process_event)(npk_event_type type, void* arg);
 } npk_driver_manifest;
 
@@ -159,9 +159,6 @@ typedef enum
 /* Global functions available to any drivers within a kernel module */
 void npk_log(REQUIRED const char* str, npk_log_level level);
 void npk_panic(REQUIRED const char* why);
-
-uint32_t npk_pci_legacy_read32(uintptr_t addr);
-void npk_pci_legacy_write32(uintptr_t addr, uint32_t data);
 
 #ifdef __cplusplus
 }

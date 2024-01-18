@@ -7,6 +7,7 @@
 #include <memory/Vmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Thread.h>
+#include <tasking/Process.h>
 #include <containers/Queue.h>
 #include <NanoPrintf.h>
 #include <Locks.h>
@@ -345,10 +346,10 @@ extern "C"
             const char* shadowName = "<none>";
             auto shadow = Drivers::DriverManager::Global().GetShadow();
             if (shadow.Valid())
-                shadowName = shadow->friendlyName.C_Str();
+                shadowName = shadow->manifest->friendlyName.C_Str();
 
-            PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu, procName=%s",
-                thread.Id(), shadowName, process.Id(), "n/a");
+            PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu",
+                thread.Id(), shadowName, process.Id());
         }
         else
             PanicWrite("Thread information not available.\r\n");

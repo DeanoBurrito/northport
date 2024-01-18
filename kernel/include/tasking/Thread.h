@@ -42,7 +42,7 @@ namespace Npk::Tasking
         Thread* next;
         sl::Atomic<size_t> activeCore;
 
-        sl::Handle<Drivers::DriverManifest> driverShadow;
+        sl::Handle<Drivers::DriverInstance> driverShadow;
 
     public:
         static Thread* Create(void (*entry)(void*), void* arg, Process* parent = nullptr);

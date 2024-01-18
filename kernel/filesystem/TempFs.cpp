@@ -242,7 +242,7 @@ namespace Npk::Filesystem
         rootNode->parent = nullptr;
         rootNode->id = 0;
 
-        ASSERT(Drivers::DriverManager::Global().AddApi(&tempFs->header, 0, {}), "Failed to create tempfs.");
+        ASSERT(Drivers::DriverManager::Global().AddApi(&tempFs->header, {}), "Failed to create tempfs.");
 
         return tempFs->header.id;
     }

@@ -30,6 +30,7 @@
 #include <stddef.h>
 #include "Decorators.h"
 #include "Filesystem.h"
+#include "Io.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -57,14 +58,10 @@ typedef struct npk_device_api_ npk_device_api;
 
 typedef struct
 {
-} npk_iop;
-
-typedef struct
-{
     npk_device_api header;
 
-    REQUIRED bool (*begin_op)(npk_device_api* api, npk_iop* iop, size_t index);
-    REQUIRED bool (*end_op)(npk_device_api* api, npk_iop* iop, size_t index);
+    REQUIRED bool (*begin_op)(npk_device_api* api, npk_iop_context* context, npk_iop_frame* iop_frame);
+    REQUIRED bool (*end_op)(npk_device_api* api, npk_iop_context* context, npk_iop_frame* iop_frame);
 } npk_io_device_api;
 
 typedef struct
@@ -133,8 +130,9 @@ typedef struct
     REQUIRED bool (*read_dir)(npk_fs_context context, size_t* count, npk_dir_entry** listing);
 } npk_filesystem_device_api;
 
-bool npk_add_device_api(REQUIRED npk_device_api* api, npk_handle parent);
+bool npk_add_device_api(REQUIRED npk_device_api* api);
 bool npk_remove_device_api(size_t device_id);
+bool npk_set_transport_api(npk_handle api_id);
 
 #ifdef __cplusplus
 }
