@@ -1,7 +1,7 @@
 #pragma once
 
-#include <drivers/api/Api.h>
-#include <drivers/api/Drivers.h>
+#include <interfaces/driver/Api.h>
+#include <interfaces/driver/Drivers.h>
 #include <PciAddress.h>
 #include <VmObject.h>
 #include <Locks.h>

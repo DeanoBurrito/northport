@@ -1,6 +1,6 @@
 #include <PciSegment.h>
 #include <NameLookup.h>
-#include <drivers/api/Devices.h>
+#include <interfaces/driver/Devices.h>
 #include <Log.h>
 #include <VmObject.h>
 #include <containers/Vector.h>

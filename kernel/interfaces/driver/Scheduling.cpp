@@ -1,5 +1,5 @@
-#include <drivers/api/Scheduling.h>
 #include <debug/Log.h>
+#include <interfaces/driver/Scheduling.h>
 #include <tasking/Thread.h>
 
 extern "C"

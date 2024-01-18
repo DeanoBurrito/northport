@@ -19,7 +19,7 @@ class VirtualMemoryManager;
 
 using VMM = Npk::Memory::VirtualMemoryManager;
 #else
-#include <drivers/api/Filesystem.h>
+#include <interfaces/driver/Filesystem.h>
 
 namespace dl
 {

@@ -1,7 +1,6 @@
 #include <GraphicsAdaptor.h>
 #include <Log.h>
 #include <UnitConverter.h>
-#include <drivers/api/Drivers.h>
 
 namespace QemuVga
 {

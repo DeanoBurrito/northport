@@ -1,5 +1,5 @@
-#include <drivers/api/Io.h>
 #include <debug/Log.h>
+#include <interfaces/driver/Io.h>
 #include <io/IoManager.h>
 
 extern "C"
@@ -14,6 +14,7 @@ extern "C"
         VALIDATE_(iop.Valid(), NPK_INVALID_HANDLE);
 
         //TODO: handle table
+        iop->references++;
         return reinterpret_cast<npk_handle>(*iop);
     }
 

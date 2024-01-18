@@ -1,4 +1,4 @@
-#include <drivers/api/Memory.h>
+#include <interfaces/driver/Memory.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <memory/Heap.h>
@@ -81,6 +81,7 @@ extern "C"
         if (!handle.Valid())
             return false;
 
+        handle->references++;
         //TODO: stash handle so it remains valid after this call
         mdl->addr_space = nullptr; //TODO: allow for mdls to access non-kernel VMMs
         mdl->virt_base = reinterpret_cast<uintptr_t>(vaddr);

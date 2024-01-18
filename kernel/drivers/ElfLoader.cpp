@@ -1,9 +1,9 @@
 #include <drivers/ElfLoader.h>
 #include <drivers/DriverManager.h>
-#include <drivers/api/Api.h>
 #include <debug/Log.h>
 #include <debug/Symbols.h>
 #include <filesystem/Filesystem.h>
+#include <interfaces/driver/Api.h>
 #include <Memory.h>
 
 namespace Npk::Drivers

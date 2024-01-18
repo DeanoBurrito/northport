@@ -7,12 +7,12 @@ CXX_SRCS = arch/Helpers.cpp \
 	debug/Log.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
 	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp \
 	drivers/DriverManager.cpp drivers/DriverHelpers.cpp drivers/ElfLoader.cpp \
-	drivers/api/General.cpp drivers/api/Memory.cpp drivers/api/Scheduling.cpp \
-	drivers/api/Drivers.cpp drivers/api/Devices.cpp drivers/api/Filesystem.cpp \
-	drivers/api/Io.cpp \
 	events/Dispatch.cpp events/EventQueue.cpp \
 	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TreeCache.cpp \
 	filesystem/TempFs.cpp filesystem/InitDisk.cpp \
+	interfaces/driver/Devices.cpp interfaces/driver/Drivers.cpp \
+	interfaces/driver/Filesystem.cpp interfaces/driver/General.cpp interfaces/driver/Io.cpp \
+	interfaces/driver/Memory.cpp interfaces/driver/Scheduling.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \
 	io/IoManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \

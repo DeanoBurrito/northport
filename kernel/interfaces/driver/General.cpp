@@ -1,7 +1,6 @@
-#include <drivers/api/Api.h>
 #include <debug/Log.h>
-#include <arch/Platform.h>
 #include <drivers/DriverManager.h>
+#include <interfaces/driver/Api.h>
 
 extern "C"
 {

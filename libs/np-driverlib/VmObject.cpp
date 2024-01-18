@@ -1,6 +1,6 @@
 #include <VmObject.h>
 #include <Log.h>
-#include <drivers/api/Memory.h>
+#include <interfaces/driver/Memory.h>
 
 namespace dl
 {
