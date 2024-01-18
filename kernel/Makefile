@@ -9,10 +9,12 @@ CXX_SRCS = arch/Helpers.cpp \
 	drivers/DriverManager.cpp drivers/DriverHelpers.cpp drivers/ElfLoader.cpp \
 	drivers/api/General.cpp drivers/api/Memory.cpp drivers/api/Scheduling.cpp \
 	drivers/api/Drivers.cpp drivers/api/Devices.cpp drivers/api/Filesystem.cpp \
+	drivers/api/Io.cpp \
 	events/Dispatch.cpp events/EventQueue.cpp \
 	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TreeCache.cpp \
 	filesystem/TempFs.cpp filesystem/InitDisk.cpp \
 	interrupts/InterruptManager.cpp interrupts/Ipi.cpp \
+	io/IoManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
 	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \
 	memory/virtual/KernelVmDriver.cpp memory/virtual/VfsVmDriver.cpp \

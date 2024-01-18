@@ -13,6 +13,7 @@
 #include <filesystem/Filesystem.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
+#include <io/IoManager.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <memory/Heap.h>
@@ -90,6 +91,7 @@ namespace Npk
 
         Interrupts::InterruptManager::Global().Init();
         Tasking::Scheduler::Global().Init();
+        Io::IoManager::Global().Init();
     }
 
     void ReclaimMemoryThread(void*)
