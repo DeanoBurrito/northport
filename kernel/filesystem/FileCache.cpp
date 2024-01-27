@@ -93,6 +93,9 @@ namespace Npk::Filesystem
         return true;
     }
 
+    void CreateFileCacheEntries(sl::Handle<FileCache> fileCache, uintptr_t paddr, size_t size) {
+    }
+
     FileCacheUnitHandle GetFileCacheUnit(sl::Handle<FileCache> cache, size_t fileOffset)
     {
         VALIDATE_(cache.Valid(), {});

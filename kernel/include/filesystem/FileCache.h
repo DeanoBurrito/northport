@@ -51,4 +51,5 @@ namespace Npk::Filesystem
     bool SetFileCacheLength(sl::Handle<FileCache> cache, size_t length);
     sl::Handle<FileCache> GetFileCache(VfsId id);
     FileCacheUnitHandle GetFileCacheUnit(sl::Handle<FileCache> cache, size_t fileOffset);
+    void CreateFileCacheEntries(sl::Handle<FileCache> fileCache, uintptr_t paddr, size_t size);
 }

@@ -1,6 +1,7 @@
 #include <filesystem/InitDisk.h>
 #include <filesystem/Filesystem.h>
 #include <filesystem/TempFs.h>
+#include <filesystem/FileCache.h>
 #include <boot/LimineTags.h>
 #include <debug/Log.h>
 #include <drivers/DriverManager.h>
@@ -39,7 +40,8 @@ namespace Npk::Filesystem
         NodeAttribs attribs {};
         attribs.size = file->SizeBytes();
         VALIDATE_(VfsSetAttribs(*fileId, attribs, NodeAttribFlag::Size), );
-        
+
+        // This code from here can be removed when filecache task completed.
         VmFileArg vmoArg {};
         vmoArg.id = *fileId;
         vmoArg.noDeferBacking = true;
@@ -47,6 +49,11 @@ namespace Npk::Filesystem
         VmObject fileVmo(file->SizeBytes(), vmoArg, VmFlag::File | VmFlag::Write);
         VALIDATE_(fileVmo.Valid(), );
         sl::memcopy(file->Data(), fileVmo->ptr, file->SizeBytes());
+        // Until here
+        sl::Handle<FileCache> fileC = GetFileCache(*fileId);
+        //FileCache fileC = ;
+        uintptr_t fileDataPhys = reinterpret_cast<uintptr_t>(file->Data()) - hhdmBase;
+        CreateFileCacheEntries(fileC, fileDataPhys, file->SizeBytes());
         //TODO: migrate initdisk pages to filecache, instead of copying
     }
 
