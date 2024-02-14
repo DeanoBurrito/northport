@@ -1,349 +1,352 @@
 #include <memory/Pmm.h>
 #include <boot/LimineTags.h>
-#include <Memory.h>
-#include <Maths.h>
 #include <debug/Log.h>
+#include <Bitmap.h>
+#include <Maths.h>
+#include <Memory.h>
+#include <CppUtils.h>
 #include <UnitConverter.h>
 
 namespace Npk::Memory
 {
-    constexpr const char* MemmapTypeStrs[] = 
-    {
-        "usable", "reserved", "acpi reclaim", "acpi nvs",
-        "bad", "bootloader reclaim", "kernel/modules", "framebuffer"
-    };
+    constexpr size_t PmMaxContiguousPages = (64 * MiB) / PageSize;
+    constexpr size_t PmMinContiguousPages = 0;
+    constexpr size_t PmContiguousPagesRatio = 10;
 
-    void PMM::InsertRegion(PmZone& zone, uintptr_t base, size_t length)
-    {
-        ASSERT(base % PageSize == 0, "PMRegion base not page-aligned.");
-        ASSERT(length % PageSize == 0, "PMRegion length not page-aligned.");
-
-        //allocate space for this region to store PageInfos
-        if (remainingPageInfoAllocs < length / PageSize)
-        {
-            const size_t requiredPages = sl::AlignUp(length / PageSize, PageSize) / PageSize;
-            ASSERT(length > requiredPages, "Not enough space");
-            Log("Expanding PageInfo slab by %lu pages.", LogLevel::Info, requiredPages);
-            pageInfoAlloc = reinterpret_cast<PageInfo*>(base + hhdmBase);
-            remainingPageInfoAllocs = (requiredPages * PageSize) / sizeof(PageInfo);
-            base += requiredPages * PageSize;
-            length -= requiredPages * PageSize;
-        }
-        PageInfo* infoStore = pageInfoAlloc; //TODO: expand pageInfo store if needed
-        pageInfoAlloc += length / PageSize;
-        sl::memset(infoStore, 0, length / PageSize);
-
-        //allocate the region, initialize it
-        if (remainingRegionAllocs == 0)
-        {
-            ASSERT(length > PageSize, "Not enough space");
-            Log("Expanding PmRegion slab by 1 page.", LogLevel::Info);
-            regionAlloc = reinterpret_cast<PmRegion*>(base + hhdmBase);
-            remainingRegionAllocs = PageSize / sizeof(PmRegion);
-            base += PageSize;
-            length -= PageSize;
-        }
-
-        PmRegion* latest = new(regionAlloc++) PmRegion(base, length, infoStore);
-        remainingRegionAllocs -= 1;
-
-        sl::ScopedLock latestLock(latest->lock);
-
-        //find it's place in the list
-        PmRegion* next = zone.head;
-        PmRegion* prev = nullptr;
-        while (next != nullptr && next->base < base)
-        {
-            prev = next;
-            next = next->next;
-        }
-
-        if (next == nullptr)
-        {
-            if (zone.tail != nullptr)
-            {
-                sl::ScopedLock scopeLock(zone.tail->lock);
-                zone.tail->next = latest;
-            }
-            zone.tail = latest;
-            if (zone.head == nullptr)
-                zone.head = latest;
-        }
-        else if (prev == nullptr)
-        {
-            latest->next = zone.head;
-            zone.head = latest;
-        }
-        else
-        {
-            latest->next = next;
-            prev->next = latest;
-        }
-
-        zone.total.Add(latest->totalPages, sl::Relaxed);
-
-        auto conversion = sl::ConvertUnits(latest->totalPages * PageSize, sl::UnitBase::Binary);
-        Log("PMRegion inserted: base=0x%08lx, pages=%lu (%lu.%lu%sB).", LogLevel::Info, latest->base, latest->totalPages,
-            conversion.major, conversion.minor, conversion.prefix);
-    }
-
-    uintptr_t PMM::RegionAlloc(PmRegion& region, size_t count)
-    {
-        if (region.freePages < count)
-            return 0;
-        
-        sl::ScopedLock scopeLock(region.lock);
-        size_t start = region.searchHint;
-        size_t end = region.totalPages;
-
-    try_region_alloc_search:
-        for (size_t i = start; i < end; i++)
-        {
-            if (i + count >= end)
-                break;
-            
-            bool usable = true;
-            for (size_t mod = 0; mod < count; mod++)
-            {
-                if (region.infoBuffer[i + mod].flags.HasBits(PmFlags::Used))
-                {
-                    i += mod;
-                    usable = false;
-                    break;
-                }
-            }
-
-            if (!usable)
-                continue;
-            
-            for (size_t j = 0; j < count; j++)
-                region.infoBuffer[i + j].flags.SetBits(PmFlags::Used);
-            
-            region.freePages -= count;
-            region.searchHint = (i + count) % region.totalPages;
-            return region.base + (i * PageSize);
-        }
-
-        if (start == region.searchHint && region.searchHint != 0)
-        {
-            start = 0;
-            end = region.searchHint;
-            goto try_region_alloc_search;
-        }
-        return 0;
-    }
-    
     PMM globalPmm;
     PMM& PMM::Global()
     { return globalPmm; }
-    
+
+    static void SortMemoryMapBySize(size_t count, limine_memmap_entry** entries)
+    {
+        //bubble sort, caught in the wild
+        for (size_t i = 0; i < count - 1; i++)
+        {
+            for (size_t j = 0; j < count - i - 1; j++)
+            {
+                if (entries[j]->length < entries[j + 1]->length)
+                    sl::Swap(entries[j], entries[j + 1]);
+            }
+        }
+    }
+
+    static uintptr_t ClaimFromSmallest(size_t count, limine_memmap_entry** entries, size_t pages)
+    {
+        const size_t bytes = pages * PageSize;
+
+        for (size_t i = count; i > 0; i--)
+        {
+            const size_t idx = i - 1;
+            if (entries[idx]->length < bytes)
+                continue;
+
+            const uintptr_t base = entries[idx]->base;
+            entries[idx]->base += bytes;
+            entries[idx]->length -= bytes;
+            return base;
+        }
+
+        return 0;
+    }
+
+    void PMM::IngestMemory(size_t entryCount, limine_memmap_entry** entries, size_t contiguousQuota)
+    {
+        size_t totalPages = 0;
+        for (size_t i = 0; i < entryCount; i++)
+            totalPages += entries[i]->length / PageSize;
+
+        SortMemoryMapBySize(entryCount, entries);
+
+        //reserve contiguous regions, starting from largest chunk of physical memory
+        zones = nullptr;
+        size_t contigZones = 0;
+        for (size_t i = 0; i < contiguousQuota;)
+        {
+            const size_t count = sl::Min(contiguousQuota - i, entries[0]->length / PageSize);
+            i += count;
+            entries[0]->length -= count * PageSize;
+
+            const size_t bitmapBytes = sl::AlignUp(count, 8) / 8;
+            const size_t metadataBytes = bitmapBytes + (2 * sizeof(PmContigZone));
+            const uintptr_t metadataAddr = ClaimFromSmallest(entryCount, entries, sl::AlignUp(metadataBytes, PageSize) / PageSize);
+            ASSERT_(metadataAddr != 0);
+
+            PmContigZone* zone = reinterpret_cast<PmContigZone*>(sl::AlignUp(metadataAddr + hhdmBase, sizeof(PmContigZone)));
+            zone->base = entries[0]->base + entries[0]->length;
+            zone->count = count;
+            zone->bitmap = reinterpret_cast<uint8_t*>(zone + 1);
+            sl::memset(zone->bitmap, 0, bitmapBytes);
+
+            zonesLock.WriterLock();
+            zone->next = zones;
+            zones = zone;
+            zonesLock.WriterUnlock();
+
+            contigZones++;
+            Log("Contiguous physical memory zone: base=0x%lx, count=%lu", LogLevel::Verbose, zone->base,  zone->count);
+            SortMemoryMapBySize(entryCount, entries); //sort memory map again, since we just modified it.
+        }
+
+        //allocate space for pageinfo segments
+        const size_t segmentStoreBytes = sizeof(PmInfoSegment) * (entryCount + contigZones + 1);
+        const size_t infoStoreSize = segmentStoreBytes + sizeof(PageInfo) * (totalPages+ 1);
+        uintptr_t infoStoreAddr = ClaimFromSmallest(entryCount, entries, 
+            sl::AlignUp(infoStoreSize, PageSize) / PageSize);
+        ASSERT_(infoStoreAddr != 0);
+        infoStoreAddr = sl::AlignUp(infoStoreAddr, sizeof(PmInfoSegment)) + hhdmBase;
+
+        size_t segmentIndex = 0;
+        size_t infoIndex = 0;
+        auto segmentStore = reinterpret_cast<PmInfoSegment*>(infoStoreAddr);
+        auto infoStore = reinterpret_cast<PageInfo*>(sl::AlignUp(infoStoreAddr + segmentStoreBytes, sizeof(PageInfo)));
+        segments = nullptr;
+
+        //create mappings from usable regions to PageInfo database
+        PmInfoSegment* tail = nullptr;
+        for (size_t i = 0; i < entryCount; i++)
+        {
+            if (entries[i]->length == 0)
+                continue;
+
+            PmInfoSegment* segment = &segmentStore[segmentIndex++];
+            segment->base = entries[i]->base;
+            segment->length = entries[i]->length;
+            segment->info = infoStore + infoIndex;
+            infoIndex += segment->length / PageSize;
+
+            if (tail == nullptr)
+                tail = segment;
+            else
+            {
+                tail->next = segment;
+                tail = segment;
+            }
+
+            Log("PageInfo segment added: base=0x%lx, count=%lu, store=%p", LogLevel::Verbose,
+                segment->base, segment->length / PageSize, segment->info);
+        }
+
+        //also create info mappings for pages in contiguous zones
+        for (PmContigZone* zone = zones; zone != nullptr; zone = zone->next)
+        {
+            PmInfoSegment* segment = &segmentStore[segmentIndex++];
+            segment->base = zone->base;
+            segment->length = zone->count * PageSize;
+            segment->info = infoStore + infoIndex;
+            infoIndex += segment->length / PageSize;
+
+            if (tail == nullptr)
+                tail = segment;
+            else
+            {
+                tail->next = segment;
+                tail = segment;
+            }
+
+            Log("PageInfo (contig zone) segment added: base=0x%lx, count=%lu, store=%p", LogLevel::Verbose,
+                segment->base, segment->length / PageSize, segment->info);
+        }
+
+        segmentsLock.WriterLock();
+        if (segments == nullptr)
+            segments = tail;
+        else
+        {
+            PmInfoSegment* currentTail = segments;
+            while (currentTail->next != nullptr)
+                currentTail = segments->next;
+            currentTail->next = tail;
+        }
+        segmentsLock.WriterUnlock();
+
+        //all other physical memory is added to the freelist
+        freelist.head = nullptr;
+        for (size_t i = 0; i < entryCount; i++)
+        {
+            if (entries[i]->length == 0)
+                continue;
+
+            auto entry = reinterpret_cast<PmFreeEntry*>(entries[i]->base + hhdmBase);
+            entry->runLength = entries[i]->length / PageSize;
+
+            entry->next = freelist.head;
+            freelist.head = entry;
+        }
+    }
+
     void PMM::Init()
     {
-        //these variables *should* be default initialized via the .bss, but
-        //*just in case* lets initialize them ourselves.
-        remainingRegionAllocs = 0;
-        remainingPageInfoAllocs = 0;
-        new(&zones[0]) PmZone(); //low zone (addresses < 4GiB)
-        new(&zones[1]) PmZone(); //high zone (addresses >= 4GiB)
+        auto mmapResp = Boot::memmapRequest.response;
 
-        const size_t mmapEntryCount = Boot::memmapRequest.response->entry_count;
-        limine_memmap_entry** const mmapEntries = Boot::memmapRequest.response->entries;
-
-        //We're going to allocate a PmRegion struct for each usable (and later reclaimable)
-        //region of the memory map, so determine how many we need.
-        //While iterating through the list we also keep track of the largest memory map
-        //entry, which we'll remove a portion of to use for pmm management data.
-        //If more memory is added at runtime we can allocate new management data elsewhere,
-        //but we have the benefit of operating in bulk during init.
-        size_t selectedIndex = (size_t)-1;
-        size_t regionCount = 0;
-        size_t pageInfoSize = sizeof(PageInfo); //space for aligning the start of this allocator later on.
-        for (size_t i = 0; i < mmapEntryCount; i++)
+        //scan the memory map and figure out how many usable entries and pages there are.
+        size_t usablePages = 0;
+        size_t usableEntries = 0;
+        limine_memmap_entry* usableMap[mmapResp->entry_count];
+        for (size_t i = 0; i < mmapResp->entry_count; i++)
         {
-            const limine_memmap_entry* entry = mmapEntries[i];
-            if (entry->type != LIMINE_MEMMAP_USABLE && entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
-            {
-                Log("Ignoring memmap entry: base=%#lx, length=%lx, type=%s", LogLevel::Verbose,
-                    entry->base, entry->length, MemmapTypeStrs[entry->type]);
+            limine_memmap_entry* entry = mmapResp->entries[i];
+            if (entry->type != LIMINE_MEMMAP_USABLE)
                 continue;
-            }
 
-            pageInfoSize += (entry->length / PageSize) * sizeof(PageInfo);
-
-            //if mmap region crosses a zone boundary, we'll need to allocate space for an extra PmRegion
-            regionCount++;
-            if (entry->base < 4 * GiB && entry->base + entry->length > 4 * GiB)
-                regionCount++;
-
-            //check if new region is larger than previously selected one
-            if (selectedIndex == (size_t)-1 || mmapEntries[selectedIndex]->length < entry->length)
-                selectedIndex = i;
-        }
-        
-        size_t totalInitBytes = regionCount * sizeof(PmRegion) + pageInfoSize;
-        if (selectedIndex == (size_t)-1 || mmapEntries[selectedIndex]->length < totalInitBytes)
-            Log("PMM init failed: no region big enough for management data.", LogLevel::Fatal);
-
-        auto conv = sl::ConvertUnits(totalInitBytes, sl::UnitBase::Binary);
-        Log("PMM requires %lu.%lu%sB for management data. Allocating at 0x%lx, slack of %lu bytes.", LogLevel::Info, 
-            conv.major, conv.minor, conv.prefix, mmapEntries[selectedIndex]->base, totalInitBytes % PageSize);
-
-        //populate the pointers for the management data buffers
-        totalInitBytes = sl::AlignUp(totalInitBytes, PageSize);
-        regionAlloc = reinterpret_cast<PmRegion*>(mmapEntries[selectedIndex]->base + hhdmBase);
-        remainingRegionAllocs = regionCount;
-        
-        pageInfoAlloc = reinterpret_cast<PageInfo*>(regionAlloc + remainingRegionAllocs);
-        pageInfoAlloc = sl::AlignUp(pageInfoAlloc, sizeof(PageInfo));
-        remainingPageInfoAllocs = pageInfoSize / sizeof(PageInfo);
-        
-        //and adjust the region we just carved out the buffers from
-        mmapEntries[selectedIndex]->base += totalInitBytes;
-        mmapEntries[selectedIndex]->length -= totalInitBytes;
-
-        //add each usable region of the memory map to our own structures.
-        for (size_t i = 0; i < mmapEntryCount; i++)
-        {
-            if (mmapEntries[i]->type != LIMINE_MEMMAP_USABLE)
-                continue;
-            
-            IngestMemory(mmapEntries[i]->base, mmapEntries[i]->length);
+            usablePages += entry->length / PageSize;
+            usableMap[usableEntries++] = entry;
         }
 
-        conv = sl::ConvertUnits(zones[0].total * PageSize, sl::UnitBase::Binary);
-        auto convHigh = sl::ConvertUnits(zones[1].total * PageSize, sl::UnitBase::Binary);
-        Log("PMM init finished: highZone=%lu.%lu%sB, lowZone=%lu.%lu%sB.", LogLevel::Info, 
-            convHigh.major, convHigh.minor, convHigh.prefix, conv.major, conv.minor, conv.prefix);
+        auto conv = sl::ConvertUnits(usablePages * PageSize, sl::UnitBase::Binary);
+        Log("PMM has %lu usable pages (%lu.%lu %sB), over %lu regions.", LogLevel::Info, usablePages,
+            conv.major, conv.minor, conv.prefix, usableEntries);
+
+        //determine how much physical ram to reserve for contiguous allocations
+        size_t contiguousPages = usablePages / PmContiguousPagesRatio;
+        contiguousPages = sl::Min(PmMaxContiguousPages, sl::Max(PmMinContiguousPages, contiguousPages)); //ensure its within bounds
+        contiguousPages = sl::Min(contiguousPages, usablePages); //ensure its actually valid after all that
+        Log("%lu pages reserved for contiguous allocs (pratio=1/%lu, min=%lu, max=%lu)", LogLevel::Info,
+            contiguousPages, PmContiguousPagesRatio, PmMinContiguousPages, PmMaxContiguousPages);
+
+        IngestMemory(usableEntries, usableMap, contiguousPages);
     }
 
-    void PMM::IngestMemory(uintptr_t base, size_t length)
+    void PMM::ReclaimBootMemory()
     {
-        if (base < 4 * GiB)
-        {
-            size_t runover = 0;
-            if (base + length > 4 * GiB)
-            {
-                runover = (base + length) - (4 * GiB);
-                length -= runover;
-            }
+        auto mmapResp = Boot::memmapRequest.response;
+        size_t totalLength = 0; //not needed here, I'm just being vain.
 
-            InsertRegion(zones[0], base, length);
-            if (runover > 0)
-                InsertRegion(zones[1], base + length, runover);
+        //when reclaiming the bootloader memory we need our own copy of the memory map
+        //(or at least the entries we care about) since the memory map is inside the regions
+        //we're reclaiming - which may be overwritten with control data for the PMM.
+        //So we make a copy of the reclaimable memory map entries on the stack and use that.
+        size_t entryCount = 0;
+        limine_memmap_entry entriesStore[mmapResp->entry_count];
+        limine_memmap_entry* entries[mmapResp->entry_count];
+        for (size_t i = 0; i < mmapResp->entry_count; i++)
+        {
+            if (mmapResp->entries[i]->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
+                continue;
+
+            entriesStore[entryCount] = *mmapResp->entries[i];
+            entries[entryCount] = entriesStore + entryCount;
+            totalLength += entries[entryCount]->length;
+            entryCount++;
         }
-        else
-            InsertRegion(zones[1], base, length);
+
+        IngestMemory(entryCount, entries, 0);
+        auto conv = sl::ConvertUnits(totalLength, sl::UnitBase::Binary);
+        Log("Bootloader memory reclaimed: %lu.%lu %sB (%lu entries)", LogLevel::Info,
+            conv.major, conv.minor, conv.prefix, entryCount);
     }
 
-    PageInfo* PMM::Lookup(uintptr_t pfn)
+    PageInfo* PMM::Lookup(uintptr_t physAddr)
     {
-        PmZone* zone = nullptr;
-
-        for (size_t i = 0; i < PmZonesCount; i++)
+        for (PmInfoSegment* scan = segments; scan != nullptr; scan = scan->next)
         {
-            if (pfn < zones[i].head->base)
+            if (physAddr < scan->base || physAddr >= scan->base + scan->length)
                 continue;
-            if (pfn >= zones[i].tail->base + zones[i].tail->totalPages * PageSize)
-                continue;
-            zone = &zones[i];
-            break;
-        }
-        
-        if (zone == nullptr)
-            return nullptr;
 
-        for (PmRegion* region = zone->head; region != nullptr; region = region->next)
-        {
-            if (pfn < region->base || pfn >= region->base + region->totalPages * PageSize)
-                continue;
-            
-            const size_t index = (pfn - region->base) / sizeof(PageInfo);
-            return &region->infoBuffer[index];
+            const size_t index = (physAddr - scan->base) / PageSize;
+            return scan->info + index;
         }
 
-        Log("Failed to get page info for physical address 0x%lx", LogLevel::Error, pfn);
         return nullptr;
-    }
-
-    uintptr_t PMM::AllocLow(size_t count)
-    {
-        if (count == 0)
-            return 0;
-        
-        uintptr_t where = 0;
-        PmRegion* region = zones[0].head;
-        while (region != nullptr)
-        {
-            where = RegionAlloc(*region, count);
-            if (where != 0)
-            {
-                zones[0].totalUsed.Add(count, sl::Relaxed);
-                return where;
-            }
-            region = region->next;
-        }
-
-        ASSERT_UNREACHABLE(); //completely failed to allocate
     }
 
     uintptr_t PMM::Alloc(size_t count)
     {
         if (count == 0)
             return 0;
-        
-        uintptr_t where = 0;
-        PmRegion* region = zones[1].head;
-        while (region != nullptr)
-        {
-            where = RegionAlloc(*region, count);
-            if (where != 0)
+        if (count == 1)
+       {
+            sl::ScopedLock scopeLock(freelist.lock);
+            auto freeEntry = freelist.head;
+            ASSERT_(freeEntry != nullptr);
+
+            if (freeEntry->runLength > 1)
             {
-                zones[1].totalUsed.Add(count, sl::Relaxed);
-                return where;
+                const uintptr_t nextHead = reinterpret_cast<uintptr_t>(freeEntry) + PageSize;
+                freelist.head = reinterpret_cast<PmFreeEntry*>(nextHead);
+                freelist.head->runLength = freeEntry->runLength - 1;
+                freelist.head->next = freeEntry->next;
             }
-            region = region->next;
+            else
+                freelist.head = freeEntry->next;
+            return reinterpret_cast<uintptr_t>(freeEntry) - hhdmBase;
         }
-        return AllocLow(count);
+
+        for (PmContigZone* zone = zones; zone != nullptr; zone = zone->next)
+        {
+            size_t runningCount = 0;
+            size_t runStartIndex = 0;
+
+            sl::ScopedLock zoneLock(zone->lock);
+            for (size_t i = 0; i < zone->count; i++)
+            {
+                if (sl::BitmapGet(zone->bitmap, i))
+                {
+                    runningCount = 0;
+                    continue;
+                }
+
+                if (runningCount == 0)
+                    runStartIndex = i;
+                runningCount++;
+                if (runningCount == count)
+                    break;
+            }
+
+            if (runningCount != count)
+                continue;
+
+            for (size_t i = runStartIndex; i < runStartIndex + count; i++)
+                sl::BitmapSet(zone->bitmap, i);
+            return zone->base + (runStartIndex * PageSize);
+        }
+
+        return 0;
     }
 
     void PMM::Free(uintptr_t base, size_t count)
     {
-        if ((base & 0xFFF) != 0)
-        {
-            Log("Misaligned PMM free at address 0x%016lx.", LogLevel::Warning, base);
-            base &= ~0xFFFul;
-        }
-
         if (base == 0 || count == 0)
             return;
-        
-        PmZone& zone = (base >= 4 * GiB) ? zones[1] : zones[0];
-        PmRegion* searchStart = zone.head;
-        while (searchStart != nullptr)
+        if ((base & (PageSize - 1)) != 0)
         {
-            const uintptr_t regionTop = searchStart->base + searchStart->totalPages * PageSize;
-            if (base < searchStart->base)
-                break; //we've gone too far.
-            if (base > regionTop)
-            {
-                searchStart = searchStart->next;
-                continue; //but not far enough.
-            }
-            
-            sl::ScopedLock regionLock(searchStart->lock);
-            const size_t index = (base - searchStart->base) / PageSize;
+            Log("Free of misaligned physical address: 0x%lx", LogLevel::Error, base);
+            base = base & ~(PageSize - 1);
+        }
+
+        /* If the freelist cant satisfy a single-page allocation, the pmm will use a contiguous zone,
+         * so we cant blindly put pages back into the freelist as they may have come from a contig zone.
+         * Fortunately its quite cheap to check this as we know the bounds of each contig zone,
+         * and on most systems there should only be 1 zone anyway.
+         */
+        for (PmContigZone* zone = zones; zone != nullptr; zone = zone->next)
+        {
+            if (base < zone->base || base >= zone->base + (zone->count * PageSize))
+                continue;
+
+            const size_t beginIndex = (base - zone->base) / PageSize;
+            sl::ScopedLock scopeLock(zone->lock);
             for (size_t i = 0; i < count; i++)
             {
-                if (!searchStart->infoBuffer[index + i].flags.HasBits(PmFlags::Used))
-                    Log("Double free attempted in PMM at address 0x%016lx.", LogLevel::Error, base + (i + index) * PageSize);
-                else
-                    searchStart->infoBuffer[index + i].flags.ClearBits(PmFlags::Used);
+                if (!sl::BitmapClear(zone->bitmap, beginIndex + i))
+                    Log("Double free of physical page 0x%lx", LogLevel::Error, base + (i * PageSize));
             }
-            
-            zone.totalUsed.Sub(count, sl::Relaxed);
             return;
         }
 
-        Log("Cannot free %lu physical pages at %016lx", LogLevel::Error, count, base);
+        if (count != 1)
+        {
+            Log("Free of %lu physical pages at 0x%lx from unknown contiguous zone", LogLevel::Error,
+                count, base);
+            return;
+        }
+
+        //TOOD: PMM accounting, allow setting of a flag that checks ALL phys addresses freed, by scanning the 
+        //info segment mappings - rather than adding straight to the freelist. Would be slow, but useful for debugging.
+        auto freeEntry = reinterpret_cast<PmFreeEntry*>(base + hhdmBase);
+        freeEntry->runLength = 1;
+
+        sl::ScopedLock scopeLock(freelist.lock);
+        freeEntry->next = freelist.head;
+        freelist.head = freeEntry;
     }
 }

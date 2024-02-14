@@ -96,27 +96,7 @@ namespace Npk
 
     void ReclaimMemoryThread(void*)
     {
-        //since the memory map is contained within the memory we're going to reclaim,
-        //we'll need our own copy.
-        limine_memmap_entry reclaimEntries[Boot::memmapRequest.response->entry_count];
-        size_t reclaimCount = 0;
-        size_t reclaimAmount = 0;
-
-        for (size_t i = 0; i < Boot::memmapRequest.response->entry_count; i++)
-        {
-            if (Boot::memmapRequest.response->entries[i]->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
-                continue;
-            reclaimEntries[reclaimCount++] = *Boot::memmapRequest.response->entries[i];
-            reclaimAmount += reclaimEntries[reclaimCount - 1].length;
-        }
-
-        for (size_t i = 0; i < reclaimCount; i++)
-            PMM::Global().IngestMemory(reclaimEntries[i].base, reclaimEntries[i].length);
-
-        auto reclaimConv = sl::ConvertUnits(reclaimAmount, sl::UnitBase::Binary);
-        Log("Reclaimed %lu.%lu %sB (%lu entries) of bootloader memory.", LogLevel::Info, 
-            reclaimConv.major, reclaimConv.minor, reclaimConv.prefix, reclaimCount);
-
+        PMM::Global().ReclaimBootMemory();
         Tasking::Thread::Current().Exit(0);
     }
 

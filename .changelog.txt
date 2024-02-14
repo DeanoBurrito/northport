@@ -41,6 +41,9 @@
     - FileCaches (used to store a file's contents in memory) can be located by a file's VfsId.
 - VFS is exposed via kernel module API.
 
+- PMM rewrite: the previous PMM had grown organically overtime, this iteration is a fresh implemenation with current goals in-mind.
+    - Its external functionality is mostly the same as the previous one.
+
 - Fixed message string not making it through panic sequence properly.
 - Fixed misalignment bug when loading driver metadata causing entrypoint to sometimes be wrong.
 - Fixed incorrect calculation of resident set size in AnonVmDriver.

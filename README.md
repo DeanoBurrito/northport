@@ -1,6 +1,7 @@
 ![Huge stylish northport banner](docs/images/banner.png)
 
 ![All builds CI badge](https://github.com/DeanoBurrito/northport/actions/workflows/build-tests.yml/badge.svg) ![](https://tokei.rs/b1/github/DeanoBurrito/northport?category=code)
+![Latest Release Version](https://img.shields.io/github/v/tag/deanoburrito/northport?label=Latest%20Release&style=plastic)
 
 Northport is a monolithic kernel, written in C++ and booted via the Limine protocol. It currently supports x86_64 and riscv64 machines. This repo also contains a completely standalone support library (see `libs/np-syslib`).
 
@@ -17,20 +18,23 @@ A brief summary of the current goals and features are listed below, or check [th
 
 An extended goal (previously goal #5) is to add a comfortable user experience: a window manager, basic programs like a text editor and file explorer.
 
-## Project Features
+## Current Project Features
 Kernel:
 - Support for multiple architectures: riscv64, x86_64.
 - Memory management:
-    - PMM with a fast path for single page allocations (freelist), and a slow path for allocations with imposed limits (required by some drivers).
+    - Hybrid PMM, freelist for single page allocations and a slow path for allocations with constraints.
     - Modular and portable VMM, with demand paging options for anon and vfs backed memory. Inspired by the old SunOS design.
     - General purpose heap provided by slabs for smaller objects and a freelist for larger objects. Slab allocation can be accelerated by core-local caches, and several debug features are available.
-- Logging infrastructure: fast and lock-free with support for several early outputs (uart chips, debugcon) and a built-in graphical terminal (based on gterm from the Limine bootloader).
+- Logging infrastructure: fast and mostly lock-free with support for several early outputs (uart chips, debugcon) and a built-in graphical terminal (based on gterm from the Limine bootloader).
     - Panic sequence with stack walker and symbol lookup.
 - Global software clock, driven by a number of supported hardware timers: LAPIC, TSC, HPET, PIT, SBI timer.
 - SMP-aware scheduler: round robin with per-core queues, work stealing and DPCs.
-- VFS with a robust tempfs driver. File contents are sparsely cached in a global file cache.
-- Loadable drivers and device management, partially automated by a device tree parser and PCI enumeration.
-    - Notable drivers include: NVMe, virtio devices.
+- VFS with a robust tempfs driver, and full API for drivers.
+    - File contents are sparsely cached (as needed) in a page cache.
+    - File metadata and VFS nodes are also cached as needed.
+- Driver management: with the exception of timers and interrupt controllers, all device functionality is provided by loadable kernel modules:
+    - Drivers are organised in a tree-like structure, allowing parent drivers to provide functionality (like transport I/O) to child drivers.
+    - Notable drivers include: pci(e), some VirtIO devices and NVMe.
 - Optional UB sanitizer, helpful for detecting bugs or increasing code size!
 
 Build System:
@@ -38,11 +42,21 @@ Build System:
 - Xorriso is needed for generating bootable isos.
 
 ## Glorious Screenshots
+![](https://github.com/DeanoBurrito/northport/assets/12033165/4ae74153-07c7-4896-846d-ead44fc956fe)
+*14/02/2024: Status bar showing virtual memory and driver statistics*
+
+![](https://github.com/DeanoBurrito/northport/assets/12033165/bc3cb9a0-5911-46a0-9837-e76a1f9ea86d)
+*14/02/2024: Device node tree being printed shortly after adding the IO manager.*
+
+<details>
+<summary>Older Screenshots</summary>
+
 ![](https://github.com/DeanoBurrito/northport/assets/12033165/95c61e2b-3c8e-435c-8ee4-6e066e29fb0a)
 *11/10/2023: Kernel panic while loading a malformed driver from the initdisk.*
 
-![Screenshot_20221120_215230](https://user-images.githubusercontent.com/12033165/202898511-7e10e72c-6cfa-4f30-b7a5-3173dac36199.png)
+![](https://user-images.githubusercontent.com/12033165/202898511-7e10e72c-6cfa-4f30-b7a5-3173dac36199.png)
 *20/11/2022: x86 and riscv kernels running side by side in qemu.*
+</details>
 
 # Related Projects
 - [DreamOS64](https://github.com/dreamos82/Dreamos64): another 64-bit OS by one of the northport contributors, [Ivan G](https://github.com/dreamos82). 
