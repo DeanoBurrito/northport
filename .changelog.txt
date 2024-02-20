@@ -51,6 +51,9 @@
 - Fixed bug in pool heap which assumed that new regions of virtual memory were allocated with ascending base addresses.
 - Moved nanoprintf from kernel to syslib, so the same implementation is available to drivers. Previously we have separate versions per-program.
     - Nanoprintf implementation also updated to use the latest upstream version, at time of writing.
+    - This includes upstreamed fix for dereferencing null strings when passed a length of 0.
+
+- Updated to use latest limine binary branch (v7).
 
 # v0.2.0
 - Updated to use limine v5:
