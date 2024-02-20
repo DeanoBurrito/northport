@@ -41,7 +41,7 @@ namespace QemuVga
         summaryString.data = builtinSummary;
     }
 
-    bool GraphicsAdaptor::Init(const npk_event_new_device* event)
+    bool GraphicsAdaptor::Init(const npk_event_add_device* event)
     {
         const npk_init_tag* scan = event->tags;
         while (scan != nullptr)

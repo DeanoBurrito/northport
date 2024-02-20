@@ -11,6 +11,10 @@ namespace Pci
     bool BeginOp(npk_device_api* api, npk_iop_context* context, npk_iop_frame* iop_frame)
     {
         auto segment = static_cast<PciSegment*>(api->driver_data);
+        if (iop_frame->addr % 4 != 0)
+            return false;
+        if (iop_frame->length != 4)
+            return false;
         //TODO: support variable-sized and misaligned operations, a base-level driver like this should be flexible!
 
         sl::NativePtr buffPtr = iop_frame->buffer;
@@ -84,7 +88,7 @@ namespace Pci
         descriptor->load_names = names;
         descriptor->driver_data = addr;
 
-        sl::String name = PciClassToName(vendor);
+        sl::String name = PciClassToName(vendor, type);
         if (name.IsEmpty())
         {
             const size_t nameLen = npf_snprintf(nullptr, 0, NameFormatStr, id, bus,

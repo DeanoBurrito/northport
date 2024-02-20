@@ -87,8 +87,8 @@ typedef struct
 
 typedef enum
 {
-    Ecam,
-    X86PortIo,
+    Ecam = 0,
+    X86PortIo = 1,
 } npk_pci_host_type;
 
 typedef struct
@@ -112,6 +112,9 @@ typedef enum
     DtbCompat = 5,
 } npk_load_type;
 
+#define NPK_PCI_ID_LOAD_STR(vendor, device) { ((vendor) >> 16) & 0xFF, (vendor) & 0xFF, ((device) >> 16) & 0xFF, (device) & 0xFF }
+#define NPK_PCI_CLASS_LOAD_STR(cl, subcl, iface) { cl, subcl, iface }
+
 typedef enum
 {
     Init = 0,
@@ -124,7 +127,7 @@ typedef struct
 {
     const npk_init_tag* tags;
     npk_handle descriptor_id;
-} npk_event_new_device;
+} npk_event_add_device;
 
 typedef struct
 {

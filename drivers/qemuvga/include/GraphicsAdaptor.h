@@ -39,7 +39,7 @@ namespace QemuVga
         void RegenSummary();
 
     public:
-        bool Init(const npk_event_new_device* event);
+        bool Init(const npk_event_add_device* event);
         
         [[gnu::always_inline]]
         inline npk_framebuffer_mode GetMode()

@@ -6,5 +6,5 @@
 namespace Pci
 {
     void InitNameLookup();
-    sl::String PciClassToName(uint32_t id);
+    sl::String PciClassToName(uint32_t id, uint32_t pciClass);
 }

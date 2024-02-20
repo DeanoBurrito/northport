@@ -10,12 +10,13 @@ bool ProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
     {
+    case npk_event_type::Init:
+        Pci::InitNameLookup();
+        return true;
+
     case npk_event_type::AddDevice:
         {
-            //ensure we've tried to open the ids file.
-            Pci::InitNameLookup();
-
-            auto event = static_cast<const npk_event_new_device*>(arg);
+            auto event = static_cast<const npk_event_add_device*>(arg);
             auto& segment = pciSegments.EmplaceBack();
 
             const npk_init_tag* scan = event->tags;

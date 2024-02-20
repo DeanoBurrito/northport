@@ -130,7 +130,8 @@ namespace Npk::Drivers
 
         Log("Loaded driver %s: processEvent=%p", LogLevel::Info, manifest->friendlyName.C_Str(),  manifest->ProcessEvent);
         stats.loadedCount++;
-        //TODO: send INIT event to driver
+
+        ASSERT_(manifest->ProcessEvent(EventType::Init, nullptr));
         return true;
     }
 
@@ -153,7 +154,7 @@ namespace Npk::Drivers
 
         auto prevShadow = GetShadow();
         SetShadow(instance);
-        npk_event_new_device event;
+        npk_event_add_device event;
         const auto* api = device->apiDesc;
         event.tags = api->init_data;
         event.descriptor_id = device->id;

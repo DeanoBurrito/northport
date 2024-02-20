@@ -39,7 +39,6 @@ namespace Npk::Memory::Virtual
         const size_t mapLength = sl::Min(FaultMaxMapAhead, context.range.Top() - where);
         const uintptr_t mappingOffset = where - context.range.base;
 
-        sl::ScopedLock scopeLock(context.lock);
         auto cachePart = GetFileCacheUnit(cache, where - context.range.base + link->fileOffset);
         VALIDATE_(cachePart.Valid(), { .goodFault = false });
 
@@ -51,6 +50,7 @@ namespace Npk::Memory::Virtual
                 VALIDATE_(cachePart.Valid(), { .goodFault = false });
             }
 
+            sl::ScopedLock scopeLock(context.lock);
             Map(context.map, context.range.base + mappingOffset + i, cachePart->physBase + ((i + mappingOffset + link->fileOffset) % fcInfo.unitSize), 
                 fcInfo.hatMode, hatFlags, false);
             context.stats.fileResidentSize += granuleSize;
@@ -154,13 +154,13 @@ namespace Npk::Memory::Virtual
 
         const HatFlags hatFlags = ConvertFlags(context.range.flags);
 
-        sl::ScopedLock scopeLock(context.lock);
         for (size_t i = 0; i < context.range.length; i += granuleSize)
         {
             auto handle = GetFileCacheUnit(cache, arg->offset + i);
             if (!handle.Valid())
                 break;
 
+            sl::ScopedLock scopeLock(context.lock);
             Map(context.map, context.range.base + i, handle->physBase + (i % fcInfo.unitSize), 
                 query.hatMode, hatFlags, false);
             context.stats.fileResidentSize += granuleSize;
