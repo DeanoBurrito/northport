@@ -9,15 +9,15 @@ namespace Npk::Debug
 {
     static SymbolFlag ClassifySymbol(const sl::Elf64_Sym& sym)
     {
-        if ((sym.st_info & 0xF) == sl::STT_FUNC)
-        {
-            if (((sym.st_info >> 4) & 0xF) == sl::STB_LOCAL)
-                return SymbolFlag::Private;
-            else
-                return SymbolFlag::Public;
-        }
-        else
+        if (ELF64_ST_TYPE(sym.st_info) != sl::STT_FUNC)
             return SymbolFlag::NonFunction;
+
+        const auto visibility = ELF64_ST_VISIBILITY(sym.st_other);
+        if (visibility == sl::STV_HIDDEN || visibility == sl::STV_INTERNAL)
+            return SymbolFlag::Private;
+        if (visibility == sl::STV_DEFAULT && ELF64_ST_BIND(sym.st_info) == sl::STB_LOCAL)
+            return SymbolFlag::Private;
+        return SymbolFlag::Public;
     }
 
     void ProcessElfSymbolTables(sl::NativePtr file, SymbolRepo& repo, uintptr_t loadBase)

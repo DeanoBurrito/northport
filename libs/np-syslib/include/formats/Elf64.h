@@ -131,6 +131,11 @@ namespace sl
         Elf64_Xword st_size;
     };
 
+#define ELF64_ST_BIND(i) ((i) >> 4)
+#define ELF64_ST_TYPE(i) ((i) & 0xF)
+#define ELF64_ST_INFO(b, t) (((b) << 4) + ((t) & 0xF))
+#define ELF64_ST_VISIBILITY(o) ((o) & 0x3)
+
     constexpr static Elf64_UnsignedChar STB_LOCAL = 0;
     constexpr static Elf64_UnsignedChar STB_GLOBAL = 1;
     constexpr static Elf64_UnsignedChar STB_WEAK = 2;
@@ -148,6 +153,11 @@ namespace sl
     constexpr static Elf64_UnsignedChar STT_HIOS = 12;
     constexpr static Elf64_UnsignedChar STT_LOPROC = 13;
     constexpr static Elf64_UnsignedChar STT_HIPROC = 15;
+
+    constexpr static Elf64_UnsignedChar STV_DEFAULT = 0;
+    constexpr static Elf64_UnsignedChar STV_INTERNAL = 1;
+    constexpr static Elf64_UnsignedChar STV_HIDDEN = 2;
+    constexpr static Elf64_UnsignedChar STV_PROTECTED = 3;
 
     struct [[gnu::packed]] Elf64_Rel
     {

@@ -1,13 +1,14 @@
 #include <drivers/DriverManager.h>
 #include <debug/Log.h>
 #include <interfaces/driver/Drivers.h>
+#include <interfaces/Helpers.h>
 
 extern "C"
 {
     using namespace Npk;
     using namespace Npk::Drivers;
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     npk_handle npk_add_device_desc(REQUIRED OWNING npk_device_desc* descriptor, bool as_child)
     {
         VALIDATE_(descriptor != nullptr, NPK_INVALID_HANDLE);
@@ -15,7 +16,7 @@ extern "C"
         return DriverManager::Global().AddDescriptor(descriptor);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_remove_device_desc(npk_handle which, OPTIONAL void** driver_data)
     {
         const auto result = DriverManager::Global().RemoveDescriptor(which);

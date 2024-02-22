@@ -37,12 +37,12 @@ include misc/cross/$(CPU_ARCH)/CrossConfig.mk
 
 # Platform-agnostic compiler and linker flags for the kernel and drivers
 export KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fno-pic -fno-pie \
-	-fno-omit-frame-pointer -ffreestanding -std=c++17 -fno-rtti -fno-exceptions \
-	-fsized-deallocation -fno-unwind-tables -fno-asynchronous-unwind-tables -Iinclude \
-	-DNP_CLOCK_MS=$(CLOCK_TICK_MS)ul -DNP_KERNEL 
+	-fno-omit-frame-pointer -ffreestanding -fvisibility=hidden \
+	-std=c++17 -fno-rtti -fno-exceptions -fsized-deallocation -fno-unwind-tables \
+	-fno-asynchronous-unwind-tables -Iinclude -DNP_CLOCK_MS=$(CLOCK_TICK_MS)ul -DNP_KERNEL 
 export KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
-export SYSLIB_CXX_FLAGS += 
+export SYSLIB_CXX_FLAGS += -fvisibility=default
 export DRIVER_CXX_FLAGS += -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -ffreestanding -fPIC -fvisibility=hidden \
 	-I$(PROJ_ROOT_DIR)/kernel/include -I$(PROJ_ROOT_DIR)/libs/np-syslib/include \

@@ -1,12 +1,13 @@
 #include <filesystem/Filesystem.h>
 #include <debug/Log.h>
 #include <interfaces/driver/Filesystem.h>
+#include <interfaces/Helpers.h>
 
 extern "C"
 {
     using namespace Npk::Filesystem;
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     npk_fs_id npk_fs_lookup(npk_string path)
     {
         VALIDATE_(path.data != nullptr, {});
@@ -19,7 +20,7 @@ extern "C"
         return { .device_id = found->driverId, .node_id = found->vnodeId };
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     npk_string npk_fs_get_path(npk_fs_id id)
     {
         VALIDATE_(id.device_id != 0 && id.node_id != 0, {});
@@ -32,7 +33,7 @@ extern "C"
         return string;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_fs_mount(npk_fs_id mountpoint, npk_handle fs_driver_id)
     {
         VALIDATE_(mountpoint.device_id != 0 && mountpoint.node_id != 0, false);
@@ -42,7 +43,7 @@ extern "C"
             fs_driver_id);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_fs_create(REQUIRED npk_fs_id* new_id, npk_fs_id dir, npk_fsnode_type type, npk_string name)
     {
         VALIDATE_(new_id != nullptr, false);
@@ -59,15 +60,15 @@ extern "C"
         return true;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_fs_remove(npk_fs_id node)
     {
-        ASSERT_UNREACHABLE();
+        ASSERT_UNREACHABLE(); (void)node;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_fs_find_child(REQUIRED npk_fs_id* found_id, npk_fs_id dir, npk_string name)
     {
-        ASSERT_UNREACHABLE();
+        ASSERT_UNREACHABLE(); (void)found_id; (void)dir; (void)name;
     }
 }

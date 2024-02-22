@@ -1,15 +1,18 @@
 #include <stddef.h>
 #include <memory/Heap.h>
+#include <interfaces/Helpers.h>
 
 using Npk::Memory::Heap;
 
 extern "C"
 {
+    DRIVER_API_FUNC
     void* malloc(size_t size)
     {
         return Heap::Global().Alloc(size);
     }
 
+    DRIVER_API_FUNC
     void free(void* ptr, size_t length)
     {
         Heap::Global().Free(ptr, length);

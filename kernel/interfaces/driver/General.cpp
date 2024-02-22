@@ -1,12 +1,14 @@
 #include <debug/Log.h>
 #include <drivers/DriverManager.h>
 #include <interfaces/driver/Api.h>
+#include <interfaces/Helpers.h>
+#include <stdarg.h>
 
 extern "C"
 {
     using namespace Npk;
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void npk_log(REQUIRED const char* str, npk_log_level level)
     {
         auto driver = Drivers::DriverManager::Global().GetShadow();
@@ -15,7 +17,7 @@ extern "C"
         Log("(driver:%s) %s", static_cast<LogLevel>(level), driver->manifest->friendlyName.C_Str(), str);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void npk_panic(REQUIRED const char* why)
     {
         Panic(why);

@@ -1,4 +1,5 @@
 #include <interfaces/driver/Memory.h>
+#include <interfaces/Helpers.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <memory/Heap.h>
@@ -7,25 +8,25 @@ extern "C"
 {
     using namespace Npk;
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void* npk_heap_alloc(size_t count)
     {
         return Memory::Heap::Global().Alloc(count);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void npk_heap_free(void* ptr, size_t count)
     {
         Memory::Heap::Global().Free(ptr, count);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     uintptr_t npk_hhdm_base()
     {
         return hhdmBase;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     uintptr_t npk_pm_alloc(OPTIONAL npk_pm_limits* limits)
     {
         ASSERT_(limits == nullptr);
@@ -33,7 +34,7 @@ extern "C"
         return PMM::Global().Alloc();
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     uintptr_t npk_pm_alloc_many(size_t count, OPTIONAL npk_pm_limits* limits)
     {
         ASSERT_(limits == nullptr); //TODO: support me!
@@ -41,21 +42,21 @@ extern "C"
         return PMM::Global().Alloc(count);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_pm_free(uintptr_t paddr)
     {
         PMM::Global().Free(paddr);
         return true;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_pm_free_many(uintptr_t paddr, size_t count)
     {
         PMM::Global().Free(paddr, count);
         return true;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void* npk_vm_alloc(size_t length, void* arg, npk_vm_flags flags, OPTIONAL npk_vm_limits* limits)
     {
         ASSERT_(limits == nullptr); //TODO: support
@@ -65,13 +66,13 @@ extern "C"
         return maybeArg.HasValue() ? reinterpret_cast<void*>(*maybeArg) : nullptr;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_vm_free(void* vm_ptr)
     {
         return VMM::Kernel().Free(reinterpret_cast<uintptr_t>(vm_ptr));
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_vm_acquire_mdl(REQUIRED npk_mdl* mdl, void* vaddr, size_t length)
     {
         if (mdl == nullptr)
@@ -99,13 +100,13 @@ extern "C"
         return true;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void npk_vm_release_mdl(void* vaddr)
     {
         VMM::Kernel().ReleaseMdl(reinterpret_cast<uintptr_t>(vaddr));
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_vm_get_flags(void* vm_ptr, REQUIRED npk_vm_flags* flags)
     {
         if (flags == nullptr)
@@ -119,13 +120,13 @@ extern "C"
         return true;
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_vm_set_flags(void* vm_ptr, npk_vm_flags flags)
     {
         ASSERT_UNREACHABLE();
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     bool npk_vm_split(void* vm_ptr, REQUIRED uintptr_t* offset)
     {
         ASSERT_UNREACHABLE();
