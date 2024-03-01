@@ -27,14 +27,7 @@ namespace sl
             if (ptr == nullptr)
                 return;
 
-            const unsigned count = --(ptr->references);
-            if (count > 0)
-                return;
-
-            if (Dtor != nullptr)
-                Dtor(ptr);
-            else
-                delete ptr;
+            Release();
         }
 
         Handle(const Handle& other)
@@ -47,7 +40,7 @@ namespace sl
         Handle& operator=(const Handle& other)
         {
             if (ptr != nullptr)
-                ptr->references--;
+                Release();
 
             ptr = other.ptr;
             if (ptr != nullptr)
@@ -64,11 +57,24 @@ namespace sl
         Handle& operator=(Handle&& from)
         {
             if (ptr != nullptr)
-                ptr->references--;
+                Release();
             
             ptr = from.ptr;
             from.ptr = nullptr;
             return *this;
+        }
+
+        void Release()
+        {
+            const unsigned count = --(ptr->references);
+            if (count > 0)
+                return;
+
+            if (Dtor != nullptr)
+                Dtor(ptr);
+            else
+                delete ptr;
+            ptr = nullptr;
         }
 
         constexpr operator bool() const

@@ -14,35 +14,19 @@ namespace sl
         constexpr IntPtr() : raw(0) {}
         constexpr IntPtr(BackingType r) : raw(r) {}
         constexpr IntPtr(void* p) : ptr(p) {}
+        constexpr IntPtr(const void* p) = delete;
         constexpr IntPtr(decltype(nullptr)) : ptr(nullptr) {}
 
-        [[gnu::deprecated("Potentially casting away 'const' from pointed-at value //TODO:")]]
-        constexpr IntPtr(const void* p) : raw((uintptr_t)p) {}
-
-        //type safety is thrown to the wind here with reinterpret cast, but we've too cool for that.
-        //NOTE: we are not.
         template <typename AsType>
-        constexpr AsType* As()
+        constexpr AsType* As() const
         {
             return reinterpret_cast<AsType*>(ptr);
         }
 
         template <typename AsType>
-        constexpr AsType* As(const size_t byteOffset)
-        {
-            return reinterpret_cast<AsType*>((void*)(raw + byteOffset));
-        }
-
-        template <typename AsType>
-        constexpr AsType* As() const
-        {
-            return reinterpret_cast<const AsType*>(ptr);
-        }
-
-        template <typename AsType>
         constexpr AsType* As(const size_t byteOffset) const
         {
-            return reinterpret_cast<const AsType*>((void*)(raw + byteOffset));
+            return reinterpret_cast<AsType*>((void*)(raw + byteOffset));
         }
 
         constexpr IntPtr<BackingType> Offset(size_t offset) const
@@ -82,5 +66,39 @@ namespace sl
         }
     };
 
+    template <typename BackingType>
+    union ConstIntPtr
+    {
+        BackingType raw;
+        const void* ptr;
+
+        constexpr ConstIntPtr() : raw(0) {}
+        constexpr ConstIntPtr(BackingType r) : raw(r) {}
+        constexpr ConstIntPtr(const void* p) : ptr(p) {}
+        constexpr ConstIntPtr(decltype(nullptr)) : ptr(nullptr) {}
+
+        template <typename AsType>
+        constexpr const AsType* As() const
+        {
+            return reinterpret_cast<const AsType*>(ptr);
+        }
+
+        template <typename AsType>
+        constexpr const AsType* As(const size_t byteOffset) const
+        {
+            return reinterpret_cast<const AsType*>((void*)(raw + byteOffset));
+        }
+
+        constexpr ConstIntPtr<BackingType> Offset(size_t offset) const
+        { return ConstIntPtr(raw + offset); }
+
+        template<typename Word>
+        Word Read() const
+        {
+            return *reinterpret_cast<const volatile Word*>(ptr);
+        }
+    };
+
     using NativePtr = IntPtr<uintptr_t>;
+    using CNativePtr = ConstIntPtr<uintptr_t>;
 }

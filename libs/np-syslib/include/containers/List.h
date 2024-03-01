@@ -50,7 +50,7 @@ namespace sl
             void PushBack(T* value)
             {
                 value->next = nullptr;
-                if (tail == nullptr)
+                if (Empty())
                     head = value;
                 else
                     tail->next = value;
@@ -61,9 +61,11 @@ namespace sl
             {
                 if (head == nullptr)
                     return nullptr;
+
                 T* temp = head;
                 head = head->next;
-                if (head == nullptr)
+
+                if (Empty())
                     tail = nullptr;
                 return temp;
             }
@@ -71,15 +73,13 @@ namespace sl
             void InsertAfter(Iterator it, T* value)
             {
                 if (it == End())
-                {
-                    T* scan = head;
-                    while (scan->next != End())
-                        scan = scan->next;
-                    it = scan;
-                }
+                    return PushBack(value);
 
-                value->next = nullptr;
+                value->next = it->next;
                 it->next = value;
+                
+                if (it == tail)
+                    tail = value;
             }
 
             T* EraseAfter(Iterator it)

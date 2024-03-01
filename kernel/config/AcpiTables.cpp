@@ -102,7 +102,7 @@ namespace Npk::Config
     {
         ASSERT(rhct != nullptr, "RHCT is null");
 
-        sl::NativePtr scan = rhct;
+        sl::CNativePtr scan = rhct;
         const uintptr_t rhctEnd = scan.raw + rhct->length;
         scan = scan.Offset(rhct->nodesOffset);
 

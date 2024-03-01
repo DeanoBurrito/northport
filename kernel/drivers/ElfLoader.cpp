@@ -111,7 +111,7 @@ namespace Npk::Drivers
 
         for (size_t offset = 0; offset < dynInfo.pltRelocsSize; offset += offsetIncrement)
         {
-            auto rel = sl::NativePtr(dynInfo.pltRelocs).Offset(offset).As<const sl::Elf64_Rel>();
+            auto rel = sl::CNativePtr(dynInfo.pltRelocs).Offset(offset).As<const sl::Elf64_Rel>();
             auto symbolName = dynInfo.strTable + dynInfo.symTable[ELF64_R_SYM(rel->r_info)].st_name;
             const size_t nameLen = sl::memfirst(symbolName, 0, 0);
 

@@ -71,7 +71,7 @@ namespace Npk
             }
 
             ASSERT(found != nullptr, "Could not find hart's RHCT info node");
-            sl::NativePtr rhctAccess = rhct;
+            sl::CNativePtr rhctAccess = rhct;
             for (size_t i = 0; i < found->offsetCount; i++)
             {
                 const RhctNode* node = rhctAccess.Offset(found->offsets[i]).As<RhctNode>();

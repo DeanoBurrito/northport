@@ -232,7 +232,7 @@ namespace Npk
         ASSERT(maybeMadt, "MADT not found: cannot initialize IO APIC.");
         const Config::Madt* madt = static_cast<const Config::Madt*>(*maybeMadt);
 
-        sl::NativePtr scan = madt->sources;
+        sl::CNativePtr scan = madt->sources;
         while (scan.raw < (uintptr_t)madt + madt->length)
         {
             const Config::MadtSource* sourceBase = scan.As<Config::MadtSource>();
