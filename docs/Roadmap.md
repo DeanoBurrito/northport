@@ -29,7 +29,7 @@
         - [x] Memory Management:
             - [x] PMM with multiple zones.
                 - [x] Reclaim bootloader memory.
-                - [ ] Hybrid freelist/bitmap.
+                - [x] Hybrid freelist/bitmap.
                 - [ ] Hotplug support.
                 - [ ] NUMA-aware allocations.
             - [x] VMM, driver based.
@@ -93,6 +93,7 @@
     - [x] PCI.
         - [ ] PCIe and error reporting support.
         - [ ] Power management.
+        - [x] Pci.ids file support.
     - [ ] x86 jank: ps2 peripherals.
     - [x] Bochs/qemu VGA.
     - [ ] AHCI.

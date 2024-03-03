@@ -7,7 +7,6 @@
 #include <memory/Vmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Thread.h>
-#include <tasking/Process.h>
 #include <containers/Queue.h>
 #include <NanoPrintf.h>
 #include <Locks.h>
@@ -97,42 +96,42 @@ namespace Npk::Debug
         //TODO: disable scheduler pre-emption here while we have reserved buffer space, but havent added it to the message queue.
         //we allocate space for message data and the queue item in the same go
         const size_t allocLength = messageLen + 2 * sizeof(QueueItem);
-        const size_t beginWrite = __atomic_fetch_add(&buffer->head, allocLength, __ATOMIC_SEQ_CST) % buffer->length;
+        const size_t allocBegin = __atomic_fetch_add(&buffer->head, allocLength, __ATOMIC_SEQ_CST) % buffer->length;
         
         uintptr_t itemAddr = 0;
-        size_t messageBegin = beginWrite;
-        if (beginWrite + allocLength > buffer->length)
+        size_t messageBegin = allocBegin;
+        if (allocBegin + allocLength > buffer->length)
         {
-            //we're going to wrap around, this is fine for message text but not for the queue struct,
-            //as it needs to be contiguous in memory.
-            size_t endLength = (beginWrite + allocLength) - buffer->length;
-            size_t startLength = allocLength - endLength;
+            //determine whether to place the queue entry before or after the text, depending on
+            //where there is space.
+            size_t cutOffset = messageLen - ((messageBegin + messageLen) - buffer->length);
+            if (sl::AlignUp(allocBegin, alignof(QueueItem)) + sizeof(QueueItem) < buffer->length)
+            {
+                itemAddr = sl::AlignUp(allocBegin, alignof(QueueItem));
+                messageBegin = itemAddr + sizeof(QueueItem);
+                cutOffset = messageLen - ((messageBegin + messageLen) - buffer->length);
 
-            //place struct before message if there's space
-            if (startLength >= 2 * sizeof(QueueItem)) //TODO: check **where** the free space is available, otherwise make it.
-            {
-                itemAddr = beginWrite;
-                startLength -= 2 * sizeof(QueueItem);
-                messageBegin += 2 * sizeof(QueueItem);
+                sl::memcopy(message, 0, buffer->buffer, messageBegin, cutOffset);
+                sl::memcopy(message, cutOffset, buffer->buffer, 0, messageLen - cutOffset);
             }
-            else //otherwise place it after the message
+            else if (sl::AlignUp(cutOffset, alignof(QueueItem)) + sizeof(QueueItem) < allocLength - cutOffset)
             {
-                endLength -= 2 * sizeof(QueueItem);
-                itemAddr = endLength;
+                itemAddr = sl::AlignUp(cutOffset, alignof(QueueItem));
+                sl::memcopy(message, 0, buffer->buffer, allocBegin, cutOffset);
+                sl::memcopy(message, cutOffset, buffer->buffer, 0, messageLen - cutOffset);
             }
-            
-            sl::memcopy(message, 0, buffer->buffer, messageBegin, startLength);
-            sl::memcopy(message, startLength, buffer->buffer, 0, endLength);
+            else
+                Panic("WriteLog() failed to alloc message queue struct");
         }
         else
         {
             //no wraparound, this is very easy
-            itemAddr = beginWrite;
+            itemAddr = sl::AlignUp(allocBegin, alignof(QueueItem));
             messageBegin += 2 * sizeof(QueueItem);
             sl::memcopy(message, 0, buffer->buffer, messageBegin, messageLen);
         }
 
-        QueueItem* item = new(sl::AlignUp(&buffer->buffer[itemAddr], sizeof(QueueItem))) QueueItem();
+        QueueItem* item = new(&buffer->buffer[itemAddr]) QueueItem();
         item->data.begin = messageBegin;
         item->data.buff = buffer;
         item->data.length = messageLen;
@@ -141,7 +140,6 @@ namespace Npk::Debug
         msgQueue.Push(item);
 
         //if we're in the early state (eloCount > 0), try to flush the message queue to the outputs
-        //TODO: we could be more efficient by locking the scheduler to this thread while writing.
         if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) > 0 && eloLock.TryLock())
         {
             for (size_t printed = 0; printed < MaxEloItemsPrinted; printed++)
@@ -249,24 +247,6 @@ namespace Npk::Debug
         }
     }
 
-    void AttachLogDriver(size_t deviceId)
-    {
-        (void)deviceId;
-        ASSERT_UNREACHABLE();
-    }
-
-    void DetachLogDriver(size_t deviceId)
-    {
-        (void)deviceId;
-        ASSERT_UNREACHABLE();
-    }
-
-    void LogWriterServiceMain(void*)
-    {
-        //TODO: if ELOs are active, flush those, otherwise update each driver with the new
-        //read head.
-    }
-
     void PanicWrite(const char* message, ...)
     {
         using namespace Npk::Debug;
@@ -298,17 +278,24 @@ extern "C"
     {
         using namespace Npk;
         using namespace Npk::Debug;
+        using namespace Npk::Tasking;
 
         Interrupts::BroadcastPanicIpi();
         //try to take the ELO lock a reasonable number of times. Don't wait on the lock though
         //as it's possible to deadlock here. This also gives other cores time to finish accept 
         //and handle the panic IPI, which helps prevent corrupting any attached outputs.
+        bool acquiredEloLock = false;
         for (size_t i = 0; i < PanicLockAttempts; i++)
-            eloLock.TryLock();
-
+        {
+             if ((acquiredEloLock = eloLock.TryLock()))
+                 break;
+        }
+    
         //drain the message queue, the last messages printed may contain critical info.
         for (auto* msg = msgQueue.Pop(); msg != nullptr; msg = msgQueue.Pop())
-            WriteElos(msg->data); //TODO: dont rely on external logic like this during panic
+            WriteElos(msg->data);
+        if (!acquiredEloLock)
+            PanicWrite("Panic handler unable to acquire ELO lock - output may appear corrupt.");
 
         PanicWrite("       )\r\n");
         PanicWrite("    ( /(                        (\r\n");

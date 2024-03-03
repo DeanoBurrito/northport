@@ -21,10 +21,6 @@ namespace Npk::Debug
     using EarlyLogWrite = void (*)(const char* str, size_t length);
     void InitCoreLogBuffers();
     void AddEarlyLogOutput(EarlyLogWrite callback);
-    void AttachLogDriver(size_t deviceId);
-    void DetachLogDriver(size_t deviceId);
-
-    void LogWriterServiceMain(void*); //service thread for push logs to drivers
 }
 
 using Npk::Debug::LogLevel;
