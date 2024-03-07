@@ -5,6 +5,7 @@ namespace Npk::Tasking
 {
     void Waitable::Wait()
     {
+        /*
         const size_t ourId = Thread::Current().Id();
 
         Scheduler::Global().Suspend(true);
@@ -23,6 +24,7 @@ namespace Npk::Tasking
         Scheduler::Global().Suspend(false); //restore scheduling before yielding
 
         Scheduler::Global().Yield();
+        */
     }
 
     bool Waitable::WouldWait()
@@ -32,6 +34,7 @@ namespace Npk::Tasking
 
     void Waitable::Trigger(bool accumulate, size_t count)
     {
+        /*
         sl::ScopedLock scopeLock(lock);
         
         if (waitingThreads.Empty())
@@ -53,5 +56,6 @@ namespace Npk::Tasking
 
         if (accumulate)
             pendingTriggers += count;
+            */
     }
 }

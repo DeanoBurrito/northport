@@ -28,15 +28,35 @@ namespace Npk
         uint8_t buffer[];
     };
 
-    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
+    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user)
     {
         frame->flags.spie = 1;
         frame->flags.spp = user ? 0 : 1;
-        frame->a0 = (uintptr_t)arg;
         frame->sepc = entry;
         frame->sp = sl::AlignDown(stack, 8);
         frame->fp = 0;
     }
+
+    void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value)
+    {
+        if (index > 7)
+            return;
+
+        uint64_t* args = &frame->a0;
+        args[index] = reinterpret_cast<uint64_t>(value);
+    }
+
+    void* GetTrapFrameArg(TrapFrame* frame, size_t index)
+    {
+        if (index > 7)
+            return nullptr;
+
+        uint64_t* args = &frame->a0;
+        return reinterpret_cast<void*>(args[index]);
+    }
+
+    size_t TrapFrameArgCount()
+    { return 8; }
 
     void InitExtendedRegs(ExtendedRegs** regs)
     { (void)regs; } //TODO: implement meeeee

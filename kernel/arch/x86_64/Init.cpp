@@ -64,7 +64,7 @@ namespace Npk
         CoreLocalInfo* clb = new CoreLocalInfo();
         clb->id = id;
         clb->acpiId = acpiId;
-        clb->runLevel = RunLevel::Normal;
+        clb->runLevel = RunLevel::Dpc;
         clb->nextStack = nullptr;
         (*clb)[LocalPtr::IntControl] = new LocalApic();
         WriteMsr(MsrGsBase, (uintptr_t)clb);
@@ -142,6 +142,8 @@ extern "C"
 
         PopulateIdt();
         InitPlatform();
+
+        //TODO: check if ECAM is available, if it isnt add a device descriptor for the port io interface
 
         IoApic::InitAll();
         InitTimers();

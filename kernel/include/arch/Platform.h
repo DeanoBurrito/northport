@@ -2,16 +2,10 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <tasking/RunLevels.h>
 
 namespace Npk
 {
-    enum class RunLevel : uint8_t
-    {
-        Normal = 0,
-        Dispatch = 1,
-        IntHandler = 2,
-    };
-
     //each of the subsystems that get to store core-local data.
     enum class LocalPtr : size_t
     {
@@ -31,8 +25,10 @@ namespace Npk
         uintptr_t scratch;
         uintptr_t id;
         uintptr_t acpiId;
-        RunLevel runLevel;
         void* nextStack; //next stack available for kernel use. On x86_64 this is a duplicate of tss->rsp0
+        RunLevel runLevel;
+        sl::QueueMpSc<Tasking::Dpc> dpcs;
+        sl::QueueMpSc<Tasking::Apc> apcs;
         void* subsystemPtrs[(size_t)LocalPtr::Count];
 
         constexpr void*& operator[](LocalPtr index)
@@ -68,7 +64,11 @@ namespace Npk
     void AllowSumac();
     void BlockSumac();
 
-    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user);
+    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user);
+    void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value);
+    void* GetTrapFrameArg(TrapFrame* frame, size_t index);
+    size_t TrapFrameArgCount();
+
     void InitExtendedRegs(ExtendedRegs** regs);
     void SaveExtendedRegs(ExtendedRegs* regs);
     void LoadExtendedRegs(ExtendedRegs* regs);
@@ -76,6 +76,7 @@ namespace Npk
 
     uintptr_t GetReturnAddr(size_t level);
     void SendIpi(size_t dest);
+    void SetHardwareRunLevel(RunLevel rl);
     uintptr_t MsiAddress(size_t core, size_t vector);
     uintptr_t MsiData(size_t core, size_t vector);
     void MsiExtract(uintptr_t addr, uintptr_t data, size_t& core, size_t& vector);

@@ -1,108 +1,86 @@
 #pragma once
 
-#include <containers/Vector.h>
-#include <containers/LinkedList.h>
-#include <tasking/Thread.h>
-#include <tasking/Dpc.h>
+#include <tasking/Threads.h>
 #include <Locks.h>
-#include <Lazy.h>
-#include <Random.h>
-#include <Optional.h>
+#include <containers/List.h>
 
 namespace Npk::Tasking
 {
-    constexpr size_t NoAffinity = -1ul;
-    
-    using ThreadMain = void (*)(void* arg);
+    constexpr size_t EnginesPerCluster = 4;
 
-    //core-local information for the scheduler.
-    struct SchedulerCore
+    struct WorkQueue
     {
-        size_t coreId;
-        Thread* idleThread;
-
-        //control flags for this core's scheduling
-        sl::Atomic<size_t> suspendScheduling;
-        sl::Atomic<size_t> reschedulePending;
-
-        //this core's runqueue.
-        struct 
-        {
-            Thread* head;
-            Thread* tail;
-            sl::Atomic<size_t> size;
-            sl::InterruptLock lock;
-        } queue;
-        Thread* extRegsOwner; //thread currently owning the extended registers
-
-        //deferred procedure call management
-        sl::InterruptLock dpcLock;
-        sl::LinkedList<DeferredCall> dpcs;
-        TrapFrame* dpcFrame;
-        uintptr_t dpcStack;
-        bool dpcFinished;
+        //TODO: priority queues
+        sl::Atomic<size_t> depth;
+        sl::SpinLock lock;
+        sl::IntrFwdList<Thread> threads;
     };
 
-    class ScheduleGuard;
+    enum EngineFlag : size_t
+    {
+        Clutch, //engine will not take control away from the current thread while this is set
+        ReschedulePending, //engine will reschedule when next possible
+    };
+
+    using EngineFlags = sl::Flags<EngineFlag>;
+
+    struct EngineCluster;
+
+    //represents a logical processor within the system
+    struct Engine
+    {
+        size_t id;
+        EngineFlags flags;
+        WorkQueue localQueue;
+        size_t queueCycleDepth;
+
+        EngineCluster* cluster;
+        Thread* idleThread;
+        size_t extRegsOwner;
+
+        DpcStore rescheduleDpc;
+    };
+
+    //a small group of processors that share a work queue, for easy load-balancing
+    struct EngineCluster
+    {
+        EngineCluster* next;
+
+        WorkQueue sharedQueue;
+        size_t engineCount;
+        Engine engines[EnginesPerCluster];
+    };
 
     class Scheduler
     {
-    friend ScheduleGuard;
     private:
-        sl::LinkedList<SchedulerCore*> cores;
-        sl::Vector<Process*> processes;
-        sl::Vector<Thread*> threadLookup;
-        sl::TicketLock coresListLock; //only for modifying the list, not the items within.
-        sl::TicketLock threadsLock;
-        sl::TicketLock processesLock;
-        
-        size_t nextTid; //TODO: id allocators for these
-        size_t nextPid;
-        Process* idleProcess;
-        sl::Atomic<size_t> registeredCores { 0 };
-
-        sl::TicketLock rngLock;
-        sl::Lazy<sl::XoshiroRng> rng;
+        sl::RwLock enginesLock;
+        sl::Vector<Engine*> engines;
+        sl::IntrFwdList<EngineCluster> clusters;
 
         void LateInit();
-        size_t NextRand();
-
-        void QueuePush(SchedulerCore& core, Thread* item) const;
-        Thread* QueuePop(SchedulerCore& core) const;
-
-        SchedulerCore* GetCore(size_t id);
 
     public:
         static Scheduler& Global();
 
         void Init();
-        void RegisterCore(Thread* initThread = nullptr);
-        sl::Opt<Thread*> GetThread(size_t id);
-        sl::Opt<Process*> GetProcess(size_t id);
-
-        void QueueDpc(ThreadMain function, void* arg = nullptr);
-        void DpcExit();
-
-        Process* CreateProcess();
-        Thread* CreateThread(ThreadMain entry, void* arg, Process* parent = nullptr, size_t coreAffinity = NoAffinity);
-        void DestroyProcess(size_t id);
-        void DestroyThread(size_t id, size_t errorCode);
-        void EnqueueThread(size_t id);
-        void DequeueThread(size_t id);
-
-        void Yield(bool willReturn = true);
-        void Reschedule();
-        void QueueReschedule();
+        void AddEngine();
+        [[noreturn]]
+        void StartEngine();
+        //TODO: StopEngine() and RemoveEngine()
+        
         bool Suspend(bool yes);
-        void SavePrevFrame(TrapFrame* current, RunLevel prevRunLevel);
+
+        void EnqueueThread(Thread* t);
+        void DequeueThread(Thread* t);
+        void QueueReschedule();
         void SwapExtendedRegs();
     };
 
-    class ScheduleGuard
+    struct ScheduleGuard
     {
     private:
         bool prevState;
-
     public:
         ScheduleGuard()
         {
@@ -114,9 +92,9 @@ namespace Npk::Tasking
             Scheduler::Global().Suspend(prevState);
         }
 
-        ScheduleGuard(const ScheduleGuard& other) = delete;
-        ScheduleGuard& operator=(const ScheduleGuard& other) = delete;
-        ScheduleGuard(ScheduleGuard&& other) = delete;
-        ScheduleGuard& operator=(ScheduleGuard&& other) = delete;
+        ScheduleGuard(const ScheduleGuard&) = delete;
+        ScheduleGuard& operator=(const ScheduleGuard&) = delete;
+        ScheduleGuard(ScheduleGuard&&) = delete;
+        ScheduleGuard& operator=(ScheduleGuard&&) = delete;
     };
 }

@@ -1,7 +1,7 @@
 #include <debug/Log.h>
 #include <interfaces/driver/Scheduling.h>
 #include <interfaces/Helpers.h>
-#include <tasking/Thread.h>
+#include <tasking/Threads.h>
 
 extern "C"
 {

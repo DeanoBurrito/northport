@@ -6,7 +6,8 @@
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <tasking/Clock.h>
-#include <tasking/Thread.h>
+#include <tasking/Threads.h>
+#include <tasking/RunLevels.h>
 #include <containers/Queue.h>
 #include <NanoPrintf.h>
 #include <Locks.h>
@@ -109,7 +110,7 @@ namespace Npk::Debug
             {
                 itemAddr = sl::AlignUp(allocBegin, alignof(QueueItem));
                 messageBegin = itemAddr + sizeof(QueueItem);
-                cutOffset = messageLen - ((messageBegin + messageLen) - buffer->length);
+                cutOffset = sl::Min(messageLen - ((messageBegin + messageLen) - buffer->length), messageLen);
 
                 sl::memcopy(message, 0, buffer->buffer, messageBegin, cutOffset);
                 sl::memcopy(message, cutOffset, buffer->buffer, 0, messageLen - cutOffset);
@@ -310,16 +311,11 @@ extern "C"
         PanicWrite(reason);
         PanicWrite("\r\n");
 
-        //print core-local info (this is always available)
-        constexpr const char* RunLevelStrs[] = { "Normal", "Dispatch", "IntHandler" };
-        static_assert((size_t)RunLevel::Normal == 0, "RunLevel integer representation updated.");
-        static_assert((size_t)RunLevel::IntHandler == 2, "RunLevel integer representation updated.");
-        
         if (CoreLocalAvailable())
         {
             CoreLocalInfo& clb = CoreLocal();
-            PanicWrite("Processor %lu: runLevel=%s, logBuffer=0x%lx\r\n", 
-                clb.id, RunLevelStrs[(size_t)clb.runLevel], (uintptr_t)clb[LocalPtr::Log]);
+            PanicWrite("Processor %lu: runLevel=%s (%u), logBuffer=0x%lx\r\n", 
+                clb.id, GetRunLevelName(CoreLocal().runLevel), (uint8_t)CoreLocal().runLevel, (uintptr_t)clb[LocalPtr::Log]);
         }
         else
             PanicWrite("Core-local information not available.\r\n");
@@ -335,8 +331,8 @@ extern "C"
             if (shadow.Valid())
                 shadowName = shadow->manifest->friendlyName.C_Str();
 
-            PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu",
-                thread.Id(), shadowName, process.Id());
+            PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu, procName=%s",
+                thread.Id(), shadowName, process.Id(), process.Name().Begin());
         }
         else
             PanicWrite("Thread information not available.\r\n");

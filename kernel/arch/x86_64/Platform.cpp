@@ -10,16 +10,74 @@ namespace Npk
 {
     struct ExtendedRegs {};
 
-    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
+    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user)
     {
+        sl::memset(frame, 0, sizeof(TrapFrame));
+
         frame->iret.cs = user ? SelectorUserCode : SelectorKernelCode;
         frame->iret.ss = user ? SelectorUserData : SelectorKernelData;
-        frame->rdi = (uint64_t)arg;
         frame->iret.rsp = sl::AlignDown(stack, 16);
         frame->iret.rip = entry;
         frame->iret.flags = 0x202;
         frame->rbp = 0;
     }
+
+    void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value)
+    {
+        const uint64_t val = reinterpret_cast<uint64_t>(value);
+        switch (index)
+        {
+        case 0: 
+            frame->rdi = val; 
+            return;
+        case 1: 
+            frame->rsi = val; 
+            return;
+        case 2: 
+            frame->rdx = val; 
+            return;
+        case 3: 
+            frame->rcx = val; 
+            return;
+        case 4: 
+            frame->r8 = val; 
+            return;
+        case 5: 
+            frame->r9 = val; 
+            return;
+        }
+    }
+
+    void* GetTrapFrameArg(TrapFrame* frame, size_t index)
+    {
+        uint64_t value = 0;
+        switch (index)
+        {
+        case 0:
+            value = frame->rdi;
+            break;
+        case 1:
+            value = frame->rsi;
+            break;
+        case 2:
+            value = frame->rdx;
+            break;
+        case 3:
+            value = frame->rcx;
+            break;
+        case 4:
+            value = frame->r8;
+            break;
+        case 5:
+            value = frame->r9;
+            break;
+        }
+
+        return reinterpret_cast<void*>(value);
+    }
+
+    size_t TrapFrameArgCount()
+    { return 6; }
 
     void InitExtendedRegs(ExtendedRegs** regs)
     {
@@ -86,5 +144,10 @@ namespace Npk
     void SendIpi(size_t dest)
     {
         LocalApic::Local().SendIpi(dest);
+    }
+
+    void SetHardwareRunLevel(RunLevel rl)
+    {
+        //TODO: make proper use of this with cr8
     }
 }

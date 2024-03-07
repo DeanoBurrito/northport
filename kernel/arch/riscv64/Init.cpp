@@ -24,7 +24,7 @@ namespace Npk
         CoreLocalInfo* clb = new CoreLocalInfo();
         clb->id = id;
         clb->acpiId = acpiId;
-        clb->runLevel = RunLevel::Normal;
+        clb->runLevel = RunLevel::Dpc;
         asm volatile("mv tp, %0" :: "r"((uint64_t)clb));
 
         CoreConfig* config = new CoreConfig();
