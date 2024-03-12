@@ -2,11 +2,10 @@
 #include <drivers/DriverHelpers.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
-#include <tasking/Thread.h>
+#include <tasking/Threads.h>
 
 namespace Npk::Drivers
 {
-    //TOOD: binding assert checks!
     constexpr const char* DeviceTypeStrs[] =
     { 
         "io",
@@ -16,12 +15,18 @@ namespace Npk::Drivers
         "filesystem",
     };
 
+    static_assert(npk_device_api_type::Io == 0);
+    static_assert(npk_device_api_type::Framebuffer == 1);
+    static_assert(npk_device_api_type::Gpu == 2);
+    static_assert(npk_device_api_type::Keyboard == 3);
+    static_assert(npk_device_api_type::Filesystem == 4);
+
     constexpr size_t DeviceNodeStackReserveSize = 4;
 
     static void PrintNode(DeviceNode* node, size_t indent)
     {
         constexpr const char* TypeNames[] = { "driver", "descriptor", "api" };
-        Log("%*.0s |- id=%lu type=%s", LogLevel::Debug, (int)indent * 2, (char*)nullptr, 
+        Log("%*c |- id=%lu type=%s", LogLevel::Debug, (int)indent * 2, ' ', 
             node->id, TypeNames[(size_t)node->type]);
 
         switch (node->type)
@@ -31,7 +36,7 @@ namespace Npk::Drivers
                 auto* driver = static_cast<DriverInstance*>(node);
                 if (driver->manifest.Valid())
                 {
-                    Log("%*.0s |  name=%s, loadBase=0x%lx", LogLevel::Debug, (int)indent * 2, (char*)nullptr,
+                    Log("%*c |  name=%s, loadBase=0x%lx", LogLevel::Debug, (int)indent * 2, ' ',
                         driver->manifest->friendlyName.C_Str(), driver->manifest->runtimeImage->loadBase);
                 }
 
@@ -44,7 +49,7 @@ namespace Npk::Drivers
         case DeviceNodeType::Descriptor:
             {
                 auto* desc = static_cast<DeviceDescriptor*>(node);
-                Log("%*.s |  name=%.*s", LogLevel::Debug, (int)indent * 2, (char*)nullptr, 
+                Log("%*c |  name=%.*s", LogLevel::Debug, (int)indent * 2, ' ', 
                     (int)desc->apiDesc->friendly_name.length, desc->apiDesc->friendly_name.data);
                 if (desc->attachedDriver.Valid())
                     PrintNode(*desc->attachedDriver, indent + 1);
@@ -56,7 +61,7 @@ namespace Npk::Drivers
                 npk_string summary {};
                 if (api->api->get_summary != nullptr)
                     summary = api->api->get_summary(api->api);
-                Log("%*s |  type=%s, summary=%.*s", LogLevel::Debug, (int)indent * 2, (char*)nullptr,
+                Log("%*c |  type=%s, summary=%.*s", LogLevel::Debug, (int)indent * 2, ' ',
                     DeviceTypeStrs[api->api->type], (int)summary.length, summary.data);
                 break;
             }
@@ -183,9 +188,15 @@ namespace Npk::Drivers
 
     void DriverManager::SetShadow(sl::Handle<DriverInstance> shadow) const
     {
-        auto& thread = Tasking::Thread::Current();
-        sl::ScopedLock scopeLock(thread.lock);
-        thread.driverShadow = shadow;
+        using namespace Tasking;
+
+        auto prevShadow = Thread::Current().GetAttrib(ProgramAttribType::DriverShadow);
+        shadow->references++; //the handle abstraction breaks down when it comes to program attribs
+        sl::Span newShadow(reinterpret_cast<uint8_t*>(*shadow), 0);
+        Thread::Current().SetAttrib(ProgramAttribType::DriverShadow, newShadow);
+
+        if (prevShadow.Begin() != nullptr)
+            reinterpret_cast<DriverInstance*>(prevShadow.Begin())->references--;
     }
 
     DriverManager globalDriverManager;
@@ -212,9 +223,9 @@ namespace Npk::Drivers
 
     sl::Handle<DriverInstance> DriverManager::GetShadow()
     {
-        auto& thread = Tasking::Thread::Current();
-        sl::ScopedLock scopeLock(thread.lock);
-        return thread.driverShadow;
+        using namespace Tasking;
+        auto shadow = Thread::Current().GetAttrib(ProgramAttribType::DriverShadow);
+        return reinterpret_cast<DriverInstance*>(shadow.Begin());
     }
 
     bool DriverManager::SetTransportApi(sl::Handle<DriverInstance> driver, size_t api)

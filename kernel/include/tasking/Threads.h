@@ -60,6 +60,7 @@ namespace Npk::Tasking
         Setup,
         Dead,
         Ready,
+        Queued,
         Running,
     };
 
@@ -73,13 +74,12 @@ namespace Npk::Tasking
     friend Scheduler;
     friend sl::IntrFwdList<Thread>;
     private:
-        Thread* next; //used by a scheduler workqueue
-
         TrapFrame* frame;
         ExtendedRegs* extRegs;
-        ThreadState state;
 
         sl::SpinLock schedLock;
+        Thread* next;
+        ThreadState state;
         Process* parent;
         size_t id;
         size_t affinity;
@@ -94,6 +94,10 @@ namespace Npk::Tasking
         static Thread& Current();
         static Thread* Create(size_t procId, ThreadEntry entry, void* arg);
         static Thread* Get(size_t id);
+
+        [[gnu::always_inline]]
+        inline ThreadState State() const
+        { return state; }
 
         [[gnu::always_inline]]
         inline size_t Id() const

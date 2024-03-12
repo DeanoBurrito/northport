@@ -2,6 +2,7 @@
 #include <tasking/Clock.h>
 #include <boot/CommonInit.h>
 #include <debug/Log.h>
+#include <interrupts/Ipi.h>
 
 namespace Npk::Tasking
 {
@@ -15,17 +16,45 @@ namespace Npk::Tasking
         Halt();
     }
 
-    void DoReschedule(void* arg)
+    static Thread* GetRunnableThread(WorkQueue& queue)
+    {
+        sl::ScopedLock scopeLock(queue.lock);
+
+        while (true)
+        {
+            Thread* queueHead = queue.threads.PopFront();
+            if (queueHead == nullptr)
+                return nullptr; //queue is empty
+
+            queue.depth--; //we pulled something from the queue, can we run it?
+            if (queueHead->State() != ThreadState::Queued)
+                continue;
+
+            return queueHead;
+        }
+
+        return nullptr;
+    }
+
+    void Scheduler::DoReschedule(void* arg)
     {
         auto engine = static_cast<Engine*>(arg);
+        //TODO: check for clutch
         //TODO: add clock event for next reschedule
 
-        if (CoreLocal()[LocalPtr::Thread] != nullptr)
+        //put current thread back into a queue if required
+        Thread* current = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
+        if (current != nullptr && current->id != engine->idleThread->id
+            && current->state == ThreadState::Running)
         {
-            Thread* current = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
-            WorkQueue* const queue = current->GetAffinity() == engine->id 
+            WorkQueue* const queue = current->affinity == engine->id 
                 ? &engine->localQueue 
                 : &engine->cluster->sharedQueue;
+
+            current->schedLock.Lock();
+            current->state = ThreadState::Queued;
+            current->engineId = NoAffinity;
+            current->schedLock.Unlock();
 
             queue->lock.Lock();
             queue->threads.PushBack(current);
@@ -33,46 +62,44 @@ namespace Npk::Tasking
             queue->lock.Unlock();
         }
 
-        /* Decide which queue we should pull work from. This is still round robin, but
-         * split over 2 work queues (the local one for threads with an explicitly set
-         * affinity, and the cluster for general scheduling).
-         * To be (kind of, but not really) fair to all threads we have a 'cycle' length
-         * for the number of jobs this core runs. On a single-queue round-robin
-         * scheduler the cycle length is the number of threads in the queue, here
-         * I've naturally done something a bit more convoluted.
-         * The idea is to execute the number of items in the shared queue once,
-         * and then execute the items in the local queue a number of times.
-         * For example if there are 3 engines in the cluster, the shared queue has 3x
-         * as many opportunities to run as the local queue, so in response we run
-         * through the local queue 3 times.
-         * This idea has it's own problems, but its a first pass at this idea.
-         */
-        if (engine->queueCycleDepth == 0)
+        //reset ticket counts if needed
+        if (engine->sharedTickets == 0)
         {
-            engine->queueCycleDepth = engine->cluster->sharedQueue.depth;
-            engine->queueCycleDepth += engine->localQueue.depth * engine->cluster->engineCount;
+            engine->sharedTickets = engine->cluster->sharedQueue.depth;
+            engine->localTickets = engine->localQueue.depth * engine->cluster->engineCount;
         }
 
-        WorkQueue* queue = nullptr;
-        if (engine->queueCycleDepth > engine->cluster->sharedQueue.depth &&
-            engine->localQueue.depth > 0)
-            queue = &engine->localQueue;
-        else
-            queue = &engine->cluster->sharedQueue;
-        engine->queueCycleDepth--;
-        ASSERT_(queue != nullptr);
-
-        queue->lock.Lock();
-        Thread* nextThread = queue->threads.PopFront();
-        if (nextThread != nullptr)
-            queue->depth--;
-        queue->lock.Unlock();
-
+        Thread* nextThread = nullptr;
+        //try a thread from the local queue first
+        if (engine->localTickets > 0)
+        {
+            nextThread = GetRunnableThread(engine->localQueue);
+            if (nextThread != nullptr)
+                engine->localTickets--;
+        }
+        //otherwise try the shared queue from the cluster
+        if (nextThread == nullptr)
+        {
+            nextThread = GetRunnableThread(engine->cluster->sharedQueue);
+            if (nextThread != nullptr)
+                engine->sharedTickets--;
+        }
+        //no threads available, switch to the idle thread
         if (nextThread == nullptr)
             nextThread = engine->idleThread;
 
+        nextThread->schedLock.Lock();
+        nextThread->state = ThreadState::Running;
+        nextThread->engineId = engine->id;
+        nextThread->schedLock.Unlock();
+
         CoreLocal()[LocalPtr::Thread] = nextThread;
         engine->flags.Clear(EngineFlag::ReschedulePending);
+    }
+
+    void Scheduler::RemoteDequeue(void* arg)
+    {
+        ASSERT_UNREACHABLE(); //TODO: switch away from the current thread
     }
 
     void Scheduler::LateInit()
@@ -124,6 +151,7 @@ namespace Npk::Tasking
         engines.EmplaceAt(CoreLocal().id, engine);
         enginesLock.WriterUnlock();
 
+        engine->localTickets = engine->sharedTickets = 0;
         engine->id = CoreLocal().id;
         engine->extRegsOwner = 0;
         engine->flags = 0;
@@ -163,6 +191,15 @@ namespace Npk::Tasking
             return !LocalEngine().flags.Set(EngineFlag::Clutch);
         else
             return LocalEngine().flags.Clear(EngineFlag::Clutch);
+    }
+
+    void Scheduler::Yield()
+    {
+        sl::InterruptGuard intGuard;
+
+        TrapFrame** prevFrameStorage = &Thread::Current().frame;
+        QueueReschedule();
+        SwitchFrame(prevFrameStorage, Thread::Current().frame);
     }
 
     void Scheduler::EnqueueThread(Thread* t)
@@ -206,6 +243,10 @@ namespace Npk::Tasking
         }
         VALIDATE(queue != nullptr,, "Failed to find suitable engine for thread");
 
+        t->schedLock.Lock();
+        t->state = ThreadState::Queued;
+        t->schedLock.Unlock();
+
         queue->lock.Lock();
         queue->threads.PushBack(t);
         queue->lock.Unlock();
@@ -214,7 +255,26 @@ namespace Npk::Tasking
 
     void Scheduler::DequeueThread(Thread* t)
     {
-        ASSERT_UNREACHABLE();
+        VALIDATE_(t != nullptr, );
+        VALIDATE_(t->state == ThreadState::Running || t->state == ThreadState::Queued, );
+
+        auto& engine = LocalEngine();
+        const bool clutchModified = engine.flags.Set(EngineFlag::Clutch);
+
+        t->schedLock.Lock();
+        if (t->state == ThreadState::Running && t->engineId != engine.id)
+            Interrupts::SendIpiMail(t->engineId, RemoteDequeue, t);
+        else if (t->state == ThreadState::Queued)
+        {
+            ASSERT_UNREACHABLE();
+            //TODO: intrusive doublely linked list
+        }
+
+        t->state = ThreadState::Ready;
+        t->schedLock.Unlock();
+
+        if (clutchModified)
+            engine.flags.Clear(EngineFlag::Clutch);
     }
 
     void Scheduler::QueueReschedule()

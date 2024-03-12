@@ -16,7 +16,7 @@ namespace Npk::Tasking
         sl::IntrFwdList<Thread> threads;
     };
 
-    enum EngineFlag : size_t
+    enum EngineFlag
     {
         Clutch, //engine will not take control away from the current thread while this is set
         ReschedulePending, //engine will reschedule when next possible
@@ -32,7 +32,8 @@ namespace Npk::Tasking
         size_t id;
         EngineFlags flags;
         WorkQueue localQueue;
-        size_t queueCycleDepth;
+        size_t localTickets;
+        size_t sharedTickets;
 
         EngineCluster* cluster;
         Thread* idleThread;
@@ -58,6 +59,9 @@ namespace Npk::Tasking
         sl::Vector<Engine*> engines;
         sl::IntrFwdList<EngineCluster> clusters;
 
+        static void DoReschedule(void* arg);
+        static void RemoteDequeue(void* arg);
+
         void LateInit();
 
     public:
@@ -70,6 +74,7 @@ namespace Npk::Tasking
         //TODO: StopEngine() and RemoveEngine()
         
         bool Suspend(bool yes);
+        void Yield();
 
         void EnqueueThread(Thread* t);
         void DequeueThread(Thread* t);
