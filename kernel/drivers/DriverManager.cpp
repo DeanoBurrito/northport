@@ -39,6 +39,11 @@ namespace Npk::Drivers
                     Log("%*c |  name=%s, loadBase=0x%lx", LogLevel::Debug, (int)indent * 2, ' ',
                         driver->manifest->friendlyName.C_Str(), driver->manifest->runtimeImage->loadBase);
                 }
+                else
+                {
+                    Log("%*c |  name=kernel, loadBase=0x%lx", LogLevel::Debug, (int)indent * 2, ' ',
+                        -2 * GiB);
+                }
 
                 for (auto it = driver->apis.Begin(); it != driver->apis.End(); ++it)
                     PrintNode(**it, indent + 1);
@@ -191,7 +196,8 @@ namespace Npk::Drivers
         using namespace Tasking;
 
         auto prevShadow = Thread::Current().GetAttrib(ProgramAttribType::DriverShadow);
-        shadow->references++; //the handle abstraction breaks down when it comes to program attribs
+        if (shadow.Valid())
+            shadow->references++; //the handle abstraction breaks down when it comes to program attribs
         sl::Span newShadow(reinterpret_cast<uint8_t*>(*shadow), 0);
         Thread::Current().SetAttrib(ProgramAttribType::DriverShadow, newShadow);
 

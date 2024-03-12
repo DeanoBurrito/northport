@@ -57,11 +57,11 @@ namespace Npk::Tasking
 
     enum class ThreadState
     {
-        Setup,
-        Dead,
-        Ready,
-        Queued,
-        Running,
+        Setup = 0,
+        Dead = 1,
+        Ready = 2,
+        Queued = 3,
+        Running = 4,
     };
 
     constexpr size_t NoAffinity = -1ul;

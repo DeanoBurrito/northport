@@ -17,12 +17,8 @@ namespace Npk::Tasking
         return {};
     }
 
-    static void SetAttribInternal(sl::Span<ProgramAttribHeader> headers, ProgramAttribType type, sl::Span<uint8_t> data)
+    static void SetAttribInternal(sl::Span<ProgramAttribHeader>& headers, ProgramAttribType type, sl::Span<uint8_t> data)
     {
-        /* Strategy:
-         * - figure out size of new buffer, realloc if necessary
-         */
-        ASSERT_UNREACHABLE();
     }
 
     Process kernelProcess;
@@ -128,7 +124,19 @@ namespace Npk::Tasking
 
     void Thread::Exit(size_t code)
     {
-        ASSERT_UNREACHABLE();
+        //TODO: put thread into reclaimable queue
+        Log("Thread %lu.%lu exiting with code %lu", LogLevel::Verbose, parent->Id(), id, code);
+        const bool selfExit = CoreLocal()[LocalPtr::Thread] == this;
+
+        const RunLevel prevLevel = RaiseRunLevel(RunLevel::Dpc);
+        Scheduler::Global().DequeueThread(this);
+        LowerRunLevel(prevLevel);
+
+        if (selfExit)
+        {
+            Scheduler::Global().Yield();
+            ASSERT_UNREACHABLE();
+        }
     }
 
     ProgramManager globalProgramManager;
@@ -177,11 +185,12 @@ namespace Npk::Tasking
         const uintptr_t entryAddr = reinterpret_cast<uintptr_t>(entry);
         VALIDATE_(parent->vmm.MemoryExists(entryAddr, 2, execFlag), {});
 
-        //TODO: for user stacks we dont need to immediately back the memory (the const 1 arg)
-        auto maybeStack = parent->vmm.Alloc(stackSize, 1, VmFlag::Anon | VmFlag::Write); //TODO: guarded?
+        //TODO: for user stacks we dont need to immediately back the memory (the const 3 arg)
+        auto maybeStack = parent->vmm.Alloc(stackSize, 3, VmFlag::Anon | VmFlag::Write); //TODO: guarded?
         VALIDATE_(maybeStack, {});
 
         Thread* thread = new Thread();
+        thread->parent = parent;
         thread->id = nextId++;
         thread->attribs = { nullptr, 0 };
         thread->affinity = affinity;
@@ -192,7 +201,7 @@ namespace Npk::Tasking
         TrapFrame setupFrame {};
         InitTrapFrame(&setupFrame, *maybeStack + stackSize, entryAddr, false);
         SetTrapFrameArg(&setupFrame, 0, arg);
-        const uintptr_t frameAddr = (*maybeStack + stackSize) - sizeof(TrapFrame);
+        const uintptr_t frameAddr = sl::AlignDown((*maybeStack + stackSize) - sizeof(TrapFrame), alignof(TrapFrame));
         ASSERT_(parent->vmm.CopyIn((void*)frameAddr, &setupFrame, sizeof(TrapFrame)) == sizeof(TrapFrame));
         thread->frame = reinterpret_cast<TrapFrame*>(frameAddr);
         
