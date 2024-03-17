@@ -36,8 +36,9 @@ namespace Npk::Drivers
                 auto* driver = static_cast<DriverInstance*>(node);
                 if (driver->manifest.Valid())
                 {
-                    Log("%*c |  name=%s, loadBase=0x%lx", LogLevel::Debug, (int)indent * 2, ' ',
-                        driver->manifest->friendlyName.C_Str(), driver->manifest->runtimeImage->loadBase);
+                    Log("%*c |  name=%s, loadBase=0x%lx, transport=%lu", LogLevel::Debug, (int)indent * 2, ' ',
+                        driver->manifest->friendlyName.C_Str(), driver->manifest->runtimeImage->loadBase,
+                        driver->transportDevice.Valid() ? driver->transportDevice->id : 0);
                 }
                 else
                 {

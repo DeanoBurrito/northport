@@ -39,7 +39,7 @@ namespace Npk
 
     void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value)
     {
-        if (index > 7)
+        if (index >= TrapFrameArgCount)
             return;
 
         uint64_t* args = &frame->a0;
@@ -48,15 +48,12 @@ namespace Npk
 
     void* GetTrapFrameArg(TrapFrame* frame, size_t index)
     {
-        if (index > 7)
+        if (index >= TrapFrameArgCount)
             return nullptr;
 
         uint64_t* args = &frame->a0;
         return reinterpret_cast<void*>(args[index]);
     }
-
-    size_t TrapFrameArgCount()
-    { return 8; }
 
     void InitExtendedRegs(ExtendedRegs** regs)
     { (void)regs; } //TODO: implement meeeee

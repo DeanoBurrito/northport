@@ -36,6 +36,13 @@ namespace Npk::Tasking
         return prev;
     }
 
+    sl::Opt<RunLevel> EnsureRunLevel(RunLevel level)
+    {
+        if (CoreLocal().runLevel < level)
+            return RaiseRunLevel(level);
+        return {};
+    }
+
     void LowerRunLevel(RunLevel newLevel)
     {
         ASSERT_(newLevel < CoreLocal().runLevel);

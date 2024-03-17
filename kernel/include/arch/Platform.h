@@ -67,7 +67,6 @@ namespace Npk
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user);
     void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value);
     void* GetTrapFrameArg(TrapFrame* frame, size_t index);
-    size_t TrapFrameArgCount();
 
     void InitExtendedRegs(ExtendedRegs** regs);
     void SaveExtendedRegs(ExtendedRegs* regs);

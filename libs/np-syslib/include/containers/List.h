@@ -94,6 +94,37 @@ namespace sl
                     it->next = nullptr;
                 return temp;
             }
+
+            bool Remove(T* value)
+            {
+                if (value == nullptr || head == nullptr)
+                    return false;
+
+                if (head == value)
+                {
+                    head = head->next;
+                    if (head == nullptr)
+                        tail = nullptr;
+                    return true;
+                }
+                    
+                T* scan = head;
+                while (scan->next != nullptr)
+                {
+                    if (scan->next != value)
+                    {
+                        scan = scan->next;
+                        continue;
+                    }
+
+                    scan->next = value->next;
+                    if (scan->next == nullptr)
+                        tail = scan;
+                    return true;
+                }
+
+                return false;
+            }
         };
 
         template<typename T>

@@ -76,9 +76,6 @@ namespace Npk
         return reinterpret_cast<void*>(value);
     }
 
-    size_t TrapFrameArgCount()
-    { return 6; }
-
     void InitExtendedRegs(ExtendedRegs** regs)
     {
         constexpr size_t FxSaveBufferSize = 512;

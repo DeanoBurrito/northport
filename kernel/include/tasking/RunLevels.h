@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <containers/Queue.h>
 #include <Span.h>
+#include <Optional.h>
 
 namespace Npk::Tasking
 {
@@ -46,6 +47,7 @@ namespace Npk::Tasking
 
     const char* GetRunLevelName(RunLevel runLevel);
     RunLevel RaiseRunLevel(RunLevel newLevel);
+    sl::Opt<RunLevel> EnsureRunLevel(RunLevel level);
     void LowerRunLevel(RunLevel newLevel);
 
     void QueueDpc(DpcStore* dpc);

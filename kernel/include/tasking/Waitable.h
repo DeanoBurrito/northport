@@ -1,27 +1,59 @@
 #pragma once
 
 #include <Locks.h>
-#include <containers/Vector.h>
+#include <containers/List.h>
+#include <Time.h>
 
 namespace Npk::Tasking
 {
-    class Waitable
+    struct Thread;
+    struct Waitable;
+    class WaitManager;
+
+    struct WaitEntry 
     {
+    friend WaitManager;
+    friend sl::IntrFwdList<WaitEntry>;
     private:
-        sl::SpinLock lock;
-        sl::Vector<size_t> waitingThreads;
-        size_t pendingTriggers;
+        WaitEntry* next;
+        Waitable* event;
+        Thread* thread;
+        sl::Span<WaitEntry> cohort;
+        bool signalled;
+        bool waitAll; //TODO: storing per-thread control data in *each* wait entry is quite wasteful lol
 
     public:
-        constexpr Waitable() : waitingThreads(), pendingTriggers(0)
-        {}
-
-        void Wait();
-        bool WouldWait();
-
-        void Trigger(bool accumulate = false, size_t count = 1);
+        [[gnu::always_inline]]
+        inline bool Signalled()
+        { return signalled; }
     };
 
-    //TODO: size_t WaitEvents(Event[] events);
-    //bool WaitFor(Event event, size_t nanos);
+    struct Waitable
+    {
+    friend WaitManager;
+    private:
+        sl::SpinLock lock;
+        sl::IntrFwdList<WaitEntry> waiters;
+        size_t signalCount;
+
+    public:
+        size_t Signal(size_t count = 1);
+    };
+
+    class WaitManager
+    {
+    private:
+        static bool TryFinish(sl::Span<WaitEntry> entries,  bool waitAll);
+        static void LockAll(sl::Span<WaitEntry> entries);
+        static void UnlockAll(sl::Span<WaitEntry> entries);
+
+    public:
+        inline static bool WaitOne(Waitable* event, WaitEntry* entry, sl::ScaledTime timeout)
+        { return WaitMany({ event, 1 }, { entry, 1 }, timeout, false) == 1; }
+
+        static size_t WaitMany(sl::Span<Waitable> events, sl::Span<WaitEntry> entries, sl::ScaledTime timeout, bool waitAll);
+        static void CancelWait(Thread* thread);
+        static size_t Signal(Waitable* event, size_t count = 1);
+    };
 }
+
