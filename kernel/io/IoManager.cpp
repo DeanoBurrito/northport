@@ -102,7 +102,7 @@ namespace Npk::Io
         if (iop->directionMod == -1 && iop->nextIndex == 0)
         {
             //operation has completed
-            iop->completeEvent.Trigger(false, -1);
+            iop->completeEvent.Signal();
             return !iop->failure;
         }
 

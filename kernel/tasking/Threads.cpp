@@ -1,5 +1,6 @@
 #include <tasking/Threads.h>
 #include <tasking/Scheduler.h>
+#include <tasking/Waitable.h>
 #include <debug/Log.h>
 
 namespace Npk::Tasking
@@ -19,6 +20,68 @@ namespace Npk::Tasking
 
     static void SetAttribInternal(sl::Span<ProgramAttribHeader>& headers, ProgramAttribType type, sl::Span<uint8_t> data)
     {
+        auto existingBuffer = GetAttribInternal(headers, ProgramAttribType::AttribBuffer);
+        auto existingAttrib = GetAttribInternal(headers, type);
+
+        size_t newSize = existingBuffer.Size();
+        if (existingAttrib.Empty())
+            newSize += data.Size() + sizeof(ProgramAttribHeader); //TODO: what if attrib exists but is changing size?
+        else
+            newSize = (newSize - existingAttrib.Size()) + data.Size();
+        if (existingBuffer.Empty())
+            newSize += sizeof(ProgramAttribHeader);
+
+        if (newSize != existingBuffer.Size())
+        {
+            void* newBuffer = malloc(newSize);
+            ASSERT_(newBuffer != nullptr);
+            sl::NativePtr dataBuffer = sl::NativePtr(newBuffer).Offset(headers.SizeBytes());
+
+            ProgramAttribHeader* destHeaders = static_cast<ProgramAttribHeader*>(newBuffer);
+            size_t destHeadersCount = headers.Size();
+            for (size_t i = 0; i < headers.Size(); i++)
+            {
+                destHeaders[i] = headers[i];
+                if (destHeaders[i].type == ProgramAttribType::AttribBuffer)
+                {
+                    destHeaders[i].data = newBuffer;
+                    destHeaders[i].length = newSize;
+                }
+            }
+            if (existingAttrib.Empty())
+            {
+                auto& newHeader = destHeaders[destHeadersCount++];
+                newHeader.type = type;
+                newHeader.length = data.Size();
+                dataBuffer = dataBuffer.Offset(sizeof(ProgramAttribHeader));
+            }
+            if (existingBuffer.Empty())
+            {
+                auto& newHeader = destHeaders[destHeadersCount++];
+                newHeader.type = ProgramAttribType::AttribBuffer;
+                newHeader.data = newBuffer;
+                newHeader.length = newSize;
+            }
+
+            for (size_t i = 0; i < headers.Size(); i++)
+            {
+                if (headers[i].length == 0 || headers[i].type == ProgramAttribType::AttribBuffer)
+                    continue;
+                ASSERT_UNREACHABLE(); //TODO: finish this
+            }
+
+            headers = sl::Span<ProgramAttribHeader>(destHeaders, destHeadersCount);
+        }
+
+        for (size_t i = 0; i < headers.Size(); i++)
+        {
+            if (headers[i].type != type)
+                continue;
+
+            headers[i].data = data.Begin();
+            headers[i].length = data.Size();
+            break;
+        }
     }
 
     Process kernelProcess;
@@ -194,7 +257,6 @@ namespace Npk::Tasking
         thread->id = nextId++;
         thread->attribs = { nullptr, 0 };
         thread->affinity = affinity;
-        thread->engineId= NoAffinity;
         thread->state = ThreadState::Setup;
         thread->extRegs = nullptr; //these are populated on-demand
 

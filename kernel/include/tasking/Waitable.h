@@ -57,3 +57,10 @@ namespace Npk::Tasking
     };
 }
 
+namespace Npk
+{
+    constexpr auto WaitOne = Tasking::WaitManager::WaitOne;
+    constexpr auto WaitMany = Tasking::WaitManager::WaitMany;
+    constexpr auto CancelWait = Tasking::WaitManager::CancelWait;
+}
+

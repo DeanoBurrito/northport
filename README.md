@@ -25,10 +25,13 @@ Kernel:
     - Hybrid PMM, freelist for single page allocations and a slow path for allocations with constraints.
     - Modular and portable VMM, with demand paging options for anon and vfs backed memory. Inspired by the old SunOS design.
     - General purpose heap provided by slabs for smaller objects and a freelist for larger objects. Slab allocation can be accelerated by core-local caches, and several debug features are available.
+- Time management:
+    - Global software clock, driven by a number of hardware timers: LAPIC, TSC, HPET, PIT, SBI timer.
+    - Run levels, allowing kernel to selectively mask groups of interrupts and prevent execution being hoisted by the scheduler. This also means support for DPCs and APCs.
+    - Scheduler with core-local and shared work queues, and work stealing.
+    - Waitable events, with support for cancelling, timeouts and waiting on multiple events at once.
 - Logging infrastructure: fast and mostly lock-free with support for several early outputs (uart chips, debugcon) and a built-in graphical terminal (based on gterm from the Limine bootloader).
     - Panic sequence with stack walker and symbol lookup.
-- Global software clock, driven by a number of supported hardware timers: LAPIC, TSC, HPET, PIT, SBI timer.
-- SMP-aware scheduler: round robin with per-core queues, work stealing and DPCs.
 - VFS with a robust tempfs driver, and full API for drivers.
     - File contents are sparsely cached (as needed) in a page cache.
     - File metadata and VFS nodes are also cached as needed.

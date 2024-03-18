@@ -39,7 +39,6 @@ namespace Npk::Tasking
     void Scheduler::DoReschedule(void* arg)
     {
         auto engine = static_cast<Engine*>(arg);
-        //TODO: check for clutch
         //TODO: add clock event for next reschedule
 
         //put current thread back into a queue if required
@@ -53,7 +52,7 @@ namespace Npk::Tasking
 
             current->schedLock.Lock();
             current->state = ThreadState::Queued;
-            current->engineId = NoAffinity;
+            current->engineOrQueue.queue = queue;
             current->schedLock.Unlock();
 
             queue->lock.Lock();
@@ -90,16 +89,11 @@ namespace Npk::Tasking
 
         nextThread->schedLock.Lock();
         nextThread->state = ThreadState::Running;
-        nextThread->engineId = engine->id;
+        nextThread->engineOrQueue.engineId = engine->id;
         nextThread->schedLock.Unlock();
 
         CoreLocal()[LocalPtr::Thread] = nextThread;
         engine->flags.Clear(EngineFlag::ReschedulePending);
-    }
-
-    void Scheduler::RemoteDequeue(void* arg)
-    {
-        ASSERT_UNREACHABLE(); //TODO: switch away from the current thread
     }
 
     void Scheduler::LateInit()
@@ -185,17 +179,9 @@ namespace Npk::Tasking
         ASSERT_UNREACHABLE();
     }
 
-    bool Scheduler::Suspend(bool yes)
-    {
-        if (yes)
-            return !LocalEngine().flags.Set(EngineFlag::Clutch);
-        else
-            return LocalEngine().flags.Clear(EngineFlag::Clutch);
-    }
-
     void Scheduler::Yield()
     {
-        sl::InterruptGuard intGuard;
+        ASSERT_(CoreLocal().runLevel == RunLevel::Normal);
 
         TrapFrame** prevFrameStorage = &Thread::Current().frame;
         QueueReschedule();
@@ -245,6 +231,7 @@ namespace Npk::Tasking
 
         t->schedLock.Lock();
         t->state = ThreadState::Queued;
+        t->engineOrQueue.queue = queue;
         t->schedLock.Unlock();
 
         queue->lock.Lock();
@@ -253,28 +240,39 @@ namespace Npk::Tasking
         queue->depth++;
     }
 
+    static void RemoteReschedule(void*) //TODO: do away with this? QueueReschedule really doesnt need to be global or an instance func
+    {
+        Scheduler::Global().QueueReschedule();
+    }
+
     void Scheduler::DequeueThread(Thread* t)
     {
         VALIDATE_(t != nullptr, );
         VALIDATE_(t->state == ThreadState::Running || t->state == ThreadState::Queued, );
 
         auto& engine = LocalEngine();
-        const bool clutchModified = engine.flags.Set(EngineFlag::Clutch);
+        const auto prevRunlevel = EnsureRunLevel(RunLevel::Apc);
 
         t->schedLock.Lock();
-        if (t->state == ThreadState::Running && t->engineId != engine.id)
-            Interrupts::SendIpiMail(t->engineId, RemoteDequeue, t);
-        else if (t->state == ThreadState::Queued)
+        if (t->state == ThreadState::Running)
         {
-            ASSERT_UNREACHABLE();
-            //TODO: intrusive doublely linked list
+            if (t->EngineId() == engine.id)
+                QueueReschedule();
+            else
+                Interrupts::SendIpiMail(t->EngineId(), RemoteReschedule, nullptr);
+        }
+        else
+        {
+            sl::ScopedLock queueLock(t->engineOrQueue.queue->lock);
+            ASSERT_(t->engineOrQueue.queue->threads.Remove(t));
+            t->engineOrQueue.queue->depth--;
         }
 
         t->state = ThreadState::Ready;
         t->schedLock.Unlock();
 
-        if (clutchModified)
-            engine.flags.Clear(EngineFlag::Clutch);
+        if (prevRunlevel.HasValue())
+            LowerRunLevel(*prevRunlevel);
     }
 
     void Scheduler::QueueReschedule()

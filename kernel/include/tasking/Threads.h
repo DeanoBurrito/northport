@@ -26,6 +26,7 @@ namespace Npk::Tasking
 
     class ProgramManager;
     class Scheduler;
+    struct WorkQueue;
 
     class Process
     {
@@ -83,7 +84,10 @@ namespace Npk::Tasking
         Process* parent;
         size_t id;
         size_t affinity;
-        size_t engineId;
+        union {
+            WorkQueue* queue;
+            size_t engineId;
+        } engineOrQueue;
 
         sl::RwLock attribsLock;
         sl::Span<ProgramAttribHeader> attribs;
@@ -109,7 +113,7 @@ namespace Npk::Tasking
 
         [[gnu::always_inline]]
         inline size_t EngineId() const
-        { return engineId; }
+        { return state == ThreadState::Running ? engineOrQueue.engineId : NoAffinity; }
 
         [[gnu::always_inline]]
         inline size_t GetAffinity() const
@@ -125,8 +129,7 @@ namespace Npk::Tasking
         void SetAffinity(size_t newAffinity);
         void Start(void* arg);
         void Exit(size_t code);
-        //TODO: Join(), needs waitable overhaul
-        //TODO: Sleep(), same as above
+        //TODO: Sleep() and Join()
     };
 
     class ProgramManager

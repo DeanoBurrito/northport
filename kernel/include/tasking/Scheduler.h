@@ -10,7 +10,6 @@ namespace Npk::Tasking
 
     struct WorkQueue
     {
-        //TODO: priority queues
         sl::Atomic<size_t> depth;
         sl::SpinLock lock;
         sl::IntrFwdList<Thread> threads;
@@ -18,7 +17,6 @@ namespace Npk::Tasking
 
     enum EngineFlag
     {
-        Clutch, //engine will not take control away from the current thread while this is set
         ReschedulePending, //engine will reschedule when next possible
     };
 
@@ -60,7 +58,6 @@ namespace Npk::Tasking
         sl::IntrFwdList<EngineCluster> clusters;
 
         static void DoReschedule(void* arg);
-        static void RemoteDequeue(void* arg);
 
         void LateInit();
 
@@ -73,33 +70,11 @@ namespace Npk::Tasking
         void StartEngine();
         //TODO: StopEngine() and RemoveEngine()
         
-        bool Suspend(bool yes);
         void Yield();
 
         void EnqueueThread(Thread* t);
         void DequeueThread(Thread* t);
         void QueueReschedule();
         void SwapExtendedRegs();
-    };
-
-    struct ScheduleGuard
-    {
-    private:
-        bool prevState;
-    public:
-        ScheduleGuard()
-        {
-            prevState = Scheduler::Global().Suspend(true);
-        }
-
-        ~ScheduleGuard()
-        {
-            Scheduler::Global().Suspend(prevState);
-        }
-
-        ScheduleGuard(const ScheduleGuard&) = delete;
-        ScheduleGuard& operator=(const ScheduleGuard&) = delete;
-        ScheduleGuard(ScheduleGuard&&) = delete;
-        ScheduleGuard& operator=(ScheduleGuard&&) = delete;
     };
 }

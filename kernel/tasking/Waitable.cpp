@@ -25,6 +25,9 @@ namespace Npk::Tasking
             return true;
         }
 
+        if (!waitAll)
+            return false;
+
         for (size_t i = 0; i < entries.Size(); i++)
         {
             entries[i].event->signalCount--;
