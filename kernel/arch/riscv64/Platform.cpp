@@ -95,4 +95,9 @@ namespace Npk
         //so we do it anyway, just in case.
         SbiSendIpi(1ul << (dest % 64), dest / 64);
     }
+
+    void SetHardwareRunLevel(RunLevel rl)
+    {
+        //TODO: make use of this on riscv
+    }
 }

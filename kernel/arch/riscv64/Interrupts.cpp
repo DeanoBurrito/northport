@@ -1,4 +1,5 @@
 #include <arch/riscv64/Interrupts.h>
+#include <arch/riscv64/Sbi.h>
 #include <debug/Log.h>
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
@@ -26,7 +27,7 @@ namespace Npk
 
 extern "C"
 {
-    constexpr const char* exceptionNames[] = 
+    constexpr const char* ExceptionStrs[] = 
     {
         "instruction address misaligned",
         "instruction access fault",
@@ -39,73 +40,91 @@ extern "C"
         "ecall from U-mode",
         "ecall from S-mode"
     };
+    constexpr size_t ExceptionStrCount = sizeof(ExceptionStrs) / sizeof(const char*);
+    constexpr uintptr_t InterruptBitMask = 1ul << 63;
+
+    void HandleException(Npk::TrapFrame* frame)
+    {
+        using namespace Npk;
+        using namespace Npk::Memory;
+
+        Memory::VmFaultFlags faultFlags {};
+        switch (frame->vector)
+        {
+        case 12:
+            faultFlags |= VmFaultFlag::Execute;
+            break;
+        case 13:
+            faultFlags |= VmFaultFlag::Read;
+            break;
+        case 14:
+            faultFlags |= VmFaultFlag::Write;
+            break;
+        //TOOD: UD and decoder for FPU/vector register traps
+
+        default:
+            {
+                const char* exceptionName = frame->vector < ExceptionStrCount 
+                    ? ExceptionStrs[frame->vector] : "unknown";
+                Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal,
+                   exceptionName, frame->vector, frame->sepc, frame->sp, frame->ec);
+            }
+        };
+
+        ASSERT_(faultFlags.Any());
+        if (frame->ec < hhdmBase)
+            ASSERT(VMM::CurrentActive(), "nullptr deref in kernel?");
+        if (frame->flags.spp == 0)
+            faultFlags |= VmFaultFlag::User;
+
+        bool success = false;
+        if (frame->ec < hhdmBase)
+        {
+            ASSERT(VMM::CurrentActive(), "nullptr deref in kernel?");
+            success = VMM::Current().HandleFault(frame->ec, faultFlags);
+        }
+        else
+            success = VMM::Kernel().HandleFault(frame->ec, faultFlags);
+        if (!success)
+            Log("Bad page fault @ 0x%lx, flags=0x%lx", LogLevel::Fatal, frame->ec, faultFlags.Raw());
+    }
     
     void TrapDispatch(Npk::TrapFrame* frame)
     {
         using namespace Npk;
-        const RunLevel prevRunLevel = CoreLocal().runLevel;
-        CoreLocal().runLevel = RunLevel::IntHandler;
-        Tasking::Scheduler::Global().SavePrevFrame(frame, prevRunLevel);
+        using namespace Npk::Tasking;
 
-        const bool isInterrupt = frame->vector & (1ul << 63);
-        frame->vector &= ~(1ul << 63);
+        const RunLevel prevRl = RaiseRunLevel(RunLevel::Interrupt);
+        if (prevRl == RunLevel::Normal)
+            ProgramManager::Global().SaveCurrentFrame(frame);
+
+        const bool isInterrupt = frame->vector & InterruptBitMask;
+        frame->vector &= ~InterruptBitMask;
 
         if (isInterrupt)
         {
             switch (frame->vector)
             {
-            case 1:
+            case 1: //IPI
                 Interrupts::ProcessIpiMail();
+                ClearCsrBits("sip", 1); //sip.ssip is the only one we can clear ourselves
                 break;
-            case 5:
+            case 5: //Timer (TODO: clear using EE)
+                SbiSetTimer(-1ul);
                 if (timerCallback != nullptr)
                     timerCallback();
-                break;
-            case 9:
-                Log("Got riscv external interrupt.", LogLevel::Fatal);
-                break;
+            case 9: //external interrupt (SIP bit must be cleared by interrupt controller)
             default:
-                //on riscv, devices external to the cpu will all trigger an external
-                //interrupt. If we get an interrupt number other than these three
-                //something has gone wrong.
                 ASSERT_UNREACHABLE();
-            }
-            
-            ClearCsrBits("sip", 1 << frame->vector);
-        }
-        else if (frame->vector >= 12 && frame->vector <= 15)
-        {
-            using namespace Memory;
-
-            VmFaultFlags flags {};
-            if (frame->vector == 12)
-                flags |= VmFaultFlag::Execute;
-            else if (frame->vector == 13)
-                flags |= VmFaultFlag::Read;
-            else if (frame->vector == 15)
-                flags |= VmFaultFlag::Write;
-            
-            if (frame->flags.spp == 0)
-                flags |= VmFaultFlag::User;
-
-            bool success = false;
-            if (frame->ec < hhdmBase)
-                success = VMM::Current().HandleFault(frame->ec, flags);
-            else
-                success = VMM::Kernel().HandleFault(frame->ec, flags);
-            if (!success)
-                Log("Bad page fault @ 0x%lx, flags=0x%lx", LogLevel::Fatal, frame->ec, flags.Raw());
-        }
-        else if (frame->vector < 12)
-        {
-            Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
-                exceptionNames[frame->vector], frame->vector, frame->sepc, frame->sp, frame->ec);
+            };
         }
         else
-            Log("Unknown CPU exception: %lu", LogLevel::Fatal, frame->vector);
-
-        Tasking::Scheduler::Global().Yield();
-        CoreLocal().runLevel = prevRunLevel;
+            HandleException(frame);
+        
+        if (prevRl == RunLevel::Normal)
+            frame = ProgramManager::Global().GetNextFrame();
+        LowerRunLevel(prevRl);
         SwitchFrame(nullptr, frame);
+        ASSERT_UNREACHABLE();
     }
 }

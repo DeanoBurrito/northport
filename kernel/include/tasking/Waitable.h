@@ -6,7 +6,7 @@
 
 namespace Npk::Tasking
 {
-    struct Thread;
+    class Thread;
     struct Waitable;
     class WaitManager;
 

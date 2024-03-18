@@ -53,7 +53,7 @@ namespace Npk
 
 extern "C"
 {
-    constexpr const char* exceptionNames[] = 
+    constexpr const char* ExceptionStrs[] = 
     {
         "divide error",
         "debug exception",
@@ -114,7 +114,7 @@ extern "C"
             Tasking::Scheduler::Global().SwapExtendedRegs();
         else
             Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
-                exceptionNames[frame->vector], frame->vector, frame->iret.rip, frame->iret.rsp, frame->ec);
+                ExceptionStrs[frame->vector], frame->vector, frame->iret.rip, frame->iret.rsp, frame->ec);
     }
     
     void TrapDispatch(Npk::TrapFrame* frame)
