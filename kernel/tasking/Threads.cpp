@@ -136,7 +136,9 @@ namespace Npk::Tasking
 
     Thread* Thread::Create(size_t procId, ThreadEntry entry, void* arg)
     {
-        auto maybeId = ProgramManager::Global().CreateThread(procId, entry, arg, NoAffinity, DefaultThreadStackSize);
+        auto maybeId = ProgramManager::Global().CreateThread(procId, entry, arg, 
+            NoCoreAffinity, DefaultThreadStackSize);
+
         if (!maybeId.HasValue())
             return nullptr;
         return ProgramManager::Global().GetThread(*maybeId);
@@ -181,6 +183,7 @@ namespace Npk::Tasking
     {
         VALIDATE_(state == ThreadState::Setup, );
         state = ThreadState::Ready;
+        //TODO: set arg (requires access to remove VMM)
 
         Scheduler::Global().EnqueueThread(this);
     }

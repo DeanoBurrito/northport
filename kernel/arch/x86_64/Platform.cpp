@@ -145,6 +145,14 @@ namespace Npk
 
     void SetHardwareRunLevel(RunLevel rl)
     {
-        //TODO: make proper use of this with cr8
+        switch (rl)
+        {
+        case RunLevel::Interrupt:
+        case RunLevel::Clock:
+            return WriteCr8(0xF);
+        //TODO: conditional disabling of interrupts at other levels
+        default:
+            return WriteCr8(0);
+        }
     }
 }

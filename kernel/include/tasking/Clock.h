@@ -1,10 +1,25 @@
 #pragma once
 
+#include <arch/Platform.h>
 #include <stddef.h>
+#include <Time.h>
 
 namespace Npk::Tasking
 {
+    struct ClockEvent
+    {
+        ClockEvent* next;
+
+        DpcStore* dpc;
+        size_t nanosRemaining;
+        size_t callbackCore;
+
+        ClockEvent() : next(nullptr), dpc(nullptr), callbackCore(NoCoreAffinity)
+        {}
+    };
+
     void StartSystemClock();
-    void QueueClockEvent(size_t nanoseconds, void* payloadData, void (*callback)(void* data), bool periodic = false, size_t core = -1);
-    size_t GetUptime();
+    void QueueClockEvent(ClockEvent* event);
+    void DequeueClockEvent(ClockEvent* event);
+    sl::ScaledTime GetUptime();
 }

@@ -1,6 +1,7 @@
 #include <tasking/RunLevels.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
+#include <interrupts/Ipi.h>
 
 namespace Npk::Tasking
 {
@@ -95,5 +96,15 @@ namespace Npk::Tasking
         const RunLevel currLevel = CoreLocal().runLevel;
         RaiseRunLevel(RunLevel::Apc);
         LowerRunLevel(currLevel);
+    }
+
+    static void DpcOverIpiHandler(void* arg)
+    { return QueueDpc(static_cast<DpcStore*>(arg)); }
+
+    void QueueRemoteDpc(size_t coreId, DpcStore* dpc)
+    {
+        if (coreId == CoreLocal().id)
+            return QueueDpc(dpc);
+        Interrupts::SendIpiMail(coreId, DpcOverIpiHandler, dpc);
     }
 };

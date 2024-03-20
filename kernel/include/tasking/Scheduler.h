@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tasking/Threads.h>
+#include <tasking/Clock.h>
 #include <Locks.h>
 #include <containers/List.h>
 
@@ -38,6 +39,7 @@ namespace Npk::Tasking
         size_t extRegsOwner;
 
         DpcStore rescheduleDpc;
+        ClockEvent rescheduleClockEvent;
     };
 
     //a small group of processors that share a work queue, for easy load-balancing

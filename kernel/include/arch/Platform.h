@@ -6,6 +6,8 @@
 
 namespace Npk
 {
+    constexpr size_t NoCoreAffinity = -1ul;
+
     //each of the subsystems that get to store core-local data.
     enum class LocalPtr : size_t
     {

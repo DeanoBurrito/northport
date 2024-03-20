@@ -215,6 +215,12 @@ namespace Npk
     }
 
     [[gnu::always_inline]]
+    inline void WriteCr8(uint64_t value)
+    {
+        asm volatile("mov %0, %%cr8" :: "r"(value));
+    }
+
+    [[gnu::always_inline]]
     inline uint64_t ReadMsr(uint32_t addr)
     {
         uint32_t high, low;

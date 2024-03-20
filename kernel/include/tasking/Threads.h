@@ -65,8 +65,6 @@ namespace Npk::Tasking
         Running = 4,
     };
 
-    constexpr size_t NoAffinity = -1ul;
-
     using ThreadEntry = void (*)(void*);
 
     class Thread
@@ -113,7 +111,7 @@ namespace Npk::Tasking
 
         [[gnu::always_inline]]
         inline size_t EngineId() const
-        { return state == ThreadState::Running ? engineOrQueue.engineId : NoAffinity; }
+        { return state == ThreadState::Running ? engineOrQueue.engineId : NoCoreAffinity; }
 
         [[gnu::always_inline]]
         inline size_t GetAffinity() const

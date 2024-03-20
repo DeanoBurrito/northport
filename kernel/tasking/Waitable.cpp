@@ -52,7 +52,7 @@ namespace Npk::Tasking
     size_t WaitManager::WaitMany(sl::Span<Waitable> events, sl::Span<WaitEntry> entries, sl::ScaledTime timeout, bool waitAll)
     {
         VALIDATE_(events.Size() == entries.Size(), 0);
-        VALIDATE_(timeout.units == 0 || timeout.units == -1, 0); //TODO: timeouts
+        VALIDATE_(timeout.units == 0 || timeout.units == -1ul, 0); //TODO: timeouts
 
         //some initial setup
         const auto prevRunlevel = EnsureRunLevel(RunLevel::Dpc);

@@ -1,118 +1,161 @@
 #include <tasking/Clock.h>
 #include <arch/Timers.h>
-#include <containers/LinkedList.h>
 #include <debug/Log.h>
 #include <interrupts/Ipi.h>
-#include <memory/Heap.h>
+#include <containers/List.h>
 #include <Locks.h>
-#include <Atomic.h>
-#include <Maths.h>
 
 namespace Npk::Tasking
 {
-    constexpr size_t ClockTickMs = sl::Clamp<size_t>(NP_CLOCK_MS, 1, 20);
-    
-    struct ClockEvent
+    constexpr size_t TimekeepingEventNanos = 1'000'000;
+
+    sl::SpinLock eventsLock;
+    sl::IntrFwdList<ClockEvent> events;
+    size_t eventsModifiedTicks;
+
+    sl::Atomic<size_t> uptimeMillis;
+    ClockEvent timekeepingEvent;
+    DpcStore timekeepingDpc;
+
+    static void UpdateTimerQueue()
     {
-        size_t nanosRemaining;
-        void* data;
-        void (*Callback)(void*);
-        size_t period;
-        size_t callbackCore;
+        const size_t pollTicks = PollTimer();
+        size_t listDelta = PolledTicksToNanos(pollTicks - eventsModifiedTicks);
+        eventsModifiedTicks = pollTicks;
 
-        ClockEvent() = default;
-        ClockEvent(size_t nanos, void* data, void (*cb)(void*), size_t period, size_t core)
-        : nanosRemaining(nanos), data(data), Callback(cb), period(period), callbackCore(core)
-        {}
-    };
-
-    volatile sl::Atomic<size_t> uptimeMillis;
-    sl::InterruptLock eventsLock;
-    sl::LinkedList<ClockEvent> events;
-
-    void ClockEventDispatch()
-    {
-dispatch_event:
-        const size_t startTick = PollTimer();
-
-        eventsLock.Lock();
-        const ClockEvent event = events.PopFront();
-        eventsLock.Unlock();
-
-        if (event.Callback != nullptr)
+        auto scan = events.Begin();
+        while (scan != nullptr && listDelta > 0)
         {
-            if (event.callbackCore == CoreLocal().id)
-                event.Callback(event.data);
-            else
-                Interrupts::SendIpiMail(event.callbackCore, event.Callback, event.data);
-        }
-        
-        if (event.period != 0)
-            QueueClockEvent(event.period, event.data, event.Callback, true, event.callbackCore);
+            ASSERT_(scan != scan->next);
+            if (scan->nanosRemaining == 0)
+            {
+                scan = scan->next;
+                continue;
+            }
+            if (listDelta < scan->nanosRemaining)
+            {
+                scan->nanosRemaining -= listDelta;
+                return;
+            }
 
-        const size_t nanosPassed = PolledTicksToNanos(PollTimer() - startTick);
-        if (nanosPassed >= events.Front().nanosRemaining || events.Front().nanosRemaining == 0)
-            goto dispatch_event;
-        else
-            events.Front().nanosRemaining -= nanosPassed;
-        
-        ASSERT(events.Size() > 0, "System clock has empty event queue. No time-keeping event?");
-        SetSysTimer(events.Front().nanosRemaining, nullptr);
+            listDelta -= scan->nanosRemaining;
+            scan->nanosRemaining = 0;
+            scan = scan->next;
+        }
     }
 
-    void UptimeEventCallback(void*)
+    void ClockTickHandler()
     {
-        uptimeMillis.Add(ClockTickMs, sl::Relaxed);
+        ASSERT_(CoreLocal().runLevel >= RunLevel::Clock);
+
+        UpdateTimerQueue();
+        while (!events.Empty())
+        {
+            if (events.Front().nanosRemaining != 0)
+                break;
+
+            ClockEvent* event = events.PopFront();
+            if (event->callbackCore == CoreLocal().id)
+                QueueDpc(event->dpc);
+            else
+                QueueRemoteDpc(event->callbackCore, event->dpc);
+        }
+    }
+
+    void ClockUptimeDpc(void*)
+    {
+        uptimeMillis.Add(TimekeepingEventNanos / 1'000'000, sl::Relaxed);
+
+        timekeepingEvent.nanosRemaining = TimekeepingEventNanos;
+        QueueClockEvent(&timekeepingEvent);
     }
 
     void StartSystemClock()
     {
-        QueueClockEvent(ClockTickMs * 1'000'000, nullptr, UptimeEventCallback, true); //main timekeeping event.
-        SetSysTimer(events.Front().nanosRemaining, ClockEventDispatch);
+        timekeepingDpc.data.function = ClockUptimeDpc;
+        timekeepingEvent.callbackCore = CoreLocal().id;
+        timekeepingEvent.nanosRemaining = TimekeepingEventNanos;
+        timekeepingEvent.dpc = &timekeepingDpc;
+        QueueClockEvent(&timekeepingEvent);
 
-        Log("System clock start: tick=%lums, sysTimer=%s, pollTimer=%s", LogLevel::Info, ClockTickMs, SysTimerName(), PollTimerName());
+        Log("System clock started: intTimer=%s, pollTimer=%s", LogLevel::Info,
+            SysTimerName(), PollTimerName());
     }
 
-    void QueueClockEvent(size_t nanoseconds, void* payloadData, void (*callback)(void* data), bool periodic, size_t core)
+    static void RemoteQueueClockEvent(void* arg)
+    { QueueClockEvent(static_cast<ClockEvent*>(arg)); }
+
+    void QueueClockEvent(ClockEvent* event)
     {
-        if (core == (size_t)-1)
-            core = CoreLocal().id;
-        const size_t period = nanoseconds;
+        VALIDATE_(event != nullptr, );
+        VALIDATE_(event->dpc != nullptr, );
 
-        sl::ScopedLock scopeLock(eventsLock);
-        for (auto it = events.Begin(); it != events.End(); ++it)
+        if (event->callbackCore == NoCoreAffinity)
+            event->callbackCore = CoreLocal().id;
+        if (CoreLocal().id != 0)
+            return Interrupts::SendIpiMail(0, RemoteQueueClockEvent, event);
+
+        const auto prevRl = EnsureRunLevel(RunLevel::Clock);
+        eventsLock.Lock();
+
+        UpdateTimerQueue();
+
+        //special case: we're inserting at the front of the list
+        if (events.Empty() || events.Front().nanosRemaining > event->nanosRemaining)
         {
-            if (it->nanosRemaining < nanoseconds)
-            {
-                nanoseconds -= it->nanosRemaining;
-                continue;
-            }
+            if (!events.Empty())
+                events.Front().nanosRemaining -= event->nanosRemaining;
+            events.PushFront(event);
+            SetSysTimer(event->nanosRemaining, ClockTickHandler); //TODO: check we're not going beyond limits of timer
 
-            it->nanosRemaining -= nanoseconds;
-
-            //TODO: what if we insert before the first event (which is timer expiry), 
-            //we should reset the timer expiry.
-            events.Insert(it, { nanoseconds, payloadData, callback, periodic ? period : 0, core });
+            eventsLock.Unlock();
+            if (prevRl.HasValue())
+                LowerRunLevel(*prevRl);
             return;
         }
 
-        /* Handling an unlikely scenario: if a clock event is set *far* into the future,
-        beyond what the hardware timer can handle in one cycle, we add events just
-        below the limit of the timer. This trades clock counter length for memory usage,
-        and effectively allows for infinite expiry times (memory permitting).
-        */
-        const size_t maxTimerNanos = SysTimerMaxNanos();
-        while (nanoseconds >= maxTimerNanos)
+        auto scan = events.Begin();
+        bool inserted = false;
+        while (scan != events.End())
         {
-            events.EmplaceBack(maxTimerNanos, nullptr, nullptr, 0ul, 0ul);
-            nanoseconds -= maxTimerNanos;
+            event->nanosRemaining -= scan->nanosRemaining;
+            if (scan->next == nullptr)
+                break;
+            if (scan->next->nanosRemaining < event->nanosRemaining)
+                continue;
+
+            events.InsertAfter(scan, event);
+            event->next -= event->nanosRemaining;
+            inserted = true;
+            break;
         }
 
-        events.EmplaceBack(nanoseconds, payloadData, callback, periodic ? period : 0, core);
+        if (!inserted)
+            events.PushBack(event);
+
+        eventsLock.Unlock();
+        if (prevRl.HasValue())
+            LowerRunLevel(*prevRl);
     }
 
-    size_t GetUptime()
+    static void RemoteDequeueClockEvent(void* arg)
+    { DequeueClockEvent(static_cast<ClockEvent*>(arg)); }
+
+    void DequeueClockEvent(ClockEvent* event)
     {
-        return uptimeMillis;
+        VALIDATE_(event != nullptr, );
+
+        if (CoreLocal().id != 0)
+            return Interrupts::SendIpiMail(0, RemoteDequeueClockEvent, event);
+
+        const auto prevRl = EnsureRunLevel(RunLevel::Clock);
+        eventsLock.Lock();
+        events.Remove(event);
+        eventsLock.Unlock();
+        if (prevRl.HasValue())
+            LowerRunLevel(*prevRl);
     }
+
+    sl::ScaledTime GetUptime()
+    { return { sl::TimeScale::Millis, uptimeMillis.Load(sl::Relaxed) }; }
 }

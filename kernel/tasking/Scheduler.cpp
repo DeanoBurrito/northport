@@ -36,19 +36,20 @@ namespace Npk::Tasking
         return nullptr;
     }
 
-    void Scheduler::DoReschedule(void* arg)
+    void Scheduler::DoReschedule(void*)
     {
-        auto engine = static_cast<Engine*>(arg);
-        //TODO: add clock event for next reschedule
+        Engine& engine = LocalEngine();
+
+        //DequeueClockEvent(&engine.rescheduleClockEvent);
 
         //put current thread back into a queue if required
         Thread* current = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
-        if (current != nullptr && current->id != engine->idleThread->id
+        if (current != nullptr && current->id != engine.idleThread->id
             && current->state == ThreadState::Running)
         {
-            WorkQueue* const queue = current->affinity == engine->id 
-                ? &engine->localQueue 
-                : &engine->cluster->sharedQueue;
+            WorkQueue* const queue = current->affinity == engine.id 
+                ? &engine.localQueue 
+                : &engine.cluster->sharedQueue;
 
             current->schedLock.Lock();
             current->state = ThreadState::Queued;
@@ -62,38 +63,42 @@ namespace Npk::Tasking
         }
 
         //reset ticket counts if needed
-        if (engine->sharedTickets == 0)
+        if (engine.sharedTickets == 0)
         {
-            engine->sharedTickets = engine->cluster->sharedQueue.depth;
-            engine->localTickets = engine->localQueue.depth * engine->cluster->engineCount;
+            engine.sharedTickets = engine.cluster->sharedQueue.depth;
+            engine.localTickets = engine.localQueue.depth * engine.cluster->engineCount;
         }
 
         Thread* nextThread = nullptr;
         //try a thread from the local queue first
-        if (engine->localTickets > 0)
+        if (engine.localTickets > 0)
         {
-            nextThread = GetRunnableThread(engine->localQueue);
+            nextThread = GetRunnableThread(engine.localQueue);
             if (nextThread != nullptr)
-                engine->localTickets--;
+                engine.localTickets--;
         }
         //otherwise try the shared queue from the cluster
         if (nextThread == nullptr)
         {
-            nextThread = GetRunnableThread(engine->cluster->sharedQueue);
+            nextThread = GetRunnableThread(engine.cluster->sharedQueue);
             if (nextThread != nullptr)
-                engine->sharedTickets--;
+                engine.sharedTickets--;
         }
         //no threads available, switch to the idle thread
         if (nextThread == nullptr)
-            nextThread = engine->idleThread;
+            nextThread = engine.idleThread;
 
         nextThread->schedLock.Lock();
         nextThread->state = ThreadState::Running;
-        nextThread->engineOrQueue.engineId = engine->id;
+        nextThread->engineOrQueue.engineId = engine.id;
         nextThread->schedLock.Unlock();
 
+        //TODO: decide on time until next timed reschedule
+        engine.rescheduleClockEvent.nanosRemaining = 10'000'000; //10ms, for testing
+        //QueueClockEvent(&engine.rescheduleClockEvent);
+
         CoreLocal()[LocalPtr::Thread] = nextThread;
-        engine->flags.Clear(EngineFlag::ReschedulePending);
+        engine.flags.Clear(EngineFlag::ReschedulePending);
     }
 
     void Scheduler::LateInit()
@@ -149,12 +154,14 @@ namespace Npk::Tasking
         engine->id = CoreLocal().id;
         engine->extRegsOwner = 0;
         engine->flags = 0;
+
         engine->rescheduleDpc.data.function = DoReschedule;
-        engine->rescheduleDpc.data.arg = engine;
+        engine->rescheduleClockEvent.dpc = &engine->rescheduleDpc;
+        engine->rescheduleClockEvent.callbackCore = CoreLocal().id;
         CoreLocal()[LocalPtr::Scheduler] = engine;
 
         auto maybeIdle = ProgramManager::Global().CreateThread(
-            Process::Kernel().Id(), IdleMain, nullptr, NoAffinity, IdleStackSize);
+            Process::Kernel().Id(), IdleMain, nullptr, NoCoreAffinity, IdleStackSize);
         ASSERT_(maybeIdle.HasValue());
         engine->idleThread = Thread::Get(*maybeIdle);
         ASSERT_(engine->idleThread != nullptr);
@@ -194,7 +201,7 @@ namespace Npk::Tasking
         VALIDATE(t->state == ThreadState::Ready,, "Thread not in ready state");
 
         WorkQueue* queue = nullptr;
-        if (t->affinity != NoAffinity)
+        if (t->affinity != NoCoreAffinity)
         {
             //thread has requested a specific engine to be queued on
             enginesLock.ReaderLock();
