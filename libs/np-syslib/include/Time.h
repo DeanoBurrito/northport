@@ -16,6 +16,12 @@ namespace sl
         TimeScale scale;
         size_t units;
 
+        constexpr ScaledTime() : scale(TimeScale::Nanos), units(0)
+        {}
+
+        constexpr ScaledTime(TimeScale s, size_t u) : scale(s), units(u)
+        {}
+
         static ScaledTime FromFrequency(size_t hertz);
 
         ScaledTime ToScale(TimeScale newScale) const;
@@ -42,3 +48,12 @@ namespace sl
         { return {}; }
     };
 }
+
+constexpr sl::ScaledTime operator""_ms(unsigned long long units)
+{ return sl::ScaledTime(sl::TimeScale::Millis, units); }
+
+constexpr sl::ScaledTime operator""_us(unsigned long long units)
+{ return sl::ScaledTime(sl::TimeScale::Micros, units); }
+
+constexpr sl::ScaledTime operator""_ns(unsigned long long units)
+{ return sl::ScaledTime(sl::TimeScale::Nanos, units); }

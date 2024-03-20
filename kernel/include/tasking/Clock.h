@@ -11,7 +11,7 @@ namespace Npk::Tasking
         ClockEvent* next;
 
         DpcStore* dpc;
-        size_t nanosRemaining;
+        sl::ScaledTime duration;
         size_t callbackCore;
 
         ClockEvent() : next(nullptr), dpc(nullptr), callbackCore(NoCoreAffinity)

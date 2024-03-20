@@ -7,7 +7,7 @@
 
 namespace Npk::Tasking
 {
-    constexpr size_t TimekeepingEventNanos = 1'000'000;
+    constexpr sl::ScaledTime TimekeepingEventDuration = 1_ms;
 
     sl::SpinLock eventsLock;
     sl::IntrFwdList<ClockEvent> events;
@@ -27,19 +27,19 @@ namespace Npk::Tasking
         while (scan != nullptr && listDelta > 0)
         {
             ASSERT_(scan != scan->next);
-            if (scan->nanosRemaining == 0)
+            if (scan->duration.units == 0)
             {
                 scan = scan->next;
                 continue;
             }
-            if (listDelta < scan->nanosRemaining)
+            if (listDelta < scan->duration.units)
             {
-                scan->nanosRemaining -= listDelta;
+                scan->duration.units -= listDelta;
                 return;
             }
 
-            listDelta -= scan->nanosRemaining;
-            scan->nanosRemaining = 0;
+            listDelta -= scan->duration.units;
+            scan->duration.units = 0;
             scan = scan->next;
         }
     }
@@ -51,7 +51,7 @@ namespace Npk::Tasking
         UpdateTimerQueue();
         while (!events.Empty())
         {
-            if (events.Front().nanosRemaining != 0)
+            if (events.Front().duration.units != 0)
                 break;
 
             ClockEvent* event = events.PopFront();
@@ -64,9 +64,9 @@ namespace Npk::Tasking
 
     void ClockUptimeDpc(void*)
     {
-        uptimeMillis.Add(TimekeepingEventNanos / 1'000'000, sl::Relaxed);
+        uptimeMillis.Add(TimekeepingEventDuration.ToMillis(), sl::Relaxed);
 
-        timekeepingEvent.nanosRemaining = TimekeepingEventNanos;
+        timekeepingEvent.duration = TimekeepingEventDuration;
         QueueClockEvent(&timekeepingEvent);
     }
 
@@ -74,8 +74,8 @@ namespace Npk::Tasking
     {
         timekeepingDpc.data.function = ClockUptimeDpc;
         timekeepingEvent.callbackCore = CoreLocal().id;
-        timekeepingEvent.nanosRemaining = TimekeepingEventNanos;
         timekeepingEvent.dpc = &timekeepingDpc;
+        timekeepingEvent.duration = TimekeepingEventDuration;
         QueueClockEvent(&timekeepingEvent);
 
         Log("System clock started: intTimer=%s, pollTimer=%s", LogLevel::Info,
@@ -99,14 +99,15 @@ namespace Npk::Tasking
         eventsLock.Lock();
 
         UpdateTimerQueue();
+        event->duration = event->duration.ToScale(sl::TimeScale::Nanos);
 
         //special case: we're inserting at the front of the list
-        if (events.Empty() || events.Front().nanosRemaining > event->nanosRemaining)
+        if (events.Empty() || events.Front().duration.units > event->duration.units)
         {
             if (!events.Empty())
-                events.Front().nanosRemaining -= event->nanosRemaining;
+                events.Front().duration.units -= event->duration.units;
             events.PushFront(event);
-            SetSysTimer(event->nanosRemaining, ClockTickHandler); //TODO: check we're not going beyond limits of timer
+            SetSysTimer(event->duration.units, ClockTickHandler); //TODO: check we're not going beyond limits of timer
 
             eventsLock.Unlock();
             if (prevRl.HasValue())
@@ -118,14 +119,14 @@ namespace Npk::Tasking
         bool inserted = false;
         while (scan != events.End())
         {
-            event->nanosRemaining -= scan->nanosRemaining;
+            event->duration.units -= scan->duration.units;
             if (scan->next == nullptr)
                 break;
-            if (scan->next->nanosRemaining < event->nanosRemaining)
+            if (scan->next->duration.units < event->duration.units)
                 continue;
 
             events.InsertAfter(scan, event);
-            event->next -= event->nanosRemaining;
+            event->next -= event->duration.units;
             inserted = true;
             break;
         }

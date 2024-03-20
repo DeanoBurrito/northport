@@ -94,7 +94,7 @@ namespace Npk::Tasking
         nextThread->schedLock.Unlock();
 
         //TODO: decide on time until next timed reschedule
-        engine.rescheduleClockEvent.nanosRemaining = 10'000'000; //10ms, for testing
+        engine.rescheduleClockEvent.duration = 10_ms;
         //QueueClockEvent(&engine.rescheduleClockEvent);
 
         CoreLocal()[LocalPtr::Thread] = nextThread;

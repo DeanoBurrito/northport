@@ -65,6 +65,7 @@ namespace Npk::Debug
     EarlyLogWrite earlyOuts[MaxEarlyLogOuts];
     size_t eloCount = 0;
     sl::SpinLock eloLock;
+    sl::SpinLock panicLock;
 
     void WriteElos(const LogMessage& msg)
     {
@@ -159,7 +160,7 @@ namespace Npk::Debug
     void Log(const char* str, LogLevel level, ...)
     {
         //get length of uptime
-        const size_t uptime = Tasking::GetUptime();
+        const size_t uptime = Tasking::GetUptime().ToMillis();
         const size_t uptimeLen = npf_snprintf(nullptr, 0, "%lu.%03lu", uptime / 1000, uptime % 1000) + 1;
 
         //get length of header (processor id + thread id)
@@ -281,6 +282,7 @@ extern "C"
         using namespace Npk::Debug;
         using namespace Npk::Tasking;
 
+        panicLock.Lock(); //prevents multiple cores enter the panic sequence at the same time
         Interrupts::BroadcastPanicIpi();
         //try to take the ELO lock a reasonable number of times. Don't wait on the lock though
         //as it's possible to deadlock here. This also gives other cores time to finish accept 
@@ -347,7 +349,7 @@ extern "C"
             auto symbol = SymbolFromAddr(addr, SymbolFlag::Public | SymbolFlag::Private);
             const char* symbolName = symbol.HasValue() ? symbol->name.Begin() : "<unknown>";
             const size_t symbolOffset = symbol.HasValue() ? addr - symbol->base : 0;
-            PanicWrite("%3u: 0x%lx %s+0x%lu\r\n", i, addr, symbolName, symbolOffset);
+            PanicWrite("%3u: 0x%lx %s+0x%lx\r\n", i, addr, symbolName, symbolOffset);
         }
         
         PanicWrite("\r\nSystem has halted indefinitely, manual reset required.\r\n");
