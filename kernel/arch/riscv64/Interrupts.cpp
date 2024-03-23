@@ -97,6 +97,7 @@ extern "C"
         const RunLevel prevRl = RaiseRunLevel(RunLevel::Interrupt);
         if (prevRl == RunLevel::Normal)
             ProgramManager::Global().SaveCurrentFrame(frame);
+        EnableInterrupts();
 
         const bool isInterrupt = frame->vector & InterruptBitMask;
         frame->vector &= ~InterruptBitMask;
@@ -124,6 +125,7 @@ extern "C"
         if (prevRl == RunLevel::Normal)
             frame = ProgramManager::Global().GetNextFrame();
         LowerRunLevel(prevRl);
+        DisableInterrupts();
         SwitchFrame(nullptr, frame);
         ASSERT_UNREACHABLE();
     }

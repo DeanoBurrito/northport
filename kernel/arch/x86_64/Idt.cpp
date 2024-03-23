@@ -125,6 +125,7 @@ extern "C"
         const RunLevel prevRl = RaiseRunLevel(RunLevel::Interrupt);
         if (prevRl == RunLevel::Normal)
             ProgramManager::Global().SaveCurrentFrame(frame);
+        EnableInterrupts();
 
         if (frame->vector < 0x20)
             HandleNativeException(frame);
@@ -141,6 +142,7 @@ extern "C"
             frame = ProgramManager::Global().GetNextFrame();
 
         LowerRunLevel(prevRl);
+        DisableInterrupts();
         SwitchFrame(nullptr, frame);
         ASSERT_UNREACHABLE();
     }

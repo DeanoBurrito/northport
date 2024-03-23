@@ -91,6 +91,7 @@ namespace Npk::Tasking
         if (prevRunlevel.HasValue())
             LowerRunLevel(*prevRunlevel);
         Scheduler::Global().Yield();
+        //TODO: we should call TryFinish() and Yield() in a loop until we can actually complete, or the wait is cancelled.
 
         return waitAll ? entries.Size() : 1;
     }
@@ -118,7 +119,7 @@ namespace Npk::Tasking
             {
                 //we were able to wake the waiter, remove it from any queues, enqueue it for scheduling
                 for (size_t i = 0; i < waiter->cohort.Size(); i++)
-                    ASSERT_(waiter->cohort[i].event->waiters.Remove(&waiter->cohort[i]));
+                    waiter->cohort[i].event->waiters.Remove(&waiter->cohort[i]);
                 Scheduler::Global().EnqueueThread(waiter->thread);
                 wokeCount++;
             }

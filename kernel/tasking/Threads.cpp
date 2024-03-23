@@ -183,7 +183,14 @@ namespace Npk::Tasking
     {
         VALIDATE_(state == ThreadState::Setup, );
         state = ThreadState::Ready;
-        //TODO: set arg (requires access to remove VMM)
+        
+        if (arg != nullptr)
+        {
+            TrapFrame localFrame {};
+            ASSERT_(parent->Vmm().CopyOut(&localFrame, frame, sizeof(TrapFrame)) == sizeof(TrapFrame));
+            SetTrapFrameArg(&localFrame, 0, arg);
+            ASSERT_(parent->Vmm().CopyIn(frame, &localFrame, sizeof(TrapFrame)) == sizeof(TrapFrame));
+        }
 
         Scheduler::Global().EnqueueThread(this);
     }
@@ -196,6 +203,10 @@ namespace Npk::Tasking
 
         const RunLevel prevLevel = RaiseRunLevel(RunLevel::Dpc);
         Scheduler::Global().DequeueThread(this);
+
+        schedLock.Lock();
+        state = ThreadState::Dead;
+        schedLock.Unlock();
         LowerRunLevel(prevLevel);
 
         if (selfExit)

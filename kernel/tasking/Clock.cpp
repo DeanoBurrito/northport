@@ -7,7 +7,7 @@
 
 namespace Npk::Tasking
 {
-    constexpr sl::ScaledTime TimekeepingEventDuration = 1_ms;
+    constexpr sl::ScaledTime TimekeepingEventDuration = 5_ms;
 
     sl::SpinLock eventsLock;
     sl::IntrFwdList<ClockEvent> events;
@@ -60,6 +60,9 @@ namespace Npk::Tasking
             else
                 QueueRemoteDpc(event->callbackCore, event->dpc);
         }
+
+        if (!events.Empty())
+            SetSysTimer(events.Front().duration.units, ClockTickHandler);
     }
 
     void ClockUptimeDpc(void*)
@@ -139,19 +142,15 @@ namespace Npk::Tasking
             LowerRunLevel(*prevRl);
     }
 
-    static void RemoteDequeueClockEvent(void* arg)
-    { DequeueClockEvent(static_cast<ClockEvent*>(arg)); }
-
     void DequeueClockEvent(ClockEvent* event)
     {
         VALIDATE_(event != nullptr, );
 
-        if (CoreLocal().id != 0)
-            return Interrupts::SendIpiMail(0, RemoteDequeueClockEvent, event);
-
         const auto prevRl = EnsureRunLevel(RunLevel::Clock);
         eventsLock.Lock();
-        events.Remove(event);
+        ClockEvent* following = events.Remove(event);
+        if (following != nullptr)
+            following->duration.units += event->duration.units;
         eventsLock.Unlock();
         if (prevRl.HasValue())
             LowerRunLevel(*prevRl);

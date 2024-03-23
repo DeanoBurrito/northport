@@ -95,17 +95,17 @@ namespace sl
                 return temp;
             }
 
-            bool Remove(T* value)
+            T* Remove(T* value)
             {
                 if (value == nullptr || head == nullptr)
-                    return false;
+                    return nullptr;
 
                 if (head == value)
                 {
                     head = head->next;
                     if (head == nullptr)
                         tail = nullptr;
-                    return true;
+                    return head;
                 }
                     
                 T* scan = head;
@@ -120,10 +120,10 @@ namespace sl
                     scan->next = value->next;
                     if (scan->next == nullptr)
                         tail = scan;
-                    return true;
+                    return scan->next;
                 }
 
-                return false;
+                return nullptr;
             }
         };
 

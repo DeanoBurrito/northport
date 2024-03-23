@@ -31,8 +31,6 @@ KERNEL_CXX_FLAGS += -O0 -g
 # Set to 'yes' to embed a nice terminal background into the kernel,
 # this does significantly increase kernel size and build times. 
 INCLUDE_TERMINAL_BG = no
-# Resolution of the kernel clock in milliseconds. Range is 1-20ms (1000hz - 50hz).
-CLOCK_TICK_MS = 1
 
 # ---- X86_64 Options ----
 # Enable use of debugcon (port 0xE9) as a serial driver and early log output. 

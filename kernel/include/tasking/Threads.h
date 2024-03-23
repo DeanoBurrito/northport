@@ -48,6 +48,10 @@ namespace Npk::Tasking
         inline size_t Id() const
         { return id; }
 
+        [[gnu::always_inline]]
+        inline VMM& Vmm()
+        { return vmm; }
+
         sl::Span<uint8_t> GetAttrib(ProgramAttribType type);
         void SetAttrib(ProgramAttribType type, sl::Span<uint8_t> data);
         inline void ClearAttrib(ProgramAttribType type)

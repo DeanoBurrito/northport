@@ -1,12 +1,14 @@
 # current
 - System clock handles events being inserted at the front of the queue properly.
     - Clock events now queue a DPC upon expiry, rather than running the callback inside the interrupt handler.
+    - Clock events use the generic "ScaledTime" format rather than only nanoseconds.
 - Extracted runlevel management from scheduler, and management of thread/process lifetime. The scheduler now just handles scheduling threads, as it should.
     - Scheduling and thread/process lifetime management are exposed through the driver API now.
     - Runlevel control and usage of DPCs is also available through the driver API.
     - Scheduler partially rewritten to make use of 'shared workqueues', where a group of cores can co-operatively share work between them. This replaces work stealing in the previous scheduler.
     - Waitable object updated to use new scheduler.
     - Removed previous event and filtering system.
+- Added system uptime to stats display.
 
 - Added IO subsystem, with support for stacking IO device APIs.
     - Device APIs can be layered, allowing transport drivers and device drivers to be combined (or not) as necessary.
