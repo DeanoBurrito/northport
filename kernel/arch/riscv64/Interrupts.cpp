@@ -96,7 +96,7 @@ extern "C"
 
         const RunLevel prevRl = RaiseRunLevel(RunLevel::Interrupt);
         if (prevRl == RunLevel::Normal)
-            ProgramManager::Global().SaveCurrentFrame(frame);
+            *ProgramManager::Global().GetCurrentFrameStore() = frame;
         EnableInterrupts();
 
         const bool isInterrupt = frame->vector & InterruptBitMask;
@@ -123,7 +123,7 @@ extern "C"
             HandleException(frame);
         
         if (prevRl == RunLevel::Normal)
-            frame = ProgramManager::Global().GetNextFrame();
+            frame = *ProgramManager::Global().GetCurrentFrameStore();
         LowerRunLevel(prevRl);
         DisableInterrupts();
         SwitchFrame(nullptr, frame);

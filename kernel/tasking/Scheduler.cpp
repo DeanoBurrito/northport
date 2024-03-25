@@ -38,8 +38,9 @@ namespace Npk::Tasking
 
     void Scheduler::DoReschedule(void*)
     {
-        Engine& engine = LocalEngine();
+        const auto prevRl = EnsureRunLevel(RunLevel::Dpc);
 
+        Engine& engine = LocalEngine();
         //DequeueClockEvent(&engine.rescheduleClockEvent);
 
         //put current thread back into a queue if required
@@ -99,6 +100,8 @@ namespace Npk::Tasking
 
         CoreLocal()[LocalPtr::Thread] = nextThread;
         engine.flags.Clear(EngineFlag::ReschedulePending);
+        if (prevRl.HasValue())
+            LowerRunLevel(*prevRl);
     }
 
     void Scheduler::LateInit()
@@ -186,13 +189,14 @@ namespace Npk::Tasking
         ASSERT_UNREACHABLE();
     }
 
-    void Scheduler::Yield()
+    void Scheduler::Yield(bool noSave)
     {
         ASSERT_(CoreLocal().runLevel == RunLevel::Normal);
 
         TrapFrame** prevFrameStorage = &Thread::Current().frame;
         QueueReschedule();
-        SwitchFrame(prevFrameStorage, Thread::Current().frame);
+
+        SwitchFrame(noSave ? nullptr : prevFrameStorage, Thread::Current().frame);
     }
 
     void Scheduler::EnqueueThread(Thread* t)
@@ -261,12 +265,15 @@ namespace Npk::Tasking
         const auto prevRunlevel = EnsureRunLevel(RunLevel::Apc);
 
         t->schedLock.Lock();
-        if (t->state == ThreadState::Running)
+        const ThreadState prevState = t->state;
+        t->state = ThreadState::Ready;
+
+        if (prevState == ThreadState::Running)
         {
-            if (t->EngineId() == engine.id)
+            if (t->engineOrQueue.engineId == engine.id)
                 QueueReschedule();
             else
-                Interrupts::SendIpiMail(t->EngineId(), RemoteReschedule, nullptr);
+                Interrupts::SendIpiMail(t->engineOrQueue.engineId, RemoteReschedule, nullptr);
         }
         else
         {
@@ -275,7 +282,6 @@ namespace Npk::Tasking
             t->engineOrQueue.queue->depth--;
         }
 
-        t->state = ThreadState::Ready;
         t->schedLock.Unlock();
 
         if (prevRunlevel.HasValue())

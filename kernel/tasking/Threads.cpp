@@ -211,7 +211,7 @@ namespace Npk::Tasking
 
         if (selfExit)
         {
-            Scheduler::Global().Yield();
+            Scheduler::Global().Yield(true);
             ASSERT_UNREACHABLE();
         }
     }
@@ -230,14 +230,9 @@ namespace Npk::Tasking
         Log("Program manager initialized.", LogLevel::Info);
     }
 
-    void ProgramManager::SaveCurrentFrame(TrapFrame* frame)
+    TrapFrame** ProgramManager::GetCurrentFrameStore()
     {
-        Thread::Current().frame = frame;
-    }
-
-    TrapFrame* ProgramManager::GetNextFrame()
-    {
-        return Thread::Current().frame;
+        return &Thread::Current().frame;
     }
 
     sl::Opt<size_t> ProgramManager::CreateProcess()

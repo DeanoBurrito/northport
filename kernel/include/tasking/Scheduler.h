@@ -72,7 +72,7 @@ namespace Npk::Tasking
         void StartEngine();
         //TODO: StopEngine() and RemoveEngine()
         
-        void Yield();
+        void Yield(bool noSave = false);
 
         void EnqueueThread(Thread* t);
         void DequeueThread(Thread* t);

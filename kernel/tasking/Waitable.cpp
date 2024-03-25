@@ -73,12 +73,13 @@ namespace Npk::Tasking
         if (TryFinish(entries, waitAll) || timeout.units == 0)
         {
             UnlockAll(entries);
-            if (prevRunlevel.HasValue())
-                LowerRunLevel(*prevRunlevel);
-
             size_t completeCount = 0;
             for (size_t i = 0; i < entries.Size(); i++)
                 completeCount += entries[i].signalled ? 1 : 0;
+
+            if (prevRunlevel.HasValue())
+                LowerRunLevel(*prevRunlevel);
+
             return completeCount;
         }
 
