@@ -5,6 +5,7 @@
 #include <containers/List.h>
 #include <UnitConverter.h>
 #include <NanoPrintf.h>
+#include <tasking/Clock.h>
 
 //these headers are needed to gather the info required for the stats display
 #include <debug/BakedConstants.h>
@@ -14,7 +15,7 @@
 
 namespace Npk::Debug
 {
-    constexpr const char VersionFormatStr[] = "Kernel v%lu.%lu.%lu (api v%u.%u.%u)";
+    constexpr const char VersionFormatStr[] = "Kernel v%lu.%lu.%lu (api v%u.%u.%u) uptime=%lu.%03lus";
     constexpr const char VmmFormatStr[] = "[VMM] faults=%lu, anon=%lu.%lu%sB/%lu.%lu%sB (%lu), file=%lu.%lu%sB/%lu.%lu%sB (%lu), mmio=%lu.%lu%sB (%lu)";
     constexpr const char SymsFormatStr[] = "[Syms] pub=%lu priv=%lu other=%lu";
     constexpr const char DriversFormatStr[] = "[Dnd] drivers=%lu/%lu devices=%lu/%lu apis=%lu";
@@ -24,7 +25,7 @@ namespace Npk::Debug
     constexpr const char VersionPreStr[] = "\e[1;1H";
     constexpr const char VmmPreStr[] = "\e[2;1H";
     constexpr const char SymsPreStr[] = "\e[2;91H";
-    constexpr const char DriversPreStr[] = "\e[1;28H";
+    constexpr const char DriversPreStr[] = "\e[1;44H";
 
     constexpr size_t StatsFormatBuffSize = 128;
 
@@ -37,17 +38,25 @@ namespace Npk::Debug
     };
 
     sl::IntrFwdList<TerminalHead> termHeads;
+    bool autoRefreshStarted = false;
+    Tasking::DpcStore refreshStatsDpc;
+    Tasking::ClockEvent refreshStatsEvent;
 
-    void UpdateRenderedStats()
+    void UpdateRenderedStats(void*)
     {
+        const auto uptime = Tasking::GetUptime();
+        const size_t uptimeSeconds = uptime.ToMillis() / 1000;
+        const size_t uptimeMillis = uptime.ToMillis() % 1000;
         const size_t verLen = npf_snprintf(nullptr, 0, VersionFormatStr,
             versionMajor, versionMinor, versionRev,
-            NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV) + 1;
+            NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV,
+            uptimeSeconds, uptimeMillis) + 1;
 
         char verStr[verLen]; //TODO: no VLAs!
         npf_snprintf(verStr, verLen, VersionFormatStr,
             versionMajor, versionMinor, versionRev,
-            NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV);
+            NP_MODULE_API_VER_MAJOR, NP_MODULE_API_VER_MINOR, NP_MODULE_API_VER_REV,
+            uptimeSeconds, uptimeMillis);
 
         char formatBuff[StatsFormatBuffSize];
         auto vmmStats = VMM::Kernel().GetStats();
@@ -83,13 +92,34 @@ namespace Npk::Debug
                 driverInfo.totalDescriptors, driverInfo.apiCount);
             it->statsRenderer.Write(formatBuff, dndLen);
         }
+
+        if (autoRefreshStarted)
+        {
+            refreshStatsEvent.duration = 10_ms;
+            Tasking::QueueClockEvent(&refreshStatsEvent);
+        }
     }
 
     void TerminalWriteCallback(const char* str, size_t len)
     {
         for (auto it = termHeads.Begin(); it != termHeads.End(); it = it->next)
             it->logRenderer.Write(str, len);
-        UpdateRenderedStats();
+
+        if (!autoRefreshStarted)
+        {
+            if (CoreLocalAvailable() && CoreLocal().runLevel == RunLevel::Normal)
+            {
+                Log("Starting GTerm stats bar auto-refresh", LogLevel::Info);
+                autoRefreshStarted = true;
+                refreshStatsDpc.data.function = UpdateRenderedStats;
+                refreshStatsEvent.duration = 10_ms;
+                refreshStatsEvent.callbackCore = NoCoreAffinity;
+                refreshStatsEvent.dpc = &refreshStatsDpc;
+                Tasking::QueueClockEvent(&refreshStatsEvent);
+            }
+            else
+                UpdateRenderedStats(nullptr);
+        }
     }
 
     void InitEarlyTerminals()

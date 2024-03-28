@@ -1,7 +1,9 @@
 #include <memory/Vmm.h>
 #include <memory/virtual/VmDriver.h>
+#include <memory/virtual/KernelVmDriver.h>
 #include <memory/Pmm.h>
 #include <memory/Heap.h>
+#include <tasking/Threads.h>
 #include <arch/Hat.h>
 #include <boot/LinkerSyms.h>
 #include <debug/Log.h>
@@ -110,7 +112,7 @@ namespace Npk::Memory
     bool VMM::DestroyMetaSlab(VmmMetaType type)
     {
         //return if there are more slabs of this type
-        ASSERT_UNREACHABLE();
+        ASSERT_UNREACHABLE(); (void)type;
     }
 
     void* VMM::AllocMeta(VmmMetaType type)
@@ -224,12 +226,13 @@ namespace Npk::Memory
         return nullptr;
     }
     
-    sl::Lazy<VMM> kernelVmm;
+    VMM* kernelVmm;
     void VMM::InitKernel()
     {
         HatInit(); //arch-specific setup of the MMU.
         Virtual::VmDriver::InitAll(); //Bring-up VM drivers
-        kernelVmm.Init(VmmKey{}); //VmmKey calls the constructor for the kernel vmm.
+        kernelVmm = &Tasking::Process::Kernel().vmm;
+        new(kernelVmm) VMM(VmmKey{});
     }
 
     VMM& VMM::Kernel()
@@ -237,6 +240,9 @@ namespace Npk::Memory
 
     VMM& VMM::Current()
     { return *static_cast<VMM*>(CoreLocal()[LocalPtr::Vmm]); }
+
+    bool VMM::CurrentActive()
+    { return CoreLocal()[LocalPtr::Vmm] != nullptr; }
 
     VMM::VirtualMemoryManager()
     {
@@ -279,11 +285,16 @@ namespace Npk::Memory
          * - everything in between is managed by the kernel VMM.
          */
         globalLowerBound = hhdmBase + hhdmLength;
-        globalUpperBound = sl::AlignDown((uintptr_t)KERNEL_BLOB_BEGIN, GetHatLimits().modes[0].granularity);
+        globalUpperBound = sl::AlignUp((uintptr_t)KERNEL_BLOB_BEGIN + (uintptr_t)KERNEL_BLOB_SIZE, 
+            GetHatLimits().modes[0].granularity);
 
         CommonInit();
         hatMap = KernelMap();
         MakeActiveMap(hatMap);
+
+        auto kernelRanges = Virtual::GetKernelRanges();
+        for (size_t i = 0; i < kernelRanges.Size(); i++)
+            ranges.Insert(&kernelRanges[i]);
 
         const size_t usableSpace = globalUpperBound - globalLowerBound;
         auto conv = sl::ConvertUnits(usableSpace, sl::UnitBase::Binary);
@@ -392,6 +403,8 @@ namespace Npk::Memory
          *   stash the VM range in the global list/tree so it's available to the
          *   rest of the VMM.
          */
+        if (length == 0)
+            return {};
 
         using namespace Virtual;
         VmDriver* driver = VmDriver::GetDriver(flags);

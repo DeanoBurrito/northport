@@ -4,6 +4,8 @@
 
 namespace Npk::Memory::Virtual
 {
+    sl::Span<VmRange> GetKernelRanges();
+
     class KernelVmDriver : public VmDriver
     {
     public:

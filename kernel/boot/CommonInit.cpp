@@ -18,6 +18,7 @@
 #include <memory/Vmm.h>
 #include <memory/Heap.h>
 #include <tasking/Clock.h>
+#include <tasking/Threads.h>
 #include <tasking/Scheduler.h>
 #include <NanoPrintf.h>
 #include <UnitConverter.h>
@@ -30,8 +31,9 @@ namespace Npk
     
     void InitEarlyPlatform()
     {
-        Log("\r\nNorthport kernel %lu.%lu.%lu for %s started.", LogLevel::Info, 
-            Debug::versionMajor, Debug::versionMinor, Debug::versionRev, Debug::targetArchStr);
+        Log("\r\nNorthport kernel %lu.%lu.%lu for %s started, based on commit %s.", LogLevel::Info, 
+            Debug::versionMajor, Debug::versionMinor, Debug::versionRev, Debug::targetArchStr, 
+            Debug::gitCommitShortHash);
         Boot::CheckLimineTags();
 
         hhdmBase = Boot::hhdmRequest.response->offset;
@@ -90,6 +92,7 @@ namespace Npk
         Filesystem::InitVfs();
 
         Interrupts::InterruptManager::Global().Init();
+        Tasking::ProgramManager::Global().Init();
         Tasking::Scheduler::Global().Init();
         Io::IoManager::Global().Init();
     }
@@ -144,10 +147,8 @@ namespace Npk
                 Drivers::DriverManager::Global().AddDescriptor(descriptor);
             }
         }
-        //TODO: if x86, check for pci controller over port io
 
         Drivers::DriverManager::Global().PrintInfo();
-
         Tasking::Thread::Current().Exit(0);
     }
 
@@ -171,32 +172,17 @@ namespace Npk
     void ExitCoreInit()
     {
         using namespace Tasking;
-        Thread* initThread = nullptr;
-        if (bootloaderRefs != 0)
+        Scheduler::Global().AddEngine();
+
+        if (--bootloaderRefs == 0)
         {
-            /* Cores can be initialized (and reach this function) in two ways: either by
-             * the bootloader and are given to the kernel via the smp response, or hotplugged
-             * at runtime. Bootloader started cores reference bootloader data (mainly the 
-             * stack we're provided with) until they start scheduled execution - which presents a
-             * problem for reclaiming bootloader memory.
-             * The first if statement checks if *any* cores are still referencing bootloader memory,
-             * and if spawning the reclamation thread should even be considered. For hotplugged cores
-             * we dont care about reclaiming BL memory, so this filters out that case.
-             * The second if (below) decrements the reference count, and checks the new value (atomically)
-             * to see if this core is the last bootloader-started core. If it is, spawn the reclaim thread.
-             */
-            if (--bootloaderRefs == 0)
-            {
-                initThread = Scheduler::Global().CreateThread(ReclaimMemoryThread, nullptr);
-                Log("Bootloader memory reclamation thread spawned, id=%lu.", LogLevel::Verbose, initThread->Id());
-            }
+            auto initThread = Thread::Create(Process::Kernel().Id(), ReclaimMemoryThread, nullptr);
+            ASSERT_(initThread != nullptr);
+            Log("Bootloader reclamation thread spawned, tid=%lu", LogLevel::Verbose, initThread->Id());
+            initThread->Start(nullptr);
         }
-        else
-            ASSERT_UNREACHABLE(); //TODO: start pluggable CPUs. (reclaim this core's boot data).
 
-        Log("Core finished init, exiting to scheduler.", LogLevel::Info);
-        Scheduler::Global().RegisterCore(initThread);
+        Scheduler::Global().StartEngine();
         ASSERT_UNREACHABLE();
-
     }
 }

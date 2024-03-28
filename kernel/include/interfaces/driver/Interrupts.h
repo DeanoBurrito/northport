@@ -36,20 +36,32 @@ extern "C" {
 
 typedef enum
 {
-    Idle = 0,
-    Scheduler = 1,
-    Dispatch = 2,
-    Interrupt = 3,
+    Normal = 0,
+    Apc = 1,
+    Dpc = 2,
+    Clock = 3,
+    Interrupt = 4,
 } npk_runlevel;
 
-void npk_raise_runlevel();
-void npk_lower_runlevel();
+typedef struct
+{
+    void* reserved;
+    void (*function)(void* arg);
+    void* arg;
+} npk_dpc;
 
-#define NPK_PRIORITY_LEVEL_HIGHEST 0
-#define NPK_PRIORITY_LEVEL_DONT_CARE (npk_int_priority_levels_count() - 1)
+typedef struct
+{
+    void* reserved;
+    void (*function)(void* arg);
+    void* arg;
+    npk_handle thread_id;
+} npk_apc;
 
-size_t npk_int_priority_levels_count();
-bool npk_alloc_msi(REQUIRED size_t* msi, size_t core, size_t priority_level);
+npk_runlevel npk_raise_runlevel(npk_runlevel rl);
+void npk_lower_runlevel(npk_runlevel rl);
+void npk_queue_dpc(npk_dpc* dpc);
+void npk_queue_apc(npk_apc* apc);
 
 #ifdef __cplusplus
 }

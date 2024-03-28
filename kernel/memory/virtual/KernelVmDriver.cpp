@@ -6,16 +6,27 @@
 
 namespace Npk::Memory::Virtual
 {
+    VmRange kernelRanges[3];
+
+    sl::Span<VmRange> GetKernelRanges()
+    { return kernelRanges; }
+
     void KernelVmDriver::Init(uintptr_t enableFeatures)
     {
         (void)enableFeatures;
 
         //map the kernel binary itself into the kernel map
-        auto MapSection = [&](uintptr_t addr, size_t length, HatFlags flags)
+        auto MapSection = [&](VmRange& range, uintptr_t addr, size_t length, VmFlags vmFlags, HatFlags flags)
         {
             const auto* resp = Boot::kernelAddrRequest.response;
-            length = sl::AlignUp(addr + length, PageSize) - addr;
+            length = sl::AlignUp(addr + length, PageSize);
             addr = sl::AlignDown(addr, PageSize);
+            length -= addr;
+
+            range.base = addr;
+            range.length = length;
+            range.flags = vmFlags | VmFlag::Mmio;
+            range.mdlCount = 1;
             
             for (uintptr_t i = addr; i < addr + length; i += PageSize)
                 Map(KernelMap(), i, i - resp->virtual_base + resp->physical_base, 0, flags, false);
@@ -26,9 +37,9 @@ namespace Npk::Memory::Virtual
         //for details.
 
         //map the program segments from the kernel binary with appropriate permissions.
-        MapSection((uintptr_t)KERNEL_TEXT_BEGIN, (size_t)KERNEL_TEXT_SIZE, HatFlags::Execute | HatFlags::Global);
-        MapSection((uintptr_t)KERNEL_RODATA_BEGIN, (size_t)KERNEL_RODATA_SIZE, HatFlags::None | HatFlags::Global);
-        MapSection((uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_SIZE, HatFlags::Write | HatFlags::Global);
+        MapSection(kernelRanges[0], (uintptr_t)KERNEL_TEXT_BEGIN, (size_t)KERNEL_TEXT_SIZE, VmFlag::Execute, HatFlags::Execute | HatFlags::Global);
+        MapSection(kernelRanges[1], (uintptr_t)KERNEL_RODATA_BEGIN, (size_t)KERNEL_RODATA_SIZE, {}, HatFlags::Global);
+        MapSection(kernelRanges[2], (uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_SIZE, VmFlag::Write, HatFlags::Write | HatFlags::Global);
 
         Log("VmDriver init: kernel", LogLevel::Info);
     }

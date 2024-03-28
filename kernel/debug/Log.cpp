@@ -6,7 +6,8 @@
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <tasking/Clock.h>
-#include <tasking/Thread.h>
+#include <tasking/Threads.h>
+#include <tasking/RunLevels.h>
 #include <containers/Queue.h>
 #include <NanoPrintf.h>
 #include <Locks.h>
@@ -64,6 +65,7 @@ namespace Npk::Debug
     EarlyLogWrite earlyOuts[MaxEarlyLogOuts];
     size_t eloCount = 0;
     sl::SpinLock eloLock;
+    sl::SpinLock panicLock;
 
     void WriteElos(const LogMessage& msg)
     {
@@ -109,7 +111,7 @@ namespace Npk::Debug
             {
                 itemAddr = sl::AlignUp(allocBegin, alignof(QueueItem));
                 messageBegin = itemAddr + sizeof(QueueItem);
-                cutOffset = messageLen - ((messageBegin + messageLen) - buffer->length);
+                cutOffset = sl::Min(messageLen - ((messageBegin + messageLen) - buffer->length), messageLen);
 
                 sl::memcopy(message, 0, buffer->buffer, messageBegin, cutOffset);
                 sl::memcopy(message, cutOffset, buffer->buffer, 0, messageLen - cutOffset);
@@ -158,7 +160,7 @@ namespace Npk::Debug
     void Log(const char* str, LogLevel level, ...)
     {
         //get length of uptime
-        const size_t uptime = Tasking::GetUptime();
+        const size_t uptime = Tasking::GetUptime().ToMillis();
         const size_t uptimeLen = npf_snprintf(nullptr, 0, "%lu.%03lu", uptime / 1000, uptime % 1000) + 1;
 
         //get length of header (processor id + thread id)
@@ -280,6 +282,7 @@ extern "C"
         using namespace Npk::Debug;
         using namespace Npk::Tasking;
 
+        panicLock.Lock(); //prevents multiple cores enter the panic sequence at the same time
         Interrupts::BroadcastPanicIpi();
         //try to take the ELO lock a reasonable number of times. Don't wait on the lock though
         //as it's possible to deadlock here. This also gives other cores time to finish accept 
@@ -295,7 +298,7 @@ extern "C"
         for (auto* msg = msgQueue.Pop(); msg != nullptr; msg = msgQueue.Pop())
             WriteElos(msg->data);
         if (!acquiredEloLock)
-            PanicWrite("Panic handler unable to acquire ELO lock - output may appear corrupt.");
+            PanicWrite("Panic handler unable to acquire ELO lock - output may appear corrupt.\r\n");
 
         PanicWrite("       )\r\n");
         PanicWrite("    ( /(                        (\r\n");
@@ -310,16 +313,11 @@ extern "C"
         PanicWrite(reason);
         PanicWrite("\r\n");
 
-        //print core-local info (this is always available)
-        constexpr const char* RunLevelStrs[] = { "Normal", "Dispatch", "IntHandler" };
-        static_assert((size_t)RunLevel::Normal == 0, "RunLevel integer representation updated.");
-        static_assert((size_t)RunLevel::IntHandler == 2, "RunLevel integer representation updated.");
-        
         if (CoreLocalAvailable())
         {
             CoreLocalInfo& clb = CoreLocal();
-            PanicWrite("Processor %lu: runLevel=%s, logBuffer=0x%lx\r\n", 
-                clb.id, RunLevelStrs[(size_t)clb.runLevel], (uintptr_t)clb[LocalPtr::Log]);
+            PanicWrite("Processor %lu: runLevel=%s (%u), logBuffer=0x%lx\r\n", 
+                clb.id, GetRunLevelName(CoreLocal().runLevel), (uint8_t)CoreLocal().runLevel, (uintptr_t)clb[LocalPtr::Log]);
         }
         else
             PanicWrite("Core-local information not available.\r\n");
@@ -335,8 +333,8 @@ extern "C"
             if (shadow.Valid())
                 shadowName = shadow->manifest->friendlyName.C_Str();
 
-            PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu",
-                thread.Id(), shadowName, process.Id());
+            PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu, procName=%s",
+                thread.Id(), shadowName, process.Id(), process.Name().Begin());
         }
         else
             PanicWrite("Thread information not available.\r\n");
@@ -351,7 +349,7 @@ extern "C"
             auto symbol = SymbolFromAddr(addr, SymbolFlag::Public | SymbolFlag::Private);
             const char* symbolName = symbol.HasValue() ? symbol->name.Begin() : "<unknown>";
             const size_t symbolOffset = symbol.HasValue() ? addr - symbol->base : 0;
-            PanicWrite("%3u: 0x%lx %s+0x%lu\r\n", i, addr, symbolName, symbolOffset);
+            PanicWrite("%3u: 0x%lx %s+0x%lx\r\n", i, addr, symbolName, symbolOffset);
         }
         
         PanicWrite("\r\nSystem has halted indefinitely, manual reset required.\r\n");

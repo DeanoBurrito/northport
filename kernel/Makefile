@@ -7,7 +7,6 @@ CXX_SRCS = arch/Helpers.cpp \
 	debug/Log.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
 	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp \
 	drivers/DriverManager.cpp drivers/DriverHelpers.cpp drivers/ElfLoader.cpp \
-	events/Dispatch.cpp events/EventQueue.cpp \
 	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TreeCache.cpp \
 	filesystem/TempFs.cpp filesystem/InitDisk.cpp \
 	interfaces/driver/Devices.cpp interfaces/driver/Drivers.cpp \
@@ -18,8 +17,8 @@ CXX_SRCS = arch/Helpers.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
 	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \
 	memory/virtual/KernelVmDriver.cpp memory/virtual/VfsVmDriver.cpp \
-	tasking/Clock.cpp tasking/Thread.cpp tasking/Process.cpp tasking/Scheduler.cpp \
-	tasking/ServiceThreads.cpp tasking/Waitable.cpp
+	tasking/Clock.cpp tasking/Threads.cpp tasking/Scheduler.cpp tasking/RunLevels.cpp \
+	tasking/Waitable.cpp
 
 AS_SRCS =
 

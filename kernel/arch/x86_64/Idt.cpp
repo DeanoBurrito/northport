@@ -5,6 +5,7 @@
 #include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
 #include <memory/Vmm.h>
+#include <tasking/RunLevels.h>
 #include <tasking/Scheduler.h>
 
 namespace Npk
@@ -52,7 +53,7 @@ namespace Npk
 
 extern "C"
 {
-    constexpr const char* exceptionNames[] = 
+    constexpr const char* ExceptionStrs[] = 
     {
         "divide error",
         "debug exception",
@@ -99,7 +100,11 @@ extern "C"
             bool success = false;
             const uintptr_t cr2 = ReadCr2();
             if (cr2 < hhdmBase)
+            {
+                //userspace page fault
+                ASSERT(VMM::CurrentActive(), "Possible kernel nullptr deref?");
                 success = VMM::Current().HandleFault(cr2, flags);
+            }
             else
                 success = VMM::Kernel().HandleFault(cr2, flags);
             if (!success)
@@ -109,17 +114,19 @@ extern "C"
             Tasking::Scheduler::Global().SwapExtendedRegs();
         else
             Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
-                exceptionNames[frame->vector], frame->vector, frame->iret.rip, frame->iret.rsp, frame->ec);
+                ExceptionStrs[frame->vector], frame->vector, frame->iret.rip, frame->iret.rsp, frame->ec);
     }
     
     void TrapDispatch(Npk::TrapFrame* frame)
     {
         using namespace Npk;
+        using namespace Npk::Tasking;
 
-        const RunLevel prevRunLevel = CoreLocal().runLevel;
-        CoreLocal().runLevel = RunLevel::IntHandler;
-        Tasking::Scheduler::Global().SavePrevFrame(frame, prevRunLevel);
-        
+        const RunLevel prevRl = RaiseRunLevel(RunLevel::Interrupt);
+        if (prevRl == RunLevel::Normal)
+            *ProgramManager::Global().GetCurrentFrameStore() = frame;
+        EnableInterrupts();
+
         if (frame->vector < 0x20)
             HandleNativeException(frame);
         else
@@ -131,11 +138,12 @@ extern "C"
                 Interrupts::InterruptManager::Global().Dispatch(frame->vector);
         }
 
-        //RunNextFrame() wont return under most circumstances, but if we're handling an interrupt
-        //before the scheduler is initialized (timekeeping for example) it will fail to find the
-        //trap frame, so we return to where we were previously.
-        Tasking::Scheduler::Global().Yield();
-        CoreLocal().runLevel = prevRunLevel;
+        if (prevRl == RunLevel::Normal)
+            frame = *ProgramManager::Global().GetCurrentFrameStore();
+
+        LowerRunLevel(prevRl);
+        DisableInterrupts();
         SwitchFrame(nullptr, frame);
+        ASSERT_UNREACHABLE();
     }
 }
