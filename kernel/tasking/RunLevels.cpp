@@ -58,7 +58,10 @@ namespace Npk::Tasking
                 {
                     DpcStore* dpc = nullptr;
                     while ((dpc = CoreLocal().dpcs.Pop()) != nullptr)
+                    {
                         dpc->data.function(dpc->data.arg);
+                        dpc->next = nullptr;
+                    }
                     break;
                 }
             case RunLevel::Apc: //TOOD: implement APCs
@@ -72,8 +75,8 @@ namespace Npk::Tasking
 
     void QueueDpc(DpcStore* dpc)
     {
-        if (dpc == nullptr)
-            return;
+        VALIDATE_(dpc != nullptr, );
+        VALIDATE(dpc->next == nullptr,, "DpcStore already in use");
 
         CoreLocal().dpcs.Push(dpc);
 
@@ -86,8 +89,8 @@ namespace Npk::Tasking
 
     void QueueApc(ApcStore* apc)
     {
-        if (apc == nullptr)
-            return;
+        VALIDATE_(apc != nullptr, );
+        VALIDATE(apc->next == nullptr,, "ApcStore already in use");
 
         CoreLocal().apcs.Push(apc);
 

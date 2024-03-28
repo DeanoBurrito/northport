@@ -298,7 +298,7 @@ extern "C"
         for (auto* msg = msgQueue.Pop(); msg != nullptr; msg = msgQueue.Pop())
             WriteElos(msg->data);
         if (!acquiredEloLock)
-            PanicWrite("Panic handler unable to acquire ELO lock - output may appear corrupt.");
+            PanicWrite("Panic handler unable to acquire ELO lock - output may appear corrupt.\r\n");
 
         PanicWrite("       )\r\n");
         PanicWrite("    ( /(                        (\r\n");

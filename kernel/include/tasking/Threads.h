@@ -148,8 +148,7 @@ namespace Npk::Tasking
 
         void Init();
 
-        void SaveCurrentFrame(TrapFrame* frame);
-        TrapFrame* GetNextFrame();
+        TrapFrame** GetCurrentFrameStore();
 
         sl::Opt<size_t> CreateProcess();
         sl::Opt<size_t> CreateThread(size_t procId, ThreadEntry entry, void* arg, size_t affinity, size_t stackSize);

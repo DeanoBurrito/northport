@@ -4,6 +4,7 @@
 #include <interrupts/Ipi.h>
 #include <containers/List.h>
 #include <Locks.h>
+#include <Maths.h>
 
 namespace Npk::Tasking
 {
@@ -26,7 +27,7 @@ namespace Npk::Tasking
         auto scan = events.Begin();
         while (scan != nullptr && listDelta > 0)
         {
-            ASSERT_(scan != scan->next);
+            ASSERT(scan != scan->next, "Tried to queue the same event twice?");
             if (scan->duration.units == 0)
             {
                 scan = scan->next;
@@ -62,7 +63,10 @@ namespace Npk::Tasking
         }
 
         if (!events.Empty())
-            SetSysTimer(events.Front().duration.units, ClockTickHandler);
+        {
+            const size_t clockArmTime = sl::Min(SysTimerMaxNanos(), events.Front().duration.units);
+            SetSysTimer(clockArmTime, ClockTickHandler);
+        }
     }
 
     void ClockUptimeDpc(void*)
@@ -110,7 +114,8 @@ namespace Npk::Tasking
             if (!events.Empty())
                 events.Front().duration.units -= event->duration.units;
             events.PushFront(event);
-            SetSysTimer(event->duration.units, ClockTickHandler); //TODO: check we're not going beyond limits of timer
+            const size_t clockArmTime = sl::Min(SysTimerMaxNanos(), event->duration.units);
+            SetSysTimer(clockArmTime, ClockTickHandler);
 
             eventsLock.Unlock();
             if (prevRl.HasValue())
@@ -126,10 +131,14 @@ namespace Npk::Tasking
             if (scan->next == nullptr)
                 break;
             if (scan->next->duration.units < event->duration.units)
+            {
+                scan = scan->next;
                 continue;
+            }
 
             events.InsertAfter(scan, event);
-            event->next -= event->duration.units;
+            if (event->next != nullptr)
+                event->next -= event->duration.units;
             inserted = true;
             break;
         }

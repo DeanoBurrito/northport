@@ -41,7 +41,7 @@ namespace Npk::Tasking
         const auto prevRl = EnsureRunLevel(RunLevel::Dpc);
 
         Engine& engine = LocalEngine();
-        //DequeueClockEvent(&engine.rescheduleClockEvent);
+        DequeueClockEvent(&engine.rescheduleClockEvent);
 
         //put current thread back into a queue if required
         Thread* current = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
@@ -96,7 +96,7 @@ namespace Npk::Tasking
 
         //TODO: decide on time until next timed reschedule
         engine.rescheduleClockEvent.duration = 10_ms;
-        //QueueClockEvent(&engine.rescheduleClockEvent);
+        QueueClockEvent(&engine.rescheduleClockEvent);
 
         CoreLocal()[LocalPtr::Thread] = nextThread;
         engine.flags.Clear(EngineFlag::ReschedulePending);
