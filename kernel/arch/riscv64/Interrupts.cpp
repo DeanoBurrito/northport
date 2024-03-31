@@ -41,7 +41,11 @@ extern "C"
         "ecall from S-mode"
     };
     constexpr size_t ExceptionStrCount = sizeof(ExceptionStrs) / sizeof(const char*);
+
     constexpr uintptr_t InterruptBitMask = 1ul << 63;
+    constexpr size_t VectorExecPf = 12;
+    constexpr size_t VectorReadPf = 13;
+    constexpr size_t VectorWritePf = 14;
 
     void HandleException(Npk::TrapFrame* frame)
     {
@@ -51,13 +55,13 @@ extern "C"
         Memory::VmFaultFlags faultFlags {};
         switch (frame->vector)
         {
-        case 12:
+        case VectorExecPf:
             faultFlags |= VmFaultFlag::Execute;
             break;
-        case 13:
+        case VectorReadPf:
             faultFlags |= VmFaultFlag::Read;
             break;
-        case 14:
+        case VectorWritePf:
             faultFlags |= VmFaultFlag::Write;
             break;
         //TOOD: UD and decoder for FPU/vector register traps

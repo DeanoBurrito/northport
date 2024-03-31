@@ -79,11 +79,14 @@ extern "C"
         "control protection"
     };
     
+    constexpr size_t VectorPageFault = 0xE;
+    constexpr size_t VectorExtStateAccess = 0x7;
+    
     void HandleNativeException(Npk::TrapFrame* frame)
     {
         using namespace Npk;
 
-        if (frame->vector == 0xE)
+        if (frame->vector == VectorPageFault)
         {
             using namespace Memory;
             VmFaultFlags flags {};
@@ -110,7 +113,7 @@ extern "C"
             if (!success)
                 Log("Bad page fault @ 0x%lx, flags=0x%lx", LogLevel::Fatal, cr2, flags.Raw());
         }
-        else if (frame->vector == 0x7)
+        else if (frame->vector == VectorExtStateAccess)
             Tasking::Scheduler::Global().SwapExtendedRegs();
         else
             Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
