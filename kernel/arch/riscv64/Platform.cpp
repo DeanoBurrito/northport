@@ -28,14 +28,31 @@ namespace Npk
         uint8_t buffer[];
     };
 
-    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, void* arg, bool user)
+    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user)
     {
         frame->flags.spie = 1;
         frame->flags.spp = user ? 0 : 1;
-        frame->a0 = (uintptr_t)arg;
         frame->sepc = entry;
         frame->sp = sl::AlignDown(stack, 8);
         frame->fp = 0;
+    }
+
+    void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value)
+    {
+        if (index >= TrapFrameArgCount)
+            return;
+
+        uint64_t* args = &frame->a0;
+        args[index] = reinterpret_cast<uint64_t>(value);
+    }
+
+    void* GetTrapFrameArg(TrapFrame* frame, size_t index)
+    {
+        if (index >= TrapFrameArgCount)
+            return nullptr;
+
+        uint64_t* args = &frame->a0;
+        return reinterpret_cast<void*>(args[index]);
     }
 
     void InitExtendedRegs(ExtendedRegs** regs)
@@ -77,5 +94,10 @@ namespace Npk
         //SBI spec doesn't specify SXLEN-alignment, but some platforms expect it.
         //so we do it anyway, just in case.
         SbiSendIpi(1ul << (dest % 64), dest / 64);
+    }
+
+    void SetHardwareRunLevel(RunLevel rl)
+    {
+        //TODO: make use of this on riscv
     }
 }

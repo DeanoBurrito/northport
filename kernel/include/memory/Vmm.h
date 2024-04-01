@@ -144,6 +144,7 @@ namespace Npk::Memory
         static void InitKernel();
         static VirtualMemoryManager& Kernel();
         static VirtualMemoryManager& Current();
+        static bool CurrentActive();
 
         VirtualMemoryManager();
         VirtualMemoryManager(VmmKey);

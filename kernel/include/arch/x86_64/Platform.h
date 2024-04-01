@@ -50,6 +50,7 @@ namespace Npk
     constexpr inline size_t IntVectorAllocLimit = 0xFD;
     constexpr inline size_t IntVectorIpi = 0xFE;
     constexpr inline size_t IntVectorCount = 256;
+    constexpr inline size_t TrapFrameArgCount = 6;
 
     constexpr inline uint32_t MsrEfer = 0xC0000080;
     constexpr inline uint32_t MsrApicBase = 0x1B;
@@ -61,9 +62,6 @@ namespace Npk
     constexpr inline uint16_t PortDebugcon = 0xE9;
     constexpr inline uint16_t PortPitCmd = 0x43;
     constexpr inline uint16_t PortPitData = 0x40;
-    constexpr inline uint16_t PortSerial = 0x3F8;
-    constexpr inline uint16_t PortPciAddr = 0xCF8;
-    constexpr inline uint16_t PortPciData = 0xCFC;
 
     [[gnu::always_inline]]
     inline void Wfi()
@@ -214,6 +212,12 @@ namespace Npk
     inline void WriteCr4(uint64_t value)
     {
         asm volatile("mov %0, %%cr4" :: "r"(value));
+    }
+
+    [[gnu::always_inline]]
+    inline void WriteCr8(uint64_t value)
+    {
+        asm volatile("mov %0, %%cr8" :: "r"(value));
     }
 
     [[gnu::always_inline]]

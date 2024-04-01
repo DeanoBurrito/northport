@@ -12,7 +12,7 @@ extern "C"
     bool npk_add_device_api(npk_device_api* api)
     {
         auto shadow = DriverManager::Global().GetShadow();
-        ASSERT_(shadow.Valid());
+        VALIDATE_(shadow.Valid(), false);
 
         return DriverManager::Global().AddApi(api, shadow);
     }
@@ -27,7 +27,7 @@ extern "C"
     bool npk_set_transport_api(npk_handle api_id)
     {
         auto shadow = DriverManager::Global().GetShadow();
-        ASSERT_(shadow.Valid());
+        VALIDATE_(shadow.Valid(), false);
 
         return DriverManager::Global().SetTransportApi(shadow, api_id);
     }

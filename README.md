@@ -25,17 +25,22 @@ Kernel:
     - Hybrid PMM, freelist for single page allocations and a slow path for allocations with constraints.
     - Modular and portable VMM, with demand paging options for anon and vfs backed memory. Inspired by the old SunOS design.
     - General purpose heap provided by slabs for smaller objects and a freelist for larger objects. Slab allocation can be accelerated by core-local caches, and several debug features are available.
-- Logging infrastructure: fast and mostly lock-free with support for several early outputs (uart chips, debugcon) and a built-in graphical terminal (based on gterm from the Limine bootloader).
-    - Panic sequence with stack walker and symbol lookup.
-- Global software clock, driven by a number of supported hardware timers: LAPIC, TSC, HPET, PIT, SBI timer.
-- SMP-aware scheduler: round robin with per-core queues, work stealing and DPCs.
-- VFS with a robust tempfs driver, and full API for drivers.
-    - File contents are sparsely cached (as needed) in a page cache.
-    - File metadata and VFS nodes are also cached as needed.
-- Driver management: with the exception of timers and interrupt controllers, all device functionality is provided by loadable kernel modules:
-    - Drivers are organised in a tree-like structure, allowing parent drivers to provide functionality (like transport I/O) to child drivers.
-    - Notable drivers include: pci(e), some VirtIO devices and NVMe.
-- Optional UB sanitizer, helpful for detecting bugs or increasing code size!
+- Time management:
+    - Global software clock, driven by a number of hardware timers: LAPIC, TSC, HPET, PIT, SBI timer.
+    - Run levels, allowing kernel to selectively mask groups of interrupts and prevent execution being hoisted by the scheduler. This also means support for DPCs and APCs.
+    - Scheduler with core-local and shared work queues, and work stealing.
+    - Waitable events, with support for cancelling, timeouts and waiting on multiple events at once.
+- Filesystem:
+    - File contents and metadata are sparsely cached in memory as needed. VFS nodes can also be destroyed and re-created as needed.
+    - Robust tempfs driver provided within the kernel.
+- Drivers:
+    - Loaded (and dynamically linked) on-demand, based on load conditions described in driver metadata.
+    - Drivers, device descriptors and device APIs are organised in a tree, allowing parent drivers to provide functionality to child drivers and device nodes.
+    - Dedicated driver API functions, based on C-language API for the target platform - meaning drivers can be written in any language, although all first-party drivers are C++.
+- Debugging:
+    - Lock-free logging infrastructure, with per-core log buffers for maximum speed. Support for early log outputs via simple devices like uart chips or the built-in graphical terminal (based on gterm for Limine).
+    - UB sanitizer, helpful for catching bugs or increasing code size.
+    - Stack walker and symbol lookup, including symbols of loaded drivers. De-mangling C++ names not currently supported.
 
 Build System:
 - Uses stock core tools and GNU make, runs anywhere (tm).

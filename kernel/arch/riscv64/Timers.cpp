@@ -39,7 +39,7 @@ namespace Npk
             usedAcpi = false;
         }
         else
-            Log("Could not obtain timer info from ACPI or DTB, no other known methods.", LogLevel::Fatal);
+            ASSERT_UNREACHABLE();
 
         timerPeriod = sl::ScaledTime::FromFrequency(timebaseFrequency);
         sl::UnitConversion freqUnits = sl::ConvertUnits(timebaseFrequency, sl::UnitBase::Decimal);
