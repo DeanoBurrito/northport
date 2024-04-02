@@ -3,39 +3,38 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Locks.h>
-#include <Span.h>
+#include <containers/List.h>
 
 namespace Npk::Memory
 {
+    struct SlabEntry
+    {
+        SlabEntry* next;
+    };
+
     struct SlabSegment
     {
-        size_t freeCount; //total number of free slabs
-        uint8_t* bitmap;
-        size_t hint; //hint for where to start next allocation
-        uintptr_t allocBase;
-        sl::TicketLock lock;
         SlabSegment* next;
+
+        sl::TicketLock lock;
+        sl::IntrFwdList<SlabEntry> entries;
+        size_t freeCount;
+        uintptr_t base;
     };
 
     class SlabAlloc
     {
     private:
-        SlabSegment* head;
-        size_t slabSize; //size of slab this instance deals with
-        size_t segmentCapacity; //number of slabs per segment
-        size_t segmentSize; //size of segment in bytes, including metadata
+        size_t slabSize;
+        size_t slabsPerSeg;
+        sl::RwLock segmentsLock;
+        sl::IntrFwdList<SlabSegment> segments;
 
         SlabSegment* CreateSegment();
-        void DestroySegment(SlabSegment* segment);
+        void DestroySegment(SlabSegment* seg);
 
     public:
-        SlabAlloc() = default;
-        SlabAlloc(const SlabAlloc&) = delete;
-        SlabAlloc& operator=(const SlabAlloc&) = delete;
-        SlabAlloc(SlabAlloc&&) = delete;
-        SlabAlloc& operator=(SlabAlloc&&) = delete;
-
-        void Init(size_t slabSizeBytes, size_t segSize, size_t createCount);
+        void Init(size_t slabBytes, size_t slabCountPerSeg);
 
         [[nodiscard]]
         void* Alloc();

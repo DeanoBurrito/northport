@@ -100,10 +100,10 @@ namespace Npk::Memory
     void Heap::Init()
     {
         size_t nextSlabSize = SlabBaseSize;
-        size_t nextSlabCount = 2 * PageSize;
+        size_t nextSlabCount = 64;
         for (size_t i = 0; i < SlabCount; i++)
         {
-            slabs[i].Init(nextSlabSize, nextSlabCount, 0);
+            slabs[i].Init(nextSlabSize, nextSlabCount);
             nextSlabSize *= 2;
         }
 

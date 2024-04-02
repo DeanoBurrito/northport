@@ -72,6 +72,7 @@ namespace Npk::Memory
             ASSERT_(metadataAddr != 0);
 
             PmContigZone* zone = reinterpret_cast<PmContigZone*>(sl::AlignUp(metadataAddr + hhdmBase, sizeof(PmContigZone)));
+            new(zone) PmContigZone();
             zone->base = entries[0]->base + entries[0]->length;
             zone->count = count;
             zone->bitmap = reinterpret_cast<uint8_t*>(zone + 1);
@@ -109,6 +110,7 @@ namespace Npk::Memory
                 continue;
 
             PmInfoSegment* segment = &segmentStore[segmentIndex++];
+            new(segment) PmInfoSegment();
             segment->base = entries[i]->base;
             segment->length = entries[i]->length;
             segment->info = infoStore + infoIndex;
@@ -130,6 +132,7 @@ namespace Npk::Memory
         for (PmContigZone* zone = zones; zone != nullptr; zone = zone->next)
         {
             PmInfoSegment* segment = &segmentStore[segmentIndex++];
+            new(segment) PmInfoSegment();
             segment->base = zone->base;
             segment->length = zone->count * PageSize;
             segment->info = infoStore + infoIndex;
@@ -254,7 +257,7 @@ namespace Npk::Memory
         if (count == 0)
             return 0;
         if (count == 1)
-       {
+        {
             sl::ScopedLock scopeLock(freelist.lock);
             auto freeEntry = freelist.head;
             ASSERT_(freeEntry != nullptr);
