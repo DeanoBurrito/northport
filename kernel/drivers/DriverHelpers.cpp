@@ -67,6 +67,9 @@ namespace Npk::Drivers
         return true;
     }
 
+    bool VerifySysPowerApi(const npk_device_api* api)
+    { return true; }
+
     bool VerifyDeviceApi(const npk_device_api* api)
     {
         switch (api->type)
@@ -81,6 +84,8 @@ namespace Npk::Drivers
             return VerifyKeyboardApi(api);
         case npk_device_api_type::Filesystem:
             return VerifyFilesystemApi(api);
+        case npk_device_api_type::SysPower:
+            return VerifySysPowerApi(api);
         default:
             return false;
         }

@@ -2,9 +2,9 @@
 #include <containers/Vector.h>
 #include <Log.h>
 #include <GraphicsAdaptor.h>
+#include <Power.h>
 
-sl::Vector<QemuVga::GraphicsAdaptor> gpus;
-
+sl::Vector<Qemu::GraphicsAdaptor> gpus;
 
 bool ProcessEvent(npk_event_type type, void* arg)
 {
@@ -14,6 +14,8 @@ bool ProcessEvent(npk_event_type type, void* arg)
         return true;
     case npk_event_type::AddDevice:
         {
+            Qemu::InitPowerDevice(); //TODO: we cant register APIs in the INIT event
+
             auto event = static_cast<const npk_event_add_device*>(arg);
             auto& gpu = gpus.EmplaceBack();
             return gpu.Init(event);
@@ -34,7 +36,7 @@ NPK_METADATA const npk_module_metadata moduleMetadata
     .api_ver_rev = NP_MODULE_API_VER_REV,
 };
 
-NPK_METADATA const char friendlyName[] = "qemu_vga";
+NPK_METADATA const char friendlyName[] = "qemu";
 NPK_METADATA const uint8_t loadStr[] = { 0x34, 0x12, 0x11, 0x11 };
 NPK_METADATA const npk_driver_manifest driverManifest
 {

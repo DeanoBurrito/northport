@@ -13,6 +13,8 @@ namespace Npk::Drivers
         "gpu",
         "keyboard",
         "filesystem",
+        "syspower",
+        "network",
     };
 
     static_assert(npk_device_api_type::Io == 0);
@@ -20,6 +22,7 @@ namespace Npk::Drivers
     static_assert(npk_device_api_type::Gpu == 2);
     static_assert(npk_device_api_type::Keyboard == 3);
     static_assert(npk_device_api_type::Filesystem == 4);
+    static_assert(npk_device_api_type::SysPower == 5);
 
     constexpr size_t DeviceNodeStackReserveSize = 4;
 

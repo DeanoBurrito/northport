@@ -6,7 +6,7 @@
 #include <VmObject.h>
 #include <Locks.h>
 
-namespace QemuVga
+namespace Qemu
 {
     enum class DispiReg : uint16_t
     {

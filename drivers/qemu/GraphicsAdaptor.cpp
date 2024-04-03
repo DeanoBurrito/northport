@@ -2,7 +2,7 @@
 #include <Log.h>
 #include <UnitConverter.h>
 
-namespace QemuVga
+namespace Qemu
 {
     npk_framebuffer_mode GetModeWrapper(npk_device_api* api)
     {

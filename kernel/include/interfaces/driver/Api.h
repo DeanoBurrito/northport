@@ -39,7 +39,7 @@ extern "C" {
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
 #define NP_MODULE_API_VER_MINOR 3
-#define NP_MODULE_API_VER_REV 0
+#define NP_MODULE_API_VER_REV 1
 
 /* Various GUIDs used by the API */
 #define NP_MODULE_META_START_GUID { 0x11, 0xfc, 0x92, 0x87, 0x64, 0xc0, 0x4b, 0xaf, 0x9e, 0x59, 0x31, 0x64, 0xbf, 0xf9, 0xfa, 0x5a }
@@ -112,7 +112,7 @@ typedef enum
     DtbCompat = 5,
 } npk_load_type;
 
-#define NPK_PCI_ID_LOAD_STR(vendor, device) { ((vendor) >> 16) & 0xFF, (vendor) & 0xFF, ((device) >> 16) & 0xFF, (device) & 0xFF }
+#define NPK_PCI_ID_LOAD_STR(vendor, device) { (vendor) & 0xFF, ((vendor) >> 8) & 0xFF, (device) & 0xFF, ((device) >> 8) & 0xFF }
 #define NPK_PCI_CLASS_LOAD_STR(cl, subcl, iface) { cl, subcl, iface }
 
 typedef enum

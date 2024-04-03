@@ -1,9 +1,9 @@
-TARGET = QemuVga
+TARGET = Qemu
 
 CXX_FLAGS = $(DRIVER_CXX_FLAGS) -Iinclude
 LD_FLAGS = $(DRIVER_LD_FLAGS)
 
-CXX_SRCS = Main.cpp GraphicsAdaptor.cpp
+CXX_SRCS = Main.cpp GraphicsAdaptor.cpp Power.cpp
 
 include $(PROJ_ROOT_DIR)/misc/BuildCommon.mk
 
