@@ -1,4 +1,6 @@
-# current
+# v0.3.0
+- Added 'interrupt router' to replace previous interrupt manager, which offloads memory allocation to the caller.
+    - It also stores in-use interrupt vectors sparsely, no more big allocation up front which may go unused.
 - System clock handles events being inserted at the front of the queue properly.
     - Clock events now queue a DPC upon expiry, rather than running the callback inside the interrupt handler.
     - Clock events use the generic "ScaledTime" format rather than only nanoseconds.
@@ -25,6 +27,7 @@
     - Some basic device APIs were added: IO, framebuffer and filesystem.
     - Added concept of a 'driver shadow', which is a thread-local pointer that tracks whether the current thread is executing on behalf of a driver or not. It allows for tracking per-driver state as it were global, from the driver's point of view.
     - Added device node tree, which tracks the relationships between descriptors, device apis and loaded driver instances.
+    - Added system power API, allowing for simple poweroff/reboot functions to be provided to kernel in liu of full power management support.
 
 - Added `np-driverlib` library, which contains utility code for C++ drivers targetting the northport kernel. A large chunk of the supporting code for drivers has been moved here (and out of the kernel).
     - As a result the kernel source tree is slightly smaller.

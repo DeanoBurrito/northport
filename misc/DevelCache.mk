@@ -26,7 +26,7 @@ $(DEVEL_CACHE_DIR)/exists/ovmf-$(CPU_ARCH): $(DEVEL_CACHE_DIR)
 $(DEVEL_CACHE_DIR)/exists/limine: $(DEVEL_CACHE_DIR)
 	$(LOUD)-rm -rf $(LIMINE_DIR)
 	$(LOUD)git clone https://github.com/limine-bootloader/limine.git \
-		--branch=binary --depth 1 $(LIMINE_DIR)
+		--branch=v7.x-binary --depth 1 $(LIMINE_DIR)
 	$(LOUD)cd $(LIMINE_DIR); make all
 	$(LOUD)touch $@
 	@printf "$(C_YELLOW)[Cache]$(C_RST) Limine repo cloned from latest v5 release.\r\n"
