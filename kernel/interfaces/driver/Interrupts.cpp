@@ -2,11 +2,13 @@
 #include <interfaces/driver/Interrupts.h>
 #include <interfaces/Helpers.h>
 #include <tasking/RunLevels.h>
+#include <interrupts/Router.h>
 
 extern "C"
 {
     using namespace Npk;
     using namespace Npk::Tasking;
+    using namespace Npk::Interrupts;
 
     static_assert((size_t)RunLevel::Normal == npk_runlevel::Normal);
     static_assert((size_t)RunLevel::Apc == npk_runlevel::Apc);
@@ -26,6 +28,13 @@ extern "C"
     static_assert(offsetof(npk_apc, function) == offsetof(ApcStore, data.function));
     static_assert(offsetof(npk_apc, arg) == offsetof(ApcStore, data.arg));
     static_assert(offsetof(npk_apc, thread_id) == offsetof(ApcStore, data.threadId));
+
+    using IntrRoute = Interrupts::InterruptRoute;
+    static_assert(sizeof(npk_interrupt_route) == sizeof(IntrRoute));
+    static_assert(alignof(npk_interrupt_route) == alignof(IntrRoute));
+    static_assert(offsetof(npk_interrupt_route, callback_arg) == offsetof(IntrRoute, callbackArg));
+    static_assert(offsetof(npk_interrupt_route, callback) == offsetof(IntrRoute, Callback));
+    static_assert(offsetof(npk_interrupt_route, dpc) == offsetof(IntrRoute, dpc));
 
     DRIVER_API_FUNC
     npk_runlevel npk_raise_runlevel(npk_runlevel rl)
@@ -55,5 +64,27 @@ extern "C"
         VALIDATE_(apc->function != nullptr,);
 
         QueueApc(reinterpret_cast<ApcStore*>(apc));
+    }
+    
+    DRIVER_API_FUNC
+    bool npk_add_interrupt_route(npk_interrupt_route* route, npk_handle core)
+    {
+        VALIDATE_(route != nullptr, false);
+
+        return InterruptRouter::Global().AddRoute(reinterpret_cast<InterruptRoute*>(route), core);
+    }
+
+    bool npk_claim_interrupt_route(npk_interrupt_route* route, npk_handle core, size_t vector)
+    {
+        VALIDATE_(route != nullptr, false);
+
+        return InterruptRouter::Global().ClaimRoute(reinterpret_cast<InterruptRoute*>(route), core, vector);
+    }
+
+    bool npk_remove_interrupt_route(npk_interrupt_route* route)
+    {
+        VALIDATE_(route != nullptr, false);
+
+        return InterruptRouter::Global().RemoveRoute(reinterpret_cast<InterruptRoute*>(route));
     }
 }

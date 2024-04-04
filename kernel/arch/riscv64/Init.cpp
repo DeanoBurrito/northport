@@ -66,6 +66,9 @@ namespace Npk
             uartRegs.Write<uint8_t>(str[i]);
         }
     }
+
+    void ThreadedArchInit()
+    {}
 }
 
 extern "C"

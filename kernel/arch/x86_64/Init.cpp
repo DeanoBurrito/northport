@@ -7,6 +7,7 @@
 #include <boot/LimineTags.h>
 #include <boot/CommonInit.h>
 #include <debug/Log.h>
+#include <drivers/DriverManager.h>
 #include <memory/Vmm.h>
 #include <cpuid.h>
 
@@ -117,6 +118,29 @@ namespace Npk
         ExitCoreInit();
         ASSERT_UNREACHABLE();
     }
+
+    constexpr const char FwCfgFriendlyName[] = "fwcfg_dummy";
+    constexpr const uint8_t FwCfgLoadName[] = "npk_fwcfg_loadname";
+
+    void ThreadedArchInit()
+    {
+        //TODO: check if ecam was not available, and add port io descriptor for pci
+
+        //TODO: some mechanism to check if fwcfg is actually available, rather than blindly assuming it is
+        //(we can use the hypervisor cpuid leaf for this)
+        npk_device_desc* fwCfgDescriptor = new npk_device_desc();
+        fwCfgDescriptor->init_data = nullptr;
+        fwCfgDescriptor->driver_data = nullptr;
+        fwCfgDescriptor->load_name_count = 1;
+        fwCfgDescriptor->friendly_name = { .length = sizeof(FwCfgFriendlyName), .data = FwCfgFriendlyName };
+
+        npk_load_name* loadName = new npk_load_name();
+        loadName->type = npk_load_type::Never;
+        loadName->length = sizeof(FwCfgLoadName);
+        loadName->str = FwCfgLoadName;
+        fwCfgDescriptor->load_names = loadName;
+        Drivers::DriverManager::Global().AddDescriptor(fwCfgDescriptor);
+    }
 }
 
 extern "C"
@@ -127,7 +151,7 @@ extern "C"
         for (size_t i = 0; i < length; i++)
             Out8(PortDebugcon, str[i]);
     }
-    
+
     void KernelEntry()
     {
         using namespace Npk;
@@ -143,10 +167,7 @@ extern "C"
         PopulateIdt();
         InitPlatform();
 
-        //TODO: check if ECAM is available, if it isnt add a device descriptor for the port io interface
-
         IoApic::InitAll();
-        InitTimers();
 
         if (Boot::smpRequest.response != nullptr)
         {
@@ -156,6 +177,7 @@ extern "C"
                 if (procInfo->lapic_id == Boot::smpRequest.response->bsp_lapic_id)
                 {
                     InitCore(procInfo->lapic_id, procInfo->processor_id);
+                    PerCoreCommonInit();
                     continue;
                 }
                 
@@ -164,6 +186,7 @@ extern "C"
             }
         }
 
+        InitTimers();
         Tasking::StartSystemClock();
         ExitCoreInit();
         ASSERT_UNREACHABLE();

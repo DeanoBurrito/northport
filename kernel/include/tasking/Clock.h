@@ -2,13 +2,17 @@
 
 #include <arch/Platform.h>
 #include <stddef.h>
+#include <containers/List.h>
 #include <Time.h>
 
 namespace Npk::Tasking
 {
+    struct ClockQueue;
+
     struct ClockEvent
     {
         ClockEvent* next;
+        ClockQueue* queue;
 
         DpcStore* dpc;
         sl::ScaledTime duration;

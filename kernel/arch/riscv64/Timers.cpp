@@ -47,8 +47,8 @@ namespace Npk
             freqUnits.minor, freqUnits.prefix, usedAcpi ? "acpi" : "dtb");
     }
 
-    void (*timerCallback)();
-    void SetSysTimer(size_t nanoseconds, void (*callback)())
+    bool (*timerCallback)(void*);
+    void SetSysTimer(size_t nanoseconds, bool (*callback)(void*))
     {
         const size_t triggerTime = RdTime() + (nanoseconds / timerPeriod.ToNanos());
         if (callback != nullptr)

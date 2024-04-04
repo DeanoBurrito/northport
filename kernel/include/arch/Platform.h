@@ -18,6 +18,7 @@ namespace Npk
         Vmm, //active *lower-half* VMM
         Log, //debug log buffer for this core
         HeapCache, //core-local caches to speed up heap interactions
+        IntrRouting,
 
         Count
     };

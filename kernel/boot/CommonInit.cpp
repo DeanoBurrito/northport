@@ -11,8 +11,8 @@
 #include <drivers/DriverManager.h>
 #include <drivers/ElfLoader.h>
 #include <filesystem/Filesystem.h>
-#include <interrupts/InterruptManager.h>
 #include <interrupts/Ipi.h>
+#include <interrupts/Router.h>
 #include <io/IoManager.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
@@ -28,6 +28,8 @@ namespace Npk
     uintptr_t hhdmBase;
     uintptr_t hhdmLength;
     sl::Atomic<size_t> bootloaderRefs;
+
+    void ThreadedArchInit(); //defined in Init.cpp for the current architecture
     
     void InitEarlyPlatform()
     {
@@ -91,7 +93,6 @@ namespace Npk
         Drivers::DriverManager::Global().Init();
         Filesystem::InitVfs();
 
-        Interrupts::InterruptManager::Global().Init();
         Tasking::ProgramManager::Global().Init();
         Tasking::Scheduler::Global().Init();
         Io::IoManager::Global().Init();
@@ -148,6 +149,8 @@ namespace Npk
             }
         }
 
+        ThreadedArchInit();
+
         Drivers::DriverManager::Global().PrintInfo();
         Tasking::Thread::Current().Exit(0);
     }
@@ -162,10 +165,7 @@ namespace Npk
         //Memory::CreateLocalHeapCaches();
         Debug::InitCoreLogBuffers();
         Interrupts::InitIpiMailbox();
-
-        //TODO: one core should start the system clock (StartSystemClock()), 
-        //this should be determined by the platform init code, but done here.
-        //The idea is to force the arch code to specify, make sure we dont forget to do it.
+        Interrupts::InterruptRouter::Global().InitCore();
     }
 
     [[noreturn]]

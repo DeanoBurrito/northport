@@ -48,9 +48,10 @@
             - [x] Tickless.
             - [x] Infinite expiry.
             - [ ] Continuous calibration.
-            - [ ] Per-core timer support.
+            - [x] Per-core timer support.
             - [ ] Stopwatches.
         - [x] IPI mailboxes.
+            - [ ] Lockless.
         - [x] Scheduler.
             - [x] SMP-aware.
                 - [ ] Topology-aware.
@@ -111,10 +112,12 @@
     - [ ] FAT filesystems.
     - [ ] NTFS (?).
     - [ ] XHCI (usb3).
-    - [ ] E1000(e) NIC.
+    - [x] E1000 NIC.
+        - [ ] E1000e class support.
     - [ ] AC97 audio.
     - [ ] iHD audio.
     - [ ] Ports:
+        - [ ] uACPI
         - [ ] LAI
         - [ ] LIL
         - [ ] ACPICA

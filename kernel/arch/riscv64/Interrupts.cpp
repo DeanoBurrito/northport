@@ -1,7 +1,7 @@
 #include <arch/riscv64/Interrupts.h>
 #include <arch/riscv64/Sbi.h>
 #include <debug/Log.h>
-#include <interrupts/InterruptManager.h>
+#include <interrupts/Router.h>
 #include <interrupts/Ipi.h>
 #include <memory/Vmm.h>
 #include <tasking/Scheduler.h>
@@ -22,7 +22,7 @@ namespace Npk
         SetCsrBits("sie", 0x222);
     }
 
-    extern void (*timerCallback)();
+    extern bool (*timerCallback)(void*);
 }
 
 extern "C"
@@ -117,7 +117,7 @@ extern "C"
             case 5: //Timer (TODO: clear using EE)
                 SbiSetTimer(-1ul);
                 if (timerCallback != nullptr)
-                    timerCallback();
+                    timerCallback(nullptr);
             case 9: //external interrupt (SIP bit must be cleared by interrupt controller)
             default:
                 ASSERT_UNREACHABLE();

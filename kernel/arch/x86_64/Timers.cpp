@@ -4,7 +4,7 @@
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <memory/VmObject.h>
-#include <interrupts/InterruptManager.h>
+#include <interrupts/Router.h>
 
 namespace Npk
 {
@@ -35,7 +35,7 @@ namespace Npk
     size_t hpetPeriod;
     size_t tscTicksPerMs;
 
-    size_t timerIntVector;
+    InterruptRoute timerIntrRoute;
     uint8_t timerIoApicPin;
 
     inline uint16_t PitRead()
@@ -111,9 +111,11 @@ namespace Npk
 
     void InitTimers()
     {
-        timerIntVector = *Interrupts::InterruptManager::Global().Alloc();
         timerIoApicPin = 0;
         selectedSysTimer = (TimerName)-1;
+        timerIntrRoute.Callback = nullptr;
+        timerIntrRoute.dpc = nullptr;
+        ASSERT_(AddInterruptRoute(&timerIntrRoute, CoreLocal().id));
 
         if (auto maybeHpet = Config::FindAcpiTable(Config::SigHpet); maybeHpet.HasValue())
         {
@@ -150,7 +152,7 @@ namespace Npk
         if (!hpetRegs.Valid())
         {
             selectedSysTimer = TimerName::Pit;
-            IoApic::Route(timerIoApicPin, timerIntVector, CoreLocal().id, TriggerMode::Edge, PinPolarity::High, true);
+            IoApic::Route(timerIoApicPin, timerIntrRoute.vector, timerIntrRoute.core, TriggerMode::Edge, PinPolarity::High, true);
             Log("PIT will be used for sys timer :(", LogLevel::Info);
         }
         else
@@ -173,25 +175,19 @@ namespace Npk
             ASSERT(hpetRegs->Offset(HpetRegT0Config).Read<uint64_t>() == configWord, "HPET comparator 0 readback incorrect.");
 
             selectedSysTimer = TimerName::Hpet;
-            IoApic::Route(timerIoApicPin, timerIntVector, CoreLocal().id, TriggerMode::Edge, PinPolarity::High, true);
+            IoApic::Route(timerIoApicPin, timerIntrRoute.vector, timerIntrRoute.core, TriggerMode::Edge, PinPolarity::High, true);
             Log("Hpet comparator 0 available for sys timer: vector=0x%lx, ioapicPin=%u.", 
-                LogLevel::Info, timerIntVector, timerIoApicPin);
+                LogLevel::Info, timerIntrRoute.vector, timerIoApicPin);
         }
     }
 
-    void SetSysTimer(size_t nanoseconds, void (*callback)())
+    void SetSysTimer(size_t nanoseconds, bool (*callback)(void*))
     {
         if ((size_t)selectedSysTimer == -1ul)
             InitSysTimer();
 
         if (callback != nullptr)
-        {
-            using AbsoluteMadness = void (*)(size_t, void*);
-            AbsoluteMadness madness = (AbsoluteMadness)callback;
-            
-            Interrupts::InterruptManager::Global().Detach(timerIntVector);
-            Interrupts::InterruptManager::Global().Attach(timerIntVector, madness, nullptr);
-        }
+            timerIntrRoute.Callback = callback;
         
         switch (selectedSysTimer)
         {
@@ -220,11 +216,11 @@ namespace Npk
         }
 
         case TimerName::Lapic:
-            LocalApic::Local().SetTimer(false, nanoseconds, timerIntVector);
+            LocalApic::Local().SetTimer(false, nanoseconds, timerIntrRoute.vector);
             return;
 
         case TimerName::Tsc:
-            LocalApic::Local().SetTimer(true, nanoseconds / 1'000'000 * tscTicksPerMs, timerIntVector);
+            LocalApic::Local().SetTimer(true, nanoseconds / 1'000'000 * tscTicksPerMs, timerIntrRoute.vector);
             return;
         
         default:

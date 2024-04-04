@@ -10,9 +10,15 @@ namespace Npk::Tasking
 {
     constexpr sl::ScaledTime TimekeepingEventDuration = 5_ms;
 
-    sl::SpinLock eventsLock;
-    sl::IntrFwdList<ClockEvent> events;
-    size_t eventsModifiedTicks;
+    struct ClockQueue
+    {
+        size_t managingCore;
+        sl::SpinLock lock;
+        sl::IntrFwdList<ClockEvent> events;
+        size_t modifiedTicks;
+    };
+
+    ClockQueue globalQueue;
 
     sl::Atomic<size_t> uptimeMillis;
     ClockEvent timekeepingEvent;
@@ -21,10 +27,10 @@ namespace Npk::Tasking
     static void UpdateTimerQueue()
     {
         const size_t pollTicks = PollTimer();
-        size_t listDelta = PolledTicksToNanos(pollTicks - eventsModifiedTicks);
-        eventsModifiedTicks = pollTicks;
+        size_t listDelta = PolledTicksToNanos(pollTicks - globalQueue.modifiedTicks);
+        globalQueue.modifiedTicks = pollTicks;
 
-        auto scan = events.Begin();
+        auto scan = globalQueue.events.Begin();
         while (scan != nullptr && listDelta > 0)
         {
             ASSERT(scan != scan->next, "Tried to queue the same event twice?");
@@ -45,28 +51,32 @@ namespace Npk::Tasking
         }
     }
 
-    void ClockTickHandler()
+    bool ClockTickHandler(void*)
     {
         ASSERT_(CoreLocal().runLevel >= RunLevel::Clock);
 
         UpdateTimerQueue();
-        while (!events.Empty())
+        while (!globalQueue.events.Empty())
         {
-            if (events.Front().duration.units != 0)
+            if (globalQueue.events.Front().duration.units != 0)
                 break;
 
-            ClockEvent* event = events.PopFront();
+            ClockEvent* event = globalQueue.events.PopFront();
             if (event->callbackCore == CoreLocal().id)
                 QueueDpc(event->dpc);
             else
                 QueueRemoteDpc(event->callbackCore, event->dpc);
         }
 
-        if (!events.Empty())
+        if (!globalQueue.events.Empty())
         {
-            const size_t clockArmTime = sl::Min(SysTimerMaxNanos(), events.Front().duration.units);
+            const size_t clockArmTime = sl::Min(SysTimerMaxNanos(), globalQueue.events.Front().duration.units);
             SetSysTimer(clockArmTime, ClockTickHandler);
         }
+
+        //return value isnt super important here, it just allows *not* enqueueing a dpc associated with the interrupt
+        //route, which isnt present anyway. Its required as part of the function signature for an interupt route endpoint.
+        return true;
     }
 
     void ClockUptimeDpc(void*)
@@ -79,6 +89,8 @@ namespace Npk::Tasking
 
     void StartSystemClock()
     {
+        globalQueue.managingCore = 0; //TODO: per-timer queues
+
         timekeepingDpc.data.function = ClockUptimeDpc;
         timekeepingEvent.callbackCore = CoreLocal().id;
         timekeepingEvent.dpc = &timekeepingDpc;
@@ -99,33 +111,34 @@ namespace Npk::Tasking
 
         if (event->callbackCore == NoCoreAffinity)
             event->callbackCore = CoreLocal().id;
-        if (CoreLocal().id != 0)
-            return Interrupts::SendIpiMail(0, RemoteQueueClockEvent, event);
+
+        if (globalQueue.managingCore != CoreLocal().id)
+            return Interrupts::SendIpiMail(globalQueue.managingCore, RemoteQueueClockEvent, event);
 
         const auto prevRl = EnsureRunLevel(RunLevel::Clock);
-        eventsLock.Lock();
+        globalQueue.lock.Lock();
 
         UpdateTimerQueue();
         event->duration = event->duration.ToScale(sl::TimeScale::Nanos);
 
         //special case: we're inserting at the front of the list
-        if (events.Empty() || events.Front().duration.units > event->duration.units)
+        if (globalQueue.events.Empty() || globalQueue.events.Front().duration.units > event->duration.units)
         {
-            if (!events.Empty())
-                events.Front().duration.units -= event->duration.units;
-            events.PushFront(event);
+            if (!globalQueue.events.Empty())
+                globalQueue.events.Front().duration.units -= event->duration.units;
+            globalQueue.events.PushFront(event);
             const size_t clockArmTime = sl::Min(SysTimerMaxNanos(), event->duration.units);
             SetSysTimer(clockArmTime, ClockTickHandler);
 
-            eventsLock.Unlock();
+            globalQueue.lock.Unlock();
             if (prevRl.HasValue())
                 LowerRunLevel(*prevRl);
             return;
         }
 
-        auto scan = events.Begin();
+        auto scan = globalQueue.events.Begin();
         bool inserted = false;
-        while (scan != events.End())
+        while (scan != globalQueue.events.End())
         {
             event->duration.units -= scan->duration.units;
             if (scan->next == nullptr)
@@ -136,7 +149,7 @@ namespace Npk::Tasking
                 continue;
             }
 
-            events.InsertAfter(scan, event);
+            globalQueue.events.InsertAfter(scan, event);
             if (event->next != nullptr)
                 event->next -= event->duration.units;
             inserted = true;
@@ -144,9 +157,9 @@ namespace Npk::Tasking
         }
 
         if (!inserted)
-            events.PushBack(event);
+            globalQueue.events.PushBack(event);
 
-        eventsLock.Unlock();
+        globalQueue.lock.Unlock();
         if (prevRl.HasValue())
             LowerRunLevel(*prevRl);
     }
@@ -156,11 +169,11 @@ namespace Npk::Tasking
         VALIDATE_(event != nullptr, );
 
         const auto prevRl = EnsureRunLevel(RunLevel::Clock);
-        eventsLock.Lock();
-        ClockEvent* following = events.Remove(event);
+        globalQueue.lock.Lock();
+        ClockEvent* following = globalQueue.events.Remove(event);
         if (following != nullptr)
             following->duration.units += event->duration.units;
-        eventsLock.Unlock();
+        globalQueue.lock.Unlock();
         if (prevRl.HasValue())
             LowerRunLevel(*prevRl);
     }
