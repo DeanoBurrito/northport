@@ -38,8 +38,9 @@ namespace Npk::Memory
     private:
         PoolRegion* head;
         PoolRegion* tail;
-        size_t minAllocSize;
         sl::TicketLock listLock;
+        unsigned minAllocSize;
+        bool doBoundsCheck;
 
         void MergePrev(PoolNode* node);
         void MergeNext(PoolNode* node);
@@ -53,7 +54,7 @@ namespace Npk::Memory
         PoolAlloc(PoolAlloc&&) = delete;
         PoolAlloc& operator=(PoolAlloc&&) = delete;
 
-        void Init(size_t minAllocBytes);
+        void Init(size_t minAllocBytes, bool checkBounds);
 
         [[nodiscard]]
         void* Alloc(size_t bytes);

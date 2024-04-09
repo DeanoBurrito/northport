@@ -103,11 +103,11 @@ namespace Npk::Memory
         size_t nextSlabCount = 64;
         for (size_t i = 0; i < SlabCount; i++)
         {
-            slabs[i].Init(nextSlabSize, nextSlabCount);
+            slabs[i].Init(nextSlabSize, nextSlabCount, false);
             nextSlabSize *= 2;
         }
 
-        pool.Init(slabs[SlabCount - 1].Size());
+        pool.Init(slabs[SlabCount - 1].Size(), false);
     }
 
     bool Heap::SwapCache(SlabCache** ptr, size_t index)

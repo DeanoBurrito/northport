@@ -4,6 +4,8 @@
 
 namespace Npk::Memory
 {
+    constexpr uint8_t PoisonValue = 0xA5;
+
     SlabSegment* SlabAlloc::CreateSegment()
     {
         const size_t totalSize = slabSize * slabsPerSeg;
@@ -14,6 +16,8 @@ namespace Npk::Memory
         SlabSegment* seg = new(scan.ptr) SlabSegment();
         seg->base = scan.raw;
         seg->freeCount = slabsPerSeg - (sl::AlignUp(sizeof(SlabSegment), slabSize) / slabSize);
+        if (doBoundsCheck)
+            seg->freeCount /= 2;
         scan.raw += sl::AlignUp(sizeof(SlabSegment), slabSize);
 
         for (size_t i = 0; i < seg->freeCount; i++)
@@ -21,9 +25,16 @@ namespace Npk::Memory
             ASSERT_(scan.raw < *base + totalSize);
             seg->entries.PushBack(scan.As<SlabEntry>());
             scan.raw += slabSize;
+
+            if (doBoundsCheck)
+            {
+                sl::memset(scan.As<uint8_t>(), PoisonValue, slabSize);
+                scan.raw += slabSize;
+            }
         }
 
-        Log("Heap slab segment created: size=%lub, count=%lu", LogLevel::Verbose, slabSize, seg->freeCount);
+        Log("Heap slab segment created: size=%ub, count=%lu%s", LogLevel::Verbose, slabSize, seg->freeCount,
+            doBoundsCheck ? ", bounds-checking enabled" : "");
         return seg;
     }
 
@@ -36,14 +47,16 @@ namespace Npk::Memory
         VALIDATE_(VMM::Kernel().Free(seg->base), );
     }
 
-    void SlabAlloc::Init(size_t slabBytes, size_t slabCountPerSeg)
+    void SlabAlloc::Init(size_t slabBytes, size_t slabCountPerSeg, bool checkBounds)
     {
         slabSize = slabBytes;
         slabsPerSeg = slabCountPerSeg;
+        doBoundsCheck = checkBounds;
     }
 
     void* SlabAlloc::Alloc()
     {
+        CheckBounds();
         void* foundAddr = nullptr;
 
         segmentsLock.ReaderLock();
@@ -85,6 +98,8 @@ namespace Npk::Memory
 
     bool SlabAlloc::Free(void* ptr)
     {
+        CheckBounds();
+
         const size_t segRange = slabSize * slabsPerSeg;
         const uintptr_t intPtr = reinterpret_cast<uintptr_t>(ptr);
 
@@ -97,6 +112,9 @@ namespace Npk::Memory
             seg->lock.Lock();
             seg->entries.PushBack(static_cast<SlabEntry*>(ptr));
             seg->freeCount++;
+
+            if (doBoundsCheck)
+                sl::memset(sl::NativePtr(ptr).Offset(slabSize).ptr, PoisonValue, slabSize);
             seg->lock.Unlock();
 
             segmentsLock.ReaderUnlock();
@@ -105,5 +123,36 @@ namespace Npk::Memory
         segmentsLock.ReaderUnlock();
 
         return false;
+    }
+
+    void SlabAlloc::CheckBounds()
+    {
+        if (!doBoundsCheck)
+            return;
+
+        segmentsLock.ReaderLock();
+        for (auto seg = segments.Begin(); seg != segments.End(); seg = seg->next)
+        {
+            sl::NativePtr scan = seg->base;
+            const uintptr_t segmentTop = scan.raw + slabsPerSeg * slabSize;
+            scan.raw += sl::AlignUp(sizeof(SlabSegment), slabSize);
+
+            while (scan.raw + (slabSize * 2) < segmentTop)
+            {
+                uint8_t* poison = scan.Offset(slabSize).As<uint8_t>();
+
+                for (size_t i = 0; i < slabSize; i++)
+                {
+                    if (poison[i] == PoisonValue)
+                        continue;
+
+                    Log("Slab overrun at 0x%lx (size=%u)", LogLevel::Warning, scan.raw, slabSize);
+                    break;
+                }
+
+                scan.raw += slabSize * 2;
+            }
+        }
+        segmentsLock.ReaderUnlock();
     }
 }

@@ -6,6 +6,9 @@
 
 namespace Npk::Memory
 {
+    constexpr size_t PoisonLength = 0x20;
+    constexpr uint8_t PoisonValue = 0xA5;
+
     void PoolAlloc::MergePrev(PoolNode* node)
     {
         if (node->prev == nullptr)
@@ -112,17 +115,21 @@ namespace Npk::Memory
         return region;
     }
 
-    void PoolAlloc::Init(size_t minAllocBytes)
+    void PoolAlloc::Init(size_t minAllocBytes, bool checkBounds)
     {
         sl::ScopedLock scopeLock(listLock);
         head = tail = nullptr;
         minAllocSize = minAllocBytes;
+        doBoundsCheck = checkBounds;
 
-        Log("Kpool initialized: minSize=0x%lx", LogLevel::Verbose, minAllocSize);
+        Log("Kpool initialized: minSize=0x%x", LogLevel::Verbose, minAllocSize);
     }
 
     void* PoolAlloc::Alloc(size_t bytes)
     {
+        if (doBoundsCheck)
+            bytes += PoisonLength;
+
         PoolRegion* region = head;
         PoolNode* scan = nullptr;
         while (region != nullptr)
@@ -168,13 +175,29 @@ namespace Npk::Memory
             region->last = scan->prev;
         region->lock.Unlock();
 
-        sl::memset(scan->Data(), 0, scan->length);
+        const size_t zeroBytes = bytes - (doBoundsCheck ? PoisonLength : 0);
+        sl::memset(scan->Data(), 0, zeroBytes);
+        if (doBoundsCheck)
+            sl::memset(sl::NativePtr(scan->Data()).Offset(zeroBytes).ptr, PoisonValue, PoisonLength);
         return scan->Data();
     }
 
     bool PoolAlloc::Free(void* ptr)
     {
         PoolNode* node = static_cast<PoolNode*>(ptr) - 1;
+        if (doBoundsCheck)
+        {
+            uint8_t* poison = sl::NativePtr(node->Data()).Offset(node->length - PoisonLength).As<uint8_t>();
+            for (size_t i = 0; i < PoisonLength; i++)
+            {
+                if (poison[i] == PoisonValue)
+                    continue;
+
+                Log("Pool overrun at 0x%p", LogLevel::Warning, node->Data());
+                break;
+            }
+        }
+
         for (PoolRegion* region = head; region != nullptr; region = region->next)
         {
             sl::ScopedLock scopeLock(region->lock);

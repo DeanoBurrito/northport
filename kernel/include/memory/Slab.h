@@ -25,21 +25,24 @@ namespace Npk::Memory
     class SlabAlloc
     {
     private:
-        size_t slabSize;
-        size_t slabsPerSeg;
         sl::RwLock segmentsLock;
         sl::IntrFwdList<SlabSegment> segments;
+        unsigned slabSize;
+        unsigned slabsPerSeg;
+        bool doBoundsCheck;
 
         SlabSegment* CreateSegment();
         void DestroySegment(SlabSegment* seg);
 
     public:
-        void Init(size_t slabBytes, size_t slabCountPerSeg);
+        void Init(size_t slabBytes, size_t slabCountPerSeg, bool checkBounds);
 
         [[nodiscard]]
         void* Alloc();
         [[nodiscard]]
         bool Free(void* ptr);
+
+        void CheckBounds();
 
         [[gnu::always_inline]]
         inline size_t Size()
