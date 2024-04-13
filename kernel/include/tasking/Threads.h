@@ -134,6 +134,24 @@ namespace Npk::Tasking
         //TODO: Sleep() and Join()
     };
 
+    enum class ProgramExceptionType
+    {
+        MemoryAccess = 0,
+        InvalidInstruction = 1,
+        ExitRequest = 2,
+        BadOperation = 3,
+        Breakpoint = 4,
+    };
+
+    struct ProgramException
+    {
+        uintptr_t instruction;
+        uintptr_t stack;
+        uintptr_t special;
+        ProgramExceptionType type;
+        unsigned flags;
+    };
+
     class ProgramManager
     {
     private:
@@ -149,6 +167,7 @@ namespace Npk::Tasking
         void Init();
 
         TrapFrame** GetCurrentFrameStore();
+        bool ServeException(ProgramException exception);
 
         sl::Opt<size_t> CreateProcess();
         sl::Opt<size_t> CreateThread(size_t procId, ThreadEntry entry, void* arg, size_t affinity, size_t stackSize);

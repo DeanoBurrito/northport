@@ -235,6 +235,11 @@ namespace Npk::Tasking
         return &Thread::Current().frame;
     }
 
+    bool ProgramManager::ServeException(ProgramException exception)
+    {
+        return false; //TODO: routing for this
+    }
+
     sl::Opt<size_t> ProgramManager::CreateProcess()
     {
         Process* proc = new Process();

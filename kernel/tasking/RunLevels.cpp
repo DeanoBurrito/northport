@@ -1,4 +1,5 @@
 #include <tasking/RunLevels.h>
+#include <tasking/Scheduler.h>
 #include <arch/Platform.h>
 #include <debug/Log.h>
 #include <interrupts/Ipi.h>
@@ -48,6 +49,8 @@ namespace Npk::Tasking
     {
         ASSERT_(newLevel < CoreLocal().runLevel);
 
+        bool restoreInterrupts = false;
+        bool doThreadSwitch = false;
         while (CoreLocal().runLevel > newLevel)
         {
             //we're aiming to drop the run level by 1, ensure that any queued operations
@@ -59,17 +62,31 @@ namespace Npk::Tasking
                     DpcStore* dpc = nullptr;
                     while ((dpc = CoreLocal().dpcs.Pop()) != nullptr)
                     {
-                        dpc->data.function(dpc->data.arg);
                         dpc->next = nullptr;
+                        dpc->data.function(dpc->data.arg);
                     }
                     break;
                 }
             case RunLevel::Apc: //TOOD: implement APCs
+            case RunLevel::Normal:
+                if (Scheduler::Global().SwitchPending())
+                {
+                    doThreadSwitch = true;
+                    restoreInterrupts = InterruptsEnabled();
+                    DisableInterrupts();
+                }
             default: break;
             }
 
             CoreLocal().runLevel--;
             SetHardwareRunLevel(CoreLocal().runLevel);
+        }
+
+        if (doThreadSwitch)
+        {
+            Scheduler::Global().DoPendingSwitch();
+            if (restoreInterrupts)
+                EnableInterrupts();
         }
     }
 

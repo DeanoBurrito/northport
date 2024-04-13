@@ -43,26 +43,6 @@ namespace Npk::Tasking
         Engine& engine = LocalEngine();
         DequeueClockEvent(&engine.rescheduleClockEvent);
 
-        //put current thread back into a queue if required
-        Thread* current = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
-        if (current != nullptr && current->id != engine.idleThread->id
-            && current->state == ThreadState::Running)
-        {
-            WorkQueue* const queue = current->affinity == engine.id 
-                ? &engine.localQueue 
-                : &engine.cluster->sharedQueue;
-
-            current->schedLock.Lock();
-            current->state = ThreadState::Queued;
-            current->engineOrQueue.queue = queue;
-            current->schedLock.Unlock();
-
-            queue->lock.Lock();
-            queue->threads.PushBack(current);
-            queue->depth++;
-            queue->lock.Unlock();
-        }
-
         //reset ticket counts if needed
         if (engine.sharedTickets == 0)
         {
@@ -96,9 +76,9 @@ namespace Npk::Tasking
 
         //TODO: decide on time until next timed reschedule
         engine.rescheduleClockEvent.duration = 10_ms;
-        QueueClockEvent(&engine.rescheduleClockEvent);
+        //QueueClockEvent(&engine.rescheduleClockEvent);
 
-        CoreLocal()[LocalPtr::Thread] = nextThread;
+        engine.pendingThread = nextThread;
         engine.flags.Clear(EngineFlag::ReschedulePending);
         if (prevRl.HasValue())
             LowerRunLevel(*prevRl);
@@ -157,6 +137,7 @@ namespace Npk::Tasking
         engine->id = CoreLocal().id;
         engine->extRegsOwner = 0;
         engine->flags = 0;
+        engine->pendingThread = nullptr;
 
         engine->rescheduleDpc.data.function = DoReschedule;
         engine->rescheduleClockEvent.dpc = &engine->rescheduleDpc;
@@ -185,7 +166,6 @@ namespace Npk::Tasking
         QueueReschedule();
         DisableInterrupts();
         LowerRunLevel(RunLevel::Normal); //run pending DPCs (like rescheduling)
-        SwitchFrame(nullptr, Thread::Current().frame);
         ASSERT_UNREACHABLE();
     }
 
@@ -197,6 +177,50 @@ namespace Npk::Tasking
         QueueReschedule();
 
         SwitchFrame(noSave ? nullptr : prevFrameStorage, Thread::Current().frame);
+        if (noSave)
+            ASSERT_UNREACHABLE();
+    }
+
+    bool Scheduler::SwitchPending()
+    { return LocalEngine().pendingThread != nullptr; }
+
+    void Scheduler::DoPendingSwitch()
+    {
+        ASSERT_(CoreLocal().runLevel == RunLevel::Normal);
+        auto& engine = LocalEngine();
+        ASSERT_(engine.pendingThread != nullptr);
+
+        sl::InterruptGuard intGuard;
+        //put current thread back in queue if required
+        Thread* current = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
+        TrapFrame** prevFrame = current != nullptr ? &current->frame : nullptr;
+        if (current != nullptr && current->id != engine.idleThread->id
+            && current->state == ThreadState::Running)
+        {
+            WorkQueue* queue = &engine.cluster->sharedQueue;
+            if (current->affinity != NoCoreAffinity)
+            {
+                ASSERT_(current->affinity == CoreLocal().id);
+                queue = &engine.localQueue;
+            }
+
+            current->schedLock.Lock();
+            current->state = ThreadState::Queued;
+            current->engineOrQueue.queue = queue;
+            current->schedLock.Unlock();
+
+            queue->lock.Lock();
+            queue->threads.PushBack(current);
+            queue->depth++;
+            queue->lock.Unlock();
+        }
+
+        //make pending thread the current one and switch
+        TrapFrame* nextFrame = engine.pendingThread->frame;
+        CoreLocal()[LocalPtr::Thread] = engine.pendingThread;
+        engine.pendingThread = nullptr;
+
+        SwitchFrame(prevFrame, nextFrame);
     }
 
     void Scheduler::EnqueueThread(Thread* t)
@@ -251,10 +275,8 @@ namespace Npk::Tasking
         queue->depth++;
     }
 
-    static void RemoteReschedule(void*) //TODO: do away with this? QueueReschedule really doesnt need to be global or an instance func
-    {
-        Scheduler::Global().QueueReschedule();
-    }
+    static void RemoteDequeue(void* thread)
+    { Scheduler::Global().DequeueThread(static_cast<Thread*>(thread)); }
 
     void Scheduler::DequeueThread(Thread* t)
     {
@@ -271,9 +293,14 @@ namespace Npk::Tasking
         if (prevState == ThreadState::Running)
         {
             if (t->engineOrQueue.engineId == engine.id)
-                QueueReschedule();
+            {
+                if (t == CoreLocal()[LocalPtr::Thread])
+                    QueueReschedule();
+                else
+                    engine.pendingThread = nullptr;
+            }
             else
-                Interrupts::SendIpiMail(t->engineOrQueue.engineId, RemoteReschedule, nullptr);
+                Interrupts::SendIpiMail(t->engineOrQueue.engineId, RemoteDequeue, t);
         }
         else
         {

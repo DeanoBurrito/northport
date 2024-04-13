@@ -36,6 +36,7 @@ namespace Npk::Tasking
 
         EngineCluster* cluster;
         Thread* idleThread;
+        Thread* pendingThread;
         size_t extRegsOwner;
 
         DpcStore rescheduleDpc;
@@ -73,6 +74,8 @@ namespace Npk::Tasking
         //TODO: StopEngine() and RemoveEngine()
         
         void Yield(bool noSave = false);
+        bool SwitchPending();
+        void DoPendingSwitch();
 
         void EnqueueThread(Thread* t);
         void DequeueThread(Thread* t);
