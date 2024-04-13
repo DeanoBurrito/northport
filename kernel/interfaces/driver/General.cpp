@@ -1,8 +1,9 @@
 #include <debug/Log.h>
+#include <debug/Panic.h>
 #include <drivers/DriverManager.h>
 #include <interfaces/driver/Api.h>
 #include <interfaces/Helpers.h>
-#include <stdarg.h>
+#include <Memory.h>
 
 extern "C"
 {
@@ -20,7 +21,8 @@ extern "C"
     DRIVER_API_FUNC
     void npk_panic(REQUIRED const char* why)
     {
-        Panic(why);
+        const size_t whyLength = sl::memfirst(why, 0, 0);
+        Debug::Panic({ why, whyLength });
         ASSERT_UNREACHABLE();
     }
 }

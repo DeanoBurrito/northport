@@ -60,6 +60,7 @@ namespace Npk
     struct TrapFrame;
     struct ExtendedRegs;
 
+    void ExplodeKernelAndReset();
     void Wfi();
     bool InterruptsEnabled();
     void EnableInterrupts();
@@ -76,7 +77,7 @@ namespace Npk
     void LoadExtendedRegs(ExtendedRegs* regs);
     void ExtendedRegsFence();
 
-    uintptr_t GetReturnAddr(size_t level);
+    uintptr_t GetReturnAddr(size_t level, uintptr_t start);
     void SendIpi(size_t dest);
     void SetHardwareRunLevel(RunLevel rl);
     uintptr_t MsiAddress(size_t core, size_t vector);
@@ -84,7 +85,6 @@ namespace Npk
     void MsiExtract(uintptr_t addr, uintptr_t data, size_t& core, size_t& vector);
 
     void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
-    void Panic(const char* reason) asm("Panic");
 
     CoreLocalInfo& CoreLocal();
     bool CoreLocalAvailable();

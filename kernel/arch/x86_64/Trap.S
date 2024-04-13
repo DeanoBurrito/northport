@@ -3,6 +3,9 @@
 
 .extern TrapDispatch
 
+.type TrapEntry,@function
+.size TrapEntry,(_EndOfTrapEntry - TrapEntry)
+
 TrapEntry:
     clac
     push %rax
@@ -36,6 +39,7 @@ TrapEntry:
     mov %rsp, %rdi
     mov $0, %rbp
     call TrapDispatch
+_EndOfTrapEntry:
 
 .altmacro
 .macro CreateStubs first, last, ec=1

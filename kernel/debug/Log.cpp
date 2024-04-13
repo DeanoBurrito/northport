@@ -1,10 +1,7 @@
 #include <debug/Log.h>
-#include <arch/Platform.h>
 #include <debug/Symbols.h>
-#include <drivers/DriverManager.h>
-#include <interrupts/Ipi.h>
+#include <debug/Panic.h>
 #include <memory/Pmm.h>
-#include <memory/Vmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Threads.h>
 #include <tasking/RunLevels.h>
@@ -16,11 +13,10 @@
 
 namespace Npk::Debug
 {
-    constexpr size_t PanicLockAttempts = 4321'0000;
-    constexpr size_t MaxEarlyLogOuts = 4;
+    constexpr size_t MaxLogOutputs = 4;
+    constexpr size_t MaxLogDrainCount = 32;
     constexpr size_t CoreLogBufferSize = 4 * PageSize;
     constexpr size_t EarlyBufferSize = 4 * PageSize;
-    constexpr size_t MaxEloItemsPrinted = 20;
     constexpr size_t MaxMessageLength = 128;
 
     constexpr const char* LevelStrs[] = 
@@ -62,12 +58,11 @@ namespace Npk::Debug
         .head = 0
     };
 
-    EarlyLogWrite earlyOuts[MaxEarlyLogOuts];
-    size_t eloCount = 0;
-    sl::SpinLock eloLock;
-    sl::SpinLock panicLock;
+    LogOutput* logOuts[MaxLogOutputs];
+    size_t logOutCount = 0;
+    sl::SpinLock logOutLock;
 
-    void WriteElos(const LogMessage& msg)
+    void WriteToOutputs(const LogMessage& msg)
     {
         if (msg.length == 0)
             return;
@@ -80,14 +75,14 @@ namespace Npk::Debug
             length -= runover;
         }
 
-        for (size_t i = 0; i < MaxEarlyLogOuts; i++)
+        for (size_t i = 0; i < logOutCount; i++)
         {
-            if (earlyOuts[i] == nullptr)
+            if (logOuts[i]->Write == nullptr)
                 continue;
 
-            earlyOuts[i](&msg.buff->buffer[msg.begin], length);
+            logOuts[i]->Write({ &msg.buff->buffer[msg.begin], length });
             if (runover > 0)
-                earlyOuts[i](msg.buff->buffer, runover);
+                logOuts[i]->Write({ msg.buff->buffer, runover });
         }
     }
 
@@ -141,19 +136,18 @@ namespace Npk::Debug
         //at this point we just need to add this log message to the queue
         msgQueue.Push(item);
 
-        //if we're in the early state (eloCount > 0), try to flush the message queue to the outputs
-        if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) > 0 && eloLock.TryLock())
+        //if can take the output lock, drain the message queue now, otherwise leave it for whoever is holding the lock
+        if (logOutLock.TryLock())
         {
-            for (size_t printed = 0; printed < MaxEloItemsPrinted; printed++)
+            for (size_t printed = 0; printed < MaxLogDrainCount; printed++)
             {
                 QueueItem* item = msgQueue.Pop();
                 if (item == nullptr)
                     break;
-                
-                WriteElos(item->data);
+                WriteToOutputs(item->data);
             }
 
-            eloLock.Unlock();
+            logOutLock.Unlock();
         }
     }
     
@@ -211,7 +205,7 @@ namespace Npk::Debug
         buffer[bufferStart++] = '\n';
 
         if (level == LogLevel::Fatal)
-            Panic(&buffer[textStart]);
+            Panic({ &buffer[textStart], bufferLen });
 
         if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Log] != nullptr)
             WriteLog(buffer, bufferLen, reinterpret_cast<LogBuffer*>(CoreLocal()[LocalPtr::Log]));
@@ -229,130 +223,25 @@ namespace Npk::Debug
         CoreLocal()[LocalPtr::Log] = buffer;
     }
 
-    void AddEarlyLogOutput(EarlyLogWrite callback)
+    void AddLogOutput(LogOutput* output)
     {
-        sl::ScopedLock scopeLock(eloLock);
-        if (__atomic_load_n(&eloCount, __ATOMIC_RELAXED) == 0) //deferred init
-        {
-            for (size_t i = 0; i < MaxEarlyLogOuts; i++)
-                earlyOuts[i] = nullptr;
-        }
+        sl::ScopedLock scopeLock(logOutLock);
 
-        for (size_t i = 0; i < MaxEarlyLogOuts; i++)
-        {
-            if (earlyOuts[i] != nullptr)
-                continue;
-
-            __atomic_add_fetch(&eloCount, 1,__ATOMIC_RELAXED);
-            earlyOuts[i] = callback;
-            return;
-        }
+        VALIDATE_(logOutCount + 1 < MaxLogOutputs, );
+        logOuts[logOutCount++] = output;
     }
 
-    void PanicWrite(const char* message, ...)
+    extern sl::Atomic<size_t> panicFlag; //defined in debug/Panic.cpp
+    sl::Span<LogOutput*> AcquirePanicOutputs(size_t tryLockCount)
     {
-        using namespace Npk::Debug;
+        ASSERT(panicFlag.Load() > 0, "Attempt to acquire panic outputs while not in a kernel panic");
 
-        va_list args;
-        va_start(args, message);
-        const size_t messageLen = npf_vsnprintf(nullptr, 0, message, args) + 1;
-        va_end(args);
-
-        char messageBuffer[messageLen];
-        va_start(args, message);
-        npf_vsnprintf(messageBuffer, messageLen, message, args);
-        va_end(args);
-
-        for (size_t i = 0; i < MaxEarlyLogOuts; i++)
+        for (size_t i = 0; i < tryLockCount; i++)
         {
-            if (earlyOuts[i] != nullptr)
-                earlyOuts[i](messageBuffer, messageLen);
-        }
-    }
-}
-
-extern "C"
-{
-    static_assert(Npk::Debug::EarlyBufferSize > 0x2000, "Early buffer is too small to used as a panic stack");
-    void* panicStack = &Npk::Debug::earlyBufferStore[Npk::Debug::EarlyBufferSize];
-
-    void PanicLanding(const char* reason)
-    {
-        using namespace Npk;
-        using namespace Npk::Debug;
-        using namespace Npk::Tasking;
-
-        panicLock.Lock(); //prevents multiple cores enter the panic sequence at the same time
-        Interrupts::BroadcastPanicIpi();
-        //try to take the ELO lock a reasonable number of times. Don't wait on the lock though
-        //as it's possible to deadlock here. This also gives other cores time to finish accept 
-        //and handle the panic IPI, which helps prevent corrupting any attached outputs.
-        bool acquiredEloLock = false;
-        for (size_t i = 0; i < PanicLockAttempts; i++)
-        {
-             if ((acquiredEloLock = eloLock.TryLock()))
-                 break;
-        }
-    
-        //drain the message queue, the last messages printed may contain critical info.
-        for (auto* msg = msgQueue.Pop(); msg != nullptr; msg = msgQueue.Pop())
-            WriteElos(msg->data);
-        if (!acquiredEloLock)
-            PanicWrite("Panic handler unable to acquire ELO lock - output may appear corrupt.\r\n");
-
-        PanicWrite("       )\r\n");
-        PanicWrite("    ( /(                        (\r\n");
-        PanicWrite("    )\\())  (   (             (  )\\             )        (\r\n");
-        PanicWrite("   ((_)\\  ))\\  )(    (      ))\\((_)  `  )   ( /(   (    )\\   (\r\n");
-        PanicWrite("  (_ ((_)/((_)(()\\   )\\ )  /((_)_    /(/(   )(_))  )\\ )((_)  )\\\r\n");
-        PanicWrite("  | |/ /(_))   ((_) _(_/( (_)) | |  ((_)_\\ ((_)_  _(_/( (_) ((_)\r\n");
-        PanicWrite("  | ' < / -_) | '_|| ' \\))/ -_)| |  | '_ \\)/ _` || ' \\))| |/ _|\r\n");
-        PanicWrite("  |_|\\_\\\\___| |_|  |_||_| \\___||_|  | .__/ \\__,_||_||_| |_|\\__|\r\n");
-        PanicWrite("                                    |_|\r\n");
-        PanicWrite("\r\n");
-        PanicWrite(reason);
-        PanicWrite("\r\n");
-
-        if (CoreLocalAvailable())
-        {
-            CoreLocalInfo& clb = CoreLocal();
-            PanicWrite("Processor %lu: runLevel=%s (%u), logBuffer=0x%lx\r\n", 
-                clb.id, GetRunLevelName(CoreLocal().runLevel), (uint8_t)CoreLocal().runLevel, (uintptr_t)clb[LocalPtr::Log]);
-        }
-        else
-            PanicWrite("Core-local information not available.\r\n");
-
-        //print thread-local info
-        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
-        {
-            auto& thread = Tasking::Thread::Current();
-            auto& process = thread.Parent();
-
-            const char* shadowName = "<none>";
-            auto shadow = Drivers::DriverManager::Global().GetShadow();
-            if (shadow.Valid())
-                shadowName = shadow->manifest->friendlyName.C_Str();
-
-            PanicWrite("Thread: id=%lu, driverShadow=%s, procId=%lu, procName=%s",
-                thread.Id(), shadowName, process.Id(), process.Name().Begin());
-        }
-        else
-            PanicWrite("Thread information not available.\r\n");
-
-        //print the stack trace
-        PanicWrite("\r\nCall stack (latest call first):\r\n");
-        for (size_t i = 0; i < 20; i++)
-        {
-            const uintptr_t addr = GetReturnAddr(i);
-            if (addr == 0)
+            if (logOutLock.TryLock())
                 break;
-            auto symbol = SymbolFromAddr(addr, SymbolFlag::Public | SymbolFlag::Private);
-            const char* symbolName = symbol.HasValue() ? symbol->name.Begin() : "<unknown>";
-            const size_t symbolOffset = symbol.HasValue() ? addr - symbol->base : 0;
-            PanicWrite("%3u: 0x%lx %s+0x%lx\r\n", i, addr, symbolName, symbolOffset);
         }
-        
-        PanicWrite("\r\nSystem has halted indefinitely, manual reset required.\r\n");
-        Halt();
+
+        return { logOuts, logOutCount };
     }
 }

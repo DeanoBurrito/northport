@@ -3,6 +3,9 @@
 
 .extern TrapDispatch
 
+.type TrapEntry,@function
+.size TrapEntry,(_EndOfTrapEntry - TrapEntry)
+
 # thanks to xvanc and sigterm for the idea of using tp to hold core-local info
 # while in s-mode, and using sscratch as a backup for this register while in u-mode.
 TrapEntry:
@@ -87,7 +90,13 @@ TrapContinue:
     sd t0, 0x100(sp) # error code
     csrr t1, sepc
     sd t1, 0x108(sp) # prev pc
-
     mv a0, sp
-    mv fp, zero
+
+    # create a fake stack frame so it appears like the interrupt was 'called', nice for debugging
+    addi sp, sp, -0x10
+    sd fp, 0(sp)
+    csrr t1, sepc
+    sd t1, 8(sp)
+    addi fp, sp, 0x10
     jal TrapDispatch
+_EndOfTrapEntry:

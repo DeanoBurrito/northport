@@ -145,19 +145,26 @@ namespace Npk
 
 extern "C"
 {
-    void DebugconWrite(const char* str, size_t length)
+#ifdef NP_X86_64_E9_ALLOWED
+    static void DebugconWrite(sl::StringSpan text)
     {
-        using namespace Npk;
-        for (size_t i = 0; i < length; i++)
-            Out8(PortDebugcon, str[i]);
+        for (size_t i = 0; i < text.Size(); i++)
+            Npk::Out8(Npk::PortDebugcon, text[i]);
     }
+
+    Npk::Debug::LogOutput debugconOutput
+    {
+        .Write = DebugconWrite,
+        .BeginPanic = nullptr
+    };
+#endif
 
     void KernelEntry()
     {
         using namespace Npk;
 
 #ifdef NP_X86_64_E9_ALLOWED
-        Debug::AddEarlyLogOutput(DebugconWrite);
+        Debug::AddLogOutput(&debugconOutput);
 #endif
 
         WriteMsr(MsrGsBase, 0);

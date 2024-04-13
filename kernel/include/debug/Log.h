@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <Span.h>
 
 namespace Npk::Debug
 {
@@ -18,9 +19,16 @@ namespace Npk::Debug
     [[gnu::format(printf, 1, 3)]]
     void Log(const char* str, LogLevel level, ...);
 
-    using EarlyLogWrite = void (*)(const char* str, size_t length);
+    struct LogOutput
+    {
+        void (*Write)(sl::StringSpan message);
+        void (*BeginPanic)();
+    };
+
+
     void InitCoreLogBuffers();
-    void AddEarlyLogOutput(EarlyLogWrite callback);
+    void AddLogOutput(LogOutput* output);
+    sl::Span<LogOutput*> AcquirePanicOutputs(size_t tryLockCount);
 }
 
 using Npk::Debug::LogLevel;

@@ -56,16 +56,24 @@ namespace Npk
         ASSERT_UNREACHABLE();
     }
 
+#ifdef NP_RISCV64_ASSUME_SERIAL
     sl::NativePtr uartRegs;
-    void UartWrite(const char* str, size_t length)
+    void UartWrite(sl::StringSpan text)
     {
-        for (size_t i = 0; i < length; i++)
+        for (size_t i = 0; i < text.Size(); i++)
         {
             while ((uartRegs.Offset(5).Read<uint8_t>() & (1 << 5)) == 0)
                 sl::HintSpinloop();
-            uartRegs.Write<uint8_t>(str[i]);
+            uartRegs.Write<uint8_t>(text[i]);
         }
     }
+
+    Debug::LogOutput uartLogOutput
+    {
+        .Write = UartWrite,
+        .BeginPanic = nullptr
+    };
+#endif
 
     void ThreadedArchInit()
     {}
@@ -90,9 +98,10 @@ extern "C"
         asm volatile("csrw sscratch, zero"); 
 
         InitEarlyPlatform();
+
 #ifdef NP_RISCV64_ASSUME_SERIAL
         uartRegs = Npk::hhdmBase + NP_RISCV64_ASSUME_SERIAL;
-        Debug::AddEarlyLogOutput(UartWrite);
+        Debug::AddLogOutput(&uartLogOutput);
 #endif
 
         InitMemory();

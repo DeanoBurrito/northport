@@ -8,6 +8,19 @@
 
 namespace Npk
 {
+    void ExplodeKernelAndReset()
+    {
+        struct [[gnu::packed, gnu::aligned(8)]]
+        {
+            uint16_t limit = 0;
+            uint64_t base = 0;
+        } idtr;
+
+        asm volatile("sidt %0" :: "m"(idtr) : "memory");
+        idtr.limit = 0;
+        asm volatile("lidt %0; int $0" :: "m"(idtr));
+    }
+
     struct ExtendedRegs {};
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user)
@@ -116,7 +129,7 @@ namespace Npk
         WriteCr0(ReadCr0() | (1 << 3));
     }
 
-    uintptr_t GetReturnAddr(size_t level)
+    uintptr_t GetReturnAddr(size_t level, uintptr_t start)
     {
         struct Frame
         {
@@ -124,7 +137,9 @@ namespace Npk
             uintptr_t retAddr;
         };
 
-        Frame* current = static_cast<Frame*>(__builtin_frame_address(0));
+        Frame* current = reinterpret_cast<Frame*>(start);
+        if (start == 0)
+            current = static_cast<Frame*>(__builtin_frame_address(0));
         // asm ("mov %%rbp, %0" : "=r"(current) :: "memory");
         for (size_t i = 0; i <= level; i++)
         {

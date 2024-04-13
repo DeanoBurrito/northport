@@ -28,6 +28,8 @@ namespace Npk::Debug
     constexpr const char DriversPreStr[] = "\e[1;44H";
 
     constexpr size_t StatsFormatBuffSize = 128;
+    constexpr const char TermSetPanicPalette[] = "\e[1;1H\e[97;41m";
+    constexpr const char StatsSetPanicPalette[] = "\e[1;1H\e[30;101m";
 
     struct TerminalHead
     {
@@ -38,6 +40,7 @@ namespace Npk::Debug
     };
 
     sl::IntrFwdList<TerminalHead> termHeads;
+    LogOutput termLogOutput;
     bool autoRefreshStarted = false;
     Tasking::DpcStore refreshStatsDpc;
     Tasking::ClockEvent refreshStatsEvent;
@@ -100,10 +103,10 @@ namespace Npk::Debug
         }
     }
 
-    void TerminalWriteCallback(const char* str, size_t len)
+    void TerminalWriteCallback(sl::StringSpan text)
     {
         for (auto it = termHeads.Begin(); it != termHeads.End(); it = it->next)
-            it->logRenderer.Write(str, len);
+            it->logRenderer.Write(text.Begin(), text.Size());
 
         if (!autoRefreshStarted)
         {
@@ -111,14 +114,22 @@ namespace Npk::Debug
             {
                 Log("Starting GTerm stats bar auto-refresh", LogLevel::Info);
                 autoRefreshStarted = true;
-                refreshStatsDpc.data.function = UpdateRenderedStats;
-                refreshStatsEvent.duration = 10_ms;
-                refreshStatsEvent.callbackCore = NoCoreAffinity;
-                refreshStatsEvent.dpc = &refreshStatsDpc;
                 Tasking::QueueClockEvent(&refreshStatsEvent);
             }
             else
                 UpdateRenderedStats(nullptr);
+        }
+    }
+
+    void TerminalBeginPanic()
+    {
+        autoRefreshStarted = false;
+        for (auto it = termHeads.Begin(); it != termHeads.End(); it = it->next)
+        {
+            it->logRenderer.Write(TermSetPanicPalette, sizeof(TermSetPanicPalette));
+            it->logRenderer.Clear();
+            it->statsRenderer.Write(StatsSetPanicPalette, sizeof(StatsSetPanicPalette));
+            UpdateRenderedStats(nullptr);
         }
     }
 
@@ -127,6 +138,11 @@ namespace Npk::Debug
         auto fbResponse = Boot::framebufferRequest.response;
         if (fbResponse == nullptr)
             return;
+
+        refreshStatsDpc.data.function = UpdateRenderedStats;
+        refreshStatsEvent.duration = 10_ms;
+        refreshStatsEvent.callbackCore = NoCoreAffinity;
+        refreshStatsEvent.dpc = &refreshStatsDpc;
 
         //Make full use of all framebuffers reported by the bootloader. We also split each
         //'source' framebuffer into two smaller terminals: the first one occupies most of the screen,
@@ -179,6 +195,10 @@ namespace Npk::Debug
         }
 
         if (!termHeads.Empty())
-            AddEarlyLogOutput(TerminalWriteCallback);
+        {
+            termLogOutput.Write = TerminalWriteCallback;
+            termLogOutput.BeginPanic = TerminalBeginPanic;
+            AddLogOutput(&termLogOutput);
+        }
     };
 }

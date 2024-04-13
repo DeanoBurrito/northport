@@ -4,14 +4,14 @@ CXX_SRCS = arch/Helpers.cpp \
 	boot/CommonInit.cpp boot/LimineTags.cpp \
 	config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
-	debug/Log.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
+	debug/Log.cpp debug/Panic.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
 	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp \
 	drivers/DriverManager.cpp drivers/DriverHelpers.cpp drivers/ElfLoader.cpp \
 	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TreeCache.cpp \
 	filesystem/TempFs.cpp filesystem/InitDisk.cpp \
 	interfaces/driver/Devices.cpp interfaces/driver/Drivers.cpp \
 	interfaces/driver/Filesystem.cpp interfaces/driver/General.cpp interfaces/driver/Io.cpp \
-	interfaces/driver/Memory.cpp interfaces/driver/Scheduling.cpp \
+	interfaces/driver/Memory.cpp interfaces/driver/Scheduling.cpp interfaces/driver/Interrupts.cpp \
 	interrupts/Router.cpp interrupts/Ipi.cpp \
 	io/IoManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \

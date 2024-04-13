@@ -20,7 +20,7 @@ namespace Npk::Debug
         return SymbolFlag::Public;
     }
 
-    void ProcessElfSymbolTables(sl::NativePtr file, SymbolRepo& repo, uintptr_t loadBase)
+    static void ProcessElfSymbolTables(sl::NativePtr file, SymbolRepo& repo, uintptr_t loadBase)
     {
         auto ehdr = file.As<const sl::Elf64_Ehdr>();
         auto shdrs = file.As<const sl::Elf64_Shdr>(ehdr->e_shoff);
@@ -148,7 +148,7 @@ namespace Npk::Debug
         return sl::Handle<SymbolRepo>(&repo); //TODO: delete[] wont properly remove repo from list (or fix symbol counts)
     }
 
-    sl::Opt<KernelSymbol> LocateSymbol(sl::Opt<uintptr_t> addr, sl::StringSpan name, SymbolFlags flags)
+    static sl::Opt<KernelSymbol> LocateSymbol(sl::Opt<uintptr_t> addr, sl::StringSpan name, SymbolFlags flags, sl::StringSpan* repoName)
     {
         auto CheckSymbolList = [=](sl::Vector<KernelSymbol>& list)
         {
@@ -174,19 +174,31 @@ namespace Npk::Debug
             {
                 found = CheckSymbolList(it->publicFunctions);
                 if (found.HasValue())
+                {
+                    if (repoName != nullptr)
+                        *repoName = it->name.Span();
                     break;
+                }
             }
             if (flags.Has(SymbolFlag::Private))
             {
                 found = CheckSymbolList(it->privateFunctions);
                 if (found.HasValue())
+                {
+                    if (repoName != nullptr)
+                        *repoName = it->name.Span();
                     break;
+                }
             }
             if (flags.Has(SymbolFlag::NonFunction))
             {
                 found = CheckSymbolList(it->nonFunctions);
                 if (found.HasValue())
+                {
+                    if (repoName != nullptr)
+                        *repoName = it->name.Span();
                     break;
+                }
             }
 
             //only search for kernel symbols: this works because the first repo is always the kernel.
@@ -198,13 +210,13 @@ namespace Npk::Debug
         return found;
     }
 
-    sl::Opt<KernelSymbol> SymbolFromAddr(uintptr_t addr, SymbolFlags flags)
+    sl::Opt<KernelSymbol> SymbolFromAddr(uintptr_t addr, SymbolFlags flags, sl::StringSpan* repoName)
     {
-        return LocateSymbol(addr, {}, flags);
+        return LocateSymbol(addr, {}, flags, repoName);
     }
 
-    sl::Opt<KernelSymbol> SymbolFromName(sl::StringSpan name, SymbolFlags flags)
+    sl::Opt<KernelSymbol> SymbolFromName(sl::StringSpan name, SymbolFlags flags, sl::StringSpan* repoName)
     {
-        return LocateSymbol({}, name, flags);
+        return LocateSymbol({}, name, flags, repoName);
     }
 }

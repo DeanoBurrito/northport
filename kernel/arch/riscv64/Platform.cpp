@@ -28,6 +28,12 @@ namespace Npk
         uint8_t buffer[];
     };
 
+    void ExplodeKernelAndReset()
+    {
+        WriteCsr("stvec", 0);
+        *(volatile int*)0 = 0;
+    }
+
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user)
     {
         frame->flags.spie = 1;
@@ -67,7 +73,7 @@ namespace Npk
     void ExtendedRegsFence()
     {}
 
-    uintptr_t GetReturnAddr(size_t level)
+    uintptr_t GetReturnAddr(size_t level, uintptr_t start)
     {
         struct Frame
         {
@@ -77,7 +83,9 @@ namespace Npk
 
         //NOTE: this is only possible because we compile with -fno-omit-framepointer.
         //otherwise we'd have to make use of EH/unwind metadata (no thanks).
-        Frame* current = reinterpret_cast<Frame*>((uintptr_t)__builtin_frame_address(0) - 16);
+        Frame* current = reinterpret_cast<Frame*>(start);
+        if (start == 0)
+            current = reinterpret_cast<Frame*>((uintptr_t)__builtin_frame_address(0) - 16);
         for (size_t i = 0; i <= level; i++)
         {
             if (current == nullptr)

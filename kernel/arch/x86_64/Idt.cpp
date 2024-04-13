@@ -2,6 +2,7 @@
 #include <arch/x86_64/Apic.h>
 #include <arch/x86_64/Gdt.h>
 #include <debug/Log.h>
+#include <debug/Panic.h>
 #include <interrupts/Router.h>
 #include <interrupts/Ipi.h>
 #include <memory/Vmm.h>
@@ -53,41 +54,39 @@ namespace Npk
 
 extern "C"
 {
-    constexpr const char* ExceptionStrs[] = 
-    {
-        "divide error",
-        "debug exception",
-        "nmi",
-        "breakpoint",
-        "overflow",
-        "BOUND range exceeded",
-        "invalid opcode",
-        "device not available",
-        "double fault",
-        "fpu segment overrun",
-        "invalid TSS",
-        "segment not present",
-        "stack-segment fault",
-        "general protection fault",
-        "page fault",
-        "you got the reserved fault vector, have fun debugging",
-        "fpu math fault",
-        "alignment check",
-        "machine check",
-        "SIMD exception",
-        "virtualization exception",
-        "control protection"
-    };
-    
-    constexpr size_t VectorPageFault = 0xE;
+    constexpr size_t VectorDebug = 0x1;
+    constexpr size_t VectorInvalidOpcode = 0x6;
     constexpr size_t VectorExtStateAccess = 0x7;
+    constexpr size_t VectorPageFault = 0xE;
+
+    static Npk::Tasking::ProgramExceptionType ClassifyException(Npk::TrapFrame* frame)
+    {
+        using ExType = Npk::Tasking::ProgramExceptionType;
+
+        switch (frame->vector)
+        {
+        case VectorDebug: return ExType::Breakpoint;
+        case VectorInvalidOpcode: return ExType::InvalidInstruction;
+        case VectorPageFault: return ExType::MemoryAccess;
+        default: return ExType::BadOperation;
+        }
+    }
     
-    void HandleNativeException(Npk::TrapFrame* frame)
+    static void HandleException(Npk::TrapFrame* frame)
     {
         using namespace Npk;
+        using namespace Npk::Tasking;
+        using namespace Npk::Debug;
+
+        ProgramException exception {};
+        exception.instruction = frame->iret.rip;
+        exception.stack = frame->iret.rsp;
+        exception.special = 0;
+        exception.type = ClassifyException(frame);
 
         if (frame->vector == VectorPageFault)
         {
+
             using namespace Memory;
             VmFaultFlags flags {};
             if (frame->ec & (1 << 1))
@@ -100,24 +99,24 @@ extern "C"
             if (frame->ec & (1 << 2))
                 flags |= VmFaultFlag::User;
 
-            bool success = false;
             const uintptr_t cr2 = ReadCr2();
-            if (cr2 < hhdmBase)
-            {
-                //userspace page fault
-                ASSERT(VMM::CurrentActive(), "Possible kernel nullptr deref?");
-                success = VMM::Current().HandleFault(cr2, flags);
-            }
-            else
-                success = VMM::Kernel().HandleFault(cr2, flags);
-            if (!success)
-                Log("Bad page fault @ 0x%lx, flags=0x%lx", LogLevel::Fatal, cr2, flags.Raw());
+            exception.flags = flags.Raw();
+            exception.special = cr2;
+
+            //figure out who to notify of the page fault
+            bool handled = false;
+            if (cr2 < hhdmBase && VMM::CurrentActive())
+                handled = VMM::Current().HandleFault(cr2, flags);
+            else if (cr2 > hhdmBase)
+                handled = VMM::Kernel().HandleFault(cr2, flags);
+            
+            if (!handled && !ProgramManager::Global().ServeException(exception))
+                PanicWithException(exception, frame->rbp);
         }
         else if (frame->vector == VectorExtStateAccess)
             Tasking::Scheduler::Global().SwapExtendedRegs();
         else
-            Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal, 
-                ExceptionStrs[frame->vector], frame->vector, frame->iret.rip, frame->iret.rsp, frame->ec);
+            PanicWithException(exception, frame->rbp);
     }
     
     void TrapDispatch(Npk::TrapFrame* frame)
@@ -131,7 +130,7 @@ extern "C"
         EnableInterrupts();
 
         if (frame->vector < 0x20)
-            HandleNativeException(frame);
+            HandleException(frame);
         else
         {
             LocalApic::Local().SendEoi();
@@ -140,9 +139,6 @@ extern "C"
             else
                 Interrupts::InterruptRouter::Global().Dispatch(frame->vector);
         }
-
-        if (prevRl == RunLevel::Normal)
-            frame = *ProgramManager::Global().GetCurrentFrameStore();
 
         LowerRunLevel(prevRl);
         DisableInterrupts();

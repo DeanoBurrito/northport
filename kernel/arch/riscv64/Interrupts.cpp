@@ -1,6 +1,7 @@
 #include <arch/riscv64/Interrupts.h>
 #include <arch/riscv64/Sbi.h>
 #include <debug/Log.h>
+#include <debug/Panic.h>
 #include <interrupts/Router.h>
 #include <interrupts/Ipi.h>
 #include <memory/Vmm.h>
@@ -43,54 +44,60 @@ extern "C"
     constexpr size_t ExceptionStrCount = sizeof(ExceptionStrs) / sizeof(const char*);
 
     constexpr uintptr_t InterruptBitMask = 1ul << 63;
-    constexpr size_t VectorExecPf = 12;
-    constexpr size_t VectorReadPf = 13;
-    constexpr size_t VectorWritePf = 14;
 
-    void HandleException(Npk::TrapFrame* frame)
+    static Npk::Tasking::ProgramExceptionType ClassifyException(Npk::TrapFrame* frame)
+    {
+        using ExType = Npk::Tasking::ProgramExceptionType;
+
+        switch (frame->vector)
+        {
+        case 2: return ExType::InvalidInstruction;
+        case 3: return ExType::Breakpoint;
+        case 12: case 13: case 14: return ExType::MemoryAccess;
+        default: return ExType::BadOperation;
+        }
+    }
+
+    static void HandleException(Npk::TrapFrame* frame)
     {
         using namespace Npk;
         using namespace Npk::Memory;
+        using namespace Npk::Tasking;
 
-        Memory::VmFaultFlags faultFlags {};
-        switch (frame->vector)
+        ProgramException exception {};
+        exception.instruction = frame->sepc;
+        exception.stack = frame->sp;
+        exception.special = 0;
+        exception.type = ClassifyException(frame);
+
+        if (frame->vector >= 12 && frame->vector < 14)
         {
-        case VectorExecPf:
-            faultFlags |= VmFaultFlag::Execute;
-            break;
-        case VectorReadPf:
-            faultFlags |= VmFaultFlag::Read;
-            break;
-        case VectorWritePf:
-            faultFlags |= VmFaultFlag::Write;
-            break;
-        //TOOD: UD and decoder for FPU/vector register traps
-
-        default:
+            using namespace Npk::Memory;
+            VmFaultFlags faultFlags {};
+            switch (frame->vector)
             {
-                const char* exceptionName = frame->vector < ExceptionStrCount 
-                    ? ExceptionStrs[frame->vector] : "unknown";
-                Log("Unexpected exception: %s (%lu) @ 0x%lx, sp=0x%lx, ec=0x%lx", LogLevel::Fatal,
-                   exceptionName, frame->vector, frame->sepc, frame->sp, frame->ec);
+            case 12: faultFlags |= VmFaultFlag::Execute; break;
+            case 13: faultFlags |= VmFaultFlag::Read; break;
+            case 14: faultFlags |= VmFaultFlag::Write; break;
             }
-        };
 
-        ASSERT_(faultFlags.Any());
-        if (frame->ec < hhdmBase)
-            ASSERT(VMM::CurrentActive(), "nullptr deref in kernel?");
-        if (frame->flags.spp == 0)
-            faultFlags |= VmFaultFlag::User;
+            if (frame->flags.spp == 0)
+                faultFlags |= VmFaultFlag::User;
 
-        bool success = false;
-        if (frame->ec < hhdmBase)
-        {
-            ASSERT(VMM::CurrentActive(), "nullptr deref in kernel?");
-            success = VMM::Current().HandleFault(frame->ec, faultFlags);
+            exception.flags = faultFlags.Raw();
+            exception.special = frame->ec;
+
+            bool handled = false;
+            if (frame->ec < hhdmBase && VMM::CurrentActive())
+                handled = VMM::Current().HandleFault(frame->ec, faultFlags);
+            else if (frame->ec > hhdmBase)
+                handled = VMM::Kernel().HandleFault(frame->ec, faultFlags);
+
+            if (!handled && !ProgramManager::Global().ServeException(exception))
+                Debug::PanicWithException(exception, frame->fp);
         }
         else
-            success = VMM::Kernel().HandleFault(frame->ec, faultFlags);
-        if (!success)
-            Log("Bad page fault @ 0x%lx, flags=0x%lx", LogLevel::Fatal, frame->ec, faultFlags.Raw());
+            Debug::PanicWithException(exception, frame->fp);
     }
     
     void TrapDispatch(Npk::TrapFrame* frame)
@@ -114,7 +121,7 @@ extern "C"
                 Interrupts::ProcessIpiMail();
                 ClearCsrBits("sip", 1); //sip.ssip is the only one we can clear ourselves
                 break;
-            case 5: //Timer (TODO: clear using EE)
+            case 5: //Timer
                 SbiSetTimer(-1ul);
                 if (timerCallback != nullptr)
                     timerCallback(nullptr);
@@ -126,8 +133,6 @@ extern "C"
         else
             HandleException(frame);
         
-        if (prevRl == RunLevel::Normal)
-            frame = *ProgramManager::Global().GetCurrentFrameStore();
         LowerRunLevel(prevRl);
         DisableInterrupts();
         SwitchFrame(nullptr, frame);

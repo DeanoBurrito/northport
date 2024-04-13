@@ -1,5 +1,8 @@
 .global SwitchFrame
 
+.type SwitchFrame,@function
+.size SwitchFrame,(_EndOfSwitchFrame - SwitchFrame)
+
 # void SwitchFrame(TrapFrame** current, TrapFrame* next)
 SwitchFrame:
     test %rsi, %rsi
@@ -68,3 +71,4 @@ SkipSave:
 
     add $0x10, %rsp
     iretq
+_EndOfSwitchFrame:

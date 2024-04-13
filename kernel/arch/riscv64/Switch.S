@@ -1,5 +1,8 @@
 .global SwitchFrame
 
+.type SwitchFrame,@function
+.size SwitchFrame,(_EndOfSwitchFrame - SwitchFrame)
+
 # void SwitchFrame(TrapFrame** current, TrapFrame* next)
 SwitchFrame:
     bnez a1, 1f
@@ -112,4 +115,4 @@ GotoUMode:
     ld sp, 0(x4) # load user stack from scratch slot
     csrrw x4, sscratch, x4 # restore real x4 and stash core-local info in sscratch
     sret
-
+_EndOfSwitchFrame:

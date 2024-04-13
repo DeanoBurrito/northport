@@ -51,6 +51,6 @@ namespace Npk::Debug
     void LoadKernelSymbols();
 
     sl::Handle<SymbolRepo> LoadElfModuleSymbols(sl::StringSpan name, VmObject& file, uintptr_t loadBase);
-    sl::Opt<KernelSymbol> SymbolFromAddr(uintptr_t addr, SymbolFlags flags);
-    sl::Opt<KernelSymbol> SymbolFromName(sl::StringSpan name, SymbolFlags flags);
+    sl::Opt<KernelSymbol> SymbolFromAddr(uintptr_t addr, SymbolFlags flags, sl::StringSpan* repoName = nullptr);
+    sl::Opt<KernelSymbol> SymbolFromName(sl::StringSpan name, SymbolFlags flags, sl::StringSpan* repoName = nullptr);
 }
