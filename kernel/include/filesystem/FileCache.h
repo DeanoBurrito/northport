@@ -4,25 +4,42 @@
 #include <stddef.h>
 #include <Atomic.h>
 #include <Handle.h>
-#include <containers/LinkedList.h>
+#include <containers/RBTree.h>
 #include <stdint.h>
 
 namespace Npk::Filesystem
 {
     struct FileCache;
 
+    enum class FcuFlag
+    {
+        Writable,
+        Dirty,
+    };
+
+    using FcuFlags = sl::Flags<FcuFlag>;
+
     struct FileCacheUnit
     {
+        sl::RBTreeHook hook;
         sl::Atomic<size_t> references;
+
         FileCache* owner;
         uintptr_t physBase;
         size_t offset;
-        //TODO: track dirty and writeback-enable states
+        FcuFlags flags;
+    };
+
+    struct FcuLess
+    {
+        bool operator()(const FileCacheUnit& a, const FileCacheUnit& b)
+        { return a.physBase < b.physBase; }
     };
 
     void CleanupFileCacheUnit(FileCacheUnit* unit);
 
     using FileCacheUnitHandle = sl::Handle<FileCacheUnit, CleanupFileCacheUnit>;
+    using FcuTree = sl::RBTree<FileCacheUnit, &FileCacheUnit::hook, FcuLess>;
 
     struct FileCache
     {
@@ -31,7 +48,7 @@ namespace Npk::Filesystem
 
         sl::SpinLock lock;
         size_t length;
-        sl::LinkedList<FileCacheUnitHandle> units; //TODO: more efficient datastructure (rbtree?)
+        FcuTree units;
     };
 
     struct FileCacheInfo

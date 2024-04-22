@@ -47,13 +47,20 @@ namespace Npk::Filesystem
         sl::Vector<DirEntry> children;
     };
 
+    struct MountOptions
+    {
+        bool writable;
+        bool uncachable;
+    };
+
     void PrintNode(VfsId id, size_t indent);
 
     void InitVfs();
     sl::Opt<VfsId> VfsLookup(sl::StringSpan filepath);
     sl::String VfsGetPath(VfsId id);
 
-    bool VfsMount(VfsId mountpoint, size_t fsDriverId);
+    bool VfsMount(VfsId mountpoint, size_t fsDriverId, MountOptions options);
+    sl::Opt<MountOptions> VfsGetMountOptions(size_t fsDriverId);
     sl::Opt<VfsId> VfsCreate(VfsId dir, NodeType type, sl::StringSpan name);
     bool VfsRemove(VfsId dir, VfsId node);
     sl::Opt<VfsId> VfsFindChild(VfsId dir, sl::StringSpan name);

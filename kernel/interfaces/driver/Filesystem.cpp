@@ -34,13 +34,19 @@ extern "C"
     }
 
     DRIVER_API_FUNC
-    bool npk_fs_mount(npk_fs_id mountpoint, npk_handle fs_driver_id)
+    bool npk_fs_mount(npk_fs_id mountpoint, npk_handle fs_driver_id, npk_mount_options opts)
     {
         VALIDATE_(mountpoint.device_id != 0 && mountpoint.node_id != 0, false);
         VALIDATE_(fs_driver_id != 0, false);
 
-        return VfsMount({ .driverId = mountpoint.device_id, .vnodeId = mountpoint.node_id }, 
-            fs_driver_id);
+        const VfsId id { .driverId = mountpoint.device_id, .vnodeId = mountpoint.node_id };
+        const MountOptions mountOpts 
+        {
+            .writable = opts.writable,
+            .uncachable = opts.uncachable,
+        };
+
+        return VfsMount(id, fs_driver_id, mountOpts);
     }
 
     DRIVER_API_FUNC

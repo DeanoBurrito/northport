@@ -15,10 +15,10 @@ namespace Npk::Filesystem
     {
         ASSERT_(unit->owner == nullptr);
         ASSERT_(unit->references == 0);
+        ASSERT_(!unit->flags.Has(FcuFlag::Dirty)); //TODO: flush to backing storage
 
         auto* memInfo = PMM::Global().Lookup(unit->physBase);
         memInfo->flags.SetBits(Memory::PmFlags::Busy);
-        //TODO: ensure unit is not marked dirty.
 
         PMM::Global().Free(unit->physBase, cacheInfo.unitSize / PageSize);
         delete unit;
@@ -51,6 +51,11 @@ namespace Npk::Filesystem
 
     sl::Handle<FileCache> GetFileCache(VfsId id)
     {
+        //ensure that filesystem is allowed to be cached
+        auto mountOpts = VfsGetMountOptions(id.driverId);
+        VALIDATE_(mountOpts.HasValue(), {});
+        VALIDATE_(!mountOpts->uncachable, {});
+
         sl::ScopedLock scopeLock(cachesLock);
 
         for (size_t i = 0; i < caches.Size(); i++)
@@ -63,11 +68,24 @@ namespace Npk::Filesystem
             return caches[i];
         }
 
+        //cache for file not found, create a new one
         auto cache = caches.EmplaceBack(new FileCache());
         cache->id = id;
         cache->length = 0;
-        cache->references++; //TODO: remove this pin
+        cache->references = 1; //TODO: remove this pin
+
         return cache;
+    }
+
+    static void TrimFcuNode(FileCacheUnit* fcu)
+    {
+        if (auto left = FcuTree::GetLeft(fcu); left != nullptr)
+            TrimFcuNode(left);
+        if (auto right = FcuTree::GetRight(fcu); right != nullptr)
+            TrimFcuNode(right);
+
+        fcu->owner = nullptr;
+        fcu->references--;
     }
 
     bool SetFileCacheLength(sl::Handle<FileCache> cache, size_t length)
@@ -79,15 +97,18 @@ namespace Npk::Filesystem
         if (length <= cache->length)
             return true; //extending file, nothing more to do
 
-        //reducing file length, drop cache units and free memroy
-        for (auto it = cache->units.Begin(); it != cache->units.End(); ++it)
+        //reducing a file's length, drop references to any cache units beyond new size
+        FileCacheUnit* scan = cache->units.GetRoot();
+        while (scan != nullptr)
         {
-            auto handle = *it;
-            if (handle->offset < cache->length)
+            if (scan->offset < cache->length)
+            {
+                scan = FcuTree::GetRight(scan);
                 continue;
+            }
 
-            handle->owner= nullptr;
-            cache->units.Erase(it);
+            TrimFcuNode(scan);
+            scan = cache->units.GetRoot();
         }
 
         return true;
@@ -100,22 +121,33 @@ namespace Npk::Filesystem
         VALIDATE_(fileOffset < cache->length, {});
 
         sl::ScopedLock scopeLock(cache->lock);
-        for (auto it = cache->units.Begin(); it != cache->units.End(); ++it)
+        FileCacheUnit* scan = cache->units.GetRoot();
+        while (scan != nullptr)
         {
-            auto handle = *it;
-            if (fileOffset == handle->offset)
-                return handle;
-        }
+            if (fileOffset >= scan->offset && fileOffset < scan->offset + cacheInfo.unitSize)
+                return scan;
 
+            if (fileOffset < scan->offset)
+                scan = cache->units.GetLeft(scan);
+            else
+                scan = cache->units.GetRight(scan);
+        }
+        
         //TODO: cache miss, here we just create a blank one, but we should also fetch from disk in the future.
+        auto mountOpts = VfsGetMountOptions(cache->id.driverId);
+        VALIDATE_(mountOpts.HasValue(), {});
         const uintptr_t physicalMem = PMM::Global().Alloc(cacheInfo.unitSize / PageSize);
         VALIDATE_(physicalMem != 0, {});
 
-        auto newUnit = cache->units.EmplaceBack(new FileCacheUnit());
+        auto newUnit = new FileCacheUnit();
         newUnit->offset = fileOffset;
         newUnit->physBase = physicalMem;
         newUnit->owner = *cache;
+        newUnit->references = 1; //TODO: remove this pin
+        if (mountOpts->writable)
+            newUnit->flags.Set(FcuFlag::Writable);
 
+        cache->units.Insert(newUnit);
         Memory::PageInfo* info = PMM::Global().Lookup(physicalMem);
         info->link = reinterpret_cast<uintptr_t>(*cache);
 

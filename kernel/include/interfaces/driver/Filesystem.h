@@ -58,10 +58,16 @@ typedef struct
     npk_fs_id id;
 } npk_dir_entry;
 
+typedef struct
+{
+    bool writable;
+    bool uncachable;
+} npk_mount_options;
+
 npk_fs_id npk_fs_lookup(npk_string path);
 npk_string npk_fs_get_path(npk_fs_id id);
 
-bool npk_fs_mount(npk_fs_id mountpoint, npk_handle fs_driver_id);
+bool npk_fs_mount(npk_fs_id mountpoint, npk_handle fs_driver_id, npk_mount_options opts);
 bool npk_fs_create(REQUIRED npk_fs_id* new_id, npk_fs_id dir, npk_fsnode_type type, npk_string name);
 bool npk_fs_remove(npk_fs_id node);
 bool npk_fs_find_child(REQUIRED npk_fs_id* found_id, npk_fs_id dir, npk_string name);

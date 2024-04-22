@@ -99,7 +99,12 @@ namespace Npk::Filesystem
             VALIDATE_(maybeMountpoint.HasValue(),);
 
             const size_t tempFsId = CreateTempFs("initdisk");
-            VALIDATE_(VfsMount(*maybeMountpoint, tempFsId), );
+            const MountOptions options
+            {
+                .writable = true,
+                .uncachable = false
+            };
+            VALIDATE_(VfsMount(*maybeMountpoint, tempFsId, options), );
 
             auto tempFs = Drivers::DriverManager::Global().GetApi(tempFsId);
             VALIDATE_(tempFs.Valid(), );

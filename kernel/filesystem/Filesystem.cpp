@@ -14,6 +14,7 @@ namespace Npk::Filesystem
     {
         VfsId occludedDir;
         size_t driverId;
+        MountOptions opts;
     };
 
     sl::RwLock mountpointsLock;
@@ -149,7 +150,7 @@ namespace Npk::Filesystem
         return true;
     }
 
-    bool VfsMount(VfsId mountpoint, size_t fsDriverId)
+    bool VfsMount(VfsId mountpoint, size_t fsDriverId, MountOptions options)
     {
         auto target = GetVfsNode(mountpoint, true);
         VALIDATE_(target.Valid(), false);
@@ -187,6 +188,23 @@ namespace Npk::Filesystem
         Log("Mounted filesystem %lu at %lu.%lu (%s)", LogLevel::Info, target->bond.driverId, 
             mountpoint.driverId, mountpoint.vnodeId, mountpointName.C_Str());
         return true;
+    }
+
+    sl::Opt<MountOptions> VfsGetMountOptions(size_t fsDriverId)
+    {
+        mountpointsLock.ReaderLock();
+        for (size_t i = 0; i < mountpoints.Size(); i++)
+        {
+            if (mountpoints[i].driverId != fsDriverId)
+                continue;
+
+            auto options = mountpoints[i].opts;
+            mountpointsLock.ReaderUnlock();
+            return options;
+        }
+        mountpointsLock.ReaderUnlock();
+
+        return {};
     }
 
     sl::Opt<VfsId> VfsCreate(VfsId dir, NodeType type, sl::StringSpan name)
