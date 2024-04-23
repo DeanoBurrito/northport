@@ -29,6 +29,8 @@ namespace Npk
     uintptr_t hhdmLength;
     sl::Atomic<size_t> bootloaderRefs;
 
+    npk_device_desc* acpiInterpDescriptor;
+
     void ThreadedArchInit(); //defined in Init.cpp for the current architecture
     
     void InitEarlyPlatform()
@@ -79,8 +81,27 @@ namespace Npk
         else
             Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
 
+        acpiInterpDescriptor = nullptr;
         if (rsdpRequest.response != nullptr && rsdpRequest.response->address != nullptr)
+        {
             Config::SetRsdp(SubHhdm(rsdpRequest.response->address));
+
+            npk_load_name* loadName = new npk_load_name();
+            loadName->type = npk_load_type::AcpiRuntime;
+            loadName->length = 0;
+            loadName->str = nullptr;
+
+            npk_init_tag_rsdp* initTag = new npk_init_tag_rsdp();
+            initTag->rsdp = SubHhdm(rsdpRequest.response->address);
+            initTag->header.type = npk_init_tag_type::Rsdp;
+
+            acpiInterpDescriptor = new npk_device_desc();
+            acpiInterpDescriptor->load_name_count = 1;
+            acpiInterpDescriptor->load_names = loadName;
+            acpiInterpDescriptor->friendly_name.data = "rsdp";
+            acpiInterpDescriptor->friendly_name.length = 4;
+            acpiInterpDescriptor->init_data = &initTag->header;
+        }
         else
             Log("Bootloader did not provide RSDP (or it was null).", LogLevel::Warning);
         
@@ -107,6 +128,9 @@ namespace Npk
     void InitThread(void*)
     {
         Drivers::ScanForModules("/initdisk/drivers/");
+
+        if (acpiInterpDescriptor != nullptr)
+            Drivers::DriverManager::Global().AddDescriptor(acpiInterpDescriptor);
 
         //check for PCI controllers presenting themselves via MCFG
         using namespace Config;

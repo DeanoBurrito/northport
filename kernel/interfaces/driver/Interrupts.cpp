@@ -37,6 +37,19 @@ extern "C"
     static_assert(offsetof(npk_interrupt_route, dpc) == offsetof(IntrRoute, dpc));
 
     DRIVER_API_FUNC
+    bool npk_ensure_runlevel(npk_runlevel rl, REQUIRED npk_runlevel* prev)
+    {
+        VALIDATE_(prev != nullptr, false);
+
+        auto result = EnsureRunLevel(static_cast<RunLevel>(rl));
+        if (!result.HasValue())
+            return false;
+
+        *prev = static_cast<npk_runlevel>(*result);
+        return true;
+    }
+
+    DRIVER_API_FUNC
     npk_runlevel npk_raise_runlevel(npk_runlevel rl)
     {
         return static_cast<npk_runlevel>(RaiseRunLevel(static_cast<RunLevel>(rl)));
@@ -67,20 +80,26 @@ extern "C"
     }
     
     DRIVER_API_FUNC
-    bool npk_add_interrupt_route(npk_interrupt_route* route, npk_handle core)
+    bool npk_add_interrupt_route(npk_interrupt_route* route, npk_core_id core)
     {
         VALIDATE_(route != nullptr, false);
+        if (core == NPK_CURRENT_AFFINITY)
+            core = CoreLocal().id;
 
         return InterruptRouter::Global().AddRoute(reinterpret_cast<InterruptRoute*>(route), core);
     }
 
-    bool npk_claim_interrupt_route(npk_interrupt_route* route, npk_handle core, size_t vector)
+    DRIVER_API_FUNC
+    bool npk_claim_interrupt_route(npk_interrupt_route* route, npk_core_id core, size_t vector)
     {
         VALIDATE_(route != nullptr, false);
+        if (core == NPK_CURRENT_AFFINITY)
+            core = CoreLocal().id;
 
         return InterruptRouter::Global().ClaimRoute(reinterpret_cast<InterruptRoute*>(route), core, vector);
     }
 
+    DRIVER_API_FUNC
     bool npk_remove_interrupt_route(npk_interrupt_route* route)
     {
         VALIDATE_(route != nullptr, false);

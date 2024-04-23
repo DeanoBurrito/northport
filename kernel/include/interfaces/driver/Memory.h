@@ -89,7 +89,9 @@ typedef struct
 } npk_mdl;
 
 uintptr_t npk_hhdm_base();
+size_t npk_hhdm_limit();
 
+size_t npk_pm_alloc_size();
 uintptr_t npk_pm_alloc(OPTIONAL npk_pm_limits* limits);
 uintptr_t npk_pm_alloc_many(size_t count, OPTIONAL npk_pm_limits* limits);
 bool npk_pm_free(uintptr_t paddr);

@@ -67,13 +67,14 @@ typedef struct
     OPTIONAL npk_dpc* dpc;
 } npk_interrupt_route;
 
+bool npk_ensure_runlevel(npk_runlevel rl, REQUIRED npk_runlevel* prev);
 npk_runlevel npk_raise_runlevel(npk_runlevel rl);
 void npk_lower_runlevel(npk_runlevel rl);
 void npk_queue_dpc(npk_dpc* dpc);
 void npk_queue_apc(npk_apc* apc);
 
-bool npk_add_interrupt_route(npk_interrupt_route* route, npk_handle core);
-bool npk_claim_interrupt_route(npk_interrupt_route* route, npk_handle core, size_t vector);
+bool npk_add_interrupt_route(npk_interrupt_route* route, npk_core_id core);
+bool npk_claim_interrupt_route(npk_interrupt_route* route, npk_core_id core, size_t vector);
 bool npk_remove_interrupt_route(npk_interrupt_route* route);
 
 #ifdef __cplusplus

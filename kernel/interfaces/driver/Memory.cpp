@@ -21,9 +21,21 @@ extern "C"
     }
 
     DRIVER_API_FUNC
+    size_t npk_pm_alloc_size()
+    {
+        return PageSize;
+    }
+
+    DRIVER_API_FUNC
     uintptr_t npk_hhdm_base()
     {
         return hhdmBase;
+    }
+
+    DRIVER_API_FUNC
+    size_t npk_hhdm_limit()
+    {
+        return hhdmLength;
     }
 
     DRIVER_API_FUNC

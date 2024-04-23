@@ -37,8 +37,11 @@ extern "C" {
 #define OWNING
 
 typedef size_t npk_handle;
+typedef size_t npk_core_id;
 
 #define NPK_INVALID_HANDLE ((npk_handle)0)
+#define NPK_NO_AFFINITY ((npk_core_id)-1ull)
+#define NPK_CURRENT_AFFINITY ((npk_core_id)-2ull)
 
 typedef struct
 {
