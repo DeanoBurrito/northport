@@ -92,6 +92,8 @@ namespace sl
                     it->next = temp->next;
                 else
                     it->next = nullptr;
+                if (temp == tail)
+                    tail = temp->next;
                 return temp;
             }
 
@@ -102,25 +104,16 @@ namespace sl
 
                 if (head == value)
                 {
-                    head = head->next;
-                    if (head == nullptr)
-                        tail = nullptr;
+                    PopFront();
                     return head;
                 }
                     
                 T* scan = head;
                 while (scan->next != nullptr)
                 {
-                    if (scan->next != value)
-                    {
-                        scan = scan->next;
-                        continue;
-                    }
-
-                    scan->next = value->next;
-                    if (scan->next == nullptr)
-                        tail = scan;
-                    return scan->next;
+                    if (scan->next == value)
+                        return EraseAfter(scan);
+                    scan = scan->next;
                 }
 
                 return nullptr;

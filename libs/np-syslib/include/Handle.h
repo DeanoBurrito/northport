@@ -39,6 +39,8 @@ namespace sl
 
         Handle& operator=(const Handle& other)
         {
+            if (other.ptr == ptr)
+                return *this;
             if (ptr != nullptr)
                 Release();
 
@@ -56,6 +58,8 @@ namespace sl
 
         Handle& operator=(Handle&& from)
         {
+            if (from.ptr == ptr)
+                return *this;
             if (ptr != nullptr)
                 Release();
             

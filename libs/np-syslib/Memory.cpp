@@ -7,6 +7,17 @@ extern "C"
 
     void* memset(void* dest, int value, size_t len)
     { return sl::memset(dest, value, len); }
+
+    void* memmove(void* dest, const void* src, size_t len)
+    {
+        uint8_t* di = static_cast<uint8_t*>(dest);
+        const uint8_t* si = static_cast<const uint8_t*>(src);
+
+        for (size_t i = len; i > 0; i--)
+            di[i - 1] = si[i - 1];
+
+        return dest;
+    }
 }
 
 namespace sl

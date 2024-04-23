@@ -36,4 +36,5 @@ extern "C"
     //clang requires these to exist for __builtin_xyz, while GCC provides its own.
     void* memcpy(void* dest, const void* src, size_t len);
     void* memset(void* dest, int value, size_t len);
+    void* memmove(void* dest, const void* src, size_t len);
 }
