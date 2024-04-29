@@ -62,16 +62,25 @@ extern "C"
     }
 
     DRIVER_API_FUNC
-    void npk_queue_dpc(npk_dpc* dpc)
+    void npk_queue_dpc(REQUIRED npk_dpc* dpc)
     {
-        VALIDATE_(dpc != nullptr,);
-        VALIDATE_(dpc->function != nullptr,);
+        VALIDATE_(dpc != nullptr, );
+        VALIDATE_(dpc->function != nullptr, );
 
         QueueDpc(reinterpret_cast<DpcStore*>(dpc));
     }
 
     DRIVER_API_FUNC
-    void npk_queue_apc(npk_apc* apc)
+    void npk_queue_remote_dpc(REQUIRED npk_dpc* dpc, npk_core_id core)
+    {
+        VALIDATE_(dpc != nullptr, );
+        VALIDATE_(dpc->function != nullptr, );
+
+        QueueRemoteDpc(core, reinterpret_cast<DpcStore*>(dpc));
+    }
+
+    DRIVER_API_FUNC
+    void npk_queue_apc(REQUIRED npk_apc* apc)
     {
         VALIDATE_(apc != nullptr,);
         VALIDATE_(apc->function != nullptr,);
@@ -80,7 +89,7 @@ extern "C"
     }
     
     DRIVER_API_FUNC
-    bool npk_add_interrupt_route(npk_interrupt_route* route, npk_core_id core)
+    bool npk_add_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core)
     {
         VALIDATE_(route != nullptr, false);
         if (core == NPK_CURRENT_AFFINITY)
@@ -90,7 +99,7 @@ extern "C"
     }
 
     DRIVER_API_FUNC
-    bool npk_claim_interrupt_route(npk_interrupt_route* route, npk_core_id core, size_t vector)
+    bool npk_claim_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core, size_t vector)
     {
         VALIDATE_(route != nullptr, false);
         if (core == NPK_CURRENT_AFFINITY)
@@ -100,7 +109,7 @@ extern "C"
     }
 
     DRIVER_API_FUNC
-    bool npk_remove_interrupt_route(npk_interrupt_route* route)
+    bool npk_remove_interrupt_route(REQUIRED npk_interrupt_route* route)
     {
         VALIDATE_(route != nullptr, false);
 

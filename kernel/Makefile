@@ -12,6 +12,7 @@ CXX_SRCS = arch/Helpers.cpp \
 	interfaces/driver/Devices.cpp interfaces/driver/Drivers.cpp \
 	interfaces/driver/Filesystem.cpp interfaces/driver/General.cpp interfaces/driver/Io.cpp \
 	interfaces/driver/Memory.cpp interfaces/driver/Scheduling.cpp interfaces/driver/Interrupts.cpp \
+	interfaces/driver/Time.cpp \
 	interrupts/Router.cpp interrupts/Ipi.cpp \
 	io/IoManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
@@ -57,7 +58,7 @@ debug/BakedConstants.cpp:
 			const char* gitCommitHash = \"$(shell git rev-parse HEAD)\"; \
 			const char* gitCommitShortHash = \"$(shell git rev-parse --short HEAD)\"; \
 			size_t versionMajor = 0; \
-			size_t versionMinor = 2; \
+			size_t versionMinor = 3; \
 			size_t versionRev = 0; \
 		}" > debug/BakedConstants.cpp
 

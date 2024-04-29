@@ -26,57 +26,34 @@
  * SOFTWARE.
  */
 
-#include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+typedef struct
+{
+    size_t frequency;
+    size_t resolution;
+    size_t ticks;
+} npk_monotomic_time;
+
 typedef enum
 {
-    Normal = 0,
-    Apc = 1,
-    Dpc = 2,
-    Clock = 3,
-    Interrupt = 4,
-} npk_runlevel;
+    Nanos = 1'000'000'000,
+    Micros = 1'000'000,
+    Millis = 1'000,
+    Seconds = 1,
+} npk_time_scale;
 
 typedef struct
 {
-    void* reserved;
-    void (*function)(void* arg);
-    void* arg;
-} npk_dpc;
+    npk_time_scale scale;
+    size_t ticks;
+} npk_duration;
 
-typedef struct
-{
-    void* reserved;
-    void (*function)(void* arg);
-    void* arg;
-    npk_handle thread_id;
-} npk_apc;
-
-typedef struct
-{
-    void* reserved[8];
-
-    void* callback_arg;
-    bool (*callback)(void* arg);
-    OPTIONAL npk_dpc* dpc;
-} npk_interrupt_route;
-
-bool npk_ensure_runlevel(npk_runlevel rl, REQUIRED npk_runlevel* prev);
-npk_runlevel npk_raise_runlevel(npk_runlevel rl);
-void npk_lower_runlevel(npk_runlevel rl);
-void npk_queue_dpc(REQUIRED npk_dpc* dpc);
-void npk_queue_remote_dpc(REQUIRED npk_dpc* dpc, npk_core_id core);
-void npk_queue_apc(REQUIRED npk_apc* apc);
-
-bool npk_add_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core);
-bool npk_claim_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core, size_t vector);
-bool npk_remove_interrupt_route(REQUIRED npk_interrupt_route* route);
+npk_monotomic_time npk_get_monotomic_time();
 
 #ifdef __cplusplus
 }

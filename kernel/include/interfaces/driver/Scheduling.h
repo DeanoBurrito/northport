@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "Decorators.h"
+#include "Time.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,7 +42,7 @@ typedef struct
 
 typedef struct
 {
-    size_t affinity;
+    npk_core_id affinity;
     size_t stack_size;
     OWNING npk_string name;
     OPTIONAL void* start_arg;
@@ -69,6 +70,7 @@ void npk_thread_start(npk_handle tid, OPTIONAL void* arg);
 void npk_thread_exit(size_t code);
 void npk_thread_kill(npk_handle tid, size_t code);
 void npk_thread_join(npk_handle tid);
+void npk_thread_sleep(npk_handle tid, npk_duration duration);
 
 #ifdef __cplusplus
 }

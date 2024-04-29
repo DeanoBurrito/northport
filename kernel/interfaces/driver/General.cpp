@@ -10,12 +10,12 @@ extern "C"
     using namespace Npk;
 
     DRIVER_API_FUNC
-    void npk_log(REQUIRED const char* str, npk_log_level level)
+    void npk_log(npk_string str, npk_log_level level)
     {
         auto driver = Drivers::DriverManager::Global().GetShadow();
         const char* driverName = driver.Valid() ? driver->manifest->friendlyName.C_Str() : "unknown";
 
-        Log("(driver:%s) %s", static_cast<LogLevel>(level), driverName, str);
+        Log("(driver:%s) %.*s", static_cast<LogLevel>(level), driverName, (int)str.length, str.data);
     }
 
     DRIVER_API_FUNC

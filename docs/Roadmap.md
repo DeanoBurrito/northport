@@ -117,8 +117,7 @@
     - [ ] AC97 audio.
     - [ ] iHD audio.
     - [ ] Ports:
-        - [ ] uACPI
-        - [ ] LAI
+        - [x] uACPI
         - [ ] LIL
         - [ ] ACPICA
 

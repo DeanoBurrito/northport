@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <debug/Log.h>
+#include <interfaces/Helpers.h>
 
 extern "C"
 {
@@ -120,74 +121,74 @@ extern "C"
         Log("%s: %u-bit %s %s", LogLevel::Warning, prefix, 2 << desc->bits, typeStr, desc->name);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_load_invalid_value(const InvalidValueData& data, uint64_t value)
     {
         PrintType("type", data.type);
         Log("UBSAN: load_invalid_value @ %s:%u:%u(value=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, value);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_nonnull_arg(const NonNullArgData& data)
     {
         Log("UBSAN: nonnull_arg @ %s:%u,%u (argIndex=%u)", LogLevel::Error, data.where.file, data.where.line, data.where.column, data.argumentIndex);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_nullability_arg(const NonNullArgData& data)
     {
         Log("UBSAN: nullability_arg @ %s:%u,%u (arg=%u)", LogLevel::Error, data.where.file, data.where.line, data.where.column, data.argumentIndex);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_nonnull_return_v1(const NonNullReturnData& data, const SourcePos& where)
     {
         (void)data;
         Log("UBSAN: nonnull_return @ %s:%u,%u", LogLevel::Error, where.file, where.line, where.column);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_nullability_return_v1(const NonNullReturnData&, const SourcePos& where)
     {
         Log("UBSAN: nullability_return_v1 @ %s:%u,%u", LogLevel::Error, where.file, where.line, where.column);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_vla_bound_not_positive(const VLABoundData& data, uint64_t bound)
     {
         PrintType("VLA type", data.type);
         Log("UBSAN: vla_bound_not_positive @ %s:%u,%u (bound=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, bound);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_add_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
     {
         PrintType("type", data.type);
         Log("UBSAN: add_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_sub_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
     {
         PrintType("type", data.type);
         Log("UBSAN: sub_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_negate_overflow(const OverflowData& data, uint64_t op)
     {
         PrintType("type", data.type);
         Log("UBSAN: negate_overflow @ %s:%u,%u (lhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, op);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_mul_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
     {
         PrintType("type", data.type);
         Log("UBSAN: mul_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_shift_out_of_bounds(const ShiftOutOfBoundsData& data, uint64_t lhs, uint64_t rhs)
     {
         PrintType("left op", data.leftOperand);
@@ -195,14 +196,14 @@ extern "C"
         Log("UBSAN: shift_out_of_bounds @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_divrem_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
     {
         PrintType("type", data.type);
         Log("UBSAN: divrem_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_out_of_bounds(const OutOfBoundsData& data, uint64_t operand)
     {
         PrintType("array type", data.arrayType);
@@ -210,7 +211,7 @@ extern "C"
         Log("UBSAN: out_of_bounds @ %s:%u,%u (index=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, operand);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_type_mismatch_v1(const TypeMismatchData& data, void* ptr)
     {
         constexpr const char* opStrings[] = 
@@ -246,25 +247,25 @@ extern "C"
         }
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_alignment_assumption(const AlignmentAssumptionData& data, void*, void*, void*)
     {
         Log("UBSAN: alignment_assumption @ %s:%u,%u", LogLevel::Error, data.where.file, data.where.line, data.where.column);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_builtin_unreachable(const UnreachableData& data)
     {
         Log("UBSAN: builtin_unreachable @ %s:%u,%u", LogLevel::Error, data.where.file, data.where.line, data.where.column);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_missing_return(const UnreachableData& data)
     {
         Log("UBSAN: missing_return @ %s:%u,%u", LogLevel::Error, data.where.file, data.where.line, data.where.column);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_implicit_conversion(const ImplicitConversationData& data, void*, void*)
     {
         PrintType("from", data.fromType);
@@ -272,13 +273,13 @@ extern "C"
         Log("UBSAN: implicit_conversion @ %s:%u,%u", LogLevel::Error, data.where.file, data.where.line, data.where.column);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_invalid_builtin(const InvalidBuiltinData& data)
     {
         Log("UBSAN: invalid_builtin @ %s:%u,%u", LogLevel::Error, data.where.file, data.where.line, data.where.column);
     }
 
-    [[gnu::used]]
+    DRIVER_API_FUNC
     void __ubsan_handle_pointer_overflow(const PointerOverflowData& data, void*, void*)
     {
         Log("UBSAN: pointer_overflow @ %s:%u,%u", LogLevel::Error, data.where.file, data.where.line, data.where.column);

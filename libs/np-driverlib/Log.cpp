@@ -17,6 +17,6 @@ namespace dl
         va_end(argsList);
         buffer[length - 1] = 0;
 
-        npk_log(buffer, static_cast<npk_log_level>(level));
+        npk_log({ .length = length - 1, .data = buffer,  }, static_cast<npk_log_level>(level));
     }
 }

@@ -169,7 +169,7 @@ typedef enum
 } npk_log_level;
 
 /* Global functions available to any drivers within a kernel module */
-void npk_log(REQUIRED const char* str, npk_log_level level);
+void npk_log(npk_string str, npk_log_level level);
 void npk_panic(REQUIRED const char* why);
 
 #ifdef __cplusplus
