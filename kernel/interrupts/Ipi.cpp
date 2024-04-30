@@ -49,7 +49,6 @@ namespace Npk::Interrupts
             mailbox.lock.Unlock();
 
             callback(arg);
-            i = (size_t)-1;
         }
     }
 

@@ -265,6 +265,7 @@ namespace Npk::Tasking
         //TODO: for user stacks we dont need to immediately back the memory (the const 3 arg)
         auto maybeStack = parent->vmm.Alloc(stackSize, 3, VmFlag::Anon | VmFlag::Write); //TODO: guarded?
         VALIDATE_(maybeStack, {});
+        const uintptr_t stackTop = *maybeStack + stackSize;
 
         Thread* thread = new Thread();
         thread->parent = parent;
@@ -274,13 +275,20 @@ namespace Npk::Tasking
         thread->state = ThreadState::Setup;
         thread->extRegs = nullptr; //these are populated on-demand
 
+        //setup the trap frame in the local address space and copy it into the target one,
+        //leaving room for a dummy stack frame (all zero) to terminate any traces.
+        const size_t TerminatorSize = 2 * sizeof(uintptr_t);
         TrapFrame setupFrame {};
         InitTrapFrame(&setupFrame, *maybeStack + stackSize, entryAddr, false);
         SetTrapFrameArg(&setupFrame, 0, arg);
-        const uintptr_t frameAddr = sl::AlignDown((*maybeStack + stackSize) - sizeof(TrapFrame), alignof(TrapFrame));
+        const uintptr_t traceTermAddr = stackTop - TerminatorSize;
+        const uintptr_t frameAddr = sl::AlignDown(traceTermAddr - sizeof(TrapFrame), alignof(TrapFrame));
         ASSERT_(parent->vmm.CopyIn((void*)frameAddr, &setupFrame, sizeof(TrapFrame)) == sizeof(TrapFrame));
         thread->frame = reinterpret_cast<TrapFrame*>(frameAddr);
-        
+
+        uintptr_t traceTerminator[2] { 0, 0 };
+        ASSERT_(parent->vmm.CopyIn((void*)traceTermAddr, traceTerminator, TerminatorSize) == TerminatorSize);
+
         threadLock.WriterLock();
         threads.PushBack(thread);
         threadLock.WriterUnlock();

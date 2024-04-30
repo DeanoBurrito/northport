@@ -9,7 +9,7 @@
 
 namespace Npk::Debug
 {
-    constexpr const char* ExceptFormatStr = "Unhandled exceptioon: %s, sp=0x%lx, flags=0x%x\r\n";
+    constexpr const char* ExceptFormatStr = "Unhandled exception: %s, sp=0x%lx, flags=0x%x\r\n";
     constexpr const char* CoreFormatStr = "Core %lu: runLevel %lu (%s), logs=%p\r\n";
     constexpr const char* ProgramFormatStr = "Thread %lu.%lu: name=%.*s, driverShadow=%.*s\r\n";
     constexpr const char* TraceFrameFormatStr = "%3u: 0x%016lx %.*s!%.*s+0x%lx\r\n";
@@ -80,7 +80,6 @@ namespace Npk::Debug
             if (panicOutputs[i]->BeginPanic != nullptr)
                 panicOutputs[i]->BeginPanic();
         }
-        //TODO: try drain the message queue
 
         PrintPanicHeader();
     }
@@ -195,6 +194,8 @@ namespace Npk::Debug
         BeginPanic();
 
         PanicPrint(reason.Begin());
+        PanicPrint("\r\n");
+        PrintTrace(0);
         EndPanic();
     }
 }

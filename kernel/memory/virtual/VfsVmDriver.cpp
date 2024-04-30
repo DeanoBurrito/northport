@@ -39,12 +39,12 @@ namespace Npk::Memory::Virtual
         const size_t mapLength = sl::Min(FaultMaxMapAhead, context.range.Top() - where);
         const uintptr_t mappingOffset = where - context.range.base;
 
-        auto cachePart = GetFileCacheUnit(cache, where - context.range.base + link->fileOffset);
+        auto cachePart = GetFileCacheUnit(cache, mappingOffset + link->fileOffset);
         VALIDATE_(cachePart.Valid(), { .goodFault = false });
 
         for (size_t i = 0; i < mapLength; i += granuleSize)
         {
-            if (i % fcInfo.unitSize == 0)
+            if ((mappingOffset + i + link->fileOffset) % fcInfo.unitSize == 0)
             {
                 cachePart = GetFileCacheUnit(cache, link->fileOffset + mappingOffset + i);
                 VALIDATE_(cachePart.Valid(), { .goodFault = false });

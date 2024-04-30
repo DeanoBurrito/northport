@@ -678,7 +678,7 @@ namespace Npk::Memory
             size_t copyLength = sl::Min(PageSize, length - count);
             //first copy can be misaligned (in the destination address space), so handle that.
             if (count == 0)
-                copyLength = sl::AlignUp((uintptr_t)foreignBase, PageSize) - (uintptr_t)foreignBase;
+                copyLength = sl::Min(copyLength, PageSize - ((uintptr_t)foreignBase % PageSize));
 
             sl::memcopy(local.ptr, reinterpret_cast<void*>(AddHhdm(*maybePhys)), copyLength);
             count += copyLength;
