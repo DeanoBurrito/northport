@@ -1,13 +1,12 @@
 #include <debug/Log.h>
 #include <debug/Symbols.h>
 #include <debug/Panic.h>
+#include <arch/Platform.h>
 #include <memory/Pmm.h>
 #include <tasking/Clock.h>
 #include <tasking/Threads.h>
-#include <tasking/RunLevels.h>
 #include <containers/Queue.h>
 #include <NanoPrintf.h>
-#include <Locks.h>
 #include <Memory.h>
 #include <Maths.h>
 
@@ -18,6 +17,8 @@ namespace Npk::Debug
     constexpr size_t CoreLogBufferSize = 4 * PageSize;
     constexpr size_t EarlyBufferSize = 4 * PageSize;
     constexpr size_t MaxMessageLength = 128;
+    constexpr size_t ShortTraceDepth = 8;
+    constexpr size_t ShortTraceBufferCount = 256;
 
     constexpr const char* LevelStrs[] = 
     {
@@ -150,6 +151,63 @@ namespace Npk::Debug
             logOutLock.Unlock();
         }
     }
+
+    constexpr char TraceBar[] = "+--------------------------------------------------------------------+\n\r";
+    constexpr size_t TraceWidth = sizeof(TraceBar) - 2;
+    constexpr size_t TraceContentWidth = TraceWidth - 4;
+    constexpr char TraceContentStr[] = "%lu: %.*s!%.*s+0x%lx";
+    constexpr int MaxRepoNameLen = 12;
+    constexpr int MaxSymbolNameLen = 48;
+
+    static void TraceOnError()
+    {
+        LogBuffer* logBuffer = &earlyBuffer;
+        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Log] != nullptr)
+            logBuffer = reinterpret_cast<LogBuffer*>(CoreLocal()[LocalPtr::Log]);
+
+        const size_t id = GenerateShortTrace();
+        uintptr_t callstack[ShortTraceDepth] {};
+        if (!GetShortTrace(id, callstack))
+            return;
+
+        WriteLog(TraceBar, sizeof(TraceBar), logBuffer);
+        char workBuffer[sizeof(TraceBar)];
+        workBuffer[0] = workBuffer[TraceWidth - 1] = '|';
+        workBuffer[TraceWidth] = '\n';
+        workBuffer[TraceWidth + 1] = '\r';
+        for (size_t i = 1; i < TraceWidth - 1; i++)
+            workBuffer[i] = ' ';
+        size_t bufferLen = npf_snprintf(workBuffer + 2, TraceContentWidth, "Callstack of previous error: trace %lu", id);
+        workBuffer[bufferLen] = ' ';
+        WriteLog(workBuffer, sizeof(TraceBar), logBuffer);
+
+        for (size_t i = 0; i < ShortTraceDepth; i++)
+        {
+            if (callstack[i] == 0)
+                break;
+
+            sl::StringSpan symbolName = "unknown";
+            sl::StringSpan symbolRepo = "unknown";
+            auto symbol = SymbolFromAddr(callstack[i], SymbolFlag::Private | SymbolFlag::Public, &symbolRepo);
+            size_t offset = 0;
+
+            if (symbol.HasValue())
+            {
+                symbolName = symbol->name;
+                offset = callstack[i] - symbol->base;
+            }
+
+            const int repoNameLen = sl::Min(MaxRepoNameLen, (int)symbolRepo.Size());
+            const int symNameLen = sl::Min(MaxSymbolNameLen, (int)symbolName.Size());
+            bufferLen = npf_snprintf(workBuffer + 2, TraceContentWidth, TraceContentStr, i,
+                repoNameLen, symbolRepo.Begin(), symNameLen, symbolName.Begin(), offset);
+            for (size_t j = bufferLen; j < TraceContentWidth - 1; j++)
+                workBuffer[j] = ' ';
+            WriteLog(workBuffer, sizeof(TraceBar), logBuffer);
+        }
+
+        WriteLog(TraceBar, sizeof(TraceBar), logBuffer);
+    }
     
     void Log(const char* str, LogLevel level, ...)
     {
@@ -211,6 +269,10 @@ namespace Npk::Debug
             WriteLog(buffer, bufferLen, reinterpret_cast<LogBuffer*>(CoreLocal()[LocalPtr::Log]));
         else
             WriteLog(buffer, bufferLen, &earlyBuffer);
+
+        const bool traceOnErrorLevel = true; //TODO: print trace id even if not logging immediately, and expose this via a config flag
+        if (level == LogLevel::Error && traceOnErrorLevel)
+            TraceOnError();
     }
 
     void InitCoreLogBuffers()
@@ -242,6 +304,51 @@ namespace Npk::Debug
                 break;
         }
 
+        //since we're panicing, drain any logs in the queue
+        sl::QueueMpSc<LogMessage>::Item* entry;
+        while ((entry = msgQueue.Pop()) != nullptr)
+            WriteToOutputs(entry->data);
         return { logOuts, logOutCount };
+    }
+
+    struct ShortTrace
+    {
+        uintptr_t callstack[ShortTraceDepth];
+    };
+
+    ShortTrace traceBuffer[ShortTraceBufferCount];
+    sl::Atomic<size_t> nextTraceId {};
+
+    size_t GenerateShortTrace(sl::Opt<uintptr_t> begin)
+    {
+        uintptr_t callstack[ShortTraceDepth] {};
+
+        for (size_t i = 0; i < ShortTraceDepth; i++)
+            callstack[i] = GetReturnAddr(i, begin.HasValue() ? *begin : 0);
+
+        return StoreShortTrace(callstack);
+    }
+
+    size_t StoreShortTrace(sl::Span<uintptr_t> callstack)
+    {
+        const size_t id = nextTraceId++;
+        const size_t index = id % ShortTraceBufferCount;
+
+        for (size_t i = 0; i < callstack.Size() && i < ShortTraceDepth; i++)
+            traceBuffer[index].callstack[i] = callstack[i];
+
+        return id;
+    }
+
+    bool GetShortTrace(size_t id, sl::Span<uintptr_t> callstack)
+    {
+        if (id < sl::AlignDown(nextTraceId.Load(), ShortTraceBufferCount))
+            return false; //id is too old, it's been overwritten
+
+        const size_t index = id % ShortTraceBufferCount;
+        for (size_t i = 0; i < callstack.Size() && i < ShortTraceDepth; i++)
+            callstack[i] = traceBuffer[index].callstack[i];
+
+        return true;
     }
 }

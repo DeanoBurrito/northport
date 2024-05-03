@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <Span.h>
+#include <Optional.h>
 
 namespace Npk::Debug
 {
@@ -29,6 +30,10 @@ namespace Npk::Debug
     void InitCoreLogBuffers();
     void AddLogOutput(LogOutput* output);
     sl::Span<LogOutput*> AcquirePanicOutputs(size_t tryLockCount);
+
+    size_t GenerateShortTrace(sl::Opt<uintptr_t> begin = {});
+    size_t StoreShortTrace(sl::Span<uintptr_t> callstack);
+    bool GetShortTrace(size_t id, sl::Span<uintptr_t> callstack);
 }
 
 using Npk::Debug::LogLevel;

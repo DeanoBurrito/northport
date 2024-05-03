@@ -68,7 +68,10 @@ namespace Npk::Drivers
     }
 
     bool VerifySysPowerApi(const npk_device_api* api)
-    { return true; }
+    { 
+        (void)api;
+        return true;
+    }
 
     bool VerifyDeviceApi(const npk_device_api* api)
     {
