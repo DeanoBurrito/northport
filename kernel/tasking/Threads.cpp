@@ -237,6 +237,7 @@ namespace Npk::Tasking
 
     bool ProgramManager::ServeException(ProgramException exception)
     {
+        (void)exception;
         return false; //TODO: routing for this
     }
 
@@ -278,10 +279,11 @@ namespace Npk::Tasking
         //setup the trap frame in the local address space and copy it into the target one,
         //leaving room for a dummy stack frame (all zero) to terminate any traces.
         const size_t TerminatorSize = 2 * sizeof(uintptr_t);
-        TrapFrame setupFrame {};
-        InitTrapFrame(&setupFrame, *maybeStack + stackSize, entryAddr, false);
-        SetTrapFrameArg(&setupFrame, 0, arg);
         const uintptr_t traceTermAddr = stackTop - TerminatorSize;
+        TrapFrame setupFrame {};
+        InitTrapFrame(&setupFrame, traceTermAddr, entryAddr, false);
+        SetTrapFrameArg(&setupFrame, 0, arg);
+
         const uintptr_t frameAddr = sl::AlignDown(traceTermAddr - sizeof(TrapFrame), alignof(TrapFrame));
         ASSERT_(parent->vmm.CopyIn((void*)frameAddr, &setupFrame, sizeof(TrapFrame)) == sizeof(TrapFrame));
         thread->frame = reinterpret_cast<TrapFrame*>(frameAddr);

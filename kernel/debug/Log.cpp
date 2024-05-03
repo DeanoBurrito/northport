@@ -63,7 +63,7 @@ namespace Npk::Debug
     size_t logOutCount = 0;
     sl::SpinLock logOutLock;
 
-    void WriteToOutputs(const LogMessage& msg)
+    static void WriteToOutputs(const LogMessage& msg)
     {
         if (msg.length == 0)
             return;
@@ -87,11 +87,18 @@ namespace Npk::Debug
         }
     }
 
-    void WriteLog(const char* message, size_t messageLen, LogBuffer* buffer)
+    static void WriteLog(const char* message, size_t messageLen, LogBuffer* buffer)
     {
         using QueueItem = sl::QueueMpSc<LogMessage>::Item;
 
-        //TODO: disable scheduler pre-emption here while we have reserved buffer space, but havent added it to the message queue.
+        //runlevels above normal cant be pre-empted by the scheduler. This isnt necessary, its just nice
+        //to do. In this function we're going to consume buffer space and then add the message to the
+        //log message queue. No harm done if we're pre-empted here, but its nice to have these
+        //two operations be soft-atomic.
+        sl::Opt<RunLevel> prevRl {};
+        if (CoreLocalAvailable())
+            prevRl = Tasking::EnsureRunLevel(RunLevel::Dpc); 
+
         //we allocate space for message data and the queue item in the same go
         const size_t allocLength = messageLen + 2 * sizeof(QueueItem);
         const size_t allocBegin = __atomic_fetch_add(&buffer->head, allocLength, __ATOMIC_SEQ_CST) % buffer->length;
@@ -150,6 +157,9 @@ namespace Npk::Debug
 
             logOutLock.Unlock();
         }
+
+        if (prevRl.HasValue())
+            Tasking::LowerRunLevel(*prevRl);
     }
 
     constexpr char TraceBar[] = "+--------------------------------------------------------------------+\n\r";
@@ -298,16 +308,29 @@ namespace Npk::Debug
     {
         ASSERT(panicFlag.Load() > 0, "Attempt to acquire panic outputs while not in a kernel panic");
 
+        bool gotLock = false;
         for (size_t i = 0; i < tryLockCount; i++)
         {
-            if (logOutLock.TryLock())
+            if ((gotLock = logOutLock.TryLock()) == true)
                 break;
         }
 
-        //since we're panicing, drain any logs in the queue
-        sl::QueueMpSc<LogMessage>::Item* entry;
-        while ((entry = msgQueue.Pop()) != nullptr)
-            WriteToOutputs(entry->data);
+        if (gotLock)
+        {
+            //since we're panicing, drain any logs in the queue if its safe to do so.
+            sl::QueueMpSc<LogMessage>::Item* entry;
+            while ((entry = msgQueue.Pop()) != nullptr)
+                WriteToOutputs(entry->data);
+        }
+        else
+        {
+            constexpr sl::StringSpan failedAcqMessage = "\r\n ---> Failed to acquire log output lock - latest messages will be dropped! <---\r\n";
+            for (size_t i = 0; i < logOutCount; i++)
+            {
+                if (logOuts[i]->Write != nullptr)
+                    logOuts[i]->Write(failedAcqMessage);
+            }
+        }
         return { logOuts, logOutCount };
     }
 

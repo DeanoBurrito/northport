@@ -5,6 +5,8 @@
 #include <Memory.h>
 #include <Maths.h>
 
+#define INVLPG(vaddr) do { asm volatile("invlpg (%0)" :: "r"(vaddr) : "memory"); } while (false)
+
 namespace Npk
 {
     enum class PageSizes : size_t
@@ -238,7 +240,7 @@ namespace Npk
 
         //flush the TLB if requested, and update kernel generation count if we need to
         if (flush)
-            asm volatile("invlpg %0" :: "m"(vaddr) : "memory");
+            INVLPG(vaddr);
         if (map == &kernelMap)
             kernelMap.generation++;
         return true;
@@ -259,7 +261,7 @@ namespace Npk
 
         //flush TLB if requested, and update kernel generation count if required
         if (flush)
-            asm volatile("invlpg %0" :: "m"(vaddr) : "memory");
+            INVLPG(vaddr);
         if (map == &kernelMap && path.level == pagingLevels)
             kernelMap.generation++;
 
@@ -304,7 +306,7 @@ namespace Npk
         }
 
         if (flush)
-            asm volatile("invlpg %0" :: "m"(vaddr) : "memory");
+            INVLPG(vaddr);
         return true;
     }
 

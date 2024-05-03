@@ -81,7 +81,8 @@ extern "C"
         ProgramException exception {};
         exception.instruction = frame->iret.rip;
         exception.stack = frame->iret.rsp;
-        exception.special = 0;
+        exception.special = frame->vector;
+        exception.flags = frame->ec;
         exception.type = ClassifyException(frame);
 
         if (frame->vector == VectorPageFault)

@@ -37,7 +37,8 @@ TrapEntry:
     mov %ax, %fs
 
     mov %rsp, %rdi
-    mov $0, %rbp
+    mov 136(%rsp), %rax # create a stack frame, so it looks like the interrupt was called.
+    push %rax
     call TrapDispatch
 _EndOfTrapEntry:
 

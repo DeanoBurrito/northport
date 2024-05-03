@@ -9,7 +9,7 @@
 
 namespace Npk::Debug
 {
-    constexpr const char* ExceptFormatStr = "Unhandled exception: %s, sp=0x%lx, flags=0x%x\r\n";
+    constexpr const char* ExceptFormatStr = "Unhandled exception: %s, stack=0x%lx, flags=0x%x, s=0x%lx\r\n";
     constexpr const char* CoreFormatStr = "Core %lu: runLevel %lu (%s), logs=%p\r\n";
     constexpr const char* ProgramFormatStr = "Thread %lu.%lu: name=%.*s, driverShadow=%.*s\r\n";
     constexpr const char* TraceFrameFormatStr = "%3u: 0x%016lx %.*s!%.*s+0x%lx\r\n";
@@ -164,7 +164,7 @@ namespace Npk::Debug
     void PanicWithException(Tasking::ProgramException ex, uintptr_t traceStart)
     {
         BeginPanic();
-        PanicPrint(ExceptFormatStr, ExceptionStrs[(size_t)ex.type], ex.stack, ex.flags);
+        PanicPrint(ExceptFormatStr, ExceptionStrs[(size_t)ex.type], ex.stack, ex.flags, ex.special);
 
         sl::StringSpan pcProgramName {};
         auto pcSymbol = SymbolFromAddr(ex.instruction, SymbolFlag::Public | SymbolFlag::Private, 
