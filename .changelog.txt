@@ -2,6 +2,7 @@
 - Added more drivers:
     - uACPI: first third-party driver, provides ACPI runtime services to the kernel.
 
+- Exposes waitable events via driver API.
 - Added bounds checking for kernel heap allocators, for detecting overruns.
 - Thread switches are delayed until a core's runlevel drops back to normal.
 - Added 'program exception' concept to kernel.
@@ -12,9 +13,12 @@
 - Added support for building C sources for drivers.
 - Error log levels now capture a snapshot of the callstack, for logging or retrieval later on.
     - These traces are stored in a small circular buffer.
+
 - Filesystem and VFS improvements:
     - Added mount options: readonly and cache-disable.
     - FileCache switched to a red/black tree instead of linked list.
+
+- Fixed misuse of `invlpg` on x86, accidentally evicting wrong entry from TLB.
 
 # v0.3.0
 - Added 'interrupt router' to replace previous interrupt manager, which offloads memory allocation to the caller.

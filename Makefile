@@ -44,10 +44,10 @@ export KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
 export SYSLIB_CXX_FLAGS += -fvisibility=default
 export DRIVER_C_FLAGS += -Wall -Wextra -std=c17 -fno-unwind-tables -fno-asynchronous-unwind-tables \
-	-ffreestanding -fPIC -fvisibility=hidden \
+	-ffreestanding -fPIC -fvisibility=hidden -fno-omit-frame-pointer \
 	-I$(PROJ_ROOT_DIR)/kernel/include -I$(PROJ_ROOT_DIR)/libs/np-syslib/include
 export DRIVER_CXX_FLAGS += -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -ffreestanding -fPIC -fvisibility=hidden \
+	-fno-asynchronous-unwind-tables -ffreestanding -fPIC -fvisibility=hidden -fno-omit-frame-pointer \
 	-I$(PROJ_ROOT_DIR)/kernel/include -I$(PROJ_ROOT_DIR)/libs/np-syslib/include \
 	-I$(PROJ_ROOT_DIR)/libs/np-driverlib/include
 export DRIVER_LD_FLAGS += -nostdlib -shared -znorelro \
