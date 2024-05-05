@@ -6,7 +6,7 @@ namespace Qemu
     bool QemuPowerOff(npk_device_api*)
     {
 #ifdef __x86_64__
-        asm volatile("outw %0, %1" :: "a"((uint16_t)0x2000), "Nd"(0x604));
+        asm volatile("outw %0, %1" :: "a"((uint16_t)0x2000), "Nd"((uint16_t)0x604));
 #endif
         return false;
     }
