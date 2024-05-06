@@ -182,6 +182,7 @@ extern "C"
 
         const IoMapping mapping { .packed = reinterpret_cast<uintptr_t>(handle) };
         const uint16_t port = mapping.base + offset;
+        VALIDATE_(mapping.base + offset <= 0xFFFF, UACPI_STATUS_INVALID_ARGUMENT);
 
         *value = PortRead(port, byte_width);
         return UACPI_STATUS_OK;

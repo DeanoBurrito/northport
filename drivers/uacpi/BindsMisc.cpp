@@ -121,7 +121,7 @@ extern "C"
         route->callback = (bool (*)(void*))callback;
         /* A note about this cast: the uacpi handler returns whether the interrupt was handled (1)
          * or not handled (0). The northport kernel api uses the return value as a way to suppress 
-         * queueing the DPC assocated with the interrupt route (if one exists). In our case there
+         * queueing the DPC associated with the interrupt route (if one exists). In our case there
          * is no DPC, so this return value is meaningless. The kernel doesn't support interrupt
          * sharing so we dont have to worry about passing on that info from uacpi.
          */
