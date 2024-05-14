@@ -81,6 +81,12 @@ namespace sl
         T Exchange(T incoming, MemoryOrder order = MemoryOrder::SeqCst) volatile
         { return __atomic_exchange_n(&value, incoming, (int)order); }
 
+        bool CompareExchange(T& expected, T desired, MemoryOrder order = MemoryOrder::SeqCst)
+        { return __atomic_compare_exchange_n(&value, &expected, desired, false, (int)order, (int)order); }
+
+        bool CompareExchange(T& expected, T desired, MemoryOrder order = MemoryOrder::SeqCst) volatile
+        { return __atomic_compare_exchange_n(&value, &expected, desired, false, (int)order, (int)order); }
+
         T operator++(int)
         { return FetchAdd(1); }
 

@@ -7,7 +7,7 @@
 
 namespace Npk::Debug
 {
-    enum class LogLevel : size_t
+    enum class LogLevel : uint16_t
     {
         Fatal = 0,
         Error = 1,
