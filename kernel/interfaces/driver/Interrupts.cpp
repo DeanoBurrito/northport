@@ -95,17 +95,17 @@ extern "C"
         if (core == NPK_CURRENT_AFFINITY)
             core = CoreLocal().id;
 
-        return InterruptRouter::Global().AddRoute(reinterpret_cast<InterruptRoute*>(route), core);
+        return AddInterruptRoute(reinterpret_cast<InterruptRoute*>(route), core);
     }
 
     DRIVER_API_FUNC
-    bool npk_claim_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core, size_t vector)
+    bool npk_claim_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core, size_t gsi)
     {
         VALIDATE_(route != nullptr, false);
         if (core == NPK_CURRENT_AFFINITY)
             core = CoreLocal().id;
 
-        return InterruptRouter::Global().ClaimRoute(reinterpret_cast<InterruptRoute*>(route), core, vector);
+        return ClaimInterruptRoute(reinterpret_cast<InterruptRoute*>(route), core, gsi);
     }
 
     DRIVER_API_FUNC
@@ -113,6 +113,20 @@ extern "C"
     {
         VALIDATE_(route != nullptr, false);
 
-        return InterruptRouter::Global().RemoveRoute(reinterpret_cast<InterruptRoute*>(route));
+        return RemoveInterruptRoute(reinterpret_cast<InterruptRoute*>(route));
+    }
+
+    DRIVER_API_FUNC
+    bool npk_construct_msi(REQUIRED npk_interrupt_route* route, REQUIRED npk_msi_config* cfg)
+    {
+        VALIDATE_(route != nullptr, false);
+        VALIDATE_(cfg != nullptr, false);
+
+        auto msi = ConstructMsi(reinterpret_cast<InterruptRoute*>(route));
+        VALIDATE_(msi.HasValue(), false);
+
+        cfg->address = msi->address;
+        cfg->data = msi->data;
+        return true;
     }
 }

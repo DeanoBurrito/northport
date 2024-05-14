@@ -83,6 +83,7 @@ namespace Npk
     uintptr_t MsiAddress(size_t core, size_t vector);
     uintptr_t MsiData(size_t core, size_t vector);
     void MsiExtract(uintptr_t addr, uintptr_t data, size_t& core, size_t& vector);
+    bool RoutePinInterrupt(size_t core, size_t vector, size_t gsi);
 
     void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
 

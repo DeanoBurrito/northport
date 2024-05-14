@@ -30,6 +30,12 @@ namespace Npk::Interrupts
 
     using IntrTree = sl::RBTree<InterruptRoute, &InterruptRoute::hook, IntrTreeLess>;
 
+    struct MsiConfig
+    {
+        uintptr_t address;
+        uintptr_t data;
+    };
+
     class InterruptRouter
     {
     private:
@@ -46,8 +52,9 @@ namespace Npk::Interrupts
         void Dispatch(size_t vector);
 
         bool AddRoute(InterruptRoute* route, size_t core = NoCoreAffinity);
-        bool ClaimRoute(InterruptRoute* route, size_t core, size_t vector);
+        bool ClaimRoute(InterruptRoute* route, size_t core, size_t gsi);
         bool RemoveRoute(InterruptRoute* route);
+        sl::Opt<MsiConfig> GetMsi(InterruptRoute* route);
     };
 }
 
@@ -63,4 +70,7 @@ namespace Npk
 
     static inline bool RemoveInterruptRoute(InterruptRoute* route)
     { return Interrupts::InterruptRouter::Global().RemoveRoute(route); }
+
+    static inline sl::Opt<Interrupts::MsiConfig> ConstructMsi(InterruptRoute* route)
+    { return Interrupts::InterruptRouter::Global().GetMsi(route); }
 }

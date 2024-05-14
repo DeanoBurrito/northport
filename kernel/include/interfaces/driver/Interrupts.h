@@ -67,6 +67,12 @@ typedef struct
     OPTIONAL npk_dpc* dpc;
 } npk_interrupt_route;
 
+typedef struct
+{
+    uintptr_t address;
+    uintptr_t data;
+} npk_msi_config;
+
 bool npk_ensure_runlevel(npk_runlevel rl, REQUIRED npk_runlevel* prev);
 npk_runlevel npk_raise_runlevel(npk_runlevel rl);
 void npk_lower_runlevel(npk_runlevel rl);
@@ -75,8 +81,9 @@ void npk_queue_remote_dpc(REQUIRED npk_dpc* dpc, npk_core_id core);
 void npk_queue_apc(REQUIRED npk_apc* apc);
 
 bool npk_add_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core);
-bool npk_claim_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core, size_t vector);
+bool npk_claim_interrupt_route(REQUIRED npk_interrupt_route* route, npk_core_id core, size_t gsi);
 bool npk_remove_interrupt_route(REQUIRED npk_interrupt_route* route);
+bool npk_construct_msi(REQUIRED npk_interrupt_route* route, REQUIRED npk_msi_config* cfg);
 
 #ifdef __cplusplus
 }

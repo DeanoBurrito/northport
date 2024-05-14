@@ -120,28 +120,18 @@ namespace Npk::Interrupts
         return true;
     }
 
-    bool InterruptRouter::ClaimRoute(InterruptRoute* route, size_t core, size_t vector)
+    bool InterruptRouter::ClaimRoute(InterruptRoute* route, size_t core, size_t gsi)
     {
-        VALIDATE_(route != nullptr, false);
-        route->core = NoCoreAffinity;
-        route->vector = -1ul;
-
-        CoreIntrRouting* routing = GetRouting(core);
-        VALIDATE_(routing != nullptr, false);
-
-        routing->lock.Lock();
-        if (FindRoute(core, vector) == nullptr)
+        VALIDATE_(AddRoute(route, core), false);
+        if (!RoutePinInterrupt(route->core, route->vector, gsi))
         {
-            route->core = core;
-            route->vector = vector;
-            routing->tree.Insert(route);
-            
-            Log("Interrupt route claimed: %lu:%lu, callback=%p, dpc=%p", LogLevel::Verbose,
-                core, vector, route->Callback, route->dpc);
+            RemoveRoute(route); 
+            return false;
         }
-        routing->lock.Unlock();
 
-        return route->core != NoCoreAffinity;
+        Log("Pin-based interrupt claimed: gsi=%lu -> %lu:%lu", LogLevel::Verbose, gsi,
+            route->core, route->vector);
+        return true;
     }
 
     bool InterruptRouter::RemoveRoute(InterruptRoute* route)
@@ -161,5 +151,20 @@ namespace Npk::Interrupts
         route->core = NoCoreAffinity;
         route->vector = -1ul;
         return true;
+    }
+
+    sl::Opt<MsiConfig> InterruptRouter::GetMsi(InterruptRoute* route)
+    {
+        VALIDATE_(route != nullptr, {});
+
+        //TODO: validate MSIs are supported
+        //TODO: remove route for pin interrupt if present (need some flags for the route?)
+        const MsiConfig config =
+        {
+            .address = MsiAddress(route->core, route->vector),
+            .data = MsiData(route->core, route->vector),
+        };
+
+        return config;
     }
 }

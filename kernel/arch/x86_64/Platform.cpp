@@ -170,4 +170,10 @@ namespace Npk
             return WriteCr8(0);
         }
     }
+
+    bool RoutePinInterrupt(size_t core, size_t vector, size_t gsi)
+    {
+        uint8_t pin = gsi;
+        return IoApic::Route(pin, vector, core, {}, {}, false);
+    }
 }

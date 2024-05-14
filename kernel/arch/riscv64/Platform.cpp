@@ -108,4 +108,9 @@ namespace Npk
     {
         //TODO: make use of this on riscv
     }
+
+    bool RoutePinInterrupt(size_t core, size_t vector, size_t gsi)
+    {
+        return false;
+    }
 }
