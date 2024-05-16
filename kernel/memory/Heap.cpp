@@ -1,4 +1,5 @@
 #include <memory/Heap.h>
+#include <config/ConfigStore.h>
 #include <debug/Log.h>
 #include <arch/Platform.h>
 #include <CppUtils.h>
@@ -99,15 +100,17 @@ namespace Npk::Memory
     
     void Heap::Init()
     {
+        const bool doBoundsCheck = Config::GetConfigNumber("kernel.heap.check_bounds", false);
+
         size_t nextSlabSize = SlabBaseSize;
         size_t nextSlabCount = 64;
         for (size_t i = 0; i < SlabCount; i++)
         {
-            slabs[i].Init(nextSlabSize, nextSlabCount, false);
+            slabs[i].Init(nextSlabSize, nextSlabCount, doBoundsCheck);
             nextSlabSize *= 2;
         }
 
-        pool.Init(slabs[SlabCount - 1].Size(), false);
+        pool.Init(slabs[SlabCount - 1].Size(), doBoundsCheck);
     }
 
     bool Heap::SwapCache(SlabCache** ptr, size_t index)

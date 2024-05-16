@@ -2,6 +2,7 @@
 #include <boot/LimineTags.h>
 #include <arch/Cpu.h>
 #include <arch/Platform.h>
+#include <config/ConfigStore.h>
 #include <config/DeviceTree.h>
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
@@ -38,6 +39,7 @@ namespace Npk
         Log("\r\nNorthport kernel %lu.%lu.%lu for %s started, based on commit %s.", LogLevel::Info, 
             Debug::versionMajor, Debug::versionMinor, Debug::versionRev, Debug::targetArchStr, 
             Debug::gitCommitShortHash);
+        Config::InitConfigStore();
         Boot::CheckLimineTags();
 
         hhdmBase = Boot::hhdmRequest.response->offset;
@@ -73,6 +75,7 @@ namespace Npk
 
     void InitPlatform()
     {
+        Config::LateInitConfigStore();
         Debug::LoadKernelSymbols();
 
         using namespace Boot;

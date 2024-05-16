@@ -2,7 +2,7 @@ KERNEL_CXX_FLAGS += -I../libs/np-syslib/include -I../libs/np-driverlib/include
 
 CXX_SRCS = arch/Helpers.cpp \
 	boot/CommonInit.cpp boot/LimineTags.cpp \
-	config/DeviceTree.cpp config/AcpiTables.cpp \
+	config/ConfigStore.cpp config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/Panic.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
 	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp \
