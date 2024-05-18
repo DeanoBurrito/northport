@@ -29,13 +29,12 @@ namespace Npk::Memory
         sl::IntrFwdList<SlabSegment> segments;
         unsigned slabSize;
         unsigned slabsPerSeg;
-        bool doBoundsCheck;
 
         SlabSegment* CreateSegment();
         void DestroySegment(SlabSegment* seg);
 
     public:
-        void Init(size_t slabBytes, size_t slabCountPerSeg, bool checkBounds);
+        void Init(size_t slabBytes, size_t slabCountPerSeg);
 
         [[nodiscard]]
         void* Alloc();

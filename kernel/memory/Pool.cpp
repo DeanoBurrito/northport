@@ -1,6 +1,8 @@
 #include <memory/Pool.h>
 #include <memory/Vmm.h>
+#include <config/ConfigStore.h>
 #include <debug/Log.h>
+#include <Random.h>
 #include <Memory.h>
 #include <Maths.h>
 
@@ -8,6 +10,11 @@ namespace Npk::Memory
 {
     constexpr size_t PoisonLength = 0x20;
     constexpr uint8_t PoisonValue = 0xA5;
+
+    extern sl::XoshiroRng trashGenerator; //defined in Heap.cpp
+    extern bool doBoundsCheck;
+    extern bool trashAfterUse;
+    extern bool trashBeforeUse;
 
     void PoolAlloc::MergePrev(PoolNode* node)
     {
@@ -115,12 +122,11 @@ namespace Npk::Memory
         return region;
     }
 
-    void PoolAlloc::Init(size_t minAllocBytes, bool checkBounds)
+    void PoolAlloc::Init(size_t minAllocBytes)
     {
         sl::ScopedLock scopeLock(listLock);
         head = tail = nullptr;
         minAllocSize = minAllocBytes;
-        doBoundsCheck = checkBounds;
 
         Log("Kpool initialized: minSize=0x%x", LogLevel::Verbose, minAllocSize);
     }
@@ -175,16 +181,26 @@ namespace Npk::Memory
             region->last = scan->prev;
         region->lock.Unlock();
 
-        const size_t zeroBytes = bytes - (doBoundsCheck ? PoisonLength : 0);
-        sl::memset(scan->Data(), 0, zeroBytes);
+        //debugging mechanisms
+        const size_t usableBytes = bytes - (doBoundsCheck ? PoisonLength : 0);
+        if (trashBeforeUse)
+        {
+            //TODO: we dont lock around the prng, is this next level randomness or bad code?
+            uint64_t* access = static_cast<uint64_t*>(scan->Data());
+            for (size_t i = 0; i < usableBytes / sizeof(uint64_t); i++)
+                *access = trashGenerator.Next();
+        }
         if (doBoundsCheck)
-            sl::memset(sl::NativePtr(scan->Data()).Offset(zeroBytes).ptr, PoisonValue, PoisonLength);
+            sl::memset(sl::NativePtr(scan->Data()).Offset(usableBytes).ptr, PoisonValue, PoisonLength);
+
         return scan->Data();
     }
 
     bool PoolAlloc::Free(void* ptr)
     {
         PoolNode* node = static_cast<PoolNode*>(ptr) - 1;
+
+        //debugging mechanisms
         if (doBoundsCheck)
         {
             uint8_t* poison = sl::NativePtr(node->Data()).Offset(node->length - PoisonLength).As<uint8_t>();
@@ -197,7 +213,14 @@ namespace Npk::Memory
                 break;
             }
         }
+        if (trashAfterUse)
+        {
+            uint64_t* access = static_cast<uint64_t*>(node->Data());
+            for (size_t i = 0; i < node->length / sizeof(uint64_t); i++)
+                *access = trashGenerator.Next();
+        }
 
+        //freeing memory: find which region this node belongs to. TODO: we have the pointer in the node struct, why scan?
         for (PoolRegion* region = head; region != nullptr; region = region->next)
         {
             sl::ScopedLock scopeLock(region->lock);

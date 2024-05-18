@@ -41,7 +41,7 @@ namespace Npk::Debug
 
     sl::IntrFwdList<TerminalHead> termHeads;
     LogOutput termLogOutput;
-    bool autoRefreshStarted = false;
+    bool autoRefreshStarted;
     Tasking::DpcStore refreshStatsDpc;
     Tasking::ClockEvent refreshStatsEvent;
 
@@ -110,7 +110,7 @@ namespace Npk::Debug
 
         if (!autoRefreshStarted)
         {
-            if (CoreLocalAvailable() && CoreLocal().runLevel == RunLevel::Normal)
+            if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
             {
                 Log("Starting GTerm stats bar auto-refresh", LogLevel::Info);
                 autoRefreshStarted = true;
@@ -139,6 +139,7 @@ namespace Npk::Debug
         if (fbResponse == nullptr)
             return;
 
+        autoRefreshStarted = false;
         refreshStatsDpc.data.function = UpdateRenderedStats;
         refreshStatsEvent.duration = 10_ms;
         refreshStatsEvent.callbackCore = NoCoreAffinity;

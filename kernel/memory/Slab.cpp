@@ -1,10 +1,17 @@
 #include <memory/Slab.h>
 #include <memory/Vmm.h>
+#include <config/ConfigStore.h>
 #include <debug/Log.h>
+#include <Random.h>
 
 namespace Npk::Memory
 {
     constexpr uint8_t PoisonValue = 0xA5;
+
+    extern sl::XoshiroRng trashGenerator; //defined in Pool.cpp
+    extern bool doBoundsCheck;
+    extern bool trashAfterUse;
+    extern bool trashBeforeUse;
 
     SlabSegment* SlabAlloc::CreateSegment()
     {
@@ -47,11 +54,10 @@ namespace Npk::Memory
         VALIDATE_(VMM::Kernel().Free(seg->base), );
     }
 
-    void SlabAlloc::Init(size_t slabBytes, size_t slabCountPerSeg, bool checkBounds)
+    void SlabAlloc::Init(size_t slabBytes, size_t slabCountPerSeg)
     {
         slabSize = slabBytes;
         slabsPerSeg = slabCountPerSeg;
-        doBoundsCheck = checkBounds;
     }
 
     void* SlabAlloc::Alloc()
@@ -77,21 +83,28 @@ namespace Npk::Memory
         }
         segmentsLock.ReaderUnlock();
 
-        if (foundAddr != nullptr)
-            return foundAddr;
+        if (foundAddr == nullptr)
+        {
+            SlabSegment* latest = CreateSegment();
+            if (latest == nullptr)
+                return nullptr;
 
-        SlabSegment* latest = CreateSegment();
-        if (latest == nullptr)
-            return nullptr;
+            latest->lock.Lock(); //lock only used for memory ordering purposes here
+            foundAddr = latest->entries.PopFront();
+            latest->freeCount--;
+            latest->lock.Unlock();
 
-        latest->lock.Lock(); //lock only used for memory ordering purposes here
-        foundAddr = latest->entries.PopFront();
-        latest->freeCount--;
-        latest->lock.Unlock();
+            segmentsLock.WriterLock();
+            segments.PushBack(latest);
+            segmentsLock.WriterUnlock();
+        }
 
-        segmentsLock.WriterLock();
-        segments.PushBack(latest);
-        segmentsLock.WriterUnlock();
+        if (trashBeforeUse)
+        {
+            uint64_t* access = static_cast<uint64_t*>(foundAddr);
+            for (size_t i = 0; i < slabSize / sizeof(uint64_t); i++)
+                *access = trashGenerator.Next();
+        }
 
         return foundAddr;
     }
@@ -115,6 +128,12 @@ namespace Npk::Memory
 
             if (doBoundsCheck)
                 sl::memset(sl::NativePtr(ptr).Offset(slabSize).ptr, PoisonValue, slabSize);
+            if (trashAfterUse)
+            {
+                uint64_t* access = static_cast<uint64_t*>(ptr);
+                for (size_t i = 0; i < slabSize / sizeof(uint64_t); i++)
+                    *access = trashGenerator.Next();
+            }
             seg->lock.Unlock();
 
             segmentsLock.ReaderUnlock();

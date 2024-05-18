@@ -3,9 +3,15 @@
 #include <debug/Log.h>
 #include <arch/Platform.h>
 #include <CppUtils.h>
+#include <Random.h>
 
 namespace Npk::Memory
 {
+    sl::XoshiroRng trashGenerator;
+    bool trashAfterUse;
+    bool trashBeforeUse;
+    bool doBoundsCheck;
+
     void CreateLocalHeapCaches()
     {
         ASSERT(CoreLocalAvailable(), "CLS not available");
@@ -100,17 +106,21 @@ namespace Npk::Memory
     
     void Heap::Init()
     {
-        const bool doBoundsCheck = Config::GetConfigNumber("kernel.heap.check_bounds", false);
+        doBoundsCheck = Config::GetConfigNumber("kernel.heap.check_bounds", false);
+        trashAfterUse = Config::GetConfigNumber("kernel.heap.trash_after_use", false);
+        trashBeforeUse = Config::GetConfigNumber("kernel.heap.trash_before_use", false);
+        if (trashBeforeUse || trashAfterUse)
+            trashGenerator = sl::XoshiroRng();
 
         size_t nextSlabSize = SlabBaseSize;
         size_t nextSlabCount = 64;
         for (size_t i = 0; i < SlabCount; i++)
         {
-            slabs[i].Init(nextSlabSize, nextSlabCount, doBoundsCheck);
+            slabs[i].Init(nextSlabSize, nextSlabCount);
             nextSlabSize *= 2;
         }
 
-        pool.Init(slabs[SlabCount - 1].Size(), doBoundsCheck);
+        pool.Init(slabs[SlabCount - 1].Size());
     }
 
     bool Heap::SwapCache(SlabCache** ptr, size_t index)
