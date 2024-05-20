@@ -23,12 +23,12 @@ namespace Pci
 
         void* CalculateAddress(void* busAccess, uint8_t dev, uint8_t func);
         void RegisterDescriptor(void* addr, uint8_t bus, uint8_t dev, uint8_t func);
+        void WriteReg(void* addr, size_t reg, uint32_t value);
+        uint32_t ReadReg(void* addr, size_t reg);
 
     public:
         bool Init(const npk_init_tag_pci_host* host);
-
-        void WriteReg(void* addr, size_t reg, uint32_t value);
-        uint32_t ReadReg(void* addr, size_t reg);
+        bool RawAccess(size_t width, uintptr_t addr, uintptr_t* data, bool write);
 
         [[gnu::always_inline]]
         inline uint16_t Id() const

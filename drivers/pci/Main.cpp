@@ -6,6 +6,20 @@
 
 sl::LinkedList<Pci::PciSegment> pciSegments;
 
+static bool PciBusAccess(size_t width, uintptr_t addr, uintptr_t* data, bool write)
+{
+    const uint16_t segId = (addr >> 32);
+    for (auto it = pciSegments.Begin(); it != pciSegments.End(); ++it)
+    {
+        if (it->Id() != segId)
+            continue;
+
+        return it->RawAccess(width, addr, data, write);
+    }
+
+    return false;
+}
+
 bool ProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
@@ -13,7 +27,6 @@ bool ProcessEvent(npk_event_type type, void* arg)
     case npk_event_type::Init:
         Pci::InitNameLookup();
         return true;
-
     case npk_event_type::AddDevice:
         {
             auto event = static_cast<const npk_event_add_device*>(arg);
@@ -29,7 +42,11 @@ bool ProcessEvent(npk_event_type type, void* arg)
 
             VALIDATE_(scan != nullptr, false);
             auto hostTag = reinterpret_cast<const npk_init_tag_pci_host*>(scan);
-            return segment.Init(hostTag);
+            if (!segment.Init(hostTag))
+                return false;
+            if (pciSegments.Size() == 1)
+                return npk_add_bus_access(BusPci, PciBusAccess);
+            return true;
         }
     default:
         Log("Unknown event type %u, ignoring.", LogLevel::Warning, type);

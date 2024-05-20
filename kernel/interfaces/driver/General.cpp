@@ -25,4 +25,35 @@ extern "C"
         Debug::Panic({ why, whyLength });
         ASSERT_UNREACHABLE();
     }
+
+    static sl::RwLock accessLock;
+    static sl::Vector<bool (*)(size_t width, uintptr_t addr, uintptr_t* data, bool write)> accessFuncs;
+
+    DRIVER_API_FUNC
+    bool npk_add_bus_access(npk_bus_type type, bool (*func)(size_t width, uintptr_t addr, uintptr_t* data, bool write))
+    {
+        bool success = false;
+        accessLock.WriterLock();
+        if (type >= accessFuncs.Size() || accessFuncs[type] == nullptr)
+        {
+            accessFuncs.EmplaceAt(type, func);
+            success = true;
+        }
+        accessLock.WriterUnlock();
+
+        return success;
+    }
+
+    DRIVER_API_FUNC
+    bool npk_access_bus(npk_bus_type type, size_t width, uintptr_t addr, REQUIRED uintptr_t* data, bool write)
+    {
+        //TODO: this function feels like a bit of a hack, design a better way to accomplish this
+        bool success = false;
+        accessLock.ReaderLock();
+        if (type < accessFuncs.Size() && accessFuncs[type] != nullptr)
+            success = accessFuncs[type](width, addr, data, write);
+        accessLock.ReaderUnlock();
+
+        return success;
+    }
 }

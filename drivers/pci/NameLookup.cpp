@@ -46,7 +46,7 @@ namespace Pci
             //the ids file puts the class descriptions at the end of the file, so in order to avoid loading
             //the entire file at once, we search backwards until we find the first class description.
             auto file = idsFile.ConstSpan();
-            for (size_t ri = file.Size() - 1; ri >= 0; ri--)
+            for (size_t ri = file.Size() - 1; ri != 0; ri--)
             {
                 if (file[ri] != 'C')
                     continue;

@@ -37,7 +37,7 @@ typedef struct
     size_t frequency;
     size_t resolution;
     size_t ticks;
-} npk_monotomic_time;
+} npk_monotonic_time;
 
 typedef enum
 {
@@ -53,7 +53,7 @@ typedef struct
     size_t ticks;
 } npk_duration;
 
-npk_monotomic_time npk_get_monotomic_time();
+npk_monotonic_time npk_get_monotonic_time();
 
 #ifdef __cplusplus
 }

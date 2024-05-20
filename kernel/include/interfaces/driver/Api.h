@@ -168,9 +168,19 @@ typedef enum
     Debug = 5,
 } npk_log_level;
 
+typedef enum
+{
+    BusPortIo = 0,
+    BusPci = 1,
+} npk_bus_type;
+
+#define NPK_MAKE_PCI_BUS_ADDR(seg, bus, dev, func, reg) (((uintptr_t)(seg) << 32) | ((uintptr_t)(bus) << 20) | ((uintptr_t)(dev) << 15) | ((uintptr_t)(func) << 12) | (reg))
+
 /* Global functions available to any drivers within a kernel module */
 void npk_log(npk_string str, npk_log_level level);
 void npk_panic(REQUIRED const char* why);
+bool npk_add_bus_access(npk_bus_type type, bool (*func)(size_t width, uintptr_t addr, uintptr_t* data, bool write));
+bool npk_access_bus(npk_bus_type type, size_t width, uintptr_t addr, REQUIRED uintptr_t* data, bool write);
 
 #ifdef __cplusplus
 }

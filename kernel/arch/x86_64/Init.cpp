@@ -119,11 +119,31 @@ namespace Npk
         ASSERT_UNREACHABLE();
     }
 
+    static bool PortIoAccess(size_t width, uintptr_t addr, uintptr_t* data, bool write)
+    {
+        switch (width)
+        {
+        case 1:
+            write ? Out8(addr, *data) : (void)(*data = In8(addr));
+            return true;
+        case 2:
+            write ? Out16(addr, *data) : (void)(*data = In16(addr));
+            return true;
+        case 4:
+            write ? Out32(addr, *data) : (void)(*data = In32(addr));
+            return true;
+        default:
+            return false;
+        }
+    }
+
     constexpr const char FwCfgFriendlyName[] = "fwcfg_dummy";
     constexpr const uint8_t FwCfgLoadName[] = "npk_fwcfg_loadname";
 
     void ThreadedArchInit()
     {
+        npk_add_bus_access(BusPortIo, PortIoAccess);
+
         //TODO: check if ecam was not available, and add port io descriptor for pci
 
         //TODO: some mechanism to check if fwcfg is actually available, rather than blindly assuming it is
@@ -135,8 +155,6 @@ namespace Npk
         fwCfgDescriptor->friendly_name = { .length = sizeof(FwCfgFriendlyName), .data = FwCfgFriendlyName };
 
         npk_load_name* loadName = new npk_load_name();
-        loadName->type = npk_load_type::Never;
-        loadName->length = sizeof(FwCfgLoadName);
         loadName->str = FwCfgLoadName;
         fwCfgDescriptor->load_names = loadName;
         Drivers::DriverManager::Global().AddDescriptor(fwCfgDescriptor);

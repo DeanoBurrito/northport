@@ -5,36 +5,39 @@
 #include <VmObject.h>
 #include <containers/Vector.h>
 #include <NanoPrintf.h>
+#include <Memory.h>
 
 namespace Pci
 {
+    static void RawRw(void* addr, uintptr_t& data, size_t width, bool write)
+    {
+        sl::NativePtr ptr(addr);
+
+        switch (width)
+        {
+        case 1:
+            return write ? ptr.Write<uint8_t>((uint8_t)data) : (void)(data = ptr.Read<uint8_t>());
+        case 2:
+            return write ? ptr.Write<uint16_t>((uint16_t)data) : (void)(data = ptr.Read<uint16_t>());
+        case 4:
+            return write ? ptr.Write<uint32_t>((uint32_t)data) : (void)(data = ptr.Read<uint32_t>());
+        }
+    }
+
     bool BeginOp(npk_device_api* api, npk_iop_context* context, npk_iop_frame* iop_frame)
     {
-        auto segment = static_cast<PciSegment*>(api->driver_data);
         if (iop_frame->addr % 4 != 0)
             return false;
-        if (iop_frame->length != 4)
+        if (iop_frame->length != 1 && iop_frame->length != 2 && iop_frame->length != 4)
             return false;
-        //TODO: support variable-sized and misaligned operations, a base-level driver like this should be flexible!
+        if (context->op_type != Read && context->op_type != Write)
+            return false;
 
-        sl::NativePtr buffPtr = iop_frame->buffer;
-        switch (context->op_type)
-        {
-        case npk_iop_type::Read:
-            {
-                const uint32_t reg = segment->ReadReg(iop_frame->descriptor_data, iop_frame->addr / 4);
-                buffPtr.Write(reg);
-                break;
-            }
-        case npk_iop_type::Write:
-            {
-                segment->WriteReg(iop_frame->descriptor_data, iop_frame->addr / 4, buffPtr.Read<uint32_t>());
-                break;
-            }
-            break;
-        default:
-            return false;
-        }
+        void* pciAddr = (void*)((uintptr_t)iop_frame->descriptor_data + iop_frame->addr);
+        uintptr_t data = 0;
+        sl::memcopy(iop_frame->buffer, &data, iop_frame->length);
+        RawRw(pciAddr, data, iop_frame->length, context->op_type == npk_iop_type::Write);
+        sl::memcopy(&data, iop_frame->buffer, iop_frame->length);
 
         return true;
     }
@@ -118,6 +121,25 @@ namespace Pci
     uint32_t PciSegment::ReadReg(void* addr, size_t reg)
     {
         return sl::NativePtr(addr).Offset(reg * 4).Read<uint32_t>();
+    }
+
+    bool PciSegment::RawAccess(size_t width, uintptr_t addr, uintptr_t* data, bool write)
+    {
+        addr &= 0xFFFF'FFFF;
+        const uint8_t bus = (addr >> 20) & 0xFF;
+        const uint8_t dev = (addr >> 15) & 0x1F;
+        const uint8_t func = (addr >> 12) & 0x7;
+
+        for (size_t i = 0; i < busAccess.Size(); i++)
+        {
+            if (busAccess[i].busId != bus)
+                continue;
+
+            RawRw(CalculateAddress(busAccess[i].access->ptr, dev, func), *data, width, write);
+            return true;
+        }
+
+        return false;
     }
 
     bool PciSegment::Init(const npk_init_tag_pci_host* host)

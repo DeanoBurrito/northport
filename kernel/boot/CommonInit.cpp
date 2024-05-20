@@ -30,7 +30,7 @@ namespace Npk
     uintptr_t hhdmLength;
     sl::Atomic<size_t> bootloaderRefs;
 
-    npk_device_desc* acpiInterpDescriptor;
+    npk_device_desc* acpiRuntimeDescriptor;
 
     void ThreadedArchInit(); //defined in Init.cpp for the current architecture
     
@@ -84,7 +84,7 @@ namespace Npk
         else
             Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
 
-        acpiInterpDescriptor = nullptr;
+        acpiRuntimeDescriptor = nullptr;
         if (rsdpRequest.response != nullptr && rsdpRequest.response->address != nullptr)
         {
             Config::SetRsdp(SubHhdm(rsdpRequest.response->address));
@@ -94,16 +94,16 @@ namespace Npk
             loadName->length = 0;
             loadName->str = nullptr;
 
-            npk_init_tag_rsdp* initTag = new npk_init_tag_rsdp();
+            auto initTag = new npk_init_tag_rsdp();
             initTag->rsdp = SubHhdm(rsdpRequest.response->address);
             initTag->header.type = npk_init_tag_type::Rsdp;
 
-            acpiInterpDescriptor = new npk_device_desc();
-            acpiInterpDescriptor->load_name_count = 1;
-            acpiInterpDescriptor->load_names = loadName;
-            acpiInterpDescriptor->friendly_name.data = "rsdp";
-            acpiInterpDescriptor->friendly_name.length = 4;
-            acpiInterpDescriptor->init_data = &initTag->header;
+            acpiRuntimeDescriptor = new npk_device_desc();
+            acpiRuntimeDescriptor->load_name_count = 1;
+            acpiRuntimeDescriptor->load_names = loadName;
+            acpiRuntimeDescriptor->friendly_name.data = "rsdp";
+            acpiRuntimeDescriptor->friendly_name.length = 4;
+            acpiRuntimeDescriptor->init_data = &initTag->header;
         }
         else
             Log("Bootloader did not provide RSDP (or it was null).", LogLevel::Warning);
@@ -130,10 +130,8 @@ namespace Npk
 
     void InitThread(void*)
     {
+        ThreadedArchInit();
         Drivers::ScanForModules("/initdisk/drivers/");
-
-        if (acpiInterpDescriptor != nullptr)
-            Drivers::DriverManager::Global().AddDescriptor(acpiInterpDescriptor);
 
         //check for PCI controllers presenting themselves via MCFG
         using namespace Config;
@@ -176,7 +174,8 @@ namespace Npk
             }
         }
 
-        ThreadedArchInit();
+        if (acpiRuntimeDescriptor != nullptr)
+            Drivers::DriverManager::Global().AddDescriptor(acpiRuntimeDescriptor);
 
         Drivers::DriverManager::Global().PrintInfo();
         Tasking::Thread::Current().Exit(0);
