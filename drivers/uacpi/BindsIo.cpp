@@ -1,42 +1,12 @@
 #include <uacpi/kernel_api.h>
 #include <interfaces/driver/Memory.h>
+#include <interfaces/driver/Devices.h>
 #include <Log.h>
 #include <NativePtr.h>
 #include <Maths.h>
 
 extern "C"
 {
-#ifdef __x86_64__
-    static uacpi_u64 PortRead(uint16_t port, uacpi_u8 width)
-    {
-        union
-        {
-            uint8_t u8;
-            uint16_t u16;
-            uint32_t u32;
-        } temp;
-
-        switch (width)
-        {
-        case 1: asm("inb %1, %0" : "=a"(temp.u8) : "Nd"(port) : "memory"); break;
-        case 2: asm("inw %1, %0" : "=a"(temp.u16) : "Nd"(port) : "memory"); break;
-        case 4: asm("inl %1, %0" : "=a"(temp.u32) : "Nd"(port) : "memory"); break;
-        }
-
-        return temp.u32;
-    }
-
-    static void PortWrite(uint16_t port, uacpi_u8 width, uacpi_u64 data)
-    {        
-        switch (width)
-        {
-        case 1: asm volatile("outb %0, %1" :: "a"((uint8_t)data), "Nd"(port)); break;
-        case 2: asm volatile("outw %0, %1" :: "a"((uint16_t)data), "Nd"(port)); break;
-        case 4: asm volatile("outl %0, %1" :: "a"((uint32_t)data), "Nd"(port)); break;
-        }
-    }
-#endif
-
     uacpi_status uacpi_kernel_raw_memory_read(uacpi_phys_addr address, uacpi_u8 byte_width, uacpi_u64* out_value)
     {
         VALIDATE_(out_value != nullptr, UACPI_STATUS_INVALID_ARGUMENT);
@@ -103,70 +73,36 @@ extern "C"
 
     uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byte_width, uacpi_u64* out_value)
     {
-#ifdef __x86_64__
-        VALIDATE_(address <= 0xFFFF, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(byte_width <= 4 && byte_width != 3, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(out_value != nullptr, UACPI_STATUS_INVALID_ARGUMENT);
-
-        *out_value = PortRead(address, byte_width);
-        return UACPI_STATUS_OK;
-#else
-        return UACPI_STATUS_UNIMPLEMENTED;
-#endif
+        return npk_access_bus(BusPortIo, byte_width, address, out_value, false)
+            ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
     uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byte_width, uacpi_u64 in_value)
     {
-#ifdef __x86_64__
-        VALIDATE_(address <= 0xFFFF, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(byte_width <= 4 && byte_width != 3, UACPI_STATUS_INVALID_ARGUMENT);
-
-        PortWrite(address, byte_width, in_value);
-        return UACPI_STATUS_OK;
-#else
-        return UACPI_STATUS_UNIMPLEMENTED;
-#endif
+        return npk_access_bus(BusPortIo, byte_width, address, &in_value, true)
+            ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
-    uacpi_status uacpi_kernel_pci_read(uacpi_pci_address* address, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64* value)
+    uacpi_status uacpi_kernel_pci_read(uacpi_pci_address* addr, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64* value)
     {
-        (void)address; (void)offset; (void)byte_width; (void)value;
+        const uintptr_t busAddr = NPK_MAKE_PCI_BUS_ADDR(addr->segment, addr->bus, addr->device, addr->function, offset);
 
-        Log("Attempted raw PCI read", LogLevel::Warning);
-        return UACPI_STATUS_UNIMPLEMENTED;
+        return npk_access_bus(BusPci, byte_width, busAddr, value, false)
+            ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
-    uacpi_status uacpi_kernel_pci_write(uacpi_pci_address* address, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
+    uacpi_status uacpi_kernel_pci_write(uacpi_pci_address* addr, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
     {
-        (void)address; (void)offset; (void)byte_width; (void)value;
+        const uintptr_t busAddr = NPK_MAKE_PCI_BUS_ADDR(addr->segment, addr->bus, addr->device, addr->function, offset);
 
-        Log("Attempted raw PCI read", LogLevel::Warning);
-        return UACPI_STATUS_UNIMPLEMENTED;
+        return npk_access_bus(BusPci, byte_width, busAddr, &value, true)
+            ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
-
-    union IoMapping //:meme:
-    {
-        struct
-        {
-            uint16_t base;
-            uint16_t length;
-        };
-        uintptr_t packed;
-    };
 
     uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len, uacpi_handle* out_handle)
     {
-#ifdef __x86_64__
-        VALIDATE_(base <= 0xFFFF, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(len <= 0xFFFF, UACPI_STATUS_INVALID_ARGUMENT);
-
-        IoMapping mapping { .base = (uint16_t)base, .length = (uint16_t)len };
-        *out_handle = reinterpret_cast<uacpi_handle>(mapping.packed);
-
+        *out_handle = reinterpret_cast<uacpi_handle>(base);
         return UACPI_STATUS_OK;
-#else
-        return UACPI_STATUS_UNIMPLEMENTED;
-#endif
     }
 
     void uacpi_kernel_io_unmap(uacpi_handle handle)
@@ -174,38 +110,16 @@ extern "C"
 
     uacpi_status uacpi_kernel_io_read(uacpi_handle handle, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64* value)
     {
-#ifdef __x86_64__
-        VALIDATE_(handle != nullptr, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(offset <= 0xFFFF, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(byte_width <= 4 && byte_width != 3, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(value != nullptr, UACPI_STATUS_INVALID_ARGUMENT);
-
-        const IoMapping mapping { .packed = reinterpret_cast<uintptr_t>(handle) };
-        const uint16_t port = mapping.base + offset;
-        VALIDATE_(mapping.base + offset <= 0xFFFF, UACPI_STATUS_INVALID_ARGUMENT);
-
-        *value = PortRead(port, byte_width);
-        return UACPI_STATUS_OK;
-#else
-        return UACPI_STATUS_UNIMPLEMENTED;
-#endif
+        auto base = reinterpret_cast<uacpi_io_addr>(handle);
+        return npk_access_bus(BusPortIo, byte_width, base + offset, value, false)
+            ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
     uacpi_status uacpi_kernel_io_write(uacpi_handle handle, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
     {
-#ifdef __x86_64__
-        VALIDATE_(handle != nullptr, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(offset <= 0xFFFF, UACPI_STATUS_INVALID_ARGUMENT);
-        VALIDATE_(byte_width <= 4 && byte_width != 3, UACPI_STATUS_INVALID_ARGUMENT);
-
-        const IoMapping mapping { .packed = reinterpret_cast<uintptr_t>(handle) };
-        const uint16_t port = mapping.base + offset;
-
-        PortWrite(port, byte_width, value);
-        return UACPI_STATUS_OK;
-#else
-        return UACPI_STATUS_UNIMPLEMENTED;
-#endif
+        auto base = reinterpret_cast<uacpi_io_addr>(handle);
+        return npk_access_bus(BusPortIo, byte_width, base + offset, &value, false)
+            ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
     void* uacpi_kernel_map(uacpi_phys_addr addr, uacpi_size len)

@@ -11,17 +11,8 @@
 
 extern "C"
 {
-    /* alloc() and calloc() implementation notes:
-     * The kernel heap doesn't zero memory at all, thats seen as the callers problem
-     * if they want zeroed memory. Typically this is fine in C++ as we're immediately
-     * running a constructor, in this case calloc() needs to be zeroed, and its
-     * nice to zero alloc() as well.
-     */
     void* uacpi_kernel_alloc(uacpi_size size)
     {
-        void* ptr = npk_heap_alloc(size);
-        if (ptr != nullptr)
-            sl::memset(ptr, 0, size);
         return npk_heap_alloc(size);
     }
 
@@ -71,7 +62,7 @@ extern "C"
 
     uacpi_u64 uacpi_kernel_get_ticks()
     {
-        const npk_monotomic_time uptime = npk_get_monotomic_time();
+        const npk_monotonic_time uptime = npk_get_monotonic_time();
         const size_t tickNs = (size_t)sl::TimeScale::Nanos / uptime.frequency;
 
         //uacpi expects each tick to represent 100 nanoseconds
@@ -80,11 +71,11 @@ extern "C"
 
     void uacpi_kernel_stall(uacpi_u8 usec)
     {
-        const npk_monotomic_time uptime = npk_get_monotomic_time();
+        const npk_monotonic_time uptime = npk_get_monotonic_time();
         const size_t tickUs = (size_t)sl::TimeScale::Micros / uptime.frequency;
 
         const size_t targetTicks = uptime.ticks + (usec / tickUs); //TODO: conversion looks a bit sus?
-        while (npk_get_monotomic_time().ticks < targetTicks)
+        while (npk_get_monotonic_time().ticks < targetTicks)
             sl::HintSpinloop();
     }
 
@@ -138,6 +129,7 @@ extern "C"
 
     uacpi_status uacpi_kernel_uninstall_interrupt_handler(uacpi_interrupt_handler callback, uacpi_handle irq_handle)
     {
+        (void)callback;
         VALIDATE_(irq_handle != nullptr, UACPI_STATUS_INVALID_ARGUMENT);
 
         auto route = static_cast<npk_interrupt_route*>(irq_handle);

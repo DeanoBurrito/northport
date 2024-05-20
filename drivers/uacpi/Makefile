@@ -2,12 +2,12 @@ TARGET = Uacpi
 CLONE_URL = https://github.com/ultraos/uacpi
 CLONE_DIR = .upstream
 
-COMMON_FLAGS = -Iinclude -I$(CLONE_DIR)/include -DUACPI_SIZED_FREES -DUACPI_OVERRIDE_STDLIB -DUACPI_OVERRIDE_COMPILER
+COMMON_FLAGS = -Iinclude -I$(CLONE_DIR)/include -DUACPI_SIZED_FREES -DUACPI_FORMATTED_LOGGING
 CXX_FLAGS = $(DRIVER_CXX_FLAGS) $(COMMON_FLAGS)
 C_FLAGS = $(DRIVER_C_FLAGS) $(COMMON_FLAGS)
 LD_FLAGS = $(DRIVER_LD_FLAGS)
 
-CXX_SRCS = Main.cpp Stdlib.cpp BindsIo.cpp BindsSync.cpp BindsMisc.cpp
+CXX_SRCS = Main.cpp BindsIo.cpp BindsSync.cpp BindsMisc.cpp
 C_SRCS = $(wildcard $(CLONE_DIR)/source/*.c)
 
 include $(PROJ_ROOT_DIR)/misc/BuildCommon.mk

@@ -1,5 +1,7 @@
 #include <interfaces/driver/Api.h>
 #include <uacpi/uacpi.h>
+#include <uacpi/event.h>
+#include <uacpi/utilities.h>
 #include <Log.h>
 
 bool ProcessEvent(npk_event_type type, void* arg)
@@ -51,14 +53,39 @@ bool ProcessEvent(npk_event_type type, void* arg)
                     uacpi_status_to_string(status));
                 return false;
             }
+
+            //TODO: install GPE handlers for things we want before this.
+            if (auto status = uacpi_finalize_gpe_initialization(); status != UACPI_STATUS_OK)
+            {
+                Log("GPE init failed, ec: %lu (%s)", LogLevel::Error, (size_t)status,
+                    uacpi_status_to_string(status));
+                return false;
+            }
             //TODO: install notify handler at root?
-            //TODO: expose some apis to the kernel, we can at least enumerate devices.
 
             return true;
         }
 
     default:
         return false;
+    }
+}
+
+extern "C"
+{
+    int __popcountdi2(int64_t a)
+    {
+        /* This function was taken from https://github.com/mintsuki/cc-runtime, which is a rip
+         * of the LLVM compiler runtime library (different flavour of libgcc).
+         * See https://llvm.org/LICENSE.txt for the full license and more info.
+         */
+        uint64_t x2 = (uint64_t)a;
+        x2 = x2 - ((x2 >> 1) & 0x5555555555555555uLL);
+        x2 = ((x2 >> 2) & 0x3333333333333333uLL) + (x2 & 0x3333333333333333uLL);
+        x2 = (x2 + (x2 >> 4)) & 0x0F0F0F0F0F0F0F0FuLL;
+        uint32_t x = (uint32_t)(x2 + (x2 >> 32));
+        x = x + (x >> 16);
+        return (x + (x >> 8)) & 0x0000007F;
     }
 }
 
