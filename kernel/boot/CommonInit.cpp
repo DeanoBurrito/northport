@@ -36,9 +36,9 @@ namespace Npk
     
     void InitEarlyPlatform()
     {
-        Log("\r\nNorthport kernel %lu.%lu.%lu for %s started, based on commit %s.", LogLevel::Info, 
-            Debug::versionMajor, Debug::versionMinor, Debug::versionRev, Debug::targetArchStr, 
-            Debug::gitCommitShortHash);
+        using namespace Debug;
+        Log("\r\nNorthport kernel %lu.%lu.%lu for %s started, based on commit %s, compiler by %s.", LogLevel::Info, 
+            versionMajor, versionMinor, versionRev, targetArchStr, gitCommitShortHash, toolchainUsed);
         Config::InitConfigStore();
         Boot::CheckLimineTags();
 

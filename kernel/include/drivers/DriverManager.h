@@ -34,16 +34,6 @@ namespace Npk::Drivers
         { return a.id < b.id; }
     };
 
-    enum class LoadType
-    {
-        Never = 0,
-        Always = 1,
-        PciClass = 2,
-        PciId = 3,
-        PciHost = 4,
-        DtbCompat = 5,
-    };
-
     enum class EventType
     {
         Init = 0,
@@ -69,8 +59,7 @@ namespace Npk::Drivers
         sl::SpinLock lock;
         sl::String sourcePath;
         sl::String friendlyName;
-        LoadType loadType;
-        sl::Span<const uint8_t> loadStr;
+        sl::Vector<npk_load_name> loadNames;
 
         sl::Handle<LoadedElf> runtimeImage;
         ProcessEventFunc ProcessEvent;
@@ -85,12 +74,6 @@ namespace Npk::Drivers
         sl::Handle<DeviceApi> transportDevice;
         sl::LinkedList<sl::Handle<DeviceDescriptor>> providedDevices;
         sl::LinkedList<sl::Handle<DeviceApi>> apis;
-    };
-
-    struct DeviceLoadName
-    {
-        LoadType type;
-        sl::Span<const uint8_t> str;
     };
 
     struct DeviceDescriptor : public DeviceNode
@@ -124,13 +107,13 @@ namespace Npk::Drivers
         DriverStats stats;
         sl::Atomic<size_t> idAlloc;
 
-        sl::Handle<DriverManifest> LocateDriver(sl::Handle<DeviceDescriptor>& device);
+        sl::Handle<DriverManifest> LocateDriver(sl::Span<npk_load_name> names, bool noLock = false);
+        sl::Handle<DeviceDescriptor> LocateDevice(sl::Span<npk_load_name> names);
         bool EnsureRunning(sl::Handle<DriverManifest>& manifest);
         bool AttachDevice(sl::Handle<DriverManifest>& driver, sl::Handle<DeviceDescriptor>& device);
         bool DetachDevice(sl::Handle<DeviceDescriptor>& device);
 
         void SetShadow(sl::Handle<DriverInstance> shadow) const;
-        void AddNode(sl::Handle<DeviceNode> node);
 
     public:
         static DriverManager& Global();

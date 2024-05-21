@@ -37,6 +37,8 @@ namespace sl
 
     ComputedReloc ComputeRelocation(Elf64_Word type, uintptr_t a, uintptr_t b, uintptr_t s, uintptr_t p)
     {
+        (void)p;
+
         switch (type)
         {
 #ifdef __x86_64__
@@ -49,6 +51,7 @@ namespace sl
         case R_RISCV_64: return { .value = a + s, .length = 8 };
         case R_RISCV_32: return { .value = a + s, .length = 4 };
         case R_RISCV_RELATIVE: return { .value = b + a, .length = sizeof(void*) };
+        case R_RISCV_JUMP_SLOT: return { .value = s, .length = sizeof(void*) };
 #else
     #error "syslib/Elf.cpp: unknown architecture"
 #endif

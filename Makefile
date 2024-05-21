@@ -51,10 +51,12 @@ export DRIVER_CXX_FLAGS += -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -f
 	-I$(PROJ_ROOT_DIR)/kernel/include -I$(PROJ_ROOT_DIR)/libs/np-syslib/include \
 	-I$(PROJ_ROOT_DIR)/libs/np-driverlib/include
 export DRIVER_LD_FLAGS += -nostdlib -shared -znorelro \
-	-L$(LIBS_OUTPUT_DIR) --exclude-libs ALL -lknp-syslib -lnp-driverlib
+	-L$(LIBS_OUTPUT_DIR) --exclude-libs ALL -lknp-syslib -lnp-driverlib \
+	-T$(PROJ_ROOT_DIR)/misc/cross/$(CPU_ARCH)/Driver.lds
 
 export BUILD_DIR = build
 export CPU_ARCH
+export TOOLCHAIN
 export ARCH_TARGET = $(CPU_ARCH)-elf
 
 PROJ_DIR_INITDISK = initdisk

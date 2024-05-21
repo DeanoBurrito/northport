@@ -54,12 +54,13 @@ debug/BakedConstants.cpp:
 	@printf "#include <debug/BakedConstants.h>\n \
 		namespace Npk::Debug \
 		{ \
-			const char* targetArchStr = \"$(CPU_ARCH)\"; \
-			const char* gitCommitHash = \"$(shell git rev-parse HEAD)\"; \
-			const char* gitCommitShortHash = \"$(shell git rev-parse --short HEAD)\"; \
-			size_t versionMajor = 0; \
-			size_t versionMinor = 3; \
-			size_t versionRev = 0; \
+			const char* targetArchStr = \"$(CPU_ARCH)\"; \n\
+			const char* gitCommitHash = \"$(shell git rev-parse HEAD)\"; \n\
+			const char* gitCommitShortHash = \"$(shell git rev-parse --short HEAD)\"; \n\
+			size_t versionMajor = 0; \n\
+			size_t versionMinor = 3; \n\
+			size_t versionRev = 0; \n\
+			const char* toolchainUsed = \"$(TOOLCHAIN)\"; \n\
 		}" > debug/BakedConstants.cpp
 
 $(BUILD_DIR)/%.S.o: %.S

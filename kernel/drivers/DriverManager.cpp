@@ -98,28 +98,65 @@ namespace Npk::Drivers
         nodeTreeLock.ReaderUnlock();
     }
 
-    sl::Handle<DriverManifest> DriverManager::LocateDriver(sl::Handle<DeviceDescriptor>& device)
+    sl::Handle<DriverManifest> DriverManager::LocateDriver(sl::Span<npk_load_name> names, bool noLock)
     {
-        VALIDATE_(device.Valid(), {});
-        sl::Span<npk_load_name> loadNames(device->apiDesc->load_names, device->apiDesc->load_name_count);
-
-        manifestsLock.ReaderLock();
+        //TODO: employ a hash table here or anything more efficient
+        if (!noLock)
+            manifestsLock.ReaderLock();
         for (auto it = manifests.Begin(); it != manifests.End(); ++it)
         {
-            auto scan = *it;
-            for (size_t i = 0; i < loadNames.Size(); i++)
+            auto manifest = *it;
+            for (size_t i = 0; i < manifest->loadNames.Size(); i++)
             {
-                sl::Span<const uint8_t> loadName(loadNames[i].str, loadNames[i].length);
-                if (static_cast<LoadType>(loadNames[i].type) != scan->loadType)
-                    continue;
-                if (loadName != scan->loadStr)
-                    continue;
+                auto manifestName = manifest->loadNames[i];
+                for (size_t j = 0; j < names.Size(); j++)
+                {
+                    auto testName = names[j];
+                    if (testName.type != manifestName.type)
+                        continue;
+                    if (testName.length != manifestName.length)
+                        continue;
+                    if (sl::memcmp(testName.str, manifestName.str, testName.length) != 0)
+                        continue;
 
-                manifestsLock.ReaderUnlock();
-                return scan;
+                    //we found the one, only took 3 nested for loops
+                    if (!noLock)
+                        manifestsLock.ReaderUnlock();
+                    return manifest;
+                }
             }
         }
-        manifestsLock.ReaderUnlock();
+
+        if (!noLock)
+            manifestsLock.ReaderUnlock();
+        return {};
+    }
+
+    sl::Handle<DeviceDescriptor> DriverManager::LocateDevice(sl::Span<npk_load_name> names)
+    {
+        sl::ScopedLock scopeLock(unclaimedDevsLock);
+
+        for (auto it = unclaimedDevs.Begin(); it != unclaimedDevs.End(); ++it)
+        {
+            auto dev = *it;
+            for (size_t i = 0; i < dev->apiDesc->load_name_count; i++)
+            {
+                auto devName = dev->apiDesc->load_names[i];
+                for (size_t j = 0; j < names.Size(); j++)
+                {
+                    auto testName = names[j];
+                    if (testName.type != devName.type)
+                        continue;
+                    if (testName.length != devName.length)
+                        continue;
+                    if (sl::memcmp(testName.str, devName.str, testName.length) != 0)
+                        continue;
+
+                    return dev;
+                }
+            }
+        }
+
         return {};
     }
 
@@ -262,7 +299,9 @@ namespace Npk::Drivers
                     manifest->friendlyName.C_Str());
                 return false;
             }
-            if (scan->loadType == manifest->loadType && scan->loadStr == manifest->loadStr)
+            
+            auto conflictingDriver = LocateDriver({ manifest->loadNames.Begin(), manifest->loadNames.Size() }, true);
+            if (conflictingDriver.Valid())
             {
                 manifestsLock.WriterUnlock();
                 Log("Failed to register driver with duplicate load string: %s", LogLevel::Error,
@@ -278,42 +317,20 @@ namespace Npk::Drivers
         Log("Driver manifest added: %s, module=%s", LogLevel::Info, manifest->friendlyName.C_Str()
             , manifest->sourcePath.C_Str());
 
-        //some drivers might be purely software-driven and want to always be loaded, handle them.
-        if (manifest->loadType == LoadType::Always)
-        {
-            Log("Loading driver %s due to loadtype=always", LogLevel::Info, manifest->friendlyName.C_Str());
-            if (!EnsureRunning(manifest))
-                Log("Failed to load always-load driver %s", LogLevel::Error, manifest->friendlyName.C_Str());
-        }
+        //TODO: driver flags (always load)
 
         //check existing devices for any that might be handled by this driver.
-        sl::ScopedLock devsLock(unclaimedDevsLock);
         while (true)
         {
-            bool finishedEarly = false;
-            for (auto it = unclaimedDevs.Begin(); it != unclaimedDevs.End(); ++it)
-            {
-                auto& device = *it;
-                sl::Span<npk_load_name> loadNames(device->apiDesc->load_names, device->apiDesc->load_name_count);
-
-                for (size_t i = 0; i < loadNames.Size(); i++)
-                {
-                    sl::Span<const uint8_t> loadName(loadNames[i].str, loadNames[i].length);
-                    if (static_cast<LoadType>(loadNames[i].type) != manifest->loadType)
-                        continue;
-                    if (loadName != manifest->loadStr)
-                        continue;
-
-                    if (AttachDevice(manifest, device))
-                    {
-                        unclaimedDevs.Erase(it);
-                        finishedEarly = true;
-                        break;
-                    }
-                }
-            }
-            if (!finishedEarly)
+            auto device = LocateDevice({ manifest->loadNames.Begin(), manifest->loadNames.Size() });
+            if (!device.Valid())
                 break;
+
+            if (!AttachDevice(manifest, device))
+            {
+                sl::ScopedLock scopeLock(unclaimedDevsLock);
+                unclaimedDevs.PushBack(device);
+            }
         }
 
         return true;
@@ -357,7 +374,7 @@ namespace Npk::Drivers
         nodeTreeLock.WriterUnlock();
 
         //try find a driver for our descriptor and load it.
-        auto foundDriver = LocateDriver(desc);
+        auto foundDriver = LocateDriver({ desc->apiDesc->load_names, desc->apiDesc->load_name_count });
         if (foundDriver.Valid() && AttachDevice(foundDriver, desc))
             return desc->id;
 

@@ -37,13 +37,6 @@ extern "C" {
 
 typedef struct
 {
-    npk_load_type type;
-    size_t length;
-    REQUIRED OWNING const uint8_t* str;
-} npk_load_name;
-
-typedef struct
-{
     size_t load_name_count;
     REQUIRED OWNING npk_load_name* load_names;
     OPTIONAL OWNING npk_init_tag* init_data;

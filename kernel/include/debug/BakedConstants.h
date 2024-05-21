@@ -11,4 +11,5 @@ namespace Npk::Debug
     extern size_t versionMajor;
     extern size_t versionMinor;
     extern size_t versionRev;
+    extern const char* toolchainUsed;
 }

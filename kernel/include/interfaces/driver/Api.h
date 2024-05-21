@@ -34,25 +34,14 @@
 extern "C" {
 #endif
 
-#define NPK_METADATA __attribute__((used, section(".npk_module")))
+#define NPK_METADATA __attribute__((used, section(".npkmodule")))
 
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
-#define NP_MODULE_API_VER_MINOR 4
+#define NP_MODULE_API_VER_MINOR 5
 #define NP_MODULE_API_VER_REV 0
 
-/* Various GUIDs used by the API */
-#define NP_MODULE_META_START_GUID { 0x11, 0xfc, 0x92, 0x87, 0x64, 0xc0, 0x4b, 0xaf, 0x9e, 0x59, 0x31, 0x64, 0xbf, 0xf9, 0xfa, 0x5a }
 #define NP_MODULE_MANIFEST_GUID { 0x23, 0x1e, 0x1f, 0xeb, 0xcf, 0xf6, 0x4f, 0xfc, 0x97, 0x76, 0x26, 0x07, 0x42, 0x77, 0x18, 0x96 }
-
-/* Struct that indicates this file can be loaded as a module, only one of these can exist. */
-typedef struct
-{
-    uint8_t guid[16];
-    uint16_t api_ver_major;
-    uint16_t api_ver_minor;
-    uint16_t api_ver_rev;
-} npk_module_metadata;
 
 typedef enum
 {
@@ -143,19 +132,28 @@ typedef struct
     size_t device_id;
 } npk_event_remove_device;
 
+typedef struct
+{
+    npk_load_type type;
+    size_t length;
+    REQUIRED OWNING const uint8_t* str;
+} npk_load_name;
+
 typedef struct 
 {
     uint8_t guid[16];
     uint16_t ver_major;
     uint16_t ver_minor;
-    uint16_t ver_rev;
-
-    npk_load_type load_type;
-    size_t load_str_len;
-    REQUIRED const uint8_t* load_str;
-    REQUIRED const char* friendly_name;
+    uint16_t api_ver_major;
+    uint16_t api_ver_minor;
+    size_t flags;
 
     REQUIRED bool (*process_event)(npk_event_type type, void* arg);
+    size_t friendly_name_len;
+    REQUIRED const char* friendly_name;
+    size_t load_name_count;
+    REQUIRED const npk_load_name* load_names;
+
 } npk_driver_manifest;
 
 typedef enum

@@ -28,25 +28,23 @@ bool ProcessEvent(npk_event_type type, void* arg)
     ASSERT_UNREACHABLE();
 }
 
-NPK_METADATA const npk_module_metadata moduleMetadata
+NPK_METADATA const uint8_t loadName[] = NPK_PCI_ID_LOAD_STR(0x1234, 0x1111);
+NPK_METADATA const npk_load_name loadNames[] =
 {
-    .guid = NP_MODULE_META_START_GUID,
-    .api_ver_major = NP_MODULE_API_VER_MAJOR,
-    .api_ver_minor = NP_MODULE_API_VER_MINOR,
-    .api_ver_rev = NP_MODULE_API_VER_REV,
+    { .type = npk_load_type::PciId, .length = sizeof(loadName), .str = loadName }
 };
-
 NPK_METADATA const char friendlyName[] = "qemu";
-NPK_METADATA const uint8_t loadStr[] = { 0x34, 0x12, 0x11, 0x11 };
 NPK_METADATA const npk_driver_manifest driverManifest
 {
     .guid = NP_MODULE_MANIFEST_GUID,
     .ver_major = 1,
     .ver_minor = 0,
-    .ver_rev = 0,
-    .load_type = npk_load_type::PciId,
-    .load_str_len = sizeof(loadStr),
-    .load_str = loadStr,
+    .api_ver_major = NP_MODULE_API_VER_MAJOR,
+    .api_ver_minor = NP_MODULE_API_VER_MINOR,
+    .flags = 0,
+    .process_event = ProcessEvent,
+    .friendly_name_len = sizeof(friendlyName),
     .friendly_name = friendlyName,
-    .process_event = ProcessEvent
+    .load_name_count = sizeof(loadNames) / sizeof(npk_load_name),
+    .load_names = loadNames
 };

@@ -4,6 +4,28 @@
 #include <uacpi/utilities.h>
 #include <Log.h>
 
+uacpi_ns_iteration_decision NamespaceEnumerator(void* user, uacpi_namespace_node* node)
+{
+    (void)user;
+
+    uacpi_namespace_node_info* info = nullptr;
+    if (uacpi_get_namespace_node_info(node, &info) != UACPI_STATUS_OK)
+        return UACPI_NS_ITERATION_DECISION_CONTINUE;
+
+    if (info->type != UACPI_OBJECT_DEVICE)
+    {
+        uacpi_free_namespace_node_info(info);
+        return UACPI_NS_ITERATION_DECISION_CONTINUE;
+    }
+
+    auto path = uacpi_namespace_node_generate_absolute_path(node);
+    Log("Found node: %s", LogLevel::Debug, path);
+    uacpi_free_absolute_path(path);
+
+    uacpi_free_namespace_node_info(info);
+    return UACPI_NS_ITERATION_DECISION_CONTINUE;
+}
+
 bool ProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
@@ -63,6 +85,9 @@ bool ProcessEvent(npk_event_type type, void* arg)
             }
             //TODO: install notify handler at root?
 
+            uacpi_namespace_for_each_node_depth_first(uacpi_namespace_root(),
+                NamespaceEnumerator, nullptr);
+
             return true;
         }
 
@@ -89,24 +114,22 @@ extern "C"
     }
 }
 
-NPK_METADATA const npk_module_metadata moduleMetadata
+NPK_METADATA const npk_load_name loadNames[] =
 {
-    .guid = NP_MODULE_META_START_GUID,
-    .api_ver_major = NP_MODULE_API_VER_MAJOR,
-    .api_ver_minor = NP_MODULE_API_VER_MINOR,
-    .api_ver_rev = NP_MODULE_API_VER_REV,
+    { .type = npk_load_type::AcpiRuntime, .length = 0, .str = nullptr }
 };
-
 NPK_METADATA const char friendlyName[] = "uacpi";
 NPK_METADATA const npk_driver_manifest manifest
 {
     .guid = NP_MODULE_MANIFEST_GUID,
     .ver_major = 1,
     .ver_minor = 0,
-    .ver_rev = 0,
-    .load_type = npk_load_type::AcpiRuntime,
-    .load_str_len = 0,
-    .load_str = nullptr,
+    .api_ver_major = NP_MODULE_API_VER_MAJOR,
+    .api_ver_minor = NP_MODULE_API_VER_MINOR,
+    .flags = 0,
+    .process_event = ProcessEvent,
+    .friendly_name_len = sizeof(friendlyName),
     .friendly_name = friendlyName,
-    .process_event = ProcessEvent
+    .load_name_count = sizeof(loadNames) / sizeof(npk_load_name),
+    .load_names = loadNames
 };
