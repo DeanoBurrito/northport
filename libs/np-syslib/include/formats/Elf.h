@@ -11,6 +11,7 @@ namespace sl
     {
         uintptr_t value;
         size_t length;
+        bool usedSymbol;
     };
 
     ComputedReloc ComputeRelocation(Elf64_Word type, uintptr_t a, uintptr_t b, uintptr_t s, uintptr_t p);

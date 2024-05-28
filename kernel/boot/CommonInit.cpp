@@ -37,7 +37,7 @@ namespace Npk
     void InitEarlyPlatform()
     {
         using namespace Debug;
-        Log("\r\nNorthport kernel %lu.%lu.%lu for %s started, based on commit %s, compiler by %s.", LogLevel::Info, 
+        Log("\r\nNorthport kernel %lu.%lu.%lu for %s started, based on commit %s, compiled by %s.", LogLevel::Info, 
             versionMajor, versionMinor, versionRev, targetArchStr, gitCommitShortHash, toolchainUsed);
         Config::InitConfigStore();
         Boot::CheckLimineTags();
@@ -46,10 +46,16 @@ namespace Npk
         for (size_t i = Boot::memmapRequest.response->entry_count - 1; i > 0; i--)
         {
             auto entry = Boot::memmapRequest.response->entries[i];
-            auto type = entry->type;
-            if (type != LIMINE_MEMMAP_USABLE && type != LIMINE_MEMMAP_KERNEL_AND_MODULES &&
-                type != LIMINE_MEMMAP_FRAMEBUFFER && type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
+            switch (entry->type)
+            {
+            case LIMINE_MEMMAP_USABLE:
+            case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
+            case LIMINE_MEMMAP_KERNEL_AND_MODULES:
+            case LIMINE_MEMMAP_FRAMEBUFFER:
+                break;
+            default:
                 continue;
+            }
 
             hhdmLength = sl::AlignUp(entry->base + entry->length, PageSize);
             break;

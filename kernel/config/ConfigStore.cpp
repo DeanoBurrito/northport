@@ -106,7 +106,7 @@ namespace Npk::Config
             if (compare != key || *compare.End() != '=')
             {
                 const size_t nextSpace = sl::memfirst(source.Begin(), ' ', source.Size());
-                if (nextSpace == -1ul)
+                if (nextSpace == source.Size())
                     break;
                 source = source.Subspan(nextSpace + 1, -1ul);
                 continue;

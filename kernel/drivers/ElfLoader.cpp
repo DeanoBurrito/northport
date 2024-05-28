@@ -15,7 +15,7 @@ namespace Npk::Drivers
         while (true)
         {
             const size_t index = sl::memfirst(fullname.Begin(), '/', fullname.Size());
-            if (index == -1ul)
+            if (index == fullname.Size())
                 break;
             fullname = fullname.Subspan(index + 1, -1ul);
         }
@@ -88,6 +88,8 @@ namespace Npk::Drivers
         }
 
         const auto computed = sl::ComputeRelocation(type, a, b, s, p);
+        if (computed.usedSymbol && s == 0)
+            return false;
         VALIDATE(computed.length != 0, false, "Unknown relocation type");
         sl::memcopy(&computed.value, reinterpret_cast<void*>(p), computed.length);
         return true;
@@ -138,7 +140,11 @@ namespace Npk::Drivers
             auto rel = sl::CNativePtr(dynInfo.pltRelocs).Offset(offset).As<const sl::Elf64_Rel>();
 
             if (!ApplyRelocation(dynInfo, rel, dynInfo.pltUsesRela, buffer->raw, isDriver))
+            {
+                Log("PltRel %lu failed: r_offset(+base)=0x%lx, r_info=0x%lx", LogLevel::Error,
+                    offset / offsetIncrement, rel->r_offset + buffer->raw, rel->r_info);
                 failedRelocs++;
+            }
         }
 
         return failedRelocs == 0;

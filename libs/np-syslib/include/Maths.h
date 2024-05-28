@@ -199,4 +199,19 @@ namespace sl
     {
         return test && !(test & (test - 1));
     }
+
+    constexpr inline size_t PopCount(size_t test)
+    {
+        /* This function was taken from https://github.com/mintsuki/cc-runtime, which is a rip
+         * of the LLVM compiler runtime library (different flavour of libgcc).
+         * See https://llvm.org/LICENSE.txt for the full license and more info.
+         */
+        uint64_t x2 = (uint64_t)test;
+        x2 = x2 - ((x2 >> 1) & 0x5555555555555555uLL);
+        x2 = ((x2 >> 2) & 0x3333333333333333uLL) + (x2 & 0x3333333333333333uLL);
+        x2 = (x2 + (x2 >> 4)) & 0x0F0F0F0F0F0F0F0FuLL;
+        uint32_t x = (uint32_t)(x2 + (x2 >> 32));
+        x = x + (x >> 16);
+        return (x + (x >> 8)) & 0x0000007F;
+    }
 }

@@ -92,7 +92,7 @@ namespace Npk::Config
         char oem[7];
         const size_t oemLength = sl::memfirst(table->oem, ' ', 6);
         sl::memset(oem, 0, 7);
-        sl::memcopy(table->oem, oem, oemLength != (size_t)-1 ? oemLength : 6);
+        sl::memcopy(table->oem, oem, oemLength);
 
         Log("Acpi Sdt: sig=%.4s, oem=%s, revision=%u, length=0x%u", LogLevel::Verbose,
             table->signature, oem, table->revision, table->length);

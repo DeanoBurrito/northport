@@ -191,7 +191,7 @@ namespace sl
     {
         size_t lastFound = 0;
         size_t nextFound = 0;
-        while (nextFound != (size_t)-1)
+        while (nextFound != length)
         {
             lastFound = nextFound;
             nextFound = memfirst(buffer, lastFound + 1, token, length);

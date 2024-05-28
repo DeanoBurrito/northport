@@ -42,16 +42,16 @@ namespace sl
         switch (type)
         {
 #ifdef __x86_64__
-        case R_X86_64_64: return { .value = a + s, .length = 8 };
-        case R_X86_64_32: return { .value = a + s, .length = 4 };
-        case R_X86_64_RELATIVE: return { .value = b + a, .length = sizeof(void*) };
-        case R_X86_64_JUMP_SLOT: return { .value = s, .length = sizeof(void*) };
-        case R_X86_64_GLOB_DAT: return { .value = s, .length = sizeof(void*) };
+        case R_X86_64_64: return { .value = a + s, .length = 8, .usedSymbol = true };
+        case R_X86_64_32: return { .value = a + s, .length = 4, .usedSymbol = true };
+        case R_X86_64_RELATIVE: return { .value = b + a, .length = sizeof(void*), .usedSymbol = false };
+        case R_X86_64_JUMP_SLOT: return { .value = s, .length = sizeof(void*), .usedSymbol = true };
+        case R_X86_64_GLOB_DAT: return { .value = s, .length = sizeof(void*), .usedSymbol = true };
 #elif __riscv_xlen == 64
-        case R_RISCV_64: return { .value = a + s, .length = 8 };
-        case R_RISCV_32: return { .value = a + s, .length = 4 };
-        case R_RISCV_RELATIVE: return { .value = b + a, .length = sizeof(void*) };
-        case R_RISCV_JUMP_SLOT: return { .value = s, .length = sizeof(void*) };
+        case R_RISCV_64: return { .value = a + s, .length = 8, .usedSymbol = true };
+        case R_RISCV_32: return { .value = a + s, .length = 4, .usedSymbol = true };
+        case R_RISCV_RELATIVE: return { .value = b + a, .length = sizeof(void*), .usedSymbol = false };
+        case R_RISCV_JUMP_SLOT: return { .value = s, .length = sizeof(void*), .usedSymbol = true };
 #else
     #error "syslib/Elf.cpp: unknown architecture"
 #endif
