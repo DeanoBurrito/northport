@@ -1,6 +1,7 @@
 # current
 - Added more drivers:
     - uACPI: first third-party driver, provides ACPI runtime services to the kernel.
+    - NVMe: basic first implementation, but flexible enough and has read and write support. Plays nicely with MDLs from the kernel.
 
 - Driver API improvements:
     - Exposed kernel waitable events.
@@ -33,6 +34,7 @@
 - Error log levels now capture a snapshot of the callstack, for logging or retrieval later on.
     - These traces are stored in a small circular buffer.
 
+- Fixed crash when enabling terminal background with the stats renderer.
 - Fixed spelling mistake in driver api (monotomic -> monotonic), thanks IProgramInCpp for pointing that out!
 - Fixed misuse of `invlpg` on x86, accidentally evicting wrong entry from TLB.
 

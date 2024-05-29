@@ -1,4 +1,4 @@
-ENABLED_DRIVERS = pci qemu uacpi
+ENABLED_DRIVERS = pci qemu nvme
 TOP_TARGETS = all clean
 
 .PHONY: $(ENABLED_DRIVERS) $(TOP_TARGETS)
