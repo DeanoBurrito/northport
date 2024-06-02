@@ -12,14 +12,14 @@ namespace Npk::Drivers
     struct DynamicElfInfo
     {
         const char* strTable;
-        const sl::Elf64_Sym* symTable;
+        const sl::Elf_Sym* symTable;
 
         const void* pltRelocs;
         size_t pltRelocsSize;
         bool pltUsesRela;
-        const sl::Elf64_Rela* relaEntries;
+        const sl::Elf_Rela* relaEntries;
         size_t relaCount;
-        const sl::Elf64_Rel* relEntries;
+        const sl::Elf_Rel* relEntries;
         size_t relCount;
     };
 

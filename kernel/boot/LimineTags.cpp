@@ -240,6 +240,9 @@ namespace Npk::Boot
 #elif defined(__riscv)
                 const size_t localId = resp->cpus[i]->hartid;
                 const size_t isBsp = localId == resp->bsp_hartid;
+#elif defined(__m68k__)
+                const size_t localId = resp->cpus[i]->id;
+                const size_t isBsp = true;
 #endif
                 Log("  %lu: acpiId=%u, gotoAddr=%p%s", LogLevel::Verbose, localId, 
                     resp->cpus[i]->processor_id, &resp->cpus[i]->goto_address, isBsp ? ", bsp" : "");
