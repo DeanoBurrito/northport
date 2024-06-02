@@ -69,7 +69,7 @@ namespace dl
         {
             uint32_t header = addr.Read(configPtr);
             header |= 1 << 16; //set enable bit
-            header &= ~(3 < 20); //clear multiple message enable, meaning only 1 vector allocated
+            header &= ~(3 << 20); //clear multiple message enable, meaning only 1 vector allocated
             addr.Write(configPtr, header);
         }
     }
