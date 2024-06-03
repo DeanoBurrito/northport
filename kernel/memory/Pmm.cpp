@@ -1,5 +1,6 @@
 #include <memory/Pmm.h>
 #include <boot/LimineTags.h>
+#include <config/ConfigStore.h>
 #include <debug/Log.h>
 #include <Bitmap.h>
 #include <Maths.h>
@@ -62,7 +63,7 @@ namespace Npk::Memory
         size_t contigZones = 0;
         for (size_t i = 0; i < contiguousQuota;)
         {
-            const size_t count = sl::Min(contiguousQuota - i, entries[0]->length / PageSize);
+            const size_t count = sl::Min(contiguousQuota - i, (size_t)entries[0]->length / PageSize);
             i += count;
             entries[0]->length -= count * PageSize;
 
@@ -206,6 +207,11 @@ namespace Npk::Memory
         Log("%lu pages reserved for contiguous allocs (pratio=1/%lu, min=%lu, max=%lu)", LogLevel::Info,
             contiguousPages, PmContiguousPagesRatio, PmMinContiguousPages, PmMaxContiguousPages);
 
+        trashAfterUse = Config::GetConfigNumber("kernel.pmm.trash_after_use", false);
+        trashBeforeUse = Config::GetConfigNumber("kernel.pmm.trash_before_use", false);
+        if (trashAfterUse || trashBeforeUse)
+            new (&rng) sl::XoshiroRng();
+
         IngestMemory(usableEntries, usableMap, contiguousPages);
     }
 
@@ -271,6 +277,13 @@ namespace Npk::Memory
             }
             else
                 freelist.head = freeEntry->next;
+
+            if (trashBeforeUse)
+            {
+                uint64_t* access = reinterpret_cast<uint64_t*>(freeEntry);
+                for (size_t i = 0; i < PageSize / sizeof(uint64_t); i++)
+                    access[i] = rng.Next();
+            }
             return reinterpret_cast<uintptr_t>(freeEntry) - hhdmBase;
         }
 
@@ -300,6 +313,13 @@ namespace Npk::Memory
 
             for (size_t i = runStartIndex; i < runStartIndex + count; i++)
                 sl::BitmapSet(zone->bitmap, i);
+
+            if (trashBeforeUse)
+            {
+                uint64_t* access = reinterpret_cast<uint64_t*>(zone->base + (runStartIndex * PageSize));
+                for (size_t i = 0; i < PageSize / sizeof(uint64_t); i++)
+                    access[i] = rng.Next();
+            }
             return zone->base + (runStartIndex * PageSize);
         }
 
@@ -332,6 +352,13 @@ namespace Npk::Memory
             {
                 if (!sl::BitmapClear(zone->bitmap, beginIndex + i))
                     Log("Double free of physical page 0x%lx", LogLevel::Error, base + (i * PageSize));
+
+                if (trashAfterUse)
+                {
+                    uint64_t* access = reinterpret_cast<uint64_t*>(base + hhdmBase);
+                    for (size_t i = 0; i < PageSize / sizeof(uint64_t); i++)
+                        access[i] = rng.Next();
+                }
             }
             return;
         }
@@ -351,5 +378,12 @@ namespace Npk::Memory
         sl::ScopedLock scopeLock(freelist.lock);
         freeEntry->next = freelist.head;
         freelist.head = freeEntry;
+
+        if (trashAfterUse)
+        {
+            uint64_t* access = reinterpret_cast<uint64_t*>(base + hhdmBase);
+            for (size_t i = 0; i < PageSize / sizeof(uint64_t); i++)
+                access[i] = rng.Next();
+        }
     }
 }

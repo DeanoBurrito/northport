@@ -1,6 +1,6 @@
 OUTPUT_FORMAT(elf32-m68k)
 
-ENTRY(KernelEntry)
+ENTRY(ShimEntry)
 
 PHDRS
 {
@@ -12,6 +12,7 @@ PHDRS
 
 SECTIONS
 {
+    . = 0x100000;
     KERNEL_BLOB_BEGIN = .;
 
     KERNEL_TEXT_BEGIN = .;
