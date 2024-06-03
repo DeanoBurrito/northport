@@ -1,0 +1,10 @@
+KERNEL_CXX_FLAGS += -march=68040
+DRIVER_CXX_FLAGS += -march=68040
+DRIVE_C_FLAGS += -march=68040
+SYSLIB_CXX_FLAGS += -march=68040
+
+KERNEL_LD_FLAGS +=
+
+ARCH_DEFAULT_TARGET = binaries
+
+QEMU_BASE = qemus-system-m68k

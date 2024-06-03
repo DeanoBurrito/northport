@@ -17,6 +17,8 @@
     #include <arch/x86_64/Hat.h>
 #elif __riscv_xlen == 64
     #include <arch/riscv64/Hat.h>
+#elif defined(__m68k__)
+    #include <arch/m68k/Hat.h>
 #else
     #error "Compiling for unsupported ISA."
 #endif
@@ -92,7 +94,4 @@ namespace Npk
 
     //replaces the currently active HAT address space with this one.
     void MakeActiveMap(HatMap* map);
-
-    //hook for getting the MMU into a known-good state during the panic sequence.
-    void HatHandlePanic() asm("HatHandlePanic");
 }
