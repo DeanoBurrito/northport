@@ -1,9 +1,27 @@
 #pragma once
 
-#include <stdint.h>
+#include <NativePtr.h>
 
-namespace Npk
+extern "C"
 {
+    extern char LOADER_BLOB_BEGIN[];
+    extern char LOADER_BLOB_END[];
+    extern char KERNEL_BLOB_BEGIN[];
+    extern char KERNEL_BLOB_END[];
+}
+
+namespace Npl
+{
+    constexpr size_t PageSize = 0x1000;
+
+    enum class PanicReason
+    {
+        KernelReturned = 1,
+        InternalAllocFailure = 2,
+        LoadAllocFailure = 3,
+        StackCheckFail = 4,
+    };
+
     enum class BootInfoType : uint16_t
     {
         Last = 0,
@@ -12,7 +30,7 @@ namespace Npk
         FpuType = 3,
         MmuType = 4,
         MemChunk = 5,
-        RamDisk = 6,
+        InitRd = 6,
         CommandLine = 7,
         RngSeed = 8,
 
@@ -35,4 +53,7 @@ namespace Npk
         uint32_t addr;
         uint32_t size;
     };
+
+    void Panic(PanicReason reason);
+    sl::CNativePtr FindBootInfoTag(BootInfoType type, sl::CNativePtr begin = nullptr);
 }
