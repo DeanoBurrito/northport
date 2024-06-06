@@ -2,8 +2,8 @@
 #include "Util.h"
 #include <NativePtr.h>
 #include <Maths.h>
-#include <CppUtils.h>
 #include <containers/List.h>
+#include <Memory.h>
 
 namespace Npl
 {
@@ -14,13 +14,23 @@ namespace Npl
         size_t length;
         MemoryType type;
     };
+
+    constexpr uint32_t PteResident = 3 << 0;
+    constexpr uint32_t PteWrite = 1 << 2;
+    constexpr uint32_t PteCopyback = 1 << 5;
+    constexpr uint32_t PteSupervisor = 1 << 7;
+
+    struct PageTable
+    {
+        uint32_t entries[128];
+    };
     
     constexpr size_t FreeHeaderCount = 256;
     MemoryBlock freeHeaders[FreeHeaderCount];
     size_t freeHeadersUsed;
 
     sl::IntrFwdList<MemoryBlock> physList {};
-    sl::IntrFwdList<MemoryBlock> virtList {};
+    uintptr_t ptRoot;
 
     struct MemoryBlockComparer
     {
@@ -112,14 +122,44 @@ namespace Npl
         return found;
     }
 
-    static void ReserveVirtualRange(uintptr_t base, size_t length)
-    {}
-
-    static uintptr_t AllocVirtualRange(size_t length)
-    {}
-
     static void MapPage(uintptr_t vaddr, uintptr_t paddr, bool write)
-    {}
+    {
+        const size_t pml3Idx = (vaddr >> 25) & 0x7F;
+        const size_t pml2Idx = (vaddr >> 18) & 0x7F;
+        const size_t pml1Idx = (vaddr >> 12) & 0x3F;
+
+        PageTable* pml3 = reinterpret_cast<PageTable*>(ptRoot);
+        PageTable* pml2 = nullptr;
+        if ((pml3->entries[pml3Idx] & PteResident) == 0)
+        {
+            uintptr_t page = AllocPage();
+            if (page == 0)
+                Panic(PanicReason::InternalAllocFailure);
+            sl::memset(sl::NativePtr(page).ptr, 0, sizeof(PageTable));
+
+            page |= PteResident;
+            pml3->entries[pml3Idx] = page;
+        }
+        pml2 = reinterpret_cast<PageTable*>(pml3->entries[pml3Idx] & ~0x1FF);
+
+        PageTable* pml1 = nullptr;
+        if ((pml2->entries[pml2Idx] & PteResident) == 0)
+        {
+            uintptr_t page = AllocPage();
+            if (page == 0)
+                Panic(PanicReason::InternalAllocFailure);
+            sl::memset(sl::NativePtr(page).ptr, 0, sizeof(PageTable));
+
+            page |= PteResident;
+            pml2->entries[pml2Idx] = page;
+        }
+        pml1 = reinterpret_cast<PageTable*>(pml2->entries[pml2Idx] & ~0xFF);
+
+        uint32_t* pte = &pml1->entries[pml1Idx];
+        *pte = paddr | PteResident | PteSupervisor | PteCopyback;
+        if (!write)
+            *pte |= PteWrite;
+    }
 
     void InitMemoryManager()
     {
@@ -162,23 +202,34 @@ namespace Npl
             ReservePhysicalRange(desc->addr, desc->addr + desc->size, MemoryType::KernelModules);
         }
 
-        //do some virtual memory setup, but not enable the MMU (yet)
+        ptRoot = AllocPage();
+        if (ptRoot == 0)
+            Panic(PanicReason::InternalAllocFailure);
+        sl::memset(reinterpret_cast<void*>(ptRoot), 0, sizeof(PageTable));
     }
 
     void EnableMmu()
-    {}
+    {
+        asm("movec %0, %%srp" :: "d"(ptRoot));
+        asm("movec %0, %%dtt0" :: "d"(0)); //we dont use the transparent translation regs
+        asm("movec %0, %%dtt1" :: "d"(0)); //so clear them, make sure they dont interfere.
+        asm("movec %0, %%itt0" :: "d"(0));
+        asm("movec %0, %%itt1" :: "d"(0));
 
-    void* MapMemory(size_t length, MemoryType type, uintptr_t vaddr, uintptr_t paddr)
+        asm("movec %0, %%tcr" :: "d"(1 << 15)); //set bit 15 to enable translation
+    }
+    
+    size_t HhdmLimit()
+    {
+        return physList.Back().base + physList.Back().length;
+    }
+
+    void* MapMemory(size_t length, uintptr_t vaddr, uintptr_t paddr)
     {
         length = sl::AlignUp(length, PageSize);
 
-        if (vaddr == 0)
-        {
-            vaddr = AllocVirtualRange(length);
-            if (vaddr == 0)
-                return nullptr;
-        }
-        ReserveVirtualRange(vaddr, length);
+        const size_t addend = vaddr % PageSize;
+        vaddr = sl::AlignDown(vaddr, PageSize);
 
         for (size_t i = 0; i < length; i += PageSize)
         {
@@ -189,6 +240,16 @@ namespace Npl
             MapPage(vaddr + i, mappedPaddr, true);
         }
 
-        return nullptr;
+        return reinterpret_cast<void*>(vaddr + addend);
+    }
+
+    uintptr_t GetMap(uintptr_t vaddr)
+    {
+        uint32_t mmusr = 0;
+        asm("ptestw (%1); movec %%mmusr, %0" : "=d"(mmusr) : "a"(vaddr));
+
+        if (mmusr & PteResident)
+            return (mmusr & ~0xFFF) | (vaddr & 0xFFF);
+        return 0;
     }
 }

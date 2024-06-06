@@ -12,5 +12,7 @@ Please note: these changes are my own, and not endorsed by the original authors 
 - The kernel is still required to be loaded at -2G or higher, given this is the entire higher half for a 32-bit system the upper 256M is recommended. The bootloader will honour whatever load address the kernel requires in it's PHDRs.
 - The kernel **must** be a 32-bit ELF, no support for boot anchors is provided.
 
+- The transparent translation registers are cleared to zero (disabled).
+
 ### SMP Feature 
 ### Paging Mode Feature

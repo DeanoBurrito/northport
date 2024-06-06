@@ -1,5 +1,6 @@
 #include "Memory.h"
 #include "Util.h"
+#include "Loader.h"
 #include <Maths.h>
 
 namespace Npl
@@ -47,8 +48,18 @@ extern "C"
     {
         using namespace Npl;
         InitMemoryManager();
-        //TODO: create loader page tables, with hhdm/id map
+
+        //create identity map (for loader) and hhdm (for kernel)
+        const size_t hhdmLimit = HhdmLimit();
+        for (size_t i = PageSize; i < hhdmLimit; i += PageSize)
+        {
+            if (!MapMemory(PageSize, i, i))
+                Panic(PanicReason::HhdmSetupFail);
+            if (!MapMemory(PageSize, i + HhdmBase, i))
+                Panic(PanicReason::HhdmSetupFail);
+        }
         EnableMmu();
+        LoadKernel();
 
         Panic(PanicReason::KernelReturned);
     }

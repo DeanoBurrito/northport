@@ -20,6 +20,7 @@ namespace Npl
         InternalAllocFailure = 2,
         LoadAllocFailure = 3,
         StackCheckFail = 4,
+        HhdmSetupFail = 5,
     };
 
     enum class BootInfoType : uint16_t
