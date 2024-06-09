@@ -65,6 +65,6 @@ Build System:
 
 # Related Projects
 - [DreamOS64](https://github.com/dreamos82/Dreamos64): another 64-bit OS by one of the northport contributors, [Ivan G](https://github.com/dreamos82). 
-- [OSdev notes](https://github.com/dreamos82/Osdev-Notes): a repository of notes about various osdev topics. Feel free to contribute!
+- [OSdev notes](https://github.com/dreamportdev/Osdev-Notes): a repository of notes about various osdev topics. Feel free to contribute!
 
 This is a complete rewrite of the original. If you're looking for that, it's available on the `archive-2022-version` branch.
