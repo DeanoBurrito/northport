@@ -21,6 +21,8 @@ namespace Npl
         LoadAllocFailure = 3,
         StackCheckFail = 4,
         HhdmSetupFail = 5,
+        BadLbpRevision = 6,
+        DeleteCalled = 7,
     };
 
     enum class BootInfoType : uint16_t

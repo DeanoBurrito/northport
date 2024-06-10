@@ -224,12 +224,53 @@ namespace Npl
         return physList.Back().base + physList.Back().length;
     }
 
+    uintptr_t AllocPages(size_t count)
+    {
+        const size_t length = count * PageSize;
+
+        MemoryBlock* firstUsable = nullptr;
+        for (MemoryBlock* scan = physList.Begin(); scan != nullptr; scan = scan->next)
+        {
+            if (firstUsable == nullptr && scan->type == MemoryType::Usable)
+                firstUsable = scan;
+
+            if (scan->type != MemoryType::Reclaimable || scan->next == nullptr
+                || scan->next->type != MemoryType::Usable || scan->length < length)
+                continue;
+
+            //we found a pair of regions ([reclaimable][usable]), move memory from usable to reclaimable
+            const uintptr_t found = scan->base + scan->length;
+            scan->length += length;
+            scan->next->length -= length;
+            scan->next->base += length;
+            return found;
+        }
+
+        if (firstUsable == nullptr || firstUsable->length < length)
+            return 0; //abort, no memory for us
+
+        //no nicely arranged regions found, make one
+        const uintptr_t found = firstUsable->base;
+        ReservePhysicalRange(firstUsable->base, firstUsable->base + length, MemoryType::Reclaimable);
+        return found;
+    }
+
+    void* AllocGeneral(size_t size)
+    {
+        const size_t pages = sl::AlignUp(size, PageSize);
+        const uintptr_t found = AllocPages(pages); //TODO: we can do better than this surely
+
+        if (found == 0)
+            return nullptr;
+        return reinterpret_cast<void*>(found + HhdmBase);
+    }
+
     void* MapMemory(size_t length, uintptr_t vaddr, uintptr_t paddr)
     {
-        length = sl::AlignUp(length, PageSize);
-
+        const uintptr_t top = sl::AlignUp(vaddr + length, PageSize);
         const size_t addend = vaddr % PageSize;
         vaddr = sl::AlignDown(vaddr, PageSize);
+        length = top - vaddr;
 
         for (size_t i = 0; i < length; i += PageSize)
         {
@@ -252,4 +293,34 @@ namespace Npl
             return (mmusr & ~0xFFF) | (vaddr & 0xFFF);
         return 0;
     }
+}
+
+void* operator new(size_t size)
+{
+    return Npl::AllocGeneral(size);
+}
+
+void* operator new[](size_t size)
+{
+    return Npl::AllocGeneral(size);
+}
+
+void operator delete(void*) noexcept
+{
+    Panic(Npl::PanicReason::DeleteCalled);
+}
+
+void operator delete(void*, size_t) noexcept
+{
+    Panic(Npl::PanicReason::DeleteCalled);
+}
+
+void operator delete[](void*) noexcept
+{
+    Panic(Npl::PanicReason::DeleteCalled);
+}
+
+void operator delete[](void*, size_t) noexcept
+{
+    Panic(Npl::PanicReason::DeleteCalled);
 }

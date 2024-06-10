@@ -19,6 +19,8 @@ namespace Npl
     void EnableMmu();
     size_t HhdmLimit();
 
+    uintptr_t AllocPages(size_t count);
+    void* AllocGeneral(size_t size);
     void* MapMemory(size_t length, uintptr_t vaddr, uintptr_t paddr = DontCare);
     uintptr_t GetMap(uintptr_t vaddr);
 }

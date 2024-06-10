@@ -1,4 +1,4 @@
-LOADER_CXX_FLAGS = $(KERNEL_CXX_FLAGS) -I$(PROJ_ROOT_DIR)/libs/np-syslib/include
+LOADER_CXX_FLAGS = $(KERNEL_CXX_FLAGS) -I$(PROJ_ROOT_DIR)/libs/np-syslib/include -I$(PROJ_ROOT_DIR)/kernel/include
 LOADER_LD_FLAGS = $(KERNEL_LD_FLAGS)
 
 CXX_SRCS = Main.cpp Loader.cpp Memory.cpp
