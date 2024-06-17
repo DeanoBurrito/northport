@@ -93,35 +93,6 @@ namespace Npl
         physList.Sort(MemoryBlockComparer{});
     }
 
-    static uintptr_t AllocPage()
-    {
-        MemoryBlock* firstUsable = nullptr;
-        for (MemoryBlock* scan = physList.Begin(); scan != nullptr; scan = scan->next)
-        {
-            if (firstUsable == nullptr && scan->type == MemoryType::Usable)
-                firstUsable = scan;
-
-            if (scan->type != MemoryType::Reclaimable || scan->next == nullptr
-                || scan->next->type != MemoryType::Usable || scan->length < PageSize)
-                continue;
-
-            //we found a reclaimable entry followed by a usable one, move a page from usable -> reclaimable
-            const uintptr_t found = scan->base + scan->length;
-            scan->length += PageSize;
-            scan->next->length -= PageSize;
-            scan->next->base += PageSize;
-            return found;
-        }
-
-        if (firstUsable == nullptr || firstUsable->length < PageSize)
-            return 0; //abort, no memory for us
-
-        //no nicely arranged regions found, make one
-        const uintptr_t found = firstUsable->base;
-        ReservePhysicalRange(firstUsable->base, firstUsable->base + PageSize, MemoryType::Reclaimable);
-        return found;
-    }
-
     static void MapPage(uintptr_t vaddr, uintptr_t paddr, bool write)
     {
         const size_t pml3Idx = (vaddr >> 25) & 0x7F;
@@ -132,7 +103,7 @@ namespace Npl
         PageTable* pml2 = nullptr;
         if ((pml3->entries[pml3Idx] & PteResident) == 0)
         {
-            uintptr_t page = AllocPage();
+            uintptr_t page = AllocPages(1);
             if (page == 0)
                 Panic(PanicReason::InternalAllocFailure);
             sl::memset(sl::NativePtr(page).ptr, 0, sizeof(PageTable));
@@ -145,7 +116,7 @@ namespace Npl
         PageTable* pml1 = nullptr;
         if ((pml2->entries[pml2Idx] & PteResident) == 0)
         {
-            uintptr_t page = AllocPage();
+            uintptr_t page = AllocPages(1);
             if (page == 0)
                 Panic(PanicReason::InternalAllocFailure);
             sl::memset(sl::NativePtr(page).ptr, 0, sizeof(PageTable));
@@ -202,7 +173,7 @@ namespace Npl
             ReservePhysicalRange(desc->addr, desc->addr + desc->size, MemoryType::KernelModules);
         }
 
-        ptRoot = AllocPage();
+        ptRoot = AllocPages(1);
         if (ptRoot == 0)
             Panic(PanicReason::InternalAllocFailure);
         sl::memset(reinterpret_cast<void*>(ptRoot), 0, sizeof(PageTable));
@@ -224,7 +195,7 @@ namespace Npl
         return physList.Back().base + physList.Back().length;
     }
 
-    uintptr_t AllocPages(size_t count)
+    uintptr_t AllocPages(size_t count, MemoryType type)
     {
         const size_t length = count * PageSize;
 
@@ -233,6 +204,8 @@ namespace Npl
         {
             if (firstUsable == nullptr && scan->type == MemoryType::Usable)
                 firstUsable = scan;
+            if (type != MemoryType::Reclaimable)
+                continue;
 
             if (scan->type != MemoryType::Reclaimable || scan->next == nullptr
                 || scan->next->type != MemoryType::Usable || scan->length < length)
@@ -251,7 +224,7 @@ namespace Npl
 
         //no nicely arranged regions found, make one
         const uintptr_t found = firstUsable->base;
-        ReservePhysicalRange(firstUsable->base, firstUsable->base + length, MemoryType::Reclaimable);
+        ReservePhysicalRange(firstUsable->base, firstUsable->base + length, type);
         return found;
     }
 
@@ -274,7 +247,7 @@ namespace Npl
 
         for (size_t i = 0; i < length; i += PageSize)
         {
-            const uintptr_t mappedPaddr = paddr == 0 ? AllocPage() : paddr + i;
+            const uintptr_t mappedPaddr = (paddr == 0 ? AllocPages(1) : paddr + i);
             if (mappedPaddr == 0)
                 return nullptr;
 

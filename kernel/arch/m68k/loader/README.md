@@ -5,6 +5,12 @@ I made this as part of a challenge with another member of the osdev discord serv
 
 Having said that, this does what you'd expect: it allows the northport kernel to boot natively (via limine) on the qemu m68k virt board. It provides most of the responses the northport kernel needs, there are some others it doesn't (or can't - dtb, rsdp, efi system table). In theory it should work for any limine-compliant kernel (keeping in mind the changes below). The build makefile in this directly embeds whatever file it finds in `build/kernel.elf` and tries to load it. If qemu is passed a file via `-initrd` that will be made available to the kernel as a module, with a hardcoded command line string.
 
+## Bootloader Config
+
+The shim is extremely primitive, but it does allow some configuration at compile-time. The following macros can be defined when compiling the shim:
+- `NPL_KERNEL_CMDLINE`: This macro is used to populate the cmdline field of the kernel file response, which is how command line arguments apppear to the kernel in the limine protocol.
+- `NPL_INITRD_CMDLINE`: The shim can only provide a single module to the kernel (passed via the `-initrd` arg to qemu), this macro can be used to set the cmdline field for the module.
+
 ## Limine Boot Protocol Modifications
 Please note: these changes are my own, and not endorsed by the original authors of the limine protocol. If you're using this shim for your own kernel, do not ask for help upstream or bother actual limine devs.
 
