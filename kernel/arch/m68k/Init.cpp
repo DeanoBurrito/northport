@@ -2,6 +2,7 @@
 #include <arch/Timers.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
+#include <memory/Vmm.h>
 #include <debug/Log.h>
 #include <tasking/Clock.h>
 #include <NativePtr.h>
@@ -39,15 +40,18 @@ extern "C"
         using namespace Npk;
 
         InitEarlyPlatform();
+        InitMemory();
 
 #ifdef NP_M68K_ASSUME_TTY
-        ttyRegs = hhdmBase + NP_M68K_ASSUME_TTY;
-        ttyRegs.Offset(8).Write<uint32_t>(0); //disable interrupts from the device
-
-        Debug::AddLogOutput(&ttyOutput);
+        auto maybeTtyRegs = VMM::Kernel().Alloc(0x20, NP_M68K_ASSUME_TTY, VmFlag::Write | VmFlag::Mmio);
+        if (maybeTtyRegs.HasValue())
+        {
+            ttyRegs = *maybeTtyRegs;
+            ttyRegs.Offset(8).Write<uint32_t>(0); //disable interrupts from the device
+            Debug::AddLogOutput(&ttyOutput);
+        }
 #endif
 
-        InitMemory();
         InitPlatform();
         InitTimers();
 

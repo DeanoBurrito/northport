@@ -18,6 +18,7 @@ namespace Npl
     void InitMemoryManager();
     void EnableMmu();
     size_t HhdmLimit();
+    size_t GenerateLbpMemoryMap(void* store, size_t count);
 
     uintptr_t AllocPages(size_t count, MemoryType type = MemoryType::Reclaimable);
     void* AllocGeneral(size_t size);

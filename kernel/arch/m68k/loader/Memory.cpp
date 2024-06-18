@@ -4,6 +4,7 @@
 #include <Maths.h>
 #include <containers/List.h>
 #include <Memory.h>
+#include <boot/Limine.h>
 
 namespace Npl
 {
@@ -193,6 +194,39 @@ namespace Npl
     size_t HhdmLimit()
     {
         return physList.Back().base + physList.Back().length;
+    }
+
+    size_t GenerateLbpMemoryMap(void* store, size_t count)
+    {
+        size_t accum = 0;
+        for (auto it = physList.Begin(); it != physList.End(); it = it->next)
+            accum++;
+
+        if (store == nullptr || accum > count)
+            return accum;
+
+        auto entries = static_cast<limine_memmap_entry*>(store);
+        for (auto it = physList.Begin(); it != physList.End(); it = it->next)
+        {
+            limine_memmap_entry* entry = entries++;
+            entry->base = it->base;
+            entry->length = it->length;
+
+            switch (it->type)
+            {
+            case MemoryType::Usable: 
+                entry->type = LIMINE_MEMMAP_USABLE;
+                break;
+            case MemoryType::Reclaimable: 
+                entry->type = LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE;
+                break;
+            case MemoryType::KernelModules:
+                entry->type = LIMINE_MEMMAP_KERNEL_AND_MODULES;
+                break;
+            }
+        }
+
+        return accum;
     }
 
     uintptr_t AllocPages(size_t count, MemoryType type)

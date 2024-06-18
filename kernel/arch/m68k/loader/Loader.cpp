@@ -123,8 +123,9 @@ namespace Npl
         constexpr uint64_t CommonMagic[] = { LIMINE_COMMON_MAGIC };
 
         sl::NativePtr scan = current;
-        if (scan.ptr == nullptr)
-            scan = sl::AlignUp(kernelBase + kernelSlide, 8);
+        if (current == nullptr)
+            scan = kernelBase + kernelSlide;
+        scan = sl::AlignUp(scan.raw + 1, 8);
 
         for (; scan.raw < kernelTop; scan = scan.raw + 8)
         {

@@ -102,13 +102,6 @@ namespace Npl
             }
         },
         {
-            .id = LIMINE_MEMMAP_REQUEST,
-            .Handle = [](LbpRequest* req)
-            {
-                //TODO: I think we'll need to go bespoke for this response
-            }
-        },
-        {
             .id = LIMINE_KERNEL_FILE_REQUEST,
             .Handle = [](LbpRequest* req)
             {
@@ -123,7 +116,7 @@ namespace Npl
                 resp->revision = 0;
                 resp->kernel_file = fileDesc;
 
-                req->response = resp;
+                //req->response = resp;
             }
         },
         {
@@ -168,8 +161,20 @@ extern "C"
         EnableMmu();
 
         LoadKernel();
-        for (LbpRequest* request = LbpNextRequest(); request != nullptr; request = LbpNextRequest(++request))
+
+        //memory map request gets special treatment: we want to handle it last since we
+        //may modify the memory map while handling other responses.
+        const uint64_t mmapId[4] = LIMINE_MEMMAP_REQUEST;
+        LbpRequest* mmapRequest = nullptr;
+
+        for (LbpRequest* request = LbpNextRequest(); request != nullptr; request = LbpNextRequest(request))
         {
+            if (sl::memcmp(mmapId, request->id, 32) == 0)
+            {
+                mmapRequest = request;
+                continue;
+            }
+
             for (size_t i = 0; i < sizeof(RequestHandlers) / sizeof(LbpRequestHandler); i++)
             {
                 if (sl::memcmp(RequestHandlers[i].id, request->id, 32) != 0)
@@ -178,6 +183,41 @@ extern "C"
                 RequestHandlers[i].Handle(request);
                 break;
             }
+        }
+
+        if (mmapRequest != nullptr)
+        {
+            constexpr size_t MaxMemmapAllocTries = 3;
+
+            limine_memmap_response* resp = new limine_memmap_response();
+            limine_memmap_entry* entries = nullptr;
+            limine_memmap_entry** entryPtrs = nullptr;
+            size_t entryCount = 0;
+
+            for (size_t i = 0; i < MaxMemmapAllocTries; i++)
+            {
+                const size_t tentativeCount = GenerateLbpMemoryMap(nullptr, 0);
+                const size_t storeCount = tentativeCount + tentativeCount / 2;
+                entries = new limine_memmap_entry[storeCount];
+                entryPtrs = new limine_memmap_entry*[storeCount];
+                
+                entryCount = GenerateLbpMemoryMap(entries, storeCount);
+                if (entryCount <= storeCount)
+                    break;
+
+                delete[] entries;
+                delete[] entryPtrs;
+                entries = nullptr;
+                entryPtrs = nullptr;
+            }
+
+            for (size_t i = 0; i < entryCount; i++)
+                entryPtrs[i] = &entries[i];
+            resp->revision = 0;
+            resp->entry_count = entryCount;
+            resp->entries = entryPtrs;
+
+            mmapRequest->response = resp;
         }
 
         ExecuteKernel();
