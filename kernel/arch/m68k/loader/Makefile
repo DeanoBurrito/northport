@@ -34,3 +34,9 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 	@printf "$(C_BLUE)[Loader]$(C_RST) Compiling: $<\r\n"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(LOADER_CXX_FLAGS) -c $< -o $@
+
+$(BUILD_DIR)/Loader.cpp.o: Loader.cpp $(BUILD_DIR)/kernel.elf
+	@printf "$(C_BLUE)[Loader]$(C_RST) Compiling (with embedded kernel): $<\r\n"
+	@mkdir -p $(@D)
+	$(LOUD)$(X_CXX_BIN) $(LOADER_CXX_FLAGS) -c $< -o $@
+

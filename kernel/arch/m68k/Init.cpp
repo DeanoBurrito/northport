@@ -4,6 +4,7 @@
 #include <boot/LimineTags.h>
 #include <debug/Log.h>
 #include <tasking/Clock.h>
+#include <NativePtr.h>
 
 namespace Npk
 {
@@ -16,12 +17,34 @@ namespace Npk
 
 extern "C"
 {
+#define NP_M68K_ASSUME_TTY 0xff008000
+#ifdef NP_M68K_ASSUME_TTY
+    sl::NativePtr ttyRegs;
+
+    static void TtyWrite(sl::StringSpan text)
+    {
+        for (size_t i = 0; i < text.Size(); i++)
+            ttyRegs.Write<uint32_t>(text[i]); //device regs are 32-bits wide
+    }
+
+    Npk::Debug::LogOutput ttyOutput
+    {
+        .Write = TtyWrite,
+        .BeginPanic = nullptr
+    };
+#endif
+
     void KernelEntry()
     {
         using namespace Npk;
 
         InitEarlyPlatform();
-#ifdef NP_M68K_ASSUME_SERIAL
+
+#ifdef NP_M68K_ASSUME_TTY
+        ttyRegs = hhdmBase + NP_M68K_ASSUME_TTY;
+        ttyRegs.Offset(8).Write<uint32_t>(0); //disable interrupts from the device
+
+        Debug::AddLogOutput(&ttyOutput);
 #endif
 
         InitMemory();
