@@ -40,13 +40,6 @@ namespace Npk
     constexpr HatFlags operator~(const HatFlags& src)
     { return (HatFlags)(~(size_t)src); }
 
-    /*
-        This struct holds implementation-specific details, and we only pass pointers to
-        this struct through the API. This is intentional so the inner workings of the HAT
-        are opaque to other kernel subsystems.
-    */
-    struct HatMap;
-
     constexpr size_t MaxHatModes = 8;
     //This struct is used to communicate the limits of the underlying MMU to the
     //rest of the kernel.
@@ -59,6 +52,13 @@ namespace Npk
             size_t granularity;
         } modes[MaxHatModes];
     };
+
+    /*
+        This struct holds implementation-specific details, and we only pass pointers to
+        this struct through the API. This is intentional so the inner workings of the HAT
+        are opaque to other kernel subsystems.
+    */
+    struct HatMap;
 
     //hook to perform some init based on the MMU's capabilities if needed.
     void HatInit();
@@ -88,10 +88,6 @@ namespace Npk
     //attempts to update an existing mapping: either flags, physical address of both.
     bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
 
-    //hook that checks a userspace mapping has up-to-date kernel mappings,
-    //this is run immediately before loading a new map.
-    void SyncWithMasterMap(HatMap* map);
-
     //replaces the currently active HAT address space with this one.
-    void MakeActiveMap(HatMap* map);
+    void MakeActiveMap(HatMap* map, bool supervisor);
 }

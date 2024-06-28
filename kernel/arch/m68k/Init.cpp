@@ -1,5 +1,6 @@
 #include <arch/Platform.h>
 #include <arch/Timers.h>
+#include <arch/m68k/Interrupts.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
 #include <memory/Vmm.h>
@@ -9,8 +10,14 @@
 
 namespace Npk
 {
-    void InitCore(size_t coreId)
-    {}
+    void InitCore(size_t coreId, uint32_t acpiId)
+    {
+        CoreLocal().id = coreId;
+        CoreLocal().acpiId = acpiId;
+        LoadVectorTable();
+
+        PerCoreCommonInit();
+    }
 
     void ThreadedArchInit()
     {} //no-op
@@ -56,9 +63,21 @@ extern "C"
         InitTimers();
 
         if (Boot::smpRequest.response != nullptr)
-        { ASSERT_UNREACHABLE(); } //sounds exciting, I didnt know these existed
+        {  
+            for (size_t i = 0; i < Boot::smpRequest.response->cpu_count; i++)
+            {
+                limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
+                if (procInfo->id == Boot::smpRequest.response->bsp_id)
+                {
+                    InitCore(procInfo->id, procInfo->processor_id);
+                    continue;
+                }
+
+                ASSERT_UNREACHABLE(); //TODO: we dont support multi-core (yet)
+            }
+        }
         else
-            InitCore(0);
+            InitCore(0, 0);
 
         Tasking::StartSystemClock();
         ExitCoreInit();

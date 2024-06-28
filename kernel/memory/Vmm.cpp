@@ -290,7 +290,7 @@ namespace Npk::Memory
 
         CommonInit();
         hatMap = KernelMap();
-        MakeActiveMap(hatMap);
+        MakeActiveMap(hatMap, true);
 
         auto kernelRanges = Virtual::GetKernelRanges();
         for (size_t i = 0; i < kernelRanges.Size(); i++)
@@ -308,7 +308,7 @@ namespace Npk::Memory
 
         //Not strictly necessary, but better to know we're not using the VMM we're
         //about to destroy. Switch to the kernel map.
-        MakeActiveMap(KernelMap());
+        MakeActiveMap(KernelMap(), true);
         
         //iterate through active ranges, detaching each one and freeing the backing memory.
         //This also frees the VM range structs as well.
@@ -344,9 +344,7 @@ namespace Npk::Memory
 
     void VMM::MakeActive()
     {
-        if (hatMap != KernelMap())
-            SyncWithMasterMap(hatMap);
-        MakeActiveMap(hatMap);
+        MakeActiveMap(hatMap, globalUpperBound > hhdmBase);
     }
 
     bool VMM::HandleFault(uintptr_t addr, VmFaultFlags flags)
