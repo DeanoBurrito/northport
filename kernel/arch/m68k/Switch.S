@@ -5,5 +5,28 @@
 
 # void SwitchFrame(TrapFrame** current, TrapFrame* next)
 SwitchFrame:
-    stop #0x2000
+    move.l 8(%a7), %d0
+    tst %d0
+    bne 1f
+    rts
+
+1:
+    move.l 4(%a7), %d0
+    tst %d0
+    beq SkipSave
+
+    exg %d0, %a0
+    move.l (%a7), %d0
+    move.w #0, -(%a7)
+    move.l %d0, -(%a7)
+    move.w %sr, -(%a7)
+
+    movem.l %d0-%a7, -(%a7)
+    move.l %a7, (%a0)
+
+SkipSave:
+    move.l 8(%a7), %a7
+    movem.l (%a7)+, %d0-%a7
+
+    rte
 _EndOfSwitchFrame:

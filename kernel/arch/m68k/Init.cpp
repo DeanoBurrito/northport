@@ -10,12 +10,18 @@
 
 namespace Npk
 {
+    CoreLocalInfo* coreLocalControl;
+
     void InitCore(size_t coreId, uint32_t acpiId)
     {
-        CoreLocal().id = coreId;
-        CoreLocal().acpiId = acpiId;
-        LoadVectorTable();
+        CoreLocalInfo* clb = new CoreLocalInfo();
+        clb->id = coreId;
+        clb->acpiId = acpiId;
+        clb->runLevel = RunLevel::Dpc;
+        clb->nextStack = nullptr;
+        coreLocalControl = clb;
 
+        LoadVectorTable();
         PerCoreCommonInit();
     }
 
@@ -46,6 +52,7 @@ extern "C"
     {
         using namespace Npk;
 
+        coreLocalControl = nullptr;
         InitEarlyPlatform();
         InitMemory();
 
@@ -58,9 +65,7 @@ extern "C"
             Debug::AddLogOutput(&ttyOutput);
         }
 #endif
-
         InitPlatform();
-        InitTimers();
 
         if (Boot::smpRequest.response != nullptr)
         {  
@@ -79,6 +84,7 @@ extern "C"
         else
             InitCore(0, 0);
 
+        InitTimers();
         Tasking::StartSystemClock();
         ExitCoreInit();
         ASSERT_UNREACHABLE();

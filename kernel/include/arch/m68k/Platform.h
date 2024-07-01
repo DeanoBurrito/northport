@@ -9,7 +9,8 @@ namespace Npk
     {
         uint16_t sr;
         uint32_t pc;
-        uint16_t vector;
+        uint16_t format : 4;
+        uint16_t vector : 12;
 
         union
         {
@@ -30,9 +31,6 @@ namespace Npk
             } format4;
         };
     };
-
-    constexpr uint16_t RteFrameFormat(const RteFrame* frame)
-    { return (frame->vector >> 12) & 0xF; }
 
     struct TrapFrame
     {
@@ -79,17 +77,20 @@ namespace Npk
     inline void DisableInterrupts()
     {}
 
-    [[gnu::always_inline]]
-    inline void AllowSumac()
-    {}
+    struct CoreLocalInfo;
+    extern CoreLocalInfo* coreLocalControl; //TODO: SMP for m68k platforms?
 
     [[gnu::always_inline]]
-    inline void BlockSumac()
-    {}
+    inline CoreLocalInfo& CoreLocal()
+    {
+        return *coreLocalControl;
+    }
 
     [[gnu::always_inline]]
     inline bool CoreLocalAvailable()
-    { return false; }
+    {
+        return coreLocalControl != nullptr;
+    }
 
     [[gnu::always_inline]]
     inline void WriteSr(uint32_t data)

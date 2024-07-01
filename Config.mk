@@ -25,7 +25,7 @@ COUNT_TODOS = yes
 
 # ---- Compiler Options ----
 # ISA to compile for, valid options: `x86_64`, `riscv64`, `m68k`
-CPU_ARCH = m68k
+CPU_ARCH = x86_64
 # KERNEL_CXX_FLAGS += -fsanitize=undefined
 KERNEL_CXX_FLAGS += -O0 -g
 # Set to 'yes' to embed a nice terminal background into the kernel,

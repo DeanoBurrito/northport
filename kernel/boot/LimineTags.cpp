@@ -256,7 +256,7 @@ namespace Npk::Boot
                 const size_t isBsp = localId == resp->bsp_hartid;
 #elif defined(__m68k__)
                 const size_t localId = resp->cpus[i]->id;
-                const size_t isBsp = true;
+                const size_t isBsp = localId == resp->bsp_id;
 #endif
                 Log("  %zu: acpiId=%" PRIu32", gotoAddr=%p%s", LogLevel::Verbose, localId, 
                     resp->cpus[i]->processor_id, &resp->cpus[i]->goto_address, isBsp ? ", bsp" : "");

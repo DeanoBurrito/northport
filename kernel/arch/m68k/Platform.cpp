@@ -8,11 +8,6 @@ namespace Npk
         ASSERT_UNREACHABLE(); //trip reset vector
     }
 
-    //afaik m68k systems are all single-core, so we use a global variable here
-    CoreLocalInfo coreLocalInfo;
-    CoreLocalInfo& CoreLocal()
-    { return coreLocalInfo; }
-
     uintptr_t MsiAddress(size_t core, size_t vector)
     { ASSERT_UNREACHABLE(); }
 
@@ -24,17 +19,28 @@ namespace Npk
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user)
     {
-        ASSERT_UNREACHABLE();
+        frame->rte.pc = entry;
+        frame->rte.sr = user ? 0 : (1 << 13);
+        frame->rte.format = 0; //format 0, no extra info
+        frame->a7 = stack;
     }
 
     void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value)
     {
-        ASSERT_UNREACHABLE();
+        if (index >= TrapFrameArgCount)
+            return;
+
+        uint32_t* args = &frame->a0;
+        args[index] = reinterpret_cast<uint32_t>(value);
     }
 
     void* GetTrapFrameArg(TrapFrame* frame, size_t index)
     {
-        ASSERT_UNREACHABLE();
+        if (index >= TrapFrameArgCount)
+            return nullptr;
+
+        uint32_t* args = &frame->a0;
+        return reinterpret_cast<void*>(args[index]);
     }
 
     void InitExtendedRegs(ExtendedRegs** regs)
@@ -59,17 +65,46 @@ namespace Npk
 
     uintptr_t GetReturnAddr(size_t level, uintptr_t start)
     {
-        ASSERT_UNREACHABLE();
+        struct Frame
+        {
+            Frame* next;
+            uintptr_t retAddr;
+        };
+
+        Frame* current = reinterpret_cast<Frame*>(start);
+        if (start == 0)
+            current = static_cast<Frame*>(__builtin_frame_address(0));
+
+        for (size_t i = 0; i <= level; i++)
+        {
+            if (current == nullptr)
+                return 0;
+            if (i == level)
+                return current->retAddr;
+            current = current->next;
+        }
+
+        return 0;
     }
 
     void SendIpi(size_t dest)
     {
-        ASSERT_UNREACHABLE();
+        ASSERT(false, "Northport does not support m68k SMP.");
     }
 
     void SetHardwareRunLevel(RunLevel rl)
     {
-        ASSERT_UNREACHABLE();
+        uint32_t sr = ReadSr() & 0xF8FF;
+        switch (rl)
+        {
+        case RunLevel::Interrupt:
+        case RunLevel::Clock:
+            sr |= 7 << 8;
+            break;
+        default: 
+            break;
+        }
+        WriteSr(sr);
     }
 
     bool RoutePinInterrupt(size_t core, size_t vector, size_t gsi)
