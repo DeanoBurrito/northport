@@ -1,7 +1,10 @@
-LOADER_CXX_FLAGS = $(KERNEL_CXX_FLAGS) -I$(PROJ_ROOT_DIR)/libs/np-syslib/include -I$(PROJ_ROOT_DIR)/kernel/include
-LOADER_LD_FLAGS = $(KERNEL_LD_FLAGS)
+LOADER_CXX_FLAGS = -Wall -Wextra -fstack-protector-strong -ffreestanding -std=c++17 \
+	-fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables -g \
+	-m68040 \
+	-I$(PROJ_ROOT_DIR)/libs/np-syslib/include -I$(PROJ_ROOT_DIR)/kernel/include
+LOADER_LD_FLAGS = -nostdlib -static --no-dynamic-linker
 
-CXX_SRCS = Main.cpp Loader.cpp Memory.cpp
+CXX_SRCS = Main.cpp Loader.cpp Memory.cpp Syslib.cpp
 AS_SRCS = Entry.S
 
 LD_SCRIPT = Linker.lds

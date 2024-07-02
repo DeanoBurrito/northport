@@ -52,8 +52,116 @@ namespace Npl
         kernelSlide = 0; //TODO: KASLR
     }
 
-    static bool DoKernelRelocations()
-    { return true; } //TODO:
+    static bool DoRelocation(bool isRela, const sl::Elf_Rela* r, const sl::Elf_Sym* symTable)
+    {
+        const auto type = ELF_R_TYPE(r->r_info);
+        const uintptr_t b = kernelSlide;
+        const uintptr_t p = b + r->r_offset;
+        const uintptr_t s = symTable[ELF_R_SYM(r->r_info)].st_value;
+
+        uintptr_t a = 0;
+        if (isRela)
+            a = r->r_addend;
+        else
+        {
+            const auto op = sl::ComputeRelocation(type, 0, b, s, p);
+            if (op.length == 0)
+                return false;
+            sl::memcopy(reinterpret_cast<void*>(p), &a, op.length);
+        }
+
+        const auto op = sl::ComputeRelocation(type, a, b, s, p);
+        if (op.usedSymbol && s == 0)
+            return false; //tried to reference an external symbol
+        if (op.length == 0)
+            return false; //unknown relocation type. *sigh* time to crack open _that_ version of the m68k elf psABI.
+
+        sl::memcopy(&op.value, reinterpret_cast<void*>(p), op.length);
+        return true;
+    }
+
+    static bool DoKernelRelocations(sl::CNativePtr blob)
+    { 
+        auto ehdr = blob.As<sl::Elf_Ehdr>();
+        const sl::Elf_Dyn* dyn = [=]() -> const sl::Elf_Dyn*
+        {
+            auto phdrs = blob.As<sl::Elf_Phdr>(ehdr->e_phoff);
+            for (size_t i = 0; i < ehdr->e_phnum; i++)
+            {
+                if (phdrs[i].p_type != sl::PT_DYNAMIC)
+                    continue;
+                return blob.Offset(phdrs[i].p_offset).As<const sl::Elf_Dyn>();
+            }
+            return nullptr;
+        }();
+        if (dyn == nullptr)
+            return true; //no relocatons to perform, but no failures either.
+
+        const sl::Elf_Sym* symTable;
+        const uint8_t* pltRelocs;
+        size_t pltRelocSize = 0;
+        bool pltUsesRela = false;
+        const sl::Elf_Rela* relas;
+        const sl::Elf_Rel* rels;
+        size_t relaCount = 0;
+        size_t relCount = 0;
+
+        for (auto scan = dyn; scan->d_tag != sl::DT_NULL; scan++)
+        {
+            switch (scan->d_tag)
+            {
+            case sl::DT_NEEDED: 
+                return false;
+            case sl::DT_SYMTAB:
+                symTable = reinterpret_cast<const sl::Elf_Sym*>(scan->d_ptr - kernelBase + blob.raw);
+                break;
+            case sl::DT_JMPREL:
+                pltRelocs = reinterpret_cast<const uint8_t*>(scan->d_ptr - kernelBase + blob.raw);
+                break;
+            case sl::DT_PLTRELSZ:
+                pltRelocSize = scan->d_val;
+                break;
+            case sl::DT_PLTREL:
+                pltUsesRela = (scan->d_val == sl::DT_RELA);
+                break;
+            case sl::DT_RELA:
+                relas = reinterpret_cast<const sl::Elf_Rela*>(scan->d_ptr - kernelBase + blob.raw);
+                break;
+            case sl::DT_REL:
+                rels = reinterpret_cast<const sl::Elf_Rel*>(scan->d_ptr - kernelBase + blob.raw);
+                break;
+            case sl::DT_RELASZ:
+                relaCount = scan->d_val / sizeof(sl::Elf_Rela);
+                break;
+            case sl::DT_RELSZ:
+                relCount = scan->d_val / sizeof(sl::Elf_Rel);
+                break;
+            default:
+                continue;
+            }
+        }
+
+        for (size_t i = 0; i < relCount; i++)
+        {
+            if (!DoRelocation(false, reinterpret_cast<const sl::Elf_Rela*>(&rels[i]), symTable))
+                return false;
+        }
+        for (size_t i = 0; i < relaCount; i++)
+        {
+            if (!DoRelocation(true, &relas[i], symTable))
+                return false;
+        }
+        for (size_t off = 0; off < pltRelocSize;)
+        {
+            auto rela = reinterpret_cast<const sl::Elf_Rela*>(pltRelocs + off);
+            if (!DoRelocation(pltUsesRela, rela, symTable))
+                return false;
+
+            off += pltUsesRela ? sizeof(sl::Elf_Rela) : sizeof(sl::Elf_Rel);
+        }
+
+        return true;
+    }
 
     bool LoadKernel()
     {
@@ -103,7 +211,7 @@ namespace Npl
                 sl::memset(sl::NativePtr(dest).Offset(phdr.p_filesz).ptr, 0, zeroes);
         }
         
-        return DoKernelRelocations();
+        return DoKernelRelocations(blob);
     }
 
     void ExecuteKernel()

@@ -331,3 +331,16 @@ void operator delete[](void*, size_t) noexcept
 {
     Panic(Npl::PanicReason::DeleteCalled);
 }
+
+extern "C"
+{
+    void* malloc(size_t size)
+    {
+        return Npl::AllocGeneral(size);
+    }
+
+    void free(void* ptr, size_t length)
+    {
+        Npl::Panic(Npl::PanicReason::DeleteCalled);
+    }
+}
