@@ -45,9 +45,11 @@ namespace sl
     constexpr static Elf64_UnsignedChar EI_PAD = 9;
     constexpr static Elf64_UnsignedChar EI_NIDENT = 16;
 
+    constexpr static Elf64_UnsignedChar ELFCLASSNONE = 0;
     constexpr static Elf64_UnsignedChar ELFCLASS32 = 1;
     constexpr static Elf64_UnsignedChar ELFCLASS64 = 2;
 
+    constexpr static Elf64_UnsignedChar ELFDATANONE = 0;
     constexpr static Elf64_UnsignedChar ELFDATA2LSB = 1;
     constexpr static Elf64_UnsignedChar ELFDATA2MSB = 2;
 
@@ -340,6 +342,6 @@ namespace sl
     constexpr static Elf64_Sxword DT_LOOS = 0x6000'0000;
     constexpr static Elf64_Sxword DT_HIOS = 0x6FFF'FFFF0;
     constexpr static Elf64_Sxword DT_LPROC = 0x7000'0000;
-    constexpr static Elf64_Sxword DT_HPROC = 0x7FFF'FFFF0;
+    constexpr static Elf64_Sxword DT_HPROC = 0x7FFF'FFFF;
 }
 

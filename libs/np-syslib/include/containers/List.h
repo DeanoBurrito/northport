@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <CppUtils.h>
 
 namespace sl
 {
@@ -117,6 +118,22 @@ namespace sl
                 }
 
                 return nullptr;
+            }
+
+            template<typename Comparison>
+            void Sort(Comparison comp)
+            {
+                for (auto i = head; i != nullptr; i = i->next)
+                {
+                    for (auto j = i->next; j != nullptr; j = j->next)
+                    {
+                        if (comp(*i, *j))
+                        {
+                            sl::Swap(*i, *j);
+                            sl::Swap(i->next, j->next);
+                        }
+                    }
+                }
             }
         };
 

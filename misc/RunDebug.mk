@@ -9,7 +9,9 @@ ifneq ($(X86_64_RUN_WITH_BIOS), yes)
 endif
 else
 	QEMU_CORE += $(QEMU_UEFI)
+ifneq ($(CPU_ARCH), m68k)
 	FW_FILE = $(OVMF_FILE)
+endif
 endif
 
 .PHONY: run

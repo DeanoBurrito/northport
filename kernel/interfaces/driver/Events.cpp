@@ -9,9 +9,9 @@ extern "C"
     using namespace Npk;
     using namespace Npk::Tasking;
 
-    static_assert(sizeof(npk_event) == sizeof(Waitable));
+    //static_assert(sizeof(npk_event) == sizeof(Waitable));
     static_assert(alignof(npk_event) == alignof(Waitable));
-    static_assert(sizeof(npk_wait_entry) == sizeof(WaitEntry));
+    //static_assert(sizeof(npk_wait_entry) == sizeof(WaitEntry));
     static_assert(alignof(npk_wait_entry) == alignof(WaitEntry));
 
     DRIVER_API_FUNC

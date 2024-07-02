@@ -7,23 +7,23 @@
 
 namespace Npk::Debug
 {
-    static SymbolFlag ClassifySymbol(const sl::Elf64_Sym& sym)
+    static SymbolFlag ClassifySymbol(const sl::Elf_Sym& sym)
     {
-        if (ELF64_ST_TYPE(sym.st_info) != sl::STT_FUNC)
+        if (ELF_ST_TYPE(sym.st_info) != sl::STT_FUNC)
             return SymbolFlag::NonFunction;
 
-        const auto visibility = ELF64_ST_VISIBILITY(sym.st_other);
+        const auto visibility = ELF_ST_VISIBILITY(sym.st_other);
         if (visibility == sl::STV_HIDDEN || visibility == sl::STV_INTERNAL)
             return SymbolFlag::Private;
-        if (visibility == sl::STV_DEFAULT && ELF64_ST_BIND(sym.st_info) == sl::STB_LOCAL)
+        if (visibility == sl::STV_DEFAULT && ELF_ST_BIND(sym.st_info) == sl::STB_LOCAL)
             return SymbolFlag::Private;
         return SymbolFlag::Public;
     }
 
     static void ProcessElfSymbolTables(sl::NativePtr file, SymbolRepo& repo, uintptr_t loadBase)
     {
-        auto ehdr = file.As<const sl::Elf64_Ehdr>();
-        auto shdrs = file.As<const sl::Elf64_Shdr>(ehdr->e_shoff);
+        auto ehdr = file.As<const sl::Elf_Ehdr>();
+        auto shdrs = file.As<const sl::Elf_Shdr>(ehdr->e_shoff);
         auto symTables = sl::FindShdrs(ehdr, sl::SHT_SYMTAB);
 
         //first pass over the symbol tables: get counts for each category, make a copy of the string table.
@@ -33,7 +33,7 @@ namespace Npk::Debug
         for (size_t i = 0; i < symTables.Size(); i++)
         {
             const size_t symbolCount = symTables[i]->sh_size / symTables[i]->sh_entsize;
-            auto syms = file.As<const sl::Elf64_Sym>(symTables[i]->sh_offset);
+            auto syms = file.As<const sl::Elf_Sym>(symTables[i]->sh_offset);
 
             //TODO: would be nice to just make a private mapping of this part of the file (0 copies),
             //instead of copying into anonymous memory.
@@ -68,7 +68,7 @@ namespace Npk::Debug
         for (size_t i = 0; i < symTables.Size(); i++)
         {
             const size_t symbolCount = symTables[i]->sh_size / symTables[i]->sh_entsize;
-            auto syms = file.As<const sl::Elf64_Sym>(symTables[i]->sh_offset);
+            auto syms = file.As<const sl::Elf_Sym>(symTables[i]->sh_offset);
 
             for (size_t j = 0; j < symbolCount; j++)
             {

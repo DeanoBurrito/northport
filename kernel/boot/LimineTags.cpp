@@ -5,6 +5,7 @@
 
 namespace Npk::Boot
 {
+    alignas(8) 
     limine_bootloader_info_request bootloaderInfoRequest
     {
         .id = LIMINE_BOOTLOADER_INFO_REQUEST,
@@ -12,6 +13,7 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    alignas(8)
     limine_stack_size_request stackSizeRequest
     {
         .id = LIMINE_STACK_SIZE_REQUEST,
@@ -20,6 +22,7 @@ namespace Npk::Boot
         .stack_size = 0x2000
     };
 
+    alignas(8)
     limine_hhdm_request hhdmRequest
     {
         .id = LIMINE_HHDM_REQUEST,
@@ -27,6 +30,7 @@ namespace Npk::Boot
         .response = nullptr
     };
     
+    alignas(8)
     limine_framebuffer_request framebufferRequest
     {
         .id = LIMINE_FRAMEBUFFER_REQUEST,
@@ -34,6 +38,7 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    alignas(8)
     limine_paging_mode_request pagingModeRequest
     {
         .id = LIMINE_PAGING_MODE_REQUEST,
@@ -43,6 +48,7 @@ namespace Npk::Boot
         .flags = 0,
     };
 
+    alignas(8)
     limine_memmap_request memmapRequest
     {
         .id = LIMINE_MEMMAP_REQUEST,
@@ -50,6 +56,7 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    alignas(8)
     limine_module_request modulesRequest
     {
         .id = LIMINE_MODULE_REQUEST,
@@ -59,6 +66,7 @@ namespace Npk::Boot
         .internal_modules = nullptr
     };
 
+    alignas(8)
     limine_rsdp_request rsdpRequest
     {
         .id = LIMINE_RSDP_REQUEST,
@@ -66,6 +74,7 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    alignas(8)
     limine_efi_system_table_request efiTableRequest
     {
         .id = LIMINE_EFI_SYSTEM_TABLE_REQUEST,
@@ -73,6 +82,7 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    alignas(8)
     limine_boot_time_request bootTimeRequest
     {
         .id = LIMINE_BOOT_TIME_REQUEST,
@@ -80,6 +90,7 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    alignas(8)
     limine_kernel_address_request kernelAddrRequest
     {
         .id = LIMINE_KERNEL_ADDRESS_REQUEST,
@@ -87,6 +98,7 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    alignas(8)
     limine_dtb_request dtbRequest
     {
         .id = LIMINE_DTB_REQUEST,
@@ -94,6 +106,7 @@ namespace Npk::Boot
         .response = nullptr
     };
 
+    alignas(8)
     limine_smp_request smpRequest
     {
         .id = LIMINE_SMP_REQUEST,
@@ -102,6 +115,7 @@ namespace Npk::Boot
         .flags = 0
     };
 
+    alignas(8)
     limine_kernel_file_request kernelFileRequest
     {
         .id = LIMINE_KERNEL_FILE_REQUEST,
@@ -160,7 +174,7 @@ namespace Npk::Boot
         [] ()
         {
             auto resp = hhdmRequest.response;
-            Log("  offset=0x%lx", LogLevel::Verbose, resp->offset);
+            Log("  offset=0x%" PRIx64, LogLevel::Verbose, resp->offset);
         },
         [] ()
         {
@@ -168,7 +182,7 @@ namespace Npk::Boot
             for (size_t i = 0; i < resp->framebuffer_count; i++)
             {
                 auto fb = resp->framebuffers[i];
-                Log("  fb %lu: addr=%p, w=%lu, h=%lu, s=%lu, bpp=%u, red=%u<<%u, green=%u<<%u, blue=%u<<%u", 
+                Log("  fb %zu: addr=%p, w=%" PRIu64", h=%" PRIu64", s=%" PRIu64", bpp=%u, red=%u<<%u, green=%u<<%u, blue=%u<<%u", 
                     LogLevel::Verbose, i, fb->address, fb->width, fb->height, fb->pitch, fb->bpp,
                     fb->red_mask_size, fb->red_mask_shift, fb->green_mask_size, fb->green_mask_shift,
                     fb->blue_mask_size, fb->blue_mask_shift);
@@ -177,7 +191,7 @@ namespace Npk::Boot
         [] ()
         {
             auto resp = pagingModeRequest.response;
-            Log("  mode=%lu, flags=0x%lx", LogLevel::Verbose, resp->mode, resp->flags);
+            Log("  mode=%" PRIu64", flags=0x%" PRIx64, LogLevel::Verbose, resp->mode, resp->flags);
         },
         [] ()
         {
@@ -192,7 +206,7 @@ namespace Npk::Boot
             {
                 auto entry = resp->entries[i];
                 auto conv = sl::ConvertUnits(entry->length, sl::UnitBase::Binary);
-                Log("  %lu: base=0x%lx, length=0x%lx (%lu.%lu %sB), type=%s", LogLevel::Verbose, i, 
+                Log("  %zu: base=0x%" PRIx64", length=0x%" PRIx64" (%zu.%zu %sB), type=%s", LogLevel::Verbose, i, 
                     entry->base, entry->length, conv.major, conv.minor, conv.prefix, EntryTypeStrs[entry->type]);
             }
         },
@@ -203,7 +217,7 @@ namespace Npk::Boot
             {
                 auto mod = resp->modules[i];
                 auto conv = sl::ConvertUnits(mod->size, sl::UnitBase::Decimal);
-                Log("  %lu: addr=%p, size=0x%lx (%lu.%lu %sB), path=%s, cmdline=%s", LogLevel::Verbose,
+                Log("  %zu: addr=%p, size=0x%" PRIx64" (%zu.%zu %sB), path=%s, cmdline=%s", LogLevel::Verbose,
                     i, mod->address, mod->size, conv.major, conv.minor, conv.prefix, mod->path, mod->cmdline);
             }
         },
@@ -217,12 +231,12 @@ namespace Npk::Boot
         },
         [] ()
         {
-            Log("  epoch=%li", LogLevel::Verbose, bootTimeRequest.response->boot_time);
+            Log("  epoch=%" PRIi64, LogLevel::Verbose, bootTimeRequest.response->boot_time);
         },
         [] ()
         {
             auto resp = kernelAddrRequest.response;
-            Log("  phys=0x%lx, virt=0x%lx", LogLevel::Verbose, resp->physical_base, resp->virtual_base);
+            Log("  phys=0x%" PRIx64", virt=0x%" PRIx64, LogLevel::Verbose, resp->physical_base, resp->virtual_base);
         },
         [] ()
         {
@@ -240,8 +254,11 @@ namespace Npk::Boot
 #elif defined(__riscv)
                 const size_t localId = resp->cpus[i]->hartid;
                 const size_t isBsp = localId == resp->bsp_hartid;
+#elif defined(__m68k__)
+                const size_t localId = resp->cpus[i]->id;
+                const size_t isBsp = localId == resp->bsp_id;
 #endif
-                Log("  %lu: acpiId=%u, gotoAddr=%p%s", LogLevel::Verbose, localId, 
+                Log("  %zu: acpiId=%" PRIu32", gotoAddr=%p%s", LogLevel::Verbose, localId, 
                     resp->cpus[i]->processor_id, &resp->cpus[i]->goto_address, isBsp ? ", bsp" : "");
             }
         },
@@ -249,7 +266,7 @@ namespace Npk::Boot
         {
             auto file = kernelFileRequest.response->kernel_file;
             auto conv = sl::ConvertUnits(file->size, sl::UnitBase::Decimal);
-            Log("  addr=%p, size=0x%lx (%lu.%lu %sB), path=%s, cmdline=%s", LogLevel::Verbose,
+            Log("  addr=%p, size=0x%" PRIx64" (%zu.%zu %sB), path=%s, cmdline=%s", LogLevel::Verbose,
                 file->address, file->size, conv.major, conv.minor, conv.prefix, file->path, file->cmdline);
         },
     };
@@ -277,12 +294,12 @@ namespace Npk::Boot
             auto req = reinterpret_cast<const LimineReq*>(requests[i]);
             if (req->response == nullptr)
             {
-                Log("%s request: rev=%lu, no response.", LogLevel::Verbose, 
+                Log("%s request: rev=%" PRIu64", no response.", LogLevel::Verbose, 
                     RequestNameStrs[i], req->revision);
             }
             else
             {
-                Log("%s request: rev=%lu, respRev=%lu", LogLevel::Verbose,
+                Log("%s request: rev=%" PRIu64", respRev=%" PRIu64, LogLevel::Verbose,
                     RequestNameStrs[i], req->revision, *req->response);
                 if (printDetails && RequestPrinters[i] != nullptr)
                     RequestPrinters[i]();
@@ -290,7 +307,7 @@ namespace Npk::Boot
             }
         }
 
-        Log("Bootloader populated %lu/%lu responses.", LogLevel::Verbose, 
+        Log("Bootloader populated %zu/%zu responses.", LogLevel::Verbose, 
             responsesFound, requestCount);
     }
 }

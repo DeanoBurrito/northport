@@ -1,4 +1,8 @@
 # current
+- Added a new architecture: Motorolla 68K series, namely 68040 and higher.
+    - This is also the first 32-bit architecture supported by the kernel!
+    - A custom boot shim was also written for the qemu virt board, which supports the limine protocol.
+
 - Added more drivers:
     - uACPI: first third-party driver, provides ACPI runtime services to the kernel.
     - NVMe: basic first implementation, but flexible enough and has read and write support. Plays nicely with MDLs from the kernel.
@@ -22,15 +26,18 @@
 
 - Memory stack:
     - Added debug features to kernel heap: bounds checks after free, writing junk to memory before allocation and after free.
+    - Added similar features to physical memory manager.
     - These are all opt-in as they have memory and performance penalties, but are useful for catching bugs.
 
 - Added config store, a glorified kernel command line parser. Allows for overriding previously hardcoded config values.
 - Thread switches are delayed until a core's runlevel drops back to normal.
+- Removed PolledSleep() from architecture timers interface. It's not used and we can achieve the same functionality with PollTimer().
 
 - Panic stack traces now include the program name prepended to the function name, useful for driver/kernel stack traces.
 - Simplified logging subsystem, level/time/source are now stored as their raw values rather than printing them as strings.
 - Added names and type info for symbols defined in assembler sources.
 - Added support for building C sources for drivers.
+- Added elf32 definitions to syslib, and generic macros that resolve to elf32/elf64 versions depending on target architecture.
 - Error log levels now capture a snapshot of the callstack, for logging or retrieval later on.
     - These traces are stored in a small circular buffer.
 

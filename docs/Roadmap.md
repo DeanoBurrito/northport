@@ -17,12 +17,16 @@
             - [x] Timer (SBI, sstc).
             - [ ] Map cpu topology.
             - [x] F/D/Q and V extension support.
-            - [ ] AIA (imsic, aplic) and ACLINT support.
+            - [x] AIA (imsic, aplic) and ACLINT support.
+        - [ ] m68k:
+            - [x] Limine protocol loader.
+            - [ ] Core (paging, interrupts).
+            - [ ] Timer.
+            - [ ] FPU.
     - [x] Core Layer:
         - [x] Logging Infrastructure:
             - [x] Fully lockless.
             - [x] Per-core buffers.
-            - [ ] Runtime sinks.
             - [x] Panic sequence.
             - [x] Stack frame walker.
             - [x] Symbol lookup.
@@ -140,7 +144,7 @@
     - [ ] Strings:
         - [x] Basic string.
         - [ ] String builder.
-        - [ ] String formatter.
+        - [x] String formatter.
         - [ ] Integer <-> string conversions.
     - [ ] Transaction framework.
     - [x] Basic locks.

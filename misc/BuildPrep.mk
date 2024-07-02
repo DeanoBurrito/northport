@@ -21,3 +21,9 @@ ifeq ($(CPU_ARCH), riscv64)
 		KERNEL_CXX_FLAGS += -DNP_RISCV64_ASSUME_SERIAL=$(RV64_ASSUME_UART)
 	endif
 endif
+
+ifeq ($(CPU_ARCH), m68k)
+	ifneq ($(M68K_ASSUME_UART), no)
+		KERNEL_CXX_FLAGS += -DNP_M68K_ASSUME_TTY=$(M68K_ASSUME_UART)
+	endif
+endif

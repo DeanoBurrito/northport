@@ -253,8 +253,11 @@ LIMINE_DEPRECATED_IGNORE_END
 #define LIMINE_PAGING_MODE_RISCV_SV57 2
 #define LIMINE_PAGING_MODE_MAX LIMINE_PAGING_MODE_RISCV_SV57
 #define LIMINE_PAGING_MODE_DEFAULT LIMINE_PAGING_MODE_RISCV_SV48
+#elif defined (__m68k__)
+#define LIMINE_PAGING_MODE_MAX 0
+#define LIMINE_PAGING_MODE_DEFAULT 0
 #else
-#error Unknown architecture
+#warning Unknown Architecture
 #endif
 
 struct limine_paging_mode_response {
@@ -354,8 +357,23 @@ struct limine_smp_response {
     LIMINE_PTR(struct limine_smp_info **) cpus;
 };
 
+#elif defined (__m68k__)
+
+struct limine_smp_info {
+    uint32_t processor_id;
+    uint64_t id;
+    LIMINE_PTR(limine_goto_address) goto_address;
+};
+
+struct limine_smp_response {
+    uint64_t revision;
+    uint32_t flags;
+    uint64_t bsp_id;
+    uint64_t cpu_count;
+    LIMINE_PTR(struct limine_smp_info **) cpus;
+};
 #else
-#error Unknown architecture
+#warning Unknown Architecture
 #endif
 
 struct limine_smp_request {

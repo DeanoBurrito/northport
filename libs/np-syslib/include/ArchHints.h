@@ -22,6 +22,10 @@ namespace sl
     {
         asm volatile("pause");
     }
+#elif defined(__m68k__)
+    [[gnu::always_inline]]
+    inline void HintSpinloop()
+    { asm volatile(""); } //afaik there are no instructions for this on the 68k series chips, so do nothing
 #else
     #warning "Compiling np-syslib for unknown target platform. Architecture hints aren't available."
 

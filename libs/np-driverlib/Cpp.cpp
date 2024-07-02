@@ -2,7 +2,7 @@
 
 extern "C"
 {
-    uintptr_t __stack_chk_guard = 0x57656C2C6675636B;
+    uintptr_t __stack_chk_guard = static_cast<uintptr_t>(0x57656C2C6675636B);
 
     void __stack_chk_fail()
     {

@@ -2,6 +2,7 @@
 
 #include <Locks.h>
 #include <Atomic.h>
+#include <Random.h>
 
 extern "C" { struct limine_memmap_entry; }
 
@@ -56,6 +57,9 @@ namespace Npk::Memory
             PmFreeEntry* head;
         } freelist;
 
+        sl::XoshiroRng rng;
+        bool trashAfterUse;
+        bool trashBeforeUse;
 
         void IngestMemory(size_t entryCount, limine_memmap_entry** entries, size_t contiguousQuota);
         void* AllocMeta(size_t size);
