@@ -1,10 +1,11 @@
 LOADER_CXX_FLAGS = -Wall -Wextra -fstack-protector-strong -ffreestanding -std=c++17 \
 	-fno-rtti -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables -g \
 	-m68040 \
-	-I$(PROJ_ROOT_DIR)/libs/np-syslib/include -I$(PROJ_ROOT_DIR)/kernel/include
+	-I$(PROJ_ROOT_DIR)/libs/np-syslib/include -I$(PROJ_ROOT_DIR)/kernel/include \
+	-DNPL_INITRD_CMDLINE=\"northport-initdisk\" -DNPL_ENABLE_LOGGING
 LOADER_LD_FLAGS = -nostdlib -static --no-dynamic-linker
 
-CXX_SRCS = Main.cpp Loader.cpp Memory.cpp Syslib.cpp
+CXX_SRCS = Main.cpp Loader.cpp Memory.cpp Syslib.cpp Util.cpp
 AS_SRCS = Entry.S
 
 LD_SCRIPT = Linker.lds

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <NativePtr.h>
+#include <NanoPrintf.h>
 
 extern "C"
 {
@@ -59,4 +60,14 @@ namespace Npl
 
     void Panic(PanicReason reason);
     sl::CNativePtr FindBootInfoTag(BootInfoType type, sl::CNativePtr begin = nullptr);
+
+#ifdef NPL_ENABLE_LOGGING
+    extern sl::NativePtr uart;
+
+    void UartWrite(int c, void* ignored);
+
+    #define NPL_LOG(...) npf_pprintf(UartWrite, nullptr, __VA_ARGS__)
+#else
+    #define NPL_LOG(msg, ...) do {} while(false)
+#endif
 }

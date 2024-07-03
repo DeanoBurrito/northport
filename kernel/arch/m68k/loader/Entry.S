@@ -15,6 +15,8 @@ LoaderExit:
     add.l 4(%a7), %a1
     exg %a1, %a7
 
+    move.l #0, -(%a7)
+    move.l #0, -(%a7)
     jmp (%a0)
 
 .section .bss

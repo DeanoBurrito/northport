@@ -6,6 +6,8 @@
 
 //bit of assembly in the global scope - you love to see it
 asm("\
+.global KERNEL_BLOB_BEGIN \n\
+.global KERNEL_BLOB_END \n\
 .section .rodata \n\
 .balign 0x10 \n\
 KERNEL_BLOB_BEGIN: \n\
@@ -50,6 +52,8 @@ namespace Npl
     static void SetKernelSlide()
     {
         kernelSlide = 0; //TODO: KASLR
+        NPL_LOG("Setting kernel slide: %u, effective load window 0x%x->0x%x\r\n", 
+            kernelSlide, kernelBase + kernelSlide, kernelTop + kernelSlide);
     }
 
     static bool DoRelocation(bool isRela, const sl::Elf_Rela* r, const sl::Elf_Sym* symTable)
@@ -90,12 +94,19 @@ namespace Npl
             {
                 if (phdrs[i].p_type != sl::PT_DYNAMIC)
                     continue;
+                if (phdrs[i].p_filesz == 0)
+                    return nullptr;
                 return blob.Offset(phdrs[i].p_offset).As<const sl::Elf_Dyn>();
             }
             return nullptr;
         }();
+
         if (dyn == nullptr)
-            return true; //no relocatons to perform, but no failures either.
+        {
+            NPL_LOG("Kernel has no valid dynamic segment.\r\n");
+            return true;
+        }
+        NPL_LOG("Kernel dynamic segment at %p\r\n", dyn);
 
         const sl::Elf_Sym* symTable;
         const uint8_t* pltRelocs;
@@ -151,6 +162,8 @@ namespace Npl
             if (!DoRelocation(true, &relas[i], symTable))
                 return false;
         }
+
+        size_t pltCount = 0;
         for (size_t off = 0; off < pltRelocSize;)
         {
             auto rela = reinterpret_cast<const sl::Elf_Rela*>(pltRelocs + off);
@@ -158,15 +171,21 @@ namespace Npl
                 return false;
 
             off += pltUsesRela ? sizeof(sl::Elf_Rela) : sizeof(sl::Elf_Rel);
+            pltCount++;
         }
 
+        NPL_LOG("Kernel relocations done: rel=%u, rela=%u, plt=%u\r\n", relCount, relaCount, pltCount);
         return true;
     }
 
     bool LoadKernel()
     {
+        NPL_LOG("Loading kernel ...\r\n");
         if (!IsKernelValid())
+        {
+            NPL_LOG("Aborting load: kernel image invalid.\r\n");
             return false;
+        }
 
         kernelBase = ~0;
         kernelTop = 0;
@@ -186,6 +205,7 @@ namespace Npl
             if (phdrs[i].p_vaddr + phdrs[i].p_memsz > kernelTop)
                 kernelTop = phdrs[i].p_vaddr + phdrs[i].p_memsz;
         }
+        NPL_LOG("Kernel image requests load window: 0x%x->0x%x\r\n", kernelBase, kernelTop);
 
         SetKernelSlide();
 
@@ -196,6 +216,7 @@ namespace Npl
         }();
         if (kernelPhysBase == 0)
             Panic(PanicReason::LoadAllocFailure);
+        NPL_LOG("Kernel physical base: 0x%x\r\n", kernelPhysBase);
 
         sl::NativePtr slate = MapMemory(kernelTop - kernelBase, kernelBase + kernelSlide, kernelPhysBase);
         for (size_t i = 0; i < phdrCount; i++)
@@ -209,6 +230,9 @@ namespace Npl
             const size_t zeroes = phdr.p_memsz - phdr.p_filesz;
             if (zeroes != 0)
                 sl::memset(sl::NativePtr(dest).Offset(phdr.p_filesz).ptr, 0, zeroes);
+
+            NPL_LOG("Segment %u loaded at %p, 0x%x bytes, 0x%x zeroes appended.\r\n", i,
+                dest, phdr.p_filesz, zeroes);
         }
         
         return DoKernelRelocations(blob);
@@ -216,6 +240,8 @@ namespace Npl
 
     void ExecuteKernel()
     {
+        NPL_LOG("Loader finished, jumping to kernel. Bye!\r\n");
+
         sl::CNativePtr blob(KERNEL_BLOB_BEGIN);
         LoaderExit(HhdmBase, blob.As<sl::Elf32_Ehdr>()->e_entry + kernelSlide);
     }

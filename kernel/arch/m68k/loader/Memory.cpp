@@ -51,6 +51,7 @@ namespace Npl
     {
         base = sl::AlignDown(base, PageSize);
         top = sl::AlignUp(top, PageSize);
+        NPL_LOG("Physical range reserved: 0x%x->0x%x (0x%x bytes).\r\n", base, top, top - base);
 
         for (MemoryBlock* scan = physList.Begin(); scan != nullptr; scan = scan->next)
         {
@@ -82,6 +83,7 @@ namespace Npl
                 latest->base = top;
                 latest->length = scanTop - top;
                 physList.PushBack(latest);
+                break;
             }
         }
 
@@ -158,6 +160,7 @@ namespace Npl
                 header->base = base;
                 header->length = length;
                 physList.PushBack(header);
+                NPL_LOG("Usable memory chunk: 0x%x->0x%x (0x%x bytes).\r\n", base, length, length - base);
             }
 
             chunkScan = chunkScan.Offset(chunkScan.As<BootInfoTag>()->size);
@@ -264,7 +267,7 @@ namespace Npl
 
     void* AllocGeneral(size_t size)
     {
-        const size_t pages = sl::AlignUp(size, PageSize);
+        const size_t pages = sl::AlignUp(size, PageSize) / PageSize;
         const uintptr_t found = AllocPages(pages); //TODO: we can do better than this surely
 
         if (found == 0)
@@ -339,7 +342,7 @@ extern "C"
         return Npl::AllocGeneral(size);
     }
 
-    void free(void* ptr, size_t length)
+    void free(void*, size_t)
     {
         Npl::Panic(Npl::PanicReason::DeleteCalled);
     }

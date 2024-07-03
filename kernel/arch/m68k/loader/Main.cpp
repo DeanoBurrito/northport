@@ -17,37 +17,6 @@ namespace Npl
 {
     const char* EmptyStr = "" + HhdmBase;
 
-    void Panic(PanicReason)
-    {
-        //leave d0 alone it should contain our error code
-        asm("clr %d1; add #0xDEAD, %d1");
-        asm("clr %d2; add #0xDEAD, %d2");
-        asm("clr %d3; add #0xDEAD, %d3");
-        while (true)
-            asm("stop #0x2700");
-        __builtin_unreachable();
-    }
-
-    sl::CNativePtr FindBootInfoTag(BootInfoType type, sl::CNativePtr begin)
-    {
-        constexpr size_t ReasonableSearchCount = 50;
-
-        if (begin.ptr == nullptr)
-            begin = sl::AlignUp((uintptr_t)LOADER_BLOB_END, 2);
-
-        for (size_t i = 0; i < ReasonableSearchCount; i++)
-        {
-            auto tag = begin.As<BootInfoTag>();
-            if (tag->type == BootInfoType::Last)
-                return nullptr;
-            if (tag->type == type)
-                return begin;
-            begin = begin.Offset(tag->size);
-        }
-
-        return nullptr;
-    }
-
     struct LbpRequestHandler
     {
         uint64_t id[4];
@@ -57,9 +26,10 @@ namespace Npl
     constexpr LbpRequestHandler RequestHandlers[] =
     {
         {
-           .id = LIMINE_BOOTLOADER_INFO_REQUEST,
+            .id = LIMINE_BOOTLOADER_INFO_REQUEST,
             .Handle = [](LbpRequest* req)
             {
+                NPL_LOG("Populating bootloader info response.\r\n");
                 auto resp = new limine_bootloader_info_response();
                 resp->revision = 0;
                 resp->name = "northport m68k loader";
@@ -75,6 +45,7 @@ namespace Npl
             .id = LIMINE_HHDM_REQUEST,
             .Handle = [](LbpRequest* req)
             {
+                NPL_LOG("Populating HHDM response.\r\n");
                 auto resp = new limine_hhdm_response();
                 resp->revision = 0;
                 resp->offset = HhdmBase;
@@ -86,6 +57,7 @@ namespace Npl
             .id = LIMINE_SMP_REQUEST,
             .Handle = [](LbpRequest* req)
             {
+                NPL_LOG("Populating SMP response.\r\n");
                 auto resp = new limine_smp_response();
                 resp->revision = 0;
                 resp->flags = 0;
@@ -107,10 +79,12 @@ namespace Npl
             .id = LIMINE_KERNEL_FILE_REQUEST,
             .Handle = [](LbpRequest* req)
             {
+                NPL_LOG("Populating kernel file response.\r\n");
                 auto fileDesc = new limine_file();
                 fileDesc->revision = 0;
-                //fileDesc->address = KERNEL_BLOB_BEGIN;
-                //fileDesc->size = (size_t)KERNEL_BLOB_END - (size_t)KERNEL_BLOB_BEGIN;
+                fileDesc->address = reinterpret_cast<LIMINE_PTR(void*)>((uintptr_t)KERNEL_BLOB_BEGIN + HhdmBase);
+                fileDesc->size = reinterpret_cast<uint64_t>(KERNEL_BLOB_END);
+                fileDesc->size -= reinterpret_cast<uint64_t>(KERNEL_BLOB_BEGIN); 
                 fileDesc->path = EmptyStr;
                 fileDesc->cmdline = NPL_KERNEL_CMDLINE;
 
@@ -127,8 +101,12 @@ namespace Npl
             {
                 const auto maybeInitRd = FindBootInfoTag(BootInfoType::InitRd);
                 if (maybeInitRd.ptr == nullptr)
+                {
+                    NPL_LOG("No initrd passed to loader, ignoring modules request.\r\n");
                     return;
+                }
 
+                NPL_LOG("Populating modules response (with initrd).\r\n");
                 const auto initrd = maybeInitRd.Offset(sizeof(BootInfoTag)).As<BootInfoMemChunk>();
                 auto file = new limine_file();
                 file->revision = 0;
@@ -156,6 +134,7 @@ namespace Npl
             .id = LIMINE_KERNEL_ADDRESS_REQUEST,
             .Handle = [](LbpRequest* req)
             {
+                NPL_LOG("Populating kernel address response.\r\n");
                 auto resp = new limine_kernel_address_response();
                 resp->revision = 0;
                 GetKernelBases(&resp->physical_base, &resp->virtual_base);
@@ -176,6 +155,17 @@ extern "C"
     void LoaderEntryNext()
     {
         using namespace Npl;
+
+#ifdef NPL_ENABLE_LOGGING
+        auto maybeUart = FindBootInfoTag(BootInfoType::GoldfishTtyBase);
+        if (maybeUart.ptr != nullptr)
+        {
+            uart = maybeUart.Offset(sizeof(BootInfoTag)).Read<uint32_t>();
+            uart.Offset(8).Write<uint32_t>(0); //disable interrupts
+            NPL_LOG("\r\nNorthport m68k loader starting ...\r\n");
+            NPL_LOG("UART enabled, mapped at %p\r\n", uart.ptr);
+        }
+#endif
         InitMemoryManager();
 
         const size_t hhdmLimit = HhdmLimit();
@@ -186,7 +176,13 @@ extern "C"
             if (!MapMemory(PageSize, i + HhdmBase, i))
                 Panic(PanicReason::HhdmSetupFail);
         }
+
         EnableMmu();
+
+#ifdef NPL_ENABLE_LOGGING
+        uart = MapMemory(PageSize, hhdmLimit, maybeUart.Offset(sizeof(BootInfoTag)).Read<uint32_t>());
+        NPL_LOG("MMU enabled, UART re-mapped at %p\r\n", uart.ptr);
+#endif
 
         LoadKernel();
 
@@ -195,6 +191,7 @@ extern "C"
         const uint64_t mmapId[4] = LIMINE_MEMMAP_REQUEST;
         LbpRequest* mmapRequest = nullptr;
 
+        NPL_LOG("Handling LBP requests ...\r\n");
         for (LbpRequest* request = LbpNextRequest(); request != nullptr; request = LbpNextRequest(request))
         {
             if (sl::memcmp(mmapId, request->id, 32) == 0)
@@ -208,6 +205,7 @@ extern "C"
                 if (sl::memcmp(RequestHandlers[i].id, request->id, 32) != 0)
                     continue;
 
+                NPL_LOG("Found request at %p\r\n", request);
                 RequestHandlers[i].Handle(request);
                 break;
             }
@@ -215,6 +213,7 @@ extern "C"
 
         if (mmapRequest != nullptr)
         {
+            NPL_LOG("Handling memory map request ...\r\n");
             constexpr size_t MaxMemmapAllocTries = 3;
 
             limine_memmap_response* resp = new limine_memmap_response();
@@ -230,14 +229,17 @@ extern "C"
                 entryPtrs = new limine_memmap_entry*[storeCount];
                 
                 entryCount = GenerateLbpMemoryMap(entries, storeCount);
+                NPL_LOG("Memory map finalize attempt: store=%u, actual=%u\r\n", storeCount, entryCount);
                 if (entryCount <= storeCount)
                     break;
 
+                NPL_LOG("Finalize attempt failed, retrying\r\n");
                 delete[] entries;
                 delete[] entryPtrs;
                 entries = nullptr;
                 entryPtrs = nullptr;
             }
+            NPL_LOG("Finalized memory map, populating protocol response.\r\n");
 
             for (size_t i = 0; i < entryCount; i++)
                 entryPtrs[i] = &entries[i];
