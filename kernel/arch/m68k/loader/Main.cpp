@@ -15,6 +15,8 @@
 
 namespace Npl
 {
+    const char* EmptyStr = "" + HhdmBase;
+
     void Panic(PanicReason)
     {
         //leave d0 alone it should contain our error code
@@ -55,12 +57,12 @@ namespace Npl
     constexpr LbpRequestHandler RequestHandlers[] =
     {
         {
-            .id = LIMINE_BOOTLOADER_INFO_REQUEST,
+           .id = LIMINE_BOOTLOADER_INFO_REQUEST,
             .Handle = [](LbpRequest* req)
             {
                 auto resp = new limine_bootloader_info_response();
                 resp->revision = 0;
-                resp->name = "NP Loader";
+                resp->name = "northport m68k loader";
                 resp->version = "1";
 
                 resp->name += HhdmBase;
@@ -109,7 +111,7 @@ namespace Npl
                 fileDesc->revision = 0;
                 //fileDesc->address = KERNEL_BLOB_BEGIN;
                 //fileDesc->size = (size_t)KERNEL_BLOB_END - (size_t)KERNEL_BLOB_BEGIN;
-                fileDesc->path = "";
+                fileDesc->path = EmptyStr;
                 fileDesc->cmdline = NPL_KERNEL_CMDLINE;
 
                 auto resp = new limine_kernel_file_response();
@@ -122,7 +124,33 @@ namespace Npl
         {
             .id = LIMINE_MODULE_REQUEST,
             .Handle = [](LbpRequest* req)
-            {}
+            {
+                const auto maybeInitRd = FindBootInfoTag(BootInfoType::InitRd);
+                if (maybeInitRd.ptr == nullptr)
+                    return;
+
+                const auto initrd = maybeInitRd.Offset(sizeof(BootInfoTag)).As<BootInfoMemChunk>();
+                auto file = new limine_file();
+                file->revision = 0;
+                file->address = reinterpret_cast<LIMINE_PTR(void*)>(initrd->addr + HhdmBase);
+                file->size = initrd->size;
+                file->path = EmptyStr;
+
+                const char initrdCmdline[] = NPL_INITRD_CMDLINE;
+                char* cmdline = new char[sizeof(initrdCmdline)];
+                sl::memcopy(initrdCmdline, cmdline, sizeof(initrdCmdline));
+                file->cmdline = cmdline;
+
+                auto infoBlock = new limine_file*[1];
+                infoBlock[0] = file;
+
+                auto resp = new limine_module_response();
+                resp->revision = 0;
+                resp->module_count = 1;
+                resp->modules = infoBlock;
+
+                req->response = resp;
+            }
         },
         {
             .id = LIMINE_KERNEL_ADDRESS_REQUEST,

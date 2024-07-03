@@ -5,8 +5,8 @@
 
 # void SwitchFrame(TrapFrame** current, TrapFrame* next)
 SwitchFrame:
-    move.l 8(%a7), %d0
-    tst %d0
+    move.l 8(%a7), %d1
+    tst %d1
     bne 1f
     rts
 
@@ -25,7 +25,7 @@ SwitchFrame:
     move.l %a7, (%a0)
 
 SkipSave:
-    move.l 8(%a7), %a7
+    exg %d1, %a7
     movem.l (%a7)+, %d0-%a7
 
     rte

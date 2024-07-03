@@ -8,8 +8,8 @@ Having said that, this does what you'd expect: it allows the northport kernel to
 ## Bootloader Config
 
 The shim is extremely primitive, but it does allow some configuration at compile-time. The following macros can be defined when compiling the shim:
-- `NPL_KERNEL_CMDLINE`: This macro is used to populate the cmdline field of the kernel file response, which is how command line arguments apppear to the kernel in the limine protocol.
 - `NPL_INITRD_CMDLINE`: The shim can only provide a single module to the kernel (passed via the `-initrd` arg to qemu), this macro can be used to set the cmdline field for the module.
+- `NPL_KERNEL_CMDLINE`: If defined, this macro is used as a string to append to the kernel command line, passed as the cmdline field of the kernel file response. If the firmware also passes a command line to the loader (for example, via qemu's `-append` flag) these things are concatenated and the result is passed to the kernel.
 
 ## Limine Boot Protocol Modifications
 Please note: these changes are my own, and not endorsed by the original authors of the limine protocol. If you're using this shim for your own kernel, do not ask for help upstream or bother actual limine devs.
