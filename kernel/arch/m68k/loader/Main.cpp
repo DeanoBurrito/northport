@@ -86,13 +86,26 @@ namespace Npl
                 fileDesc->size = reinterpret_cast<uint64_t>(KERNEL_BLOB_END);
                 fileDesc->size -= reinterpret_cast<uint64_t>(KERNEL_BLOB_BEGIN); 
                 fileDesc->path = EmptyStr;
-                fileDesc->cmdline = NPL_KERNEL_CMDLINE;
+
+                const char bakedCmdline[] = NPL_KERNEL_CMDLINE;
+                const char* liveCmdline = nullptr;
+                size_t liveLen = 0;
+                if (auto found = FindBootInfoTag(BootInfoType::CommandLine); found.ptr != nullptr)
+                {
+                    liveCmdline = found.Offset(sizeof(BootInfoTag)).As<const char>();
+                    liveLen = found.As<BootInfoTag>()->size;
+                }
+
+                char* cmdline = static_cast<char*>(AllocGeneral(sizeof(bakedCmdline) + liveLen));
+                sl::memcopy(bakedCmdline, cmdline, sizeof(bakedCmdline));
+                sl::memcopy(liveCmdline, cmdline + (sizeof(bakedCmdline) - 1), liveLen);
+                fileDesc->cmdline = cmdline;
 
                 auto resp = new limine_kernel_file_response();
                 resp->revision = 0;
                 resp->kernel_file = fileDesc;
 
-                //req->response = resp;
+                req->response = resp;
             }
         },
         {
