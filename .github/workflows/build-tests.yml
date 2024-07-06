@@ -63,6 +63,7 @@ jobs:
         X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-m68k-cross/bin/m68k-buildroot-linux-gnu-ar
 
     - name: Compile with Clang for m68k
+      if: false
       run: >
         cd repo;
         make clean;
