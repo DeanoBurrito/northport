@@ -18,7 +18,8 @@ jobs:
         path: |
           **/gcc-x86_64-cross
           **/gcc-riscv64-cross
-        key: gcc-bins-2022-08-1_oops_i_messed_up
+          **/gcc-m68k-cross
+        key: gcc-bins-2024-07-06
 
     - name: Download LLVM + Clang
       run: sudo apt install lld llvm
@@ -37,10 +38,29 @@ jobs:
         wget https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--glibc--stable-2022.08-1.tar.bz2 -O toolchains/gcc-riscv64;
         cd toolchains;
         tar -vxf gcc-riscv64; mv riscv64-lp64d--glibc--stable-2022.08-1 gcc-riscv64-cross
+
+    - name: Download GCC for m68k
+      if: steps.cached-compiler-binaries.outputs.cache-hit != 'true'
+      run: >
+        wget https://toolchains.bootlin.com/downloads/releases/toolchains/m68k-68xxx/tarballs/m68k-68xxx--glibc--stable-2024.02-1.tar.bz2 -O toolchains/gcc-m68k;
+        cd toolchains;
+        tar -vxf gcc-m68k; mv m68k-* gcc-m68k-cross
     
     - uses: actions/checkout@v3
       with:
         path: 'repo'
+
+    - name: Compile with GCC for m68k
+      run: >
+        cd repo;
+        make clean;
+        make binaries
+        CPU_ARCH=m68k
+        TOOLCHAIN=gcc
+        X_CXX_BIN=$GITHUB_WORKSPACE/toolchains/gcc-m68k-cross/bin/m68k-buildroot-linux-gnu-g++
+        X_AS_BIN=$GITHUB_WORKSPACE/toolchains/gcc-m68k-cross/bin/m68k-buildroot-linux-gnu-as
+        X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-m68k-cross/bin/m68k-buildroot-linux-gnu-ld
+        X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-m68k-cross/bin/m68k-buildroot-linux-gnu-ar
 
     - name: Compile with Clang for x86_64
       run: >
