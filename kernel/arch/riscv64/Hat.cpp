@@ -271,10 +271,8 @@ namespace Npk
         return true;
     }
 
-    void SyncWithMasterMap(HatMap* map)
+    static void SyncWithMasterMap(HatMap* map)
     {
-        ASSERT_(map != nullptr);
-
         const PageTable* source = AddHhdm(kernelMap.root);
         PageTable* dest = AddHhdm(map->root);
 
@@ -286,15 +284,13 @@ namespace Npk
     void MakeActiveMap(HatMap* map)
     {
         ASSERT_(map != nullptr);
+
+        if (map != &kernelMap)
+            SyncWithMasterMap(map);
         
         WriteCsr("satp", satpBits | ((uintptr_t)map->root >> 12));
         //writing to satp DOES NOT flush the tlb, this sfence instruction flushes all
         //non-global tlb entries.
         asm volatile("sfence.vma zero, %0" :: "r"(0) : "memory");
-    }
-
-    void HatHandlePanic()
-    {
-        MakeActiveMap(&kernelMap);
     }
 }

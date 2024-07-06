@@ -10,6 +10,8 @@
 
 namespace Npk
 {
+    extern void PolledSleep(size_t nanos); //see Timers.cpp
+
     /*
         This version of northport is actually a rewrite of the original. A big chunk of
         the APIC code (especially the x2apic stuff) was written by Ivan (github.com/dreamos82).

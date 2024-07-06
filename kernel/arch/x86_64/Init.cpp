@@ -137,27 +137,11 @@ namespace Npk
         }
     }
 
-    constexpr const char FwCfgFriendlyName[] = "fwcfg_dummy";
-    constexpr const uint8_t FwCfgLoadName[] = "npk_fwcfg_loadname";
-
     void ThreadedArchInit()
     {
         npk_add_bus_access(BusPortIo, PortIoAccess);
 
         //TODO: check if ecam was not available, and add port io descriptor for pci
-
-        //TODO: some mechanism to check if fwcfg is actually available, rather than blindly assuming it is
-        //(we can use the hypervisor cpuid leaf for this)
-        npk_device_desc* fwCfgDescriptor = new npk_device_desc();
-        fwCfgDescriptor->init_data = nullptr;
-        fwCfgDescriptor->driver_data = nullptr;
-        fwCfgDescriptor->load_name_count = 1;
-        fwCfgDescriptor->friendly_name = { .length = sizeof(FwCfgFriendlyName), .data = FwCfgFriendlyName };
-
-        npk_load_name* loadName = new npk_load_name();
-        loadName->str = FwCfgLoadName;
-        fwCfgDescriptor->load_names = loadName;
-        Drivers::DriverManager::Global().AddDescriptor(fwCfgDescriptor);
     }
 }
 
@@ -209,6 +193,11 @@ extern "C"
                 procInfo->goto_address = ApEntry;
                 Log("Sending bring-up request to core %u.", LogLevel::Verbose, procInfo->lapic_id);
             }
+        }
+        else
+        {
+            InitCore(0, 0);
+            PerCoreCommonInit();
         }
 
         InitTimers();

@@ -1,5 +1,5 @@
 #include <arch/riscv64/Interrupts.h>
-#include <arch/riscv64/IntControllers.h>
+#include <arch/riscv64/IntrControllers.h>
 #include <arch/Timers.h>
 #include <arch/Platform.h>
 #include <arch/Cpu.h>
@@ -81,14 +81,6 @@ namespace Npk
 
 extern "C"
 {
-    struct EntryData
-    {
-        uintptr_t hartId;
-        uintptr_t dtb;
-        uintptr_t physBase;
-        uintptr_t virtBase;
-    };
-
     void KernelEntry()
     {
         using namespace Npk;
@@ -118,12 +110,18 @@ extern "C"
                 if (cpuInfo->hartid == resp->bsp_hartid)
                 {
                     InitCore(cpuInfo->hartid, cpuInfo->processor_id);
+                    PerCoreCommonInit();
                     continue;
                 }
 
                 cpuInfo->goto_address = ApEntry;
                 Log("Sending bring-up request to core %lu.", LogLevel::Verbose, cpuInfo->hartid);
             }
+        }
+        else
+        {
+            InitCore(0, 0);
+            PerCoreCommonInit();
         }
 
         Tasking::StartSystemClock();

@@ -62,11 +62,13 @@ jobs:
         X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-m68k-cross/bin/m68k-buildroot-linux-gnu-ld
         X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-m68k-cross/bin/m68k-buildroot-linux-gnu-ar
 
-    - name: Compile with Clang for x86_64
+    - name: Compile with Clang for m68k
       run: >
         cd repo;
         make clean;
-        make binaries CPU_ARCH=x86_64 TOOLCHAIN=clang
+        make binaries
+        CPU_ARCH=m68k
+        TOOLCHAIN=clang
     
     - name: Compile with GCC for x86_64
       run: >
@@ -79,8 +81,16 @@ jobs:
         X_AS_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-as
         X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-ld
         X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-x86_64-cross/bin/x86_64-buildroot-linux-gnu-ar
+
+    - name: Compile with Clang for x86_64
+      run: >
+        cd repo;
+        make clean;
+        make binaries
+        CPU_ARCH=x86_64
+        TOOLCHAIN=clang
     
-    - name: Compile with GCC for riscv-64
+    - name: Compile with GCC for rv64
       run: >
         cd repo;
         make clean;
@@ -92,3 +102,11 @@ jobs:
         X_AS_BIN=$GITHUB_WORKSPACE/toolchains/gcc-riscv64-cross/bin/riscv64-buildroot-linux-gnu-as
         X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-riscv64-cross/bin/riscv64-buildroot-linux-gnu-ld
         X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-riscv64-cross/bin/riscv64-buildroot-linux-gnu-ar
+    
+    - name: Compile with Clang for rv64
+      run: >
+        cd repo;
+        make clean;
+        make binaries
+        CPU_ARCH=riscv64
+        TOOLCHAIN=clang
