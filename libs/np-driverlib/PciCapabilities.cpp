@@ -91,7 +91,9 @@ namespace dl
         {
             sl::NativePtr entry = reinterpret_cast<uintptr_t>(msixTable) + (index * 16);
             entry.Write<uint32_t>(address & 0xFFFF'FFFF);
+#if __SIZEOF_POINTER__ >= 8
             entry.Offset(4).Write<uint32_t>(address >> 32);
+#endif
             entry.Offset(8).Write<uint32_t>(message & 0xFFFF'FFFF);
             entry.Offset(12).Write<uint32_t>(masked ? 1 : 0);
         }
@@ -101,7 +103,9 @@ namespace dl
             addr.Write(configPtr + 4, address);
             if (msi64BitAddr)
             {
+#if __SIZEOF_POINTER__ >= 8
                 addr.Write(configPtr + 8, address >> 32);
+#endif
                 addr.Write(configPtr + 0xC, message);
                 maskOffset = 0x10;
             }

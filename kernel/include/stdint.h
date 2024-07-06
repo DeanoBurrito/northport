@@ -17,3 +17,29 @@ typedef __UINT64_TYPE__ uint64_t;
 
 typedef __UINTMAX_TYPE__ uintmax_t;
 typedef __INTMAX_TYPE__ intmax_t;
+
+#if __SIZEOF_POINTER__ == 8
+    #define NPK_P64 "l"
+#else
+    #define NPK_P64 "ll"
+#endif
+
+#define PRIi8 "i"
+#define PRIi16 "i"
+#define PRIi32 "i"
+#define PRIi64 NPK_P64"i"
+
+#define PRIu8 "u"
+#define PRIu16 "u"
+#define PRIu32 "u"
+#define PRIu64 NPK_P64"u"
+
+#define PRIx8 "x"
+#define PRIx16 "x"
+#define PRIx32 "x"
+#define PRIx64 NPK_P64"x"
+
+#define PRIX8 "X"
+#define PRIX16 "X"
+#define PRIX32 "X"
+#define PRIX64 NPK_P64"X"

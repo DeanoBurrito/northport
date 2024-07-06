@@ -42,7 +42,7 @@ namespace Npk::Filesystem
         ASSERT(sl::IsPowerOfTwo(cacheInfo.unitSize), "Bad cache unit size");
 
         auto conv = sl::ConvertUnits(cacheInfo.unitSize, sl::UnitBase::Binary);
-        Log("File cache initialized: unitSize=0x%lx (%lu.%lu%sB)", LogLevel::Info,
+        Log("File cache initialized: unitSize=0x%zx (%zu.%zu%sB)", LogLevel::Info,
             cacheInfo.unitSize, conv.major, conv.minor, conv.prefix);
     }
 

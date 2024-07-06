@@ -29,7 +29,7 @@ namespace Npk::Drivers
     static void PrintNode(DeviceNode* node, size_t indent)
     {
         constexpr const char* TypeNames[] = { "driver", "descriptor", "api" };
-        Log("%*c |- id=%lu type=%s", LogLevel::Debug, (int)indent * 2, ' ', 
+        Log("%*c |- id=%zu type=%s", LogLevel::Debug, (int)indent * 2, ' ', 
             node->id, TypeNames[(size_t)node->type]);
 
         switch (node->type)
@@ -39,13 +39,13 @@ namespace Npk::Drivers
                 auto* driver = static_cast<DriverInstance*>(node);
                 if (driver->manifest.Valid())
                 {
-                    Log("%*c |  name=%s, loadBase=0x%lx, transport=%lu", LogLevel::Debug, (int)indent * 2, ' ',
+                    Log("%*c |  name=%s, loadBase=0x%tx, transport=%zu", LogLevel::Debug, (int)indent * 2, ' ',
                         driver->manifest->friendlyName.C_Str(), driver->manifest->runtimeImage->loadBase,
                         driver->transportDevice.Valid() ? driver->transportDevice->id : 0);
                 }
                 else
                 {
-                    Log("%*c |  name=kernel, loadBase=0x%lx", LogLevel::Debug, (int)indent * 2, ' ',
+                    Log("%*c |  name=kernel, loadBase=0x%tx", LogLevel::Debug, (int)indent * 2, ' ',
                         -2 * GiB);
                 }
 
@@ -83,11 +83,11 @@ namespace Npk::Drivers
         for (auto it = manifests.Begin(); it != manifests.End(); ++it)
         {
             auto manifest = *it;
-            Log("Manifest: name=%s, source=%s, rc=%lu", LogLevel::Debug,
+            Log("Manifest: name=%s, source=%s, rc=%zu", LogLevel::Debug,
                 manifest->friendlyName.C_Str(), manifest->sourcePath.C_Str(), manifest->references.Load());
             if (manifest->runtimeImage.Valid())
             {
-                Log("  loadBase=0x%lx, procEvent=%p", LogLevel::Debug,
+                Log("  loadBase=0x%tx, procEvent=%p", LogLevel::Debug,
                     manifest->runtimeImage->loadBase, manifest->ProcessEvent);
             }
         }
@@ -213,14 +213,14 @@ namespace Npk::Drivers
         if (!driver->ProcessEvent(EventType::AddDevice, &event))
         {
             SetShadow(prevShadow);
-            Log("Driver %s refused descriptor %lu (%.*s)", LogLevel::Error, driver->friendlyName.C_Str(),
+            Log("Driver %s refused descriptor %zu (%.*s)", LogLevel::Error, driver->friendlyName.C_Str(),
                 device->id, (int)api->friendly_name.length, api->friendly_name.data);
             //TOOD: free instance, remove from tree
             return false;
         }
 
         SetShadow(prevShadow);
-        Log("Driver %s attached descriptor %lu (%.*s)", LogLevel::Verbose, driver->friendlyName.C_Str(),
+        Log("Driver %s attached descriptor %zu (%.*s)", LogLevel::Verbose, driver->friendlyName.C_Str(),
                 device->id, (int)api->friendly_name.length, api->friendly_name.data);
         stats.unclaimedDescriptors--;
 
@@ -365,7 +365,7 @@ namespace Npk::Drivers
         sl::StringSpan srcName = "kernel";
         if (desc->sourceDriver->manifest.Valid())
             srcName = desc->sourceDriver->manifest->friendlyName.Span();
-        Log("New descriptor from %.*s, id=%lu: %.*s", LogLevel::Info, (int)srcName.Size(),
+        Log("New descriptor from %.*s, id=%zu: %.*s", LogLevel::Info, (int)srcName.Size(),
             srcName.Begin(), desc->id, (int)desc->apiDesc->friendly_name.length,
             desc->apiDesc->friendly_name.data);
 
@@ -416,7 +416,7 @@ namespace Npk::Drivers
             summary = api->get_summary(api);
 
         sl::StringSpan ownerStr = owner->manifest.Valid() ? owner->manifest->friendlyName.Span() : "Kernel";
-        Log("%.*s added device API, id=%lu, type=%s, summary: %.*s", LogLevel::Info, (int)ownerStr.Size(),
+        Log("%.*s added device API, id=%zu, type=%s, summary: %.*s", LogLevel::Info, (int)ownerStr.Size(),
             ownerStr.Begin(), api->id, DeviceTypeStrs[api->type], (int)summary.length, summary.data);
 
         stats.apiCount++;

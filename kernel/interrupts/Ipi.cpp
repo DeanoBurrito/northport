@@ -73,7 +73,7 @@ namespace Npk::Interrupts
         }
 
         if ((mailbox.fullErrorCount % EmitErrorOnCount) == 0)
-            Log("Mailbox queue for core %lu is full, mail dropped.", LogLevel::Error, dest);
+            Log("Mailbox queue for core %zu is full, mail dropped.", LogLevel::Error, dest);
         mailbox.fullErrorCount++;
     }
 

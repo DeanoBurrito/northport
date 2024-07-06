@@ -150,7 +150,7 @@ namespace Npk::Tasking
         engine->idleThread = Thread::Get(*maybeIdle);
         ASSERT_(engine->idleThread != nullptr);
 
-        Log("Added scheduler engine: %lu", LogLevel::Info, engine->id);
+        Log("Added scheduler engine: %zu", LogLevel::Info, engine->id);
 
         if (doLateInit)
             LateInit();
@@ -160,7 +160,7 @@ namespace Npk::Tasking
     void Scheduler::StartEngine()
     {
         ASSERT_(CoreLocal().runLevel == RunLevel::Dpc);
-        Log("Starting engine %lu, idleThread=%lu", LogLevel::Verbose, LocalEngine().id,
+        Log("Starting engine %zu, idleThread=%zu", LogLevel::Verbose, LocalEngine().id,
             LocalEngine().idleThread->id);
 
         QueueReschedule();

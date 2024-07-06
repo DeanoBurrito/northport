@@ -24,7 +24,7 @@ namespace Npk::Debug
     {
         auto ehdr = file.As<const sl::Elf_Ehdr>();
         auto shdrs = file.As<const sl::Elf_Shdr>(ehdr->e_shoff);
-        auto symTables = sl::FindShdrs(ehdr, sl::SHT_SYMTAB);
+        auto symTables = sl::FindShdrs(ehdr, sl::SHT_SYMTAB); //TODO: dont use section headers, use PT_DYNAMIC info
 
         //first pass over the symbol tables: get counts for each category, make a copy of the string table.
         size_t countPublic = 0;
@@ -98,7 +98,7 @@ namespace Npk::Debug
             }
         }
 
-        Log("Loaded symbols for %s: public=%lu, private=%lu, other=%lu", LogLevel::Info,
+        Log("Loaded symbols for %s: public=%zu, private=%zu, other=%zu", LogLevel::Info,
             repo.name.C_Str(), countPublic, countPrivate, countOther);
     }
 
@@ -121,7 +121,7 @@ namespace Npk::Debug
         if (Boot::kernelFileRequest.response == nullptr)
         {
             //TODO: other ways to load kernel symbols
-            Log("Bootloader did not provide kernel file feature response", LogLevel::Error);
+            Log("Bootloader did not provide kernel file feature response", LogLevel::Warning);
             return;
         }
 

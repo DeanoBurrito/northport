@@ -29,6 +29,29 @@ namespace Npk
                 uint32_t address;
                 uint32_t fslw;
             } format4;
+
+            struct
+            {
+                uint32_t effectiveAddr;
+                uint16_t ssw;
+                uint16_t wb3s;
+                uint16_t wb2s;
+                uint16_t wb1s;
+                uint32_t faultAddr;
+                uint32_t wb3a;
+                uint32_t wb3d;
+                uint32_t wb2a;
+                uint32_t wb2d;
+                uint32_t wb1a;
+                union
+                {
+                    uint32_t wb1d;
+                    uint32_t pd0;
+                };
+                uint32_t pd1;
+                uint32_t pd2;
+                uint32_t pd3;
+            } format7;
         };
     };
 
@@ -54,7 +77,7 @@ namespace Npk
         RteFrame rte;
     };
 
-    static_assert(sizeof(TrapFrame) == 80, "m68k TrapFrame size changed, update assembly sources.");
+    static_assert(sizeof(TrapFrame) == 124, "m68k TrapFrame size changed, update assembly sources.");
 
     constexpr inline size_t PageSize = 0x1000;
     constexpr inline size_t TrapFrameArgCount = 6;

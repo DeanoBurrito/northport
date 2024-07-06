@@ -11,6 +11,7 @@ namespace Npk::Memory
     bool trashAfterUse;
     bool trashBeforeUse;
     bool doBoundsCheck;
+    bool logHeapExpansion;
 
     void CreateLocalHeapCaches()
     {
@@ -27,7 +28,7 @@ namespace Npk::Memory
         }
 
         CoreLocal()[LocalPtr::HeapCache] = cache;
-        Log("Created core-local slab caches, depth=%lu", LogLevel::Info, SlabCacheSize);
+        Log("Created core-local slab caches, depth=%zu", LogLevel::Info, SlabCacheSize);
     }
 
     void* Heap::DoSlabAlloc(size_t index)
@@ -71,7 +72,7 @@ namespace Npk::Memory
         if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::HeapCache] == nullptr)
         {
             if (!slabs[index].Free(ptr))
-                Log("KSlab (%lu) failed to free at 0x%lx", LogLevel::Error, slabs[index].Size(), (size_t)ptr);
+                Log("KSlab (%zu) failed to free at %p", LogLevel::Error, slabs[index].Size(), ptr);
             return;
         }
 
@@ -97,7 +98,7 @@ namespace Npk::Memory
         }
         
         if (!slabs[index].Free(ptr))
-            Log("KSlab (%lu) failed to free at 0x%lx", LogLevel::Error, slabs[index].Size(), (size_t)ptr);
+            Log("KSlab (%zu) failed to free at %p", LogLevel::Error, slabs[index].Size(), ptr);
     }
 
     Heap globalHeap;
@@ -109,6 +110,7 @@ namespace Npk::Memory
         doBoundsCheck = Config::GetConfigNumber("kernel.heap.check_bounds", false);
         trashAfterUse = Config::GetConfigNumber("kernel.heap.trash_after_use", false);
         trashBeforeUse = Config::GetConfigNumber("kernel.heap.trash_before_use", false);
+        logHeapExpansion = Config::GetConfigNumber("kernel.heap.log_expansion", false);
         if (trashBeforeUse || trashAfterUse)
             trashGenerator = sl::XoshiroRng();
 
@@ -208,6 +210,6 @@ namespace Npk::Memory
             return DoSlabFree(slabIndex, ptr);
 
         if (!pool.Free(ptr))
-            Log("KPool failed to free %lub at 0x%lx", LogLevel::Error, length, (uintptr_t)ptr);
+            Log("KPool failed to free %zub at %p", LogLevel::Error, length, ptr);
     }
 }

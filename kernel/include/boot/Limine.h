@@ -61,8 +61,8 @@ struct limine_file {
     uint64_t revision;
     LIMINE_PTR(void *) address;
     uint64_t size;
-    LIMINE_PTR(char *) path;
-    LIMINE_PTR(char *) cmdline;
+    LIMINE_PTR(const char *) path;
+    LIMINE_PTR(const char *) cmdline;
     uint32_t media_type;
     uint32_t unused;
     uint32_t tftp_ip;
@@ -80,8 +80,8 @@ struct limine_file {
 
 struct limine_bootloader_info_response {
     uint64_t revision;
-    LIMINE_PTR(char *) name;
-    LIMINE_PTR(char *) version;
+    LIMINE_PTR(const char *) name;
+    LIMINE_PTR(const char *) version;
 };
 
 struct limine_bootloader_info_request {

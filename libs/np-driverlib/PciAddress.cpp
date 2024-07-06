@@ -67,7 +67,7 @@ namespace dl
             bar.isPrefetchable = originalLow & (1 << 3);
             bar.base = originalLow & ~(uint32_t)0xF;
 
-            uintptr_t upperSize = 0xFFFF'FFFF;
+            uint64_t upperSize = 0xFFFF'FFFF;
             if (bar.is64bit)
             {
                 bar.base |= ((uint64_t)ReadReg(index + 1)) << 32;

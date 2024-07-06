@@ -37,7 +37,7 @@ namespace Npk
     void InitEarlyPlatform()
     {
         using namespace Debug;
-        Log("\r\nNorthport kernel %lu.%lu.%lu for %s started, based on commit %s, compiled by %s.", LogLevel::Info, 
+        Log("\r\nNorthport kernel %zu.%zu.%zu for %s started, based on commit %s, compiled by %s.", LogLevel::Info, 
             versionMajor, versionMinor, versionRev, targetArchStr, gitCommitShortHash, toolchainUsed);
         Config::InitConfigStore();
         Boot::CheckLimineTags();
@@ -60,7 +60,7 @@ namespace Npk
             hhdmLength = sl::AlignUp(entry->base + entry->length, PageSize);
             break;
         }
-        Log("Hhdm: base=0x%lx, length=0x%lx", LogLevel::Info, hhdmBase, hhdmLength);
+        Log("Hhdm: base=0x%tx, length=0x%tx", LogLevel::Info, hhdmBase, hhdmLength);
 
         const auto loaderResp = Boot::bootloaderInfoRequest.response;
         if (loaderResp != nullptr)
@@ -111,13 +111,9 @@ namespace Npk
             acpiRuntimeDescriptor->friendly_name.length = 4;
             acpiRuntimeDescriptor->init_data = &initTag->header;
         }
-        else
-            Log("Bootloader did not provide RSDP (or it was null).", LogLevel::Warning);
         
         if (dtbRequest.response != nullptr && dtbRequest.response->dtb_ptr != nullptr)
             Config::DeviceTree::Global().Init(dtbRequest.response->dtb_ptr);
-        else
-            Log("Bootloader did not provide DTB (or it was null).", LogLevel::Warning);
 
         ScanGlobalTopology();
         Drivers::DriverManager::Global().Init();
@@ -130,6 +126,7 @@ namespace Npk
 
     void ReclaimMemoryThread(void*)
     {
+        Boot::CheckLimineTags();
         PMM::Global().ReclaimBootMemory();
         Tasking::Thread::Current().Exit(0);
     }
@@ -166,7 +163,7 @@ namespace Npk
                 descriptor->load_names = loadName;
                 descriptor->init_data = &initTag->header;
 
-                constexpr const char NameFormat[] = "ECAM segment %u (paddr=0x%lx), busses %u-%u";
+                constexpr const char NameFormat[] = "ECAM segment %u (paddr=0x%" PRIx64"), busses %u-%u";
                 const size_t friendlyNameLen = npf_snprintf(nullptr, 0, NameFormat, segment->id, 
                     segment->base, segment->firstBus, segment->lastBus);
                 char* friendlyNameBuff = new char[friendlyNameLen + 1];
@@ -210,7 +207,7 @@ namespace Npk
         {
             auto initThread = Thread::Create(Process::Kernel().Id(), ReclaimMemoryThread, nullptr);
             ASSERT_(initThread != nullptr);
-            Log("Bootloader reclamation thread spawned, tid=%lu", LogLevel::Verbose, initThread->Id());
+            Log("Bootloader reclamation thread spawned, tid=%zu", LogLevel::Verbose, initThread->Id());
             initThread->Start(nullptr);
         }
 

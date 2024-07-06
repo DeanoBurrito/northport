@@ -15,10 +15,10 @@
 
 namespace Npk::Debug
 {
-    constexpr const char VersionFormatStr[] = "Kernel v%lu.%lu.%lu (api v%u.%u.%u) uptime=%lu.%03lus";
-    constexpr const char VmmFormatStr[] = "[VMM] faults=%lu, anon=%lu.%lu%sB/%lu.%lu%sB (%lu), file=%lu.%lu%sB/%lu.%lu%sB (%lu), mmio=%lu.%lu%sB (%lu)";
-    constexpr const char SymsFormatStr[] = "[Syms] pub=%lu priv=%lu other=%lu";
-    constexpr const char DriversFormatStr[] = "[Dnd] drivers=%lu/%lu devices=%lu/%lu apis=%lu";
+    constexpr const char VersionFormatStr[] = "Kernel v%zu.%zu.%zu (api v%u.%u.%u) uptime=%zu.%03zus";
+    constexpr const char VmmFormatStr[] = "[VMM] faults=%zu, anon=%zu.%zu%sB/%zu.%zu%sB (%zu), file=%zu.%zu%sB/%zu.%zu%sB (%zu), mmio=%zu.%zu%sB (%zu)";
+    constexpr const char SymsFormatStr[] = "[Syms] pub=%zu priv=%zu other=%zu";
+    constexpr const char DriversFormatStr[] = "[Dnd] drivers=%zu/%zu devices=%zu/%zu apis=%zu";
     //TODO: other info to track and display
     //- interrupts per second, and execution time outside of scheduler (int handlers, dpcs)
     //- PMM and file cache usage.
@@ -30,6 +30,16 @@ namespace Npk::Debug
     constexpr size_t StatsFormatBuffSize = 128;
     constexpr const char TermSetPanicPalette[] = "\e[1;1H\e[97;41m";
     constexpr const char StatsSetPanicPalette[] = "\e[1;1H\e[30;101m";
+
+    constexpr GTStyle StatsStyle
+    {
+        DEFAULT_ANSI_COLOURS,
+        DEFAULT_ANSI_BRIGHT_COLOURS,
+        0x68000000,
+        0xDDDDDD,
+        0,
+        0
+    };
 
     struct TerminalHead
     {
@@ -158,27 +168,29 @@ namespace Npk::Debug
             const auto sourceFb = fbResponse->framebuffers[i];
             ASSERT_(sourceFb->height > reservedHeight);
 
+            const size_t sourceWidth = static_cast<size_t>(sourceFb->width);
+            const size_t sourceHeight = static_cast<size_t>(sourceFb->height);
             const GTFramebuffer logFb
             {
                 .address = reinterpret_cast<uintptr_t>(sourceFb->address),
-                .size = { sourceFb->width, sourceFb->height - reservedHeight },
-                .pitch = sourceFb->pitch
+                .size = { sourceWidth, sourceHeight - reservedHeight },
+                .pitch = static_cast<size_t>(sourceFb->pitch)
             };
             const GTFramebuffer statsFb
             {
                 .address = reinterpret_cast<uintptr_t>(sourceFb->address) + (logFb.size.y * logFb.pitch),
-                .size = { sourceFb->width, reservedHeight },
-                .pitch = sourceFb->pitch
+                .size = { sourceWidth, reservedHeight },
+                .pitch = static_cast<size_t>(sourceFb->pitch)
             };
 
             //TOOD: we should honour pixel layout and pass it to terminal renderers
             TerminalHead* head = new TerminalHead();
             bool success = head->logRenderer.Init(DefaultTerminalStyle, logFb);
-            success = head->statsRenderer.Init(DefaultTerminalStyle, statsFb);
+            success = head->statsRenderer.Init(StatsStyle, statsFb);
 
             if (!success)
             {
-                Log("Failed to init graphical terminal head #%lu.", LogLevel::Error, i);
+                Log("Failed to init graphical terminal head #%zu.", LogLevel::Error, i);
                 head->logRenderer.Deinit();
                 head->statsRenderer.Deinit();
                 delete head;
@@ -191,8 +203,8 @@ namespace Npk::Debug
 
             head->next = nullptr;
             termHeads.PushFront(head);
-            Log("Added gterminal head #%lu: %lux%lu, bpp=%u, base=0x%lx", LogLevel::Info,
-                i, sourceFb->width, sourceFb->height, sourceFb->bpp, logFb.address);
+            Log("Added gterminal head #%zu: %ux%u, bpp=%u, base=0x%tx", LogLevel::Info,
+                i, (unsigned)sourceFb->width, (unsigned)sourceFb->height, sourceFb->bpp, logFb.address);
         }
 
         if (!termHeads.Empty())

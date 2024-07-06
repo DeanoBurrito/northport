@@ -1,6 +1,5 @@
 #include <memory/Slab.h>
 #include <memory/Vmm.h>
-#include <config/ConfigStore.h>
 #include <debug/Log.h>
 #include <Random.h>
 
@@ -12,6 +11,7 @@ namespace Npk::Memory
     extern bool doBoundsCheck;
     extern bool trashAfterUse;
     extern bool trashBeforeUse;
+    extern bool logHeapExpansion;
 
     SlabSegment* SlabAlloc::CreateSegment()
     {
@@ -40,8 +40,11 @@ namespace Npk::Memory
             }
         }
 
-        Log("Heap slab segment created: size=%ub, count=%lu%s", LogLevel::Verbose, slabSize, seg->freeCount,
-            doBoundsCheck ? ", bounds-checking enabled" : "");
+        if (logHeapExpansion)
+        {
+            Log("Heap slab segment created: size=%ub, count=%zu%s", LogLevel::Verbose, slabSize, seg->freeCount,
+                doBoundsCheck ? ", bounds-checking enabled" : "");
+        }
         return seg;
     }
 
@@ -165,7 +168,7 @@ namespace Npk::Memory
                     if (poison[i] == PoisonValue)
                         continue;
 
-                    Log("Slab overrun at 0x%lx (size=%u)", LogLevel::Warning, scan.raw, slabSize);
+                    Log("Slab overrun at 0x%tx (size=%u)", LogLevel::Warning, scan.raw, slabSize);
                     break;
                 }
 

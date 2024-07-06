@@ -108,7 +108,7 @@ namespace Npk::Drivers
             if (!ApplyRelocation(dynInfo, &rel, true, buffer->raw - offset, isDriver))
             {
                 failedRelocs++;
-                Log("Rela %lu failed: r_offset(+base)=0x%lx, r_info=0x%lx", LogLevel::Error,
+                Log("Rela %zu failed: r_offset(+base)=0x%tx, r_info=0x%" PRIx32, LogLevel::Error,
                     i, rel.r_offset + (buffer->raw - offset), rel.r_info);
             }
         }
@@ -122,7 +122,7 @@ namespace Npk::Drivers
             if (!ApplyRelocation(dynInfo, &rel, false, buffer->raw - offset, isDriver))
             {
                 failedRelocs++;
-                Log("Rel %lu failed: r_offset(+base)=0x%lx, r_info=0x%lx", LogLevel::Error,
+                Log("Rel %zu failed: r_offset(+base)=0x%tx, r_info=0x%" PRIx32, LogLevel::Error,
                     i, rel.r_offset + (buffer->raw - offset), rel.r_info);
             }
         }
@@ -141,7 +141,7 @@ namespace Npk::Drivers
 
             if (!ApplyRelocation(dynInfo, rel, dynInfo.pltUsesRela, buffer->raw, isDriver))
             {
-                Log("PltRel %lu failed: r_offset(+base)=0x%lx, r_info=0x%lx", LogLevel::Error,
+                Log("PltRel %zu failed: r_offset(+base)=0x%tx, r_info=0x%" PRIx32, LogLevel::Error,
                     offset / offsetIncrement, rel->r_offset + buffer->raw, rel->r_info);
                 failedRelocs++;
             }
@@ -209,11 +209,16 @@ namespace Npk::Drivers
 
     void ScanForModules(sl::StringSpan dirpath)
     {
-        Log("Scanning for kernel modules in \"%s\"", LogLevel::Verbose, dirpath.Begin());
-
         using namespace Filesystem;
         auto dirId = VfsLookup(dirpath);
-        VALIDATE_(dirId.HasValue(),);
+        if (!dirId.HasValue())
+        {
+            Log("Path %.*s not available, not scanning for kernel modules.", LogLevel::Warning,
+                (int)dirpath.Size(), dirpath.Begin());
+            return;
+        }
+        Log("Scanning for kernel modules in \"%.*s\"", LogLevel::Verbose, 
+            (int)dirpath.Size(), dirpath.Begin());
 
         auto dirList = VfsReadDir(*dirId);
         VALIDATE_(dirList.HasValue(), );
@@ -232,7 +237,8 @@ namespace Npk::Drivers
                 found++;
         }
 
-        Log("Detected %lu kernel modules in \"%s\"", LogLevel::Verbose, found, dirpath.Begin());
+        Log("Detected %zu kernel modules in \"%.*s\"", LogLevel::Verbose, found, 
+            (int)dirpath.Size(), dirpath.Begin());
     }
 
     bool ScanForDrivers(sl::StringSpan filepath)
@@ -349,7 +355,7 @@ namespace Npk::Drivers
         VmObject vmo(vmm, maxMemoryAddr, 0, VmFlag::Anon | VmFlag::Write);
         VALIDATE_(vmo.Valid(), {});
         const uintptr_t loadBase = vmo->raw;
-        Log("Loading elf %s with base address of 0x%lx", LogLevel::Verbose, 
+        Log("Loading elf %s with base address of 0x%tx", LogLevel::Verbose, 
             shortName.Begin(), loadBase);
 
         for (size_t i = 0; i < phdrs.Size(); i++)
@@ -362,7 +368,7 @@ namespace Npk::Drivers
             if (zeroes != 0)
                 sl::memset(vmo->As<void>(phdrs[i].p_vaddr + phdrs[i].p_filesz), 0, zeroes);
 
-            Log("Loaded elf %s phdr %lu at 0x%lx (+0x%lx zeroes)", LogLevel::Verbose,
+            Log("Loaded elf %s phdr %zu at 0x%tx (+0x%zx zeroes)", LogLevel::Verbose,
                 shortName.Begin(), i, loadBase + phdrs[i].p_vaddr, zeroes);
         }
 

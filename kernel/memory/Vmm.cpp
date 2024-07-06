@@ -103,7 +103,7 @@ namespace Npk::Memory
         sl::memset(slab->bitmap, 0, bitmapBytes);
         metaSlabs[index] = slab;
 
-        Log("VMM metadata slab created: type=%lu, %lu entries + %lub early slack",
+        Log("VMM metadata slab created: type=%zu, %zu entries + %zub early slack",
             LogLevel::Verbose, index, slabCount, totalSpace - usableSpace);
 
         return slab;
@@ -271,7 +271,7 @@ namespace Npk::Memory
 
         const size_t usableSpace = globalUpperBound - globalLowerBound;
         auto conv = sl::ConvertUnits(usableSpace, sl::UnitBase::Binary);
-        Log("User VMM created: %lu.%lu%sB usable space, base=0x%lx.", LogLevel::Info,
+        Log("User VMM created: %zu.%zu%sB usable space, base=0x%tx.", LogLevel::Info,
             conv.major, conv.minor, conv.prefix, globalLowerBound);
     }
 
@@ -298,7 +298,7 @@ namespace Npk::Memory
 
         const size_t usableSpace = globalUpperBound - globalLowerBound;
         auto conv = sl::ConvertUnits(usableSpace, sl::UnitBase::Binary);
-        Log("Kernel VMM bootstrap: %lu.%lu%sB usable space, base=0x%lx.",
+        Log("Kernel VMM bootstrap: %zu.%zu%sB usable space, base=0x%tx.",
             LogLevel::Info, conv.major, conv.minor, conv.prefix, globalLowerBound);
     }
 
@@ -536,7 +536,7 @@ namespace Npk::Memory
         const bool detachSuccess = driver->Detach(context);
         if (!detachSuccess)
         {
-            Log("%s vmdriver failed to detach range @ 0x%lx, 0x%lx bytes.",
+            Log("%s vmdriver failed to detach range @ 0x%tx, 0x%zx bytes.",
                 LogLevel::Warning, VmDriver::GetName(range->flags), range->base, range->length);
             FreeMeta(range, VmmMetaType::Range);
             return false;

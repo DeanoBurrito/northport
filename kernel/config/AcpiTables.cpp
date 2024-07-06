@@ -58,8 +58,8 @@ namespace Npk::Config
             tables.EmplaceBack(fullRsdt.Size(), (uintptr_t)rsdpAccess.rsdt, VmFlag::Mmio);
         }
 
-        Log("Rsdp set: 0x%lx, revision=%u, tables=%lu", LogLevel::Info, 
-            (uintptr_t)providedRsdp, rsdpAccess.revision, tables.Size());
+        Log("Rsdp set: %p, revision=%u, tables=%zu", LogLevel::Info, 
+            providedRsdp, rsdpAccess.revision, tables.Size());
 
         for (auto it = tables.Begin(); it != tables.End(); ++it)
             PrintSdt(it->Ptr().As<const Sdt>());
@@ -94,7 +94,7 @@ namespace Npk::Config
         sl::memset(oem, 0, 7);
         sl::memcopy(table->oem, oem, oemLength);
 
-        Log("Acpi Sdt: sig=%.4s, oem=%s, revision=%u, length=0x%u", LogLevel::Verbose,
+        Log("Acpi Sdt: sig=%.4s, oem=%s, revision=%u, length=0x%" PRIu32, LogLevel::Verbose,
             table->signature, oem, table->revision, table->length);
     }
 
