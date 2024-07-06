@@ -30,11 +30,11 @@ namespace sl
             input = input.Subspan(0, input.Size() - 1);
         
         auto* buffer = input.Begin();
-        auto LengthUntil = [=](size_t start, char target)
+        auto LengthUntil = [=](size_t start, char target) -> size_t
         {
             const size_t foundAt = sl::memfirst(buffer + start, target, input.Size() - start);
             if (foundAt == input.Size() - start)
-                return 0ul;
+                return 0;
             return foundAt;
         };
 
