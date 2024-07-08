@@ -18,10 +18,10 @@
             - [ ] Map cpu topology.
             - [x] F/D/Q and V extension support.
             - [x] AIA (imsic, aplic) and ACLINT support.
-        - [ ] m68k:
+        - [x] m68k:
             - [x] Limine protocol loader.
-            - [ ] Core (paging, interrupts).
-            - [ ] Timer.
+            - [x] Core (paging, interrupts).
+            - [x] Timer.
             - [ ] FPU.
     - [x] Core Layer:
         - [x] Logging Infrastructure:
