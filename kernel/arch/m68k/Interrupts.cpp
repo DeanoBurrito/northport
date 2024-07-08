@@ -75,7 +75,7 @@ extern "C"
             if ((frame->rte.sr & (1 << 13)) == 0)
                 flags |= VmFaultFlag::User;
             //NOTE: we dont try setting the execute flag, as the m68k mmu has no execute protection.
-            //Even if we could detect it here, an page fault wont be triggered on a bad fetch.
+            //Even if we could detect it here, a page fault wont be triggered on a bad fetch.
 
             exception.flags = flags.Raw();
             exception.special = frame->rte.format7.faultAddr;
