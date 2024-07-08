@@ -1,5 +1,5 @@
 #include <arch/riscv64/Interrupts.h>
-#include <arch/riscv64/IntrControllers.h>
+#include <arch/riscv64/IntControllers.h>
 #include <arch/Timers.h>
 #include <arch/Platform.h>
 #include <arch/Cpu.h>
@@ -56,6 +56,7 @@ namespace Npk
         ASSERT_UNREACHABLE();
     }
 
+#define NP_RISCV64_ASSUME_SERIAL 0x10000000
 #ifdef NP_RISCV64_ASSUME_SERIAL
     sl::NativePtr uartRegs;
     void UartWrite(sl::StringSpan text)
@@ -98,7 +99,7 @@ extern "C"
 
         InitMemory();
         InitPlatform();
-        //InitIntControllers(); 
+        InitIntControllers(); 
         InitTimers();
 
         if (Boot::smpRequest.response != nullptr)

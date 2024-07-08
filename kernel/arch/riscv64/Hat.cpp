@@ -143,6 +143,16 @@ namespace Npk
     const HatLimits& GetHatLimits()
     { return limits; }
 
+    static void SyncWithMasterMap(HatMap* map)
+    {
+        const PageTable* source = AddHhdm(kernelMap.root);
+        PageTable* dest = AddHhdm(map->root);
+
+        map->generation = kernelMap.generation.Load();
+        for (size_t i = PageTableEntries / 2; i < PageTableEntries; i++)
+            dest->entries[i] = source->entries[i];
+    }
+
     HatMap* InitNewMap()
     {
         HatMap* map = new HatMap;
@@ -271,17 +281,7 @@ namespace Npk
         return true;
     }
 
-    static void SyncWithMasterMap(HatMap* map)
-    {
-        const PageTable* source = AddHhdm(kernelMap.root);
-        PageTable* dest = AddHhdm(map->root);
-
-        map->generation = kernelMap.generation.Load();
-        for (size_t i = PageTableEntries / 2; i < PageTableEntries; i++)
-            dest->entries[i] = source->entries[i];
-    }
-
-    void MakeActiveMap(HatMap* map)
+    void MakeActiveMap(HatMap* map, bool)
     {
         ASSERT_(map != nullptr);
 
