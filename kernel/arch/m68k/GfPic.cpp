@@ -15,10 +15,10 @@ namespace Npk
     enum PicReg
     {
         Status = 0x00,
-        Number = 0x04,
+        Pending = 0x04, //bitset of pending interrupts
         ClearAll = 0x08,
-        Disable = 0x0C, //NOTE: the docs for this reg (and Enable) are wrong: they operate as a bitmask.
-        Enable = 0x10,
+        Disable = 0x0C, //bitset
+        Enable = 0x10, //bitset
     };
 
     sl::NativePtr regsAccess;
@@ -48,12 +48,14 @@ namespace Npk
         ASSERT_(vector < 7);
 
         sl::NativePtr regs = regsAccess.Offset(vector * PicRegsStride);
-        uint32_t irq = regs.Offset(PicReg::Number).Read<uint32_t>();
+        uint32_t irq = regs.Offset(PicReg::Pending).Read<uint32_t>();
         while (irq != 0)
         {
-            const size_t redirectIndex = (irq - 1) + (vector * PicPins);
+            const size_t pin = __builtin_ctz(irq);
+            irq &= ~(1 << pin);
+
+            const size_t redirectIndex = pin + (vector * PicPins);
             Interrupts::InterruptRouter::Global().Dispatch(redirectTable[redirectIndex]);
-            irq = regs.Offset(PicReg::Number).Read<uint32_t>();
         }
     }
 

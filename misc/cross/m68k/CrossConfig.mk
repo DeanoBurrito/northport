@@ -8,7 +8,7 @@ KERNEL_LD_FLAGS +=
 ARCH_DEFAULT_TARGET = m68k-loader
 
 QEMU_BASE = qemu-system-m68k -machine virt -cpu m68040 -m 256M \
-	-serial mon:stdio -kernel $(LOADER_FULL_FILEPATH)
+	-serial mon:stdio -kernel $(LOADER_FULL_FILEPATH) -initrd $(INITDISK_FULL_FILEPATH)
 QEMU_NO_KVM =
 QEMU_KVM += $(QEMU_NO_KVM)
 QEMU_DEBUG = -s -S -no-reboot -no-shutdown

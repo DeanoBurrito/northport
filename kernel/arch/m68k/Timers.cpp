@@ -22,13 +22,23 @@ namespace Npk
     VmObject timerRegs;
     InterruptRoute timerIntrRoute;
 
+    bool (*timerCallback)(void*);
+    static bool HandleTimerIrq(void* arg)
+    {
+        timerRegs->Offset(TimerReg::ClearIrq).Write<uint32_t>(0);
+
+        if (timerCallback == nullptr)
+            return true;
+        return timerCallback(arg);
+    }
+
     void InitTimers()
     {
         timerRegs = VmObject(0x1000, QemuGoldfishPaddr, VmFlag::Mmio | VmFlag::Write);
         ASSERT_(timerRegs.Valid());
         timerRegs->Offset(IrqEnabled).Write<uint32_t>(1);
 
-        timerIntrRoute.Callback = nullptr;
+        timerIntrRoute.Callback = HandleTimerIrq;
         timerIntrRoute.dpc = nullptr;
         ASSERT_(ClaimInterruptRoute(&timerIntrRoute, CoreLocal().id, GoldfishTimerIrq));
     }
@@ -36,7 +46,7 @@ namespace Npk
     void SetSysTimer(size_t nanoseconds, bool (*callback)(void*))
     {
         if (callback != nullptr)
-            timerIntrRoute.Callback = callback;
+            timerCallback = callback;
 
         uint64_t target = timerRegs->Offset(TimerReg::TimeLow).Read<uint32_t>();
         target |= static_cast<uint64_t>(timerRegs->Offset(TimerReg::TimeHigh).Read<uint32_t>()) << 32;
