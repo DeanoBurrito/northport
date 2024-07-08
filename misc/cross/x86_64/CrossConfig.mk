@@ -1,5 +1,5 @@
 X86_64_FLAGS = -mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow
-KERNEL_CXX_FLAGS += $(X86_64_FLAGS)
+KERNEL_CXX_FLAGS += $(X86_64_FLAGS) -mcmodel=kernel
 DRIVER_CXX_FLAGS += $(X86_64_FLAGS) -mcmodel=large
 DRIVER_C_FLAGS += $(X86_64_FLAGS) -mcmodel=large
 SYSLIB_CXX_FLAGS += -mcmodel=large
