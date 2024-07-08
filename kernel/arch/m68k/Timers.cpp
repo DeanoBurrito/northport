@@ -3,10 +3,6 @@
 #include <memory/VmObject.h>
 #include <interrupts/Router.h>
 
-/* For now the only m68k platform we support is the qemu virt machine,
- * which uses the goldfish devices, (partially) documented here:
- * https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
- */
 namespace Npk
 {
     enum TimerReg
@@ -15,11 +11,14 @@ namespace Npk
         TimeHigh = 0x4,
         AlarmLow = 0x8,
         AlarmHigh = 0xC,
-        ClearIntr = 0x10,
+        IrqEnabled = 0x10,
         ClearAlarm = 0x14,
+        AlarmStatus = 0x18,
+        ClearIrq = 0x1C,
     };
 
     constexpr uintptr_t QemuGoldfishPaddr = 0xff006000; //TODO: pull this from bootloader
+    constexpr size_t GoldfishTimerIrq = 160; //TODO: also pull from bootloader
     VmObject timerRegs;
     InterruptRoute timerIntrRoute;
 
@@ -27,12 +26,19 @@ namespace Npk
     {
         timerRegs = VmObject(0x1000, QemuGoldfishPaddr, VmFlag::Mmio | VmFlag::Write);
         ASSERT_(timerRegs.Valid());
-        ASSERT_(AddInterruptRoute(&timerIntrRoute)); //TODO: Claim interrupt route instead with PIC pin
+        timerRegs->Offset(IrqEnabled).Write<uint32_t>(1);
+
+        timerIntrRoute.Callback = nullptr;
+        timerIntrRoute.dpc = nullptr;
+        ASSERT_(ClaimInterruptRoute(&timerIntrRoute, CoreLocal().id, GoldfishTimerIrq));
     }
 
     void SetSysTimer(size_t nanoseconds, bool (*callback)(void*))
     {
-        size_t target = timerRegs->Offset(TimerReg::TimeLow).Read<uint32_t>();
+        if (callback != nullptr)
+            timerIntrRoute.Callback = callback;
+
+        uint64_t target = timerRegs->Offset(TimerReg::TimeLow).Read<uint32_t>();
         target |= static_cast<uint64_t>(timerRegs->Offset(TimerReg::TimeHigh).Read<uint32_t>()) << 32;
         target += nanoseconds;
 

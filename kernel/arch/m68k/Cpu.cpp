@@ -15,8 +15,8 @@ namespace Npk
     {} //no-op
 
     bool CpuHasFeature(CpuFeature feature)
-    { return false; }
+    { (void)feature; return false; }
 
     const char* CpuFeatureName(CpuFeature feature)
-    { return nullptr; }
+    { (void)feature; return nullptr; }
 }

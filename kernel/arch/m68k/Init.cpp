@@ -1,6 +1,7 @@
 #include <arch/Platform.h>
 #include <arch/Timers.h>
 #include <arch/m68k/Interrupts.h>
+#include <arch/m68k/GfPic.h>
 #include <boot/CommonInit.h>
 #include <boot/LimineTags.h>
 #include <memory/Vmm.h>
@@ -66,6 +67,7 @@ extern "C"
         }
 #endif
         InitPlatform();
+        InitPics();
 
         if (Boot::smpRequest.response != nullptr)
         {  

@@ -1,4 +1,5 @@
 #include <arch/Platform.h>
+#include <arch/m68k/GfPic.h>
 #include <debug/Log.h>
 
 namespace Npk
@@ -9,13 +10,27 @@ namespace Npk
     }
 
     uintptr_t MsiAddress(size_t core, size_t vector)
-    { ASSERT_UNREACHABLE(); }
+    { 
+        (void)core; 
+        (void)vector;
+        ASSERT_UNREACHABLE(); 
+    }
 
     uintptr_t MsiData(size_t core, size_t vector)
-    { ASSERT_UNREACHABLE(); }
+    { 
+        (void)core;
+        (void)vector;
+        ASSERT_UNREACHABLE();
+    }
 
     void MsiExtract(uintptr_t addr, uintptr_t data, size_t& core, size_t& vector)
-    { ASSERT_UNREACHABLE(); }
+    { 
+        (void)addr;
+        (void)data;
+        (void)core;
+        (void)vector;
+        ASSERT_UNREACHABLE();
+    }
 
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user)
     {
@@ -45,16 +60,19 @@ namespace Npk
 
     void InitExtendedRegs(ExtendedRegs** regs)
     {
+        (void)regs;
         ASSERT_UNREACHABLE();
     }
 
     void SaveExtendedRegs(ExtendedRegs* regs)
     {
+        (void)regs;
         ASSERT_UNREACHABLE();
     }
 
     void LoadExtendedRegs(ExtendedRegs* regs)
     {
+        (void)regs;
         ASSERT_UNREACHABLE();
     }
 
@@ -89,6 +107,7 @@ namespace Npk
 
     void SendIpi(size_t dest)
     {
+        (void)dest;
         ASSERT(false, "Northport does not support m68k SMP.");
     }
 
@@ -107,8 +126,5 @@ namespace Npk
         WriteSr(sr);
     }
 
-    bool RoutePinInterrupt(size_t core, size_t vector, size_t gsi)
-    {
-        ASSERT_UNREACHABLE();
-    }
+    //NOTE: RoutePinInterrupt() is defined in GfPic.cpp
 }

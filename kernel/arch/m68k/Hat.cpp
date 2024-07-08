@@ -73,19 +73,6 @@ namespace Npk
         result.complete = *result.pte & ResidentFlag;
         return result;
     }
-
-    static inline uint32_t AllocPageTable(uint32_t* pte, size_t index)
-    {
-        const size_t clusterStride = PageSize / 1;
-        const size_t clusterSize = PageSize / clusterStride;
-        index = index % clusterSize;
-
-        uint32_t* clusterBase = pte - index;
-        if ((*clusterBase & tableAddrMask) == 0)
-            *clusterBase = PMM::Global().Alloc();
-
-        return (*clusterBase & tableAddrMask) + (index * clusterStride);
-    }
     
     void HatInit()
     {
@@ -133,6 +120,19 @@ namespace Npk
     HatMap* KernelMap()
     { return &kernelMap; }
 
+    static inline uint32_t AllocPageTable(uint32_t* pte, size_t index)
+    {
+        return PMM::Global().Alloc();
+        const size_t ptsPerPage = PageSize / sizeof(PageTable);
+        index = index % ptsPerPage;
+
+        uint32_t* clusterBase = pte - index;
+        if ((*clusterBase & tableAddrMask) == 0)
+            *clusterBase = PMM::Global().Alloc();
+
+        return (*clusterBase & tableAddrMask) + (index * sizeof(PageTable));
+    }
+
     bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
     {
         ASSERT_(map != nullptr);
@@ -148,9 +148,8 @@ namespace Npk
 
         while (path.level != 1)
         {
-            uint32_t newPt = AllocPageTable(path.pte, indices[path.level]);
-            const size_t zeroCount = sizeof(uint32_t) * (path.level == 2 ? 64 : PageTableEntries);
-            sl::memset(reinterpret_cast<void*>(AddHhdm(newPt)), 0, zeroCount);
+            const uint32_t newPt = AllocPageTable(path.pte, indices[path.level]);
+            sl::memset(reinterpret_cast<void*>(AddHhdm(newPt)), 0, sizeof(PageTable));
             *path.pte = tableAddrMask & newPt;
             *path.pte |= ResidentFlag;
 
@@ -172,7 +171,20 @@ namespace Npk
 
     bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
     {
-        ASSERT_UNREACHABLE();
+        ASSERT_(map != nullptr);
+
+        const WalkResult path = WalkTables(map->root, vaddr);
+        if (!path.complete)
+            return false;
+
+        mode = 0;
+        paddr = *path.pte & descAddrMask;
+        *path.pte = 0;
+
+        if (flush)
+            PFLUSH(vaddr);
+
+        return true;
     }
 
     sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
@@ -189,7 +201,26 @@ namespace Npk
 
     bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
     {
-        ASSERT_UNREACHABLE();
+        ASSERT_(map != nullptr);
+
+        const WalkResult path = WalkTables(map->root, vaddr);
+        if (!path.complete)
+            return false;
+
+        if (paddr.HasValue())
+            *path.pte = (*path.pte & ~descAddrMask) | (*paddr & descAddrMask);
+        if (flags.HasValue())
+        {
+            *path.pte = (*path.pte & descAddrMask) | ResidentFlag;
+            if ((*flags & HatFlags::Write) == HatFlags::None)
+                *path.pte |= WriteProtectFlag;
+            if ((*flags & HatFlags::Global) != HatFlags::None)
+                *path.pte |= GlobalFlag;
+        }
+
+        if (flush)
+            PFLUSH(vaddr);
+        return true;
     }
 
     void MakeActiveMap(HatMap* map, bool supervisor)
