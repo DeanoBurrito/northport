@@ -1,10 +1,10 @@
 X86_64_FLAGS = -mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow
-KERNEL_CXX_FLAGS += $(X86_64_FLAGS) -mcmodel=kernel
+KERNEL_CXX_FLAGS += $(X86_64_FLAGS)
 DRIVER_CXX_FLAGS += $(X86_64_FLAGS) -mcmodel=large
 DRIVER_C_FLAGS += $(X86_64_FLAGS) -mcmodel=large
 SYSLIB_CXX_FLAGS += -mcmodel=large
 
-KERNEL_LD_FLAGS += -ztext
+KERNEL_LD_FLAGS += -ztext --no-relax
 
 ARCH_DEFAULT_TARGET = iso-hybrid
 UEFI_BOOT_NAME = BOOTX64.EFI

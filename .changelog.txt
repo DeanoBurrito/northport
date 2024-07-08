@@ -1,7 +1,8 @@
 # current
 - Added a new architecture: Motorolla 68K series, namely 68040 and higher.
     - This is also the first 32-bit architecture supported by the kernel!
-    - A custom boot shim was also written for the qemu virt board, which supports the limine protocol.
+    - A custom boot shim was written for the qemu virt board, which supports the limine protocol.
+    - Added github actions CI to test compile the kernel on m68k with GCC.
 
 - Added more drivers:
     - uACPI: first third-party driver, provides ACPI runtime services to the kernel.
