@@ -75,7 +75,13 @@ namespace Npk::Config
         cmdLine = sl::String();
         if (Boot::kernelFileRequest.response != nullptr)
         {
-            auto bootCmdLine = Boot::kernelFileRequest.response->kernel_file->cmdline;
+            /* Removing const from the string is quite dangerous, I know - however the config
+             * store always returns const views of the config string, so we only have to worry
+             * about code within this file writing to the formerly const data.
+             * We also only use this const-removed version of the cmdLine until memory management
+             * is initialized, then we make a separate copy which is writable.
+             */
+            auto bootCmdLine = const_cast<char*>(Boot::kernelFileRequest.response->kernel_file->cmdline);
             cmdLine = sl::String(bootCmdLine, true);
         }
 

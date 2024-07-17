@@ -19,7 +19,7 @@ namespace Npk::Filesystem
     {
         cache = sl::Span<CachedNode>(new CachedNode[TreeCacheInitialSize], TreeCacheInitialSize);
 
-        Log("Vfs node cache initialized: initialSize=%lu (%lu B)", LogLevel::Info, 
+        Log("Vfs node cache initialized: initialSize=%zu (%zu B)", LogLevel::Info, 
             cache.Size(), cache.SizeBytes());
     }
 

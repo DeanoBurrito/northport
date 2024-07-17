@@ -36,5 +36,5 @@ clean-kernel:
 $(K_BUILD_DIR)/%.cpp.o: %.cpp
 	@printf "$(C_BLUE)[$(TARGET)-k]$(C_RST) Compiling: $<\r\n"
 	$(LOUD)mkdir -p $(@D)
-	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -fPIC $(SYSLIB_CXX_FLAGS) -c $< -o $@
+	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) $(SYSLIB_CXX_FLAGS) -c $< -o $@
 

@@ -14,7 +14,6 @@ namespace Npk
 
     void SetSysTimer(size_t nanoseconds, bool (*callback)(void*));
     size_t SysTimerMaxNanos();
-    void PolledSleep(size_t nanoseconds);
     size_t PollTimer();
     size_t PolledTicksToNanos(size_t ticks);
     

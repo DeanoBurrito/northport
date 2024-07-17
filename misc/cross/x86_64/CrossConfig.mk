@@ -4,7 +4,7 @@ DRIVER_CXX_FLAGS += $(X86_64_FLAGS) -mcmodel=large
 DRIVER_C_FLAGS += $(X86_64_FLAGS) -mcmodel=large
 SYSLIB_CXX_FLAGS += -mcmodel=large
 
-KERNEL_LD_FLAGS += -ztext
+KERNEL_LD_FLAGS += -ztext --no-relax
 
 ARCH_DEFAULT_TARGET = iso-hybrid
 UEFI_BOOT_NAME = BOOTX64.EFI

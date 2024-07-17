@@ -1,6 +1,5 @@
 #include <memory/Pool.h>
 #include <memory/Vmm.h>
-#include <config/ConfigStore.h>
 #include <debug/Log.h>
 #include <Random.h>
 #include <Memory.h>
@@ -247,7 +246,7 @@ namespace Npk::Memory
 
             if (scan == node)
             {
-                Log("Kernel pool double free @ 0x%016lx", LogLevel::Error, (uintptr_t)ptr);
+                Log("Kernel pool double free @ %p", LogLevel::Error, ptr);
                 return true;
             }
             

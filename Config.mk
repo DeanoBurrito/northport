@@ -24,7 +24,7 @@ QUIET_BUILD = yes
 COUNT_TODOS = yes
 
 # ---- Compiler Options ----
-# ISA to compile for, valid options: `x86_64`, `riscv64`.
+# ISA to compile for, valid options: `x86_64`, `riscv64`, `m68k`
 CPU_ARCH = x86_64
 # KERNEL_CXX_FLAGS += -fsanitize=undefined
 KERNEL_CXX_FLAGS += -O0 -g
@@ -43,3 +43,9 @@ X86_64_RUN_WITH_BIOS = no
 # Meant as an equivalent to debugcon on x86, set to "no" to disable, or
 # put the address the address of a uart controller the kernel can use to log.
 RV64_ASSUME_UART = no
+
+# ---- Motorola 680x0 Options ----
+# Similar to the riscv option, set to "no" to disable, or
+# put the address where a goldfish tty device is known to reside, the
+# kernel will use this for extra early logging.
+M68K_ASSUME_UART = no

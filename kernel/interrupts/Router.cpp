@@ -77,7 +77,7 @@ namespace Npk::Interrupts
 
         if (route == nullptr)
         {
-            Log("Dropping interrupt, no route: %lu", LogLevel::Warning, vector);
+            Log("Dropping interrupt, no route: %zu", LogLevel::Warning, vector);
             return;
         };
 
@@ -115,7 +115,7 @@ namespace Npk::Interrupts
         if (route->vector == -1ul)
             return false;
 
-        Log("Interrupt route added: %lu:%lu, callback=%p, dpc=%p", LogLevel::Verbose,
+        Log("Interrupt route added: %zu:%zu, callback=%p, dpc=%p", LogLevel::Verbose,
             route->core, route->vector, route->Callback, route->dpc);
         return true;
     }
@@ -129,7 +129,7 @@ namespace Npk::Interrupts
             return false;
         }
 
-        Log("Pin-based interrupt claimed: gsi=%lu -> %lu:%lu", LogLevel::Verbose, gsi,
+        Log("Pin-based interrupt claimed: gsi=%zu -> %zu:%zu", LogLevel::Verbose, gsi,
             route->core, route->vector);
         return true;
     }
@@ -145,7 +145,7 @@ namespace Npk::Interrupts
         routing->tree.Remove(route);
         routing->lock.Unlock();
 
-        Log("Interrupt route removed: %lu:%lu, callback=%p, dpc=%p", LogLevel::Verbose,
+        Log("Interrupt route removed: %zu:%zu, callback=%p, dpc=%p", LogLevel::Verbose,
             route->core, route->vector, route->Callback, route->dpc);
 
         route->core = NoCoreAffinity;

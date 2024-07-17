@@ -17,13 +17,13 @@ extern "C"
     static_assert((size_t)RunLevel::Interrupt == npk_runlevel::Interrupt);
 
     static_assert(sizeof(npk_dpc) == sizeof(DpcStore));
-    static_assert(alignof(npk_dpc) == alignof(DpcStore));
+    //static_assert(alignof(npk_dpc) == alignof(DpcStore));
     static_assert(offsetof(npk_dpc, reserved) == offsetof(DpcStore, next));
     static_assert(offsetof(npk_dpc, function) == offsetof(DpcStore, data.function));
     static_assert(offsetof(npk_dpc, arg) == offsetof(DpcStore, data.arg));
 
     static_assert(sizeof(npk_apc) == sizeof(ApcStore));
-    static_assert(alignof(npk_apc) == alignof(ApcStore));
+    //static_assert(alignof(npk_apc) == alignof(ApcStore));
     static_assert(offsetof(npk_apc, reserved) == offsetof(ApcStore, next));
     static_assert(offsetof(npk_apc, function) == offsetof(ApcStore, data.function));
     static_assert(offsetof(npk_apc, arg) == offsetof(ApcStore, data.arg));

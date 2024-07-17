@@ -164,7 +164,6 @@ namespace Npk
         map->root = reinterpret_cast<PageTable*>(PMM::Global().Alloc());
         sl::memset(AddHhdm(map->root), 0, PageSize / 2);
 
-        SyncWithMasterMap(map);
         return map;
     }
 
@@ -310,9 +309,8 @@ namespace Npk
         return true;
     }
 
-    void SyncWithMasterMap(HatMap* map)
+    static void SyncWithMasterMap(HatMap* map)
     {
-        ASSERT_(map != nullptr);
         map->generation = kernelMap.generation.Load();
 
         const PageTable* source = AddHhdm(kernelMap.root);
@@ -322,14 +320,13 @@ namespace Npk
             dest->entries[i] = source->entries[i];
     }
 
-    void MakeActiveMap(HatMap* map)
+    void MakeActiveMap(HatMap* map, bool supervisor)
     {
-        ASSERT_(map != nullptr);
-        asm volatile("mov %0, %%cr3" :: "r"(map->root) : "memory");
-    }
+        (void)supervisor;
 
-    void HatHandlePanic()
-    {
-        MakeActiveMap(&kernelMap);
+        ASSERT_(map != nullptr);
+        if (map != &kernelMap)
+            SyncWithMasterMap(map);
+        asm volatile("mov %0, %%cr3" :: "r"(map->root) : "memory");
     }
 }

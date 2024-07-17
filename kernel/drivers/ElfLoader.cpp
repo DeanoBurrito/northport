@@ -8,7 +8,7 @@
 
 namespace Npk::Drivers
 {
-    constexpr sl::Elf64_Word NpkPhdrMagic = 0x6E706B6D;
+    constexpr sl::Elf_Word NpkPhdrMagic = 0x6E706B6D;
 
     static sl::StringSpan GetShortName(sl::StringSpan fullname)
     {
@@ -59,13 +59,13 @@ namespace Npk::Drivers
 
     static bool ApplyRelocation(const DynamicElfInfo& dynInfo, const void* reloc, bool isRela, uintptr_t base, bool allowLookup)
     {
-        auto rela = static_cast<const sl::Elf64_Rela*>(reloc);
-        const auto type = ELF64_R_TYPE(rela->r_info);
+        auto rela = static_cast<const sl::Elf_Rela*>(reloc);
+        const auto type = ELF_R_TYPE(rela->r_info);
         const auto b = base;
         const auto p = base + rela->r_offset;
         const uintptr_t s = [&]() 
         {
-            auto sym = dynInfo.symTable[ELF64_R_SYM(rela->r_info)];
+            auto sym = dynInfo.symTable[ELF_R_SYM(rela->r_info)];
             if (sym.st_value != 0 || !allowLookup || sym.st_name == 0)
                 return sym.st_value;
 
@@ -108,7 +108,7 @@ namespace Npk::Drivers
             if (!ApplyRelocation(dynInfo, &rel, true, buffer->raw - offset, isDriver))
             {
                 failedRelocs++;
-                Log("Rela %lu failed: r_offset(+base)=0x%lx, r_info=0x%lx", LogLevel::Error,
+                Log("Rela %zu failed: r_offset(+base)=0x%tx, r_info=0x%" PRIx32, LogLevel::Error,
                     i, rel.r_offset + (buffer->raw - offset), rel.r_info);
             }
         }
@@ -122,7 +122,7 @@ namespace Npk::Drivers
             if (!ApplyRelocation(dynInfo, &rel, false, buffer->raw - offset, isDriver))
             {
                 failedRelocs++;
-                Log("Rel %lu failed: r_offset(+base)=0x%lx, r_info=0x%lx", LogLevel::Error,
+                Log("Rel %zu failed: r_offset(+base)=0x%tx, r_info=0x%" PRIx32, LogLevel::Error,
                     i, rel.r_offset + (buffer->raw - offset), rel.r_info);
             }
         }
@@ -132,16 +132,16 @@ namespace Npk::Drivers
 
     static bool LinkPlt(const DynamicElfInfo& dynInfo, VmObject& buffer, bool isDriver)
     {
-        const size_t offsetIncrement = dynInfo.pltUsesRela ? sizeof(sl::Elf64_Rela) : sizeof(sl::Elf64_Rel);
+        const size_t offsetIncrement = dynInfo.pltUsesRela ? sizeof(sl::Elf_Rela) : sizeof(sl::Elf_Rel);
         size_t failedRelocs = 0;
 
         for (size_t offset = 0; offset < dynInfo.pltRelocsSize; offset += offsetIncrement)
         {
-            auto rel = sl::CNativePtr(dynInfo.pltRelocs).Offset(offset).As<const sl::Elf64_Rel>();
+            auto rel = sl::CNativePtr(dynInfo.pltRelocs).Offset(offset).As<const sl::Elf_Rel>();
 
             if (!ApplyRelocation(dynInfo, rel, dynInfo.pltUsesRela, buffer->raw, isDriver))
             {
-                Log("PltRel %lu failed: r_offset(+base)=0x%lx, r_info=0x%lx", LogLevel::Error,
+                Log("PltRel %zu failed: r_offset(+base)=0x%tx, r_info=0x%" PRIx32, LogLevel::Error,
                     offset / offsetIncrement, rel->r_offset + buffer->raw, rel->r_info);
                 failedRelocs++;
             }
@@ -152,17 +152,17 @@ namespace Npk::Drivers
 
     static sl::Opt<DynamicElfInfo> ParseDynamic(VmObject& file, uintptr_t loadBase)
     {
-        auto ehdr = file->As<const sl::Elf64_Ehdr>();
-        auto phdrs = file->As<const sl::Elf64_Phdr>(ehdr->e_phoff);
+        auto ehdr = file->As<const sl::Elf_Ehdr>();
+        auto phdrs = file->As<const sl::Elf_Phdr>(ehdr->e_phoff);
 
-        const sl::Elf64_Dyn* dyn = nullptr;
+        const sl::Elf_Dyn* dyn = nullptr;
         for (size_t i = 0; i < ehdr->e_phnum; i++)
         {
             if (phdrs[i].p_type != sl::PT_DYNAMIC)
                 continue;
 
             auto dynamicHdr = phdrs + i;
-            dyn = file->As<const sl::Elf64_Dyn>(dynamicHdr->p_offset);
+            dyn = file->As<const sl::Elf_Dyn>(dynamicHdr->p_offset);
             break;
         }
         VALIDATE_(dyn != nullptr, {});
@@ -175,22 +175,22 @@ namespace Npk::Drivers
             case sl::DT_NEEDED:
                 return {}; //we dont support additional libraries in the kernel loader
             case sl::DT_REL:
-                info.relEntries = reinterpret_cast<const sl::Elf64_Rel*>(dyn[i].d_ptr + loadBase);
+                info.relEntries = reinterpret_cast<const sl::Elf_Rel*>(dyn[i].d_ptr + loadBase);
                 break;
             case sl::DT_RELSZ:
-                info.relCount = dyn[i].d_ptr / sizeof(sl::Elf64_Rel);
+                info.relCount = dyn[i].d_ptr / sizeof(sl::Elf_Rel);
                 break;
             case sl::DT_RELA:
-                info.relaEntries = reinterpret_cast<const sl::Elf64_Rela*>(dyn[i].d_ptr + loadBase);
+                info.relaEntries = reinterpret_cast<const sl::Elf_Rela*>(dyn[i].d_ptr + loadBase);
                 break;
             case sl::DT_RELASZ:
-                info.relaCount = dyn[i].d_ptr / sizeof(sl::Elf64_Rela);
+                info.relaCount = dyn[i].d_ptr / sizeof(sl::Elf_Rela);
                 break;
             case sl::DT_STRTAB:
                 info.strTable = reinterpret_cast<const char*>(dyn[i].d_ptr + loadBase);
                 break;
             case sl::DT_SYMTAB:
-                info.symTable = reinterpret_cast<const sl::Elf64_Sym*>(dyn[i].d_ptr + loadBase);
+                info.symTable = reinterpret_cast<const sl::Elf_Sym*>(dyn[i].d_ptr + loadBase);
                 break;
             case sl::DT_JMPREL:
                 info.pltRelocs = reinterpret_cast<const void*>(dyn[i].d_ptr + loadBase);
@@ -209,11 +209,16 @@ namespace Npk::Drivers
 
     void ScanForModules(sl::StringSpan dirpath)
     {
-        Log("Scanning for kernel modules in \"%s\"", LogLevel::Verbose, dirpath.Begin());
-
         using namespace Filesystem;
         auto dirId = VfsLookup(dirpath);
-        VALIDATE_(dirId.HasValue(),);
+        if (!dirId.HasValue())
+        {
+            Log("Path %.*s not available, not scanning for kernel modules.", LogLevel::Warning,
+                (int)dirpath.Size(), dirpath.Begin());
+            return;
+        }
+        Log("Scanning for kernel modules in \"%.*s\"", LogLevel::Verbose, 
+            (int)dirpath.Size(), dirpath.Begin());
 
         auto dirList = VfsReadDir(*dirId);
         VALIDATE_(dirList.HasValue(), );
@@ -232,7 +237,8 @@ namespace Npk::Drivers
                 found++;
         }
 
-        Log("Detected %lu kernel modules in \"%s\"", LogLevel::Verbose, found, dirpath.Begin());
+        Log("Detected %zu kernel modules in \"%.*s\"", LogLevel::Verbose, found, 
+            (int)dirpath.Size(), dirpath.Begin());
     }
 
     bool ScanForDrivers(sl::StringSpan filepath)
@@ -243,7 +249,7 @@ namespace Npk::Drivers
 
         const VmObject metadataVmo = [&]() -> const VmObject
         {
-            auto ehdr = file->As<const sl::Elf64_Ehdr>();
+            auto ehdr = file->As<const sl::Elf_Ehdr>();
             auto phdrs = sl::FindPhdrs(ehdr, NpkPhdrMagic);
             VALIDATE_(phdrs.Size() == 1,{});
 
@@ -320,8 +326,8 @@ namespace Npk::Drivers
         VALIDATE_(file.Valid(), {});
 
         //get access to the elf header and program headers
-        auto ehdr = file->As<const sl::Elf64_Ehdr>();
-        sl::Span<const sl::Elf64_Phdr> phdrs { file->As<const sl::Elf64_Phdr>(ehdr->e_phoff), ehdr->e_phnum };
+        auto ehdr = file->As<const sl::Elf_Ehdr>();
+        sl::Span<const sl::Elf_Phdr> phdrs { file->As<const sl::Elf_Phdr>(ehdr->e_phoff), ehdr->e_phnum };
 
         /* Shared objects (PIE executables are basically just a shared object with an entry point),
          * can be loaded at any address, but the relationship between the PHDRs must be the same
@@ -349,7 +355,7 @@ namespace Npk::Drivers
         VmObject vmo(vmm, maxMemoryAddr, 0, VmFlag::Anon | VmFlag::Write);
         VALIDATE_(vmo.Valid(), {});
         const uintptr_t loadBase = vmo->raw;
-        Log("Loading elf %s with base address of 0x%lx", LogLevel::Verbose, 
+        Log("Loading elf %s with base address of 0x%tx", LogLevel::Verbose, 
             shortName.Begin(), loadBase);
 
         for (size_t i = 0; i < phdrs.Size(); i++)
@@ -362,7 +368,7 @@ namespace Npk::Drivers
             if (zeroes != 0)
                 sl::memset(vmo->As<void>(phdrs[i].p_vaddr + phdrs[i].p_filesz), 0, zeroes);
 
-            Log("Loaded elf %s phdr %lu at 0x%lx (+0x%lx zeroes)", LogLevel::Verbose,
+            Log("Loaded elf %s phdr %zu at 0x%tx (+0x%zx zeroes)", LogLevel::Verbose,
                 shortName.Begin(), i, loadBase + phdrs[i].p_vaddr, zeroes);
         }
 

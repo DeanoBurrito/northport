@@ -2,6 +2,8 @@
 #include <debug/Log.h>
 #include <interfaces/Helpers.h>
 
+#pragma GCC diagnostic ignored "-Wformat"
+
 extern "C"
 {
     struct SourcePos
@@ -122,10 +124,10 @@ extern "C"
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_load_invalid_value(const InvalidValueData& data, uint64_t value)
+    void __ubsan_handle_load_invalid_value(const InvalidValueData& data, uintmax_t value)
     {
         PrintType("type", data.type);
-        Log("UBSAN: load_invalid_value @ %s:%u:%u(value=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, value);
+        Log("UBSAN: load_invalid_value @ %s:%u:%u(value=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, value);
     }
 
     DRIVER_API_FUNC
@@ -154,61 +156,61 @@ extern "C"
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_vla_bound_not_positive(const VLABoundData& data, uint64_t bound)
+    void __ubsan_handle_vla_bound_not_positive(const VLABoundData& data, uintmax_t bound)
     {
         PrintType("VLA type", data.type);
-        Log("UBSAN: vla_bound_not_positive @ %s:%u,%u (bound=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, bound);
+        Log("UBSAN: vla_bound_not_positive @ %s:%u,%u (bound=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, bound);
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_add_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
+    void __ubsan_handle_add_overflow(const OverflowData& data, uintmax_t lhs, uintmax_t rhs)
     {
         PrintType("type", data.type);
-        Log("UBSAN: add_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
+        Log("UBSAN: add_overflow @ %s:%u,%u (lhs=0x%jx, rhs=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_sub_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
+    void __ubsan_handle_sub_overflow(const OverflowData& data, uintmax_t lhs, uintmax_t rhs)
     {
         PrintType("type", data.type);
-        Log("UBSAN: sub_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
+        Log("UBSAN: sub_overflow @ %s:%u,%u (lhs=0x%jx, rhs=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_negate_overflow(const OverflowData& data, uint64_t op)
+    void __ubsan_handle_negate_overflow(const OverflowData& data, uintmax_t op)
     {
         PrintType("type", data.type);
-        Log("UBSAN: negate_overflow @ %s:%u,%u (lhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, op);
+        Log("UBSAN: negate_overflow @ %s:%u,%u (lhs=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, op);
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_mul_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
+    void __ubsan_handle_mul_overflow(const OverflowData& data, uintmax_t lhs, uintmax_t rhs)
     {
         PrintType("type", data.type);
-        Log("UBSAN: mul_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
+        Log("UBSAN: mul_overflow @ %s:%u,%u (lhs=0x%jx, rhs=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_shift_out_of_bounds(const ShiftOutOfBoundsData& data, uint64_t lhs, uint64_t rhs)
+    void __ubsan_handle_shift_out_of_bounds(const ShiftOutOfBoundsData& data, uintmax_t lhs, uintmax_t rhs)
     {
         PrintType("left op", data.leftOperand);
         PrintType("right op", data.rightOperand);
-        Log("UBSAN: shift_out_of_bounds @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
+        Log("UBSAN: shift_out_of_bounds @ %s:%u,%u (lhs=0x%jx, rhs=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_divrem_overflow(const OverflowData& data, uint64_t lhs, uint64_t rhs)
+    void __ubsan_handle_divrem_overflow(const OverflowData& data, uintmax_t lhs, uintmax_t rhs)
     {
         PrintType("type", data.type);
-        Log("UBSAN: divrem_overflow @ %s:%u,%u (lhs=0x%lx, rhs=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
+        Log("UBSAN: divrem_overflow @ %s:%u,%u (lhs=0x%jx, rhs=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, lhs, rhs);
     }
 
     DRIVER_API_FUNC
-    void __ubsan_handle_out_of_bounds(const OutOfBoundsData& data, uint64_t operand)
+    void __ubsan_handle_out_of_bounds(const OutOfBoundsData& data, uintmax_t operand)
     {
         PrintType("array type", data.arrayType);
         PrintType("index type", data.indexType);
-        Log("UBSAN: out_of_bounds @ %s:%u,%u (index=0x%lx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, operand);
+        Log("UBSAN: out_of_bounds @ %s:%u,%u (index=0x%jx)", LogLevel::Error, data.where.file, data.where.line, data.where.column, operand);
     }
 
     DRIVER_API_FUNC
@@ -237,13 +239,13 @@ extern "C"
         }
         else if (ptr != nullptr && (1 << data.logAlignment) - 1)
         {
-            Log("UBSAN: type_mismatch_v1 @ %s:%u,%u. %s misaligned address 0x%lx of type %s", LogLevel::Error, 
-            data.where.file, data.where.line, data.where.column, opStrings[data.typeCheckKind], (uintptr_t)ptr, data.type->name);
+            Log("UBSAN: type_mismatch_v1 @ %s:%u,%u. %s misaligned address %p of type %s", LogLevel::Error, 
+            data.where.file, data.where.line, data.where.column, opStrings[data.typeCheckKind], ptr, data.type->name);
         }
         else
         {
-            Log("UBSAN: type_mismatch_v1 @ %s:%u,%u. %s address 0x%lx, not enough spce for type %s", LogLevel::Error, 
-            data.where.file, data.where.line, data.where.column, opStrings[data.typeCheckKind], (uintptr_t)ptr, data.type->name);
+            Log("UBSAN: type_mismatch_v1 @ %s:%u,%u. %s address %p, not enough spce for type %s", LogLevel::Error, 
+            data.where.file, data.where.line, data.where.column, opStrings[data.typeCheckKind], ptr, data.type->name);
         }
     }
 

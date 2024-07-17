@@ -1,5 +1,6 @@
 #include <memory/Pmm.h>
 #include <boot/LimineTags.h>
+#include <config/ConfigStore.h>
 #include <debug/Log.h>
 #include <Bitmap.h>
 #include <Maths.h>
@@ -62,7 +63,7 @@ namespace Npk::Memory
         size_t contigZones = 0;
         for (size_t i = 0; i < contiguousQuota;)
         {
-            const size_t count = sl::Min(contiguousQuota - i, entries[0]->length / PageSize);
+            const size_t count = sl::Min(contiguousQuota - i, (size_t)entries[0]->length / PageSize);
             i += count;
             entries[0]->length -= count * PageSize;
 
@@ -84,7 +85,7 @@ namespace Npk::Memory
             zonesLock.WriterUnlock();
 
             contigZones++;
-            Log("Contiguous physical memory zone: base=0x%lx, count=%lu", LogLevel::Verbose, zone->base,  zone->count);
+            Log("Contiguous physical memory zone: base=0x%tx, count=%zu", LogLevel::Verbose, zone->base,  zone->count);
             SortMemoryMapBySize(entryCount, entries); //sort memory map again, since we just modified it.
         }
 
@@ -124,7 +125,7 @@ namespace Npk::Memory
                 tail = segment;
             }
 
-            Log("PageInfo segment added: base=0x%lx, count=%lu, store=%p", LogLevel::Verbose,
+            Log("PageInfo segment added: base=0x%tx, count=%zu, store=%p", LogLevel::Verbose,
                 segment->base, segment->length / PageSize, segment->info);
         }
 
@@ -146,7 +147,7 @@ namespace Npk::Memory
                 tail = segment;
             }
 
-            Log("PageInfo (contig zone) segment added: base=0x%lx, count=%lu, store=%p", LogLevel::Verbose,
+            Log("PageInfo (contig zone) segment added: base=0x%tx, count=%zu, store=%p", LogLevel::Verbose,
                 segment->base, segment->length / PageSize, segment->info);
         }
 
@@ -196,15 +197,20 @@ namespace Npk::Memory
         }
 
         auto conv = sl::ConvertUnits(usablePages * PageSize, sl::UnitBase::Binary);
-        Log("PMM has %lu usable pages (%lu.%lu %sB), over %lu regions.", LogLevel::Info, usablePages,
+        Log("PMM has %zu usable pages (%zu.%zu %sB), over %zu regions.", LogLevel::Info, usablePages,
             conv.major, conv.minor, conv.prefix, usableEntries);
 
         //determine how much physical ram to reserve for contiguous allocations
         size_t contiguousPages = usablePages / PmContiguousPagesRatio;
         contiguousPages = sl::Min(PmMaxContiguousPages, sl::Max(PmMinContiguousPages, contiguousPages)); //ensure its within bounds
         contiguousPages = sl::Min(contiguousPages, usablePages); //ensure its actually valid after all that
-        Log("%lu pages reserved for contiguous allocs (pratio=1/%lu, min=%lu, max=%lu)", LogLevel::Info,
+        Log("%zu pages reserved for contiguous allocs (pratio=1/%zu, min=%zu, max=%zu)", LogLevel::Info,
             contiguousPages, PmContiguousPagesRatio, PmMinContiguousPages, PmMaxContiguousPages);
+
+        trashAfterUse = Config::GetConfigNumber("kernel.pmm.trash_after_use", false);
+        trashBeforeUse = Config::GetConfigNumber("kernel.pmm.trash_before_use", false);
+        if (trashAfterUse || trashBeforeUse)
+            new (&rng) sl::XoshiroRng();
 
         IngestMemory(usableEntries, usableMap, contiguousPages);
     }
@@ -234,7 +240,7 @@ namespace Npk::Memory
 
         IngestMemory(entryCount, entries, 0);
         auto conv = sl::ConvertUnits(totalLength, sl::UnitBase::Binary);
-        Log("Bootloader memory reclaimed: %lu.%lu %sB (%lu entries)", LogLevel::Info,
+        Log("Bootloader memory reclaimed: %zu.%zu %sB (%zu entries)", LogLevel::Info,
             conv.major, conv.minor, conv.prefix, entryCount);
     }
 
@@ -271,6 +277,13 @@ namespace Npk::Memory
             }
             else
                 freelist.head = freeEntry->next;
+
+            if (trashBeforeUse)
+            {
+                uint64_t* access = reinterpret_cast<uint64_t*>(freeEntry);
+                for (size_t i = 0; i < PageSize / sizeof(uint64_t); i++)
+                    access[i] = rng.Next();
+            }
             return reinterpret_cast<uintptr_t>(freeEntry) - hhdmBase;
         }
 
@@ -300,6 +313,13 @@ namespace Npk::Memory
 
             for (size_t i = runStartIndex; i < runStartIndex + count; i++)
                 sl::BitmapSet(zone->bitmap, i);
+
+            if (trashBeforeUse)
+            {
+                uint64_t* access = reinterpret_cast<uint64_t*>(zone->base + (runStartIndex * PageSize));
+                for (size_t i = 0; i < PageSize / sizeof(uint64_t); i++)
+                    access[i] = rng.Next();
+            }
             return zone->base + (runStartIndex * PageSize);
         }
 
@@ -312,7 +332,7 @@ namespace Npk::Memory
             return;
         if ((base & (PageSize - 1)) != 0)
         {
-            Log("Free of misaligned physical address: 0x%lx", LogLevel::Error, base);
+            Log("Free of misaligned physical address: 0x%tx", LogLevel::Error, base);
             base = base & ~(PageSize - 1);
         }
 
@@ -331,14 +351,21 @@ namespace Npk::Memory
             for (size_t i = 0; i < count; i++)
             {
                 if (!sl::BitmapClear(zone->bitmap, beginIndex + i))
-                    Log("Double free of physical page 0x%lx", LogLevel::Error, base + (i * PageSize));
+                    Log("Double free of physical page 0x%tx", LogLevel::Error, base + (i * PageSize));
+
+                if (trashAfterUse)
+                {
+                    uint64_t* access = reinterpret_cast<uint64_t*>(base + hhdmBase);
+                    for (size_t i = 0; i < PageSize / sizeof(uint64_t); i++)
+                        access[i] = rng.Next();
+                }
             }
             return;
         }
 
         if (count != 1)
         {
-            Log("Free of %lu physical pages at 0x%lx from unknown contiguous zone", LogLevel::Error,
+            Log("Free of %zu physical pages at 0x%tx from unknown contiguous zone", LogLevel::Error,
                 count, base);
             return;
         }
@@ -351,5 +378,12 @@ namespace Npk::Memory
         sl::ScopedLock scopeLock(freelist.lock);
         freeEntry->next = freelist.head;
         freelist.head = freeEntry;
+
+        if (trashAfterUse)
+        {
+            uint64_t* access = reinterpret_cast<uint64_t*>(base + hhdmBase);
+            for (size_t i = 0; i < PageSize / sizeof(uint64_t); i++)
+                access[i] = rng.Next();
+        }
     }
 }

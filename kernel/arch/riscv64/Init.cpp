@@ -56,6 +56,7 @@ namespace Npk
         ASSERT_UNREACHABLE();
     }
 
+#define NP_RISCV64_ASSUME_SERIAL 0x10000000
 #ifdef NP_RISCV64_ASSUME_SERIAL
     sl::NativePtr uartRegs;
     void UartWrite(sl::StringSpan text)
@@ -81,14 +82,6 @@ namespace Npk
 
 extern "C"
 {
-    struct EntryData
-    {
-        uintptr_t hartId;
-        uintptr_t dtb;
-        uintptr_t physBase;
-        uintptr_t virtBase;
-    };
-
     void KernelEntry()
     {
         using namespace Npk;
@@ -106,7 +99,7 @@ extern "C"
 
         InitMemory();
         InitPlatform();
-        //InitIntControllers(); 
+        InitIntControllers(); 
         InitTimers();
 
         if (Boot::smpRequest.response != nullptr)
@@ -118,12 +111,18 @@ extern "C"
                 if (cpuInfo->hartid == resp->bsp_hartid)
                 {
                     InitCore(cpuInfo->hartid, cpuInfo->processor_id);
+                    PerCoreCommonInit();
                     continue;
                 }
 
                 cpuInfo->goto_address = ApEntry;
                 Log("Sending bring-up request to core %lu.", LogLevel::Verbose, cpuInfo->hartid);
             }
+        }
+        else
+        {
+            InitCore(0, 0);
+            PerCoreCommonInit();
         }
 
         Tasking::StartSystemClock();

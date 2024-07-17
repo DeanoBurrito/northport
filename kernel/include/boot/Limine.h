@@ -61,8 +61,8 @@ struct limine_file {
     uint64_t revision;
     LIMINE_PTR(void *) address;
     uint64_t size;
-    LIMINE_PTR(char *) path;
-    LIMINE_PTR(char *) cmdline;
+    LIMINE_PTR(const char *) path;
+    LIMINE_PTR(const char *) cmdline;
     uint32_t media_type;
     uint32_t unused;
     uint32_t tftp_ip;
@@ -80,8 +80,8 @@ struct limine_file {
 
 struct limine_bootloader_info_response {
     uint64_t revision;
-    LIMINE_PTR(char *) name;
-    LIMINE_PTR(char *) version;
+    LIMINE_PTR(const char *) name;
+    LIMINE_PTR(const char *) version;
 };
 
 struct limine_bootloader_info_request {
@@ -253,8 +253,13 @@ LIMINE_DEPRECATED_IGNORE_END
 #define LIMINE_PAGING_MODE_RISCV_SV57 2
 #define LIMINE_PAGING_MODE_MAX LIMINE_PAGING_MODE_RISCV_SV57
 #define LIMINE_PAGING_MODE_DEFAULT LIMINE_PAGING_MODE_RISCV_SV48
+#elif defined (__m68k__)
+#define LIMINE_PAGING_MODE_M68K_4K 0
+#define LIMINE_PAGING_MODE_M68K_8K 1
+#define LIMINE_PAGING_MODE_MAX LIMINE_PAGING_MODE_M68K_8K
+#define LIMINE_PAGING_MODE_DEFAULT LIMINE_PAGING_MODE_M68K_4K
 #else
-#error Unknown architecture
+#warning Unknown Architecture
 #endif
 
 struct limine_paging_mode_response {
@@ -354,8 +359,23 @@ struct limine_smp_response {
     LIMINE_PTR(struct limine_smp_info **) cpus;
 };
 
+#elif defined (__m68k__)
+
+struct limine_smp_info {
+    uint32_t processor_id;
+    uint64_t id;
+    LIMINE_PTR(limine_goto_address) goto_address;
+};
+
+struct limine_smp_response {
+    uint64_t revision;
+    uint32_t flags;
+    uint64_t bsp_id;
+    uint64_t cpu_count;
+    LIMINE_PTR(struct limine_smp_info **) cpus;
+};
 #else
-#error Unknown architecture
+#warning Unknown Architecture
 #endif
 
 struct limine_smp_request {

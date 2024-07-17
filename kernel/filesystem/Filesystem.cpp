@@ -32,12 +32,12 @@ namespace Npk::Filesystem
         auto attribs = VfsGetAttribs(id);
         if (attribs.HasValue())
         {
-            Log("%*lu.%lu %s %s", LogLevel::Debug, (int)indent * 2, id.driverId, id.vnodeId, 
+            Log("%*zu.%zu %s %s", LogLevel::Debug, (int)indent * 2, id.driverId, id.vnodeId, 
                 attribs->name.C_Str(), NodeTypeStrs[(size_t)attribs->type]);
         }
         else
         {
-            Log("%*lu.%lu <no-name> %s", LogLevel::Debug, (int)indent * 2, id.driverId, id.vnodeId,
+            Log("%*zu.%zu <no-name> %s", LogLevel::Debug, (int)indent * 2, id.driverId, id.vnodeId,
                 NodeTypeStrs[(size_t)node->type]);
         }
 
@@ -185,7 +185,7 @@ namespace Npk::Filesystem
         mountpointsLock.WriterUnlock();
 
         const sl::String mountpointName = VfsGetPath(mountpoint);
-        Log("Mounted filesystem %lu at %lu.%lu (%s)", LogLevel::Info, target->bond.driverId, 
+        Log("Mounted filesystem %zu at %zu.%zu (%s)", LogLevel::Info, target->bond.driverId, 
             mountpoint.driverId, mountpoint.vnodeId, mountpointName.C_Str());
         return true;
     }
@@ -377,7 +377,7 @@ namespace Npk::Filesystem
         npk_fs_attribs apiAttribs {};
         apiAttribs.size = attribs.size;
         apiAttribs.name = npk_string { .length = attribs.name.Size(), .data = attribs.name.C_Str() };
-        const auto apiFlags = static_cast<const npk_fs_attrib_flags>(selected.Raw());
+        const auto apiFlags = static_cast<npk_fs_attrib_flags>(selected.Raw());
         
         npk_fs_context context {};
         context.api = driver->api;

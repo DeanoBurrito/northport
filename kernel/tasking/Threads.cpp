@@ -198,7 +198,7 @@ namespace Npk::Tasking
     void Thread::Exit(size_t code)
     {
         //TODO: put thread into reclaimable queue
-        Log("Thread %lu.%lu exiting with code %lu", LogLevel::Verbose, parent->Id(), id, code);
+        Log("Thread %zu.%zu exiting with code %zu", LogLevel::Verbose, parent->Id(), id, code);
         const bool selfExit = CoreLocal()[LocalPtr::Thread] == this;
 
         const RunLevel prevLevel = RaiseRunLevel(RunLevel::Dpc);
@@ -251,7 +251,7 @@ namespace Npk::Tasking
         processes.PushBack(proc);
         procLock.WriterUnlock();
 
-        Log("Created process %lu.", LogLevel::Verbose, proc->id);
+        Log("Created process %zu.", LogLevel::Verbose, proc->id);
         return proc->id;
     }
 
@@ -295,7 +295,7 @@ namespace Npk::Tasking
         threads.PushBack(thread);
         threadLock.WriterUnlock();
 
-        Log("Created thread %lu.%lu, entry=%p", LogLevel::Verbose, procId, thread->id, entry);
+        Log("Created thread %zu.%zu, entry=%p", LogLevel::Verbose, procId, thread->id, entry);
         return thread->id;
     }
 

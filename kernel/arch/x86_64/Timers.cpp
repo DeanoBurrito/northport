@@ -78,6 +78,14 @@ namespace Npk
             sl::HintSpinloop();
     }
 
+    void PolledSleep(size_t nanoseconds)
+    {
+        if (hpetRegs.Valid())
+            HpetSleep(nanoseconds);
+        else
+            PitSleep(nanoseconds);
+    }
+
     void InitTsc()
     {
         if (!CpuHasFeature(CpuFeature::Tsc))
@@ -256,13 +264,6 @@ namespace Npk
         }
     }
 
-    void PolledSleep(size_t nanoseconds)
-    {
-        if (hpetRegs.Valid())
-            HpetSleep(nanoseconds);
-        else
-            PitSleep(nanoseconds);
-    }
 
     size_t PollTimer()
     {

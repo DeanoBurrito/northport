@@ -103,6 +103,8 @@ namespace Npk
     #include <arch/x86_64/Platform.h>
 #elif __riscv_xlen == 64
     #include <arch/riscv64/Platform.h>
+#elif defined(__m68k__)
+    #include <arch/m68k/Platform.h>
 #else
     #error "Compiling kernel for unsupoorted ISA."
 #endif

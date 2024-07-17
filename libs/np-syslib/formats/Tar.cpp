@@ -16,19 +16,19 @@ namespace sl
     StringSpan TarHeader::Filename() const
     {
         //TODO: we should honour the prefix field as well
-        const size_t length = sl::Min(sl::memfirst(name, 0, 100), 100ul);
+        const size_t length = sl::Min<size_t>(sl::memfirst(name, 0, 100), 100);
         return StringSpan(reinterpret_cast<const char*>(name), length); //maximum safety, can't do that in rust B)
     }
 
     StringSpan TarHeader::OwnerName() const
     {
-        const size_t length = sl::Min(sl::memfirst(uname, 0, 32), 32ul);
+        const size_t length = sl::Min<size_t>(sl::memfirst(uname, 0, 32), 32);
         return StringSpan(reinterpret_cast<const char*>(uname), length);
     }
 
     StringSpan TarHeader::GroupName() const
     {
-        const size_t length = sl::Min(sl::memfirst(gname, 0, 32), 32ul);
+        const size_t length = sl::Min<size_t>(sl::memfirst(gname, 0, 32), 32);
         return StringSpan(reinterpret_cast<const char*>(gname), length);
     }
 

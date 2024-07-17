@@ -42,7 +42,7 @@ export KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fno-pic -fno-
 	-fno-asynchronous-unwind-tables -Iinclude -DNP_KERNEL 
 export KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
-export SYSLIB_CXX_FLAGS += -fvisibility=default
+export SYSLIB_CXX_FLAGS += -fvisibility=default -fPIC
 export DRIVER_C_FLAGS += -Wall -Wextra -std=c17 -fno-unwind-tables -fno-asynchronous-unwind-tables \
 	-ffreestanding -fPIC -fvisibility=hidden -fno-omit-frame-pointer \
 	-I$(PROJ_ROOT_DIR)/kernel/include -I$(PROJ_ROOT_DIR)/libs/np-syslib/include

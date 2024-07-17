@@ -15,7 +15,7 @@ namespace Npk::Filesystem
     void LoadInitdiskFile(npk_filesystem_device_api* fsApi, const sl::TarHeader* file)
     {
         const auto conv = sl::ConvertUnits(file->SizeBytes());
-        Log("Loading initdisk file: %s (%lu.%lu %sB)", LogLevel::Verbose,
+        Log("Loading initdisk file: %s (%zu.%zu %sB)", LogLevel::Verbose,
             file->Filename().Begin(), conv.major, conv.minor, conv.prefix);
 
         const sl::Url path = sl::Url::Parse(file->Filename());
@@ -80,7 +80,11 @@ namespace Npk::Filesystem
 
     void TryLoadInitdisk()
     {
-        VALIDATE(Boot::modulesRequest.response != nullptr, , "Failed to load initdisk, no bootloader modules present");
+        if (Boot::modulesRequest.response == nullptr)
+        {
+            Log("Failed to load initdisk, no bootloader modules present", LogLevel::Warning);
+            return;
+        }
 
         const auto* resp = Boot::modulesRequest.response;
         for (size_t i = 0; i < resp->module_count; i++)

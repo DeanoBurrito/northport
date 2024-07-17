@@ -58,14 +58,14 @@ namespace Npk::Memory
         if (flags.HasValue())
         {
             if (!vmm->SetFlags(base.raw, *flags))
-                Log("Failed to update VMO flags: base=0x%lx, size=0x%lx, flags=0x%lx",
+                Log("Failed to update VMO flags: base=0x%tx, size=0x%zx, flags=0x%lx",
                     LogLevel::Error, base.raw, size, flags->Raw());
         }
 
         const auto maybeFlags = vmm->GetFlags(base.raw, size);
         if (!maybeFlags.HasValue())
         {
-            Log("Failed to get VMO flags: base=0x%lx, size=0x%lx", LogLevel::Error,
+            Log("Failed to get VMO flags: base=0x%tx, size=0x%zx", LogLevel::Error,
                 base.raw, size);
             return {};
         }
