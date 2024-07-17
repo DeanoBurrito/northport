@@ -320,8 +320,10 @@ namespace Npk
             dest->entries[i] = source->entries[i];
     }
 
-    void MakeActiveMap(HatMap* map, bool)
+    void MakeActiveMap(HatMap* map, bool supervisor)
     {
+        (void)supervisor;
+
         ASSERT_(map != nullptr);
         if (map != &kernelMap)
             SyncWithMasterMap(map);

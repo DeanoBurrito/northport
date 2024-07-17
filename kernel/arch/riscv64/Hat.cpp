@@ -281,8 +281,9 @@ namespace Npk
         return true;
     }
 
-    void MakeActiveMap(HatMap* map, bool)
+    void MakeActiveMap(HatMap* map, bool supervisor)
     {
+        (void)supervisor;
         ASSERT_(map != nullptr);
 
         if (map != &kernelMap)
