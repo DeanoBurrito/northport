@@ -7,11 +7,13 @@
 
 namespace Npk::Config
 {
+    uintptr_t rawRsdp = 0;
     sl::LinkedList<VmObject> tables;
 
     void SetRsdp(uintptr_t providedRsdp)
     {
         ASSERT(providedRsdp != 0, "RSDP is null.");
+        rawRsdp = providedRsdp;
         
         VmObject rsdpWindow(sizeof(Rsdp), (uintptr_t)providedRsdp, VmFlag::Mmio);
         const Rsdp& rsdpAccess = *rsdpWindow->As<Rsdp>();
@@ -63,6 +65,13 @@ namespace Npk::Config
 
         for (auto it = tables.Begin(); it != tables.End(); ++it)
             PrintSdt(it->Ptr().As<const Sdt>());
+    }
+
+    sl::Opt<uintptr_t> GetRsdp()
+    {
+        if (rawRsdp != 0)
+            return rawRsdp;
+        return {};
     }
 
     bool VerifyChecksum(const Sdt* table)

@@ -20,7 +20,7 @@ namespace Npk::Debug
         return SymbolFlag::Public;
     }
 
-    static void ProcessElfSymbolTable(sl::Span<const sl::Elf64_Sym> symtab, sl::Span<const char> strtab, SymbolRepo& repo, uintptr_t loadBase)
+    static void ProcessElfSymbolTable(sl::Span<const sl::Elf_Sym> symtab, sl::Span<const char> strtab, SymbolRepo& repo, uintptr_t loadBase)
     {
         //make a copy of the string table
         repo.stringTable = VmObject(strtab.Size(), VmFlag::Anon | VmFlag::Write);
@@ -111,13 +111,35 @@ namespace Npk::Debug
     {
         repoListLock.WriterLock();
         SymbolRepo& repo = symbolRepos.EmplaceBack();
+        repoListLock.WriterUnlock();
         repo.name = name;
-        //ProcessElfSymbolTable(file->ptr, repo, loadBase);
+
+        auto ehdr = file->As<const sl::Elf_Ehdr>();
+        auto shdrs = file->Offset(ehdr->e_shoff).As<sl::Elf_Shdr>();
+        for (size_t i = 0; i < ehdr->e_shnum; i++)
+        {
+            if (shdrs[i].sh_type != sl::SHT_SYMTAB)
+                continue;
+
+            sl::Span<const sl::Elf_Sym> symtab 
+            {
+                file->Offset(shdrs[i].sh_offset).As<sl::Elf_Sym>(),
+                shdrs[i].sh_size / sizeof(sl::Elf_Sym)
+            };
+
+            sl::Span<const char> strtab
+            {
+                file->Offset(shdrs[shdrs[i].sh_link].sh_offset).As<const char>(),
+                shdrs[shdrs[i].sh_link].sh_size
+            };
+
+            ProcessElfSymbolTable(symtab, strtab, repo, loadBase);
+            break;
+        }
 
         totalStats.publicCount += repo.publicFunctions.Size();
         totalStats.privateCount += repo.privateFunctions.Size();
         totalStats.otherCount += repo.nonFunctions.Size();
-        repoListLock.WriterUnlock();
 
         return sl::Handle<SymbolRepo>(&repo); //TODO: delete[] wont properly remove repo from list (or fix symbol counts)
     }

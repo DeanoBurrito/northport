@@ -125,7 +125,7 @@ namespace Npk::Config
     public:
         static DeviceTree& Global();
         
-        void Init(void* dtbAddr);
+        void Init(uintptr_t dtbAddr);
         bool Available() const;
 
         DtNode* FindCompatible(sl::StringSpan str, DtNode* last = nullptr) const;

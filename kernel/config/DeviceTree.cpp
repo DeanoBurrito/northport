@@ -1,5 +1,6 @@
 #include <config/DeviceTree.h>
 #include <config/DeviceTreeDefs.h>
+#include <arch/Platform.h>
 #include <debug/Log.h>
 #include <NativePtr.h>
 #include <Memory.h>
@@ -179,11 +180,13 @@ namespace Npk::Config
 
     DtNode* DtNode::FindChild(sl::StringSpan name) const
     {
+        (void)name;
         ASSERT_UNREACHABLE();
     }
 
     DtProp* DtNode::FindProp(sl::StringSpan name) const
     {
+        (void)name;
         ASSERT_UNREACHABLE();
     }
 
@@ -302,12 +305,12 @@ namespace Npk::Config
     DeviceTree& DeviceTree::Global()
     { return globalDeviceTree; }
 
-    void DeviceTree::Init(void* dtbAddr)
+    void DeviceTree::Init(uintptr_t dtbAddr)
     {
-        VALIDATE(dtbAddr != nullptr,, "Attempted to init dtb with nullptr");
+        VALIDATE(dtbAddr != 0,, "Attempted to init dtb with nullptr");
         ASSERT(cells == nullptr, "Attempted to re-init device tree parser");
 
-        auto header = static_cast<const FdtHeader*>(dtbAddr);
+        auto header = reinterpret_cast<const FdtHeader*>(dtbAddr + hhdmBase);
         ASSERT(Bs(header->magic) == FdtMagic, "FDT has incorrect magic number");
 
         //populate pointers to the important parts of the blob
@@ -392,6 +395,7 @@ namespace Npk::Config
     {
         if (!Available())
             return nullptr;
+        (void)path;
         ASSERT_UNREACHABLE(); //TODO: implement 
     }
 }

@@ -8,5 +8,7 @@ namespace Npk
     void InitThread(void*);
 
     void PerCoreEntry(size_t myId); //called by boot protocol AP spinup code.
+    [[noreturn]]
+    void ExitCoreInit(); //called by boot protocol AP spinup code after PerCoreEntry
     extern "C" void KernelEntry(); //called by boot protocol entry function.
 }

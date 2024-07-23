@@ -439,6 +439,7 @@ namespace Npk
     static void ApEntry(limine_smp_info* info)
     {
         PerCoreEntry(LBP_CPU_ID(info));
+        ExitCoreInit();
     }
 
     size_t StartupAps()

@@ -96,7 +96,7 @@ typedef struct
 {
     npk_init_tag header;
 
-    void* rsdp;
+    uintptr_t rsdp;
 } npk_init_tag_rsdp;
 
 typedef enum
