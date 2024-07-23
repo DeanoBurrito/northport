@@ -1,5 +1,5 @@
 #include <memory/Pmm.h>
-#include <boot/LimineTags.h>
+#include <interfaces/loader/Generic.h>
 #include <config/ConfigStore.h>
 #include <debug/Log.h>
 #include <Bitmap.h>
@@ -13,68 +13,70 @@ namespace Npk::Memory
     constexpr size_t PmMaxContiguousPages = (64 * MiB) / PageSize;
     constexpr size_t PmMinContiguousPages = 0;
     constexpr size_t PmContiguousPagesRatio = 10;
+    constexpr size_t MemmapProcessSize = 32;
+
 
     PMM globalPmm;
     PMM& PMM::Global()
     { return globalPmm; }
 
-    static void SortMemoryMapBySize(size_t count, limine_memmap_entry** entries)
+    static void SortMemoryMapBySize(sl::Span<MemmapEntry> entries)
     {
         //bubble sort, caught in the wild
-        for (size_t i = 0; i < count - 1; i++)
+        for (size_t i = 0; i < entries.Size() - 1; i++)
         {
-            for (size_t j = 0; j < count - i - 1; j++)
+            for (size_t j = 0; j < entries.Size() - i - 1; j++)
             {
-                if (entries[j]->length < entries[j + 1]->length)
+                if (entries[j].length < entries[j + 1].length)
                     sl::Swap(entries[j], entries[j + 1]);
             }
         }
     }
 
-    static uintptr_t ClaimFromSmallest(size_t count, limine_memmap_entry** entries, size_t pages)
+    static uintptr_t ClaimFromSmallest(sl::Span<MemmapEntry> entries, size_t pages)
     {
         const size_t bytes = pages * PageSize;
 
-        for (size_t i = count; i > 0; i--)
+        for (size_t i = entries.Size(); i > 0; i--)
         {
             const size_t idx = i - 1;
-            if (entries[idx]->length < bytes)
+            if (entries[idx].length < bytes)
                 continue;
 
-            const uintptr_t base = entries[idx]->base;
-            entries[idx]->base += bytes;
-            entries[idx]->length -= bytes;
+            const uintptr_t base = entries[idx].base;
+            entries[idx].base += bytes;
+            entries[idx].length -= bytes;
             return base;
         }
 
         return 0;
     }
 
-    void PMM::IngestMemory(size_t entryCount, limine_memmap_entry** entries, size_t contiguousQuota)
+    void PMM::IngestMemory(sl::Span<MemmapEntry> entries, size_t contiguousQuota)
     {
         size_t totalPages = 0;
-        for (size_t i = 0; i < entryCount; i++)
-            totalPages += entries[i]->length / PageSize;
+        for (size_t i = 0; i < entries.Size(); i++)
+            totalPages += entries[i].length / PageSize;
 
-        SortMemoryMapBySize(entryCount, entries);
+        SortMemoryMapBySize(entries);
 
         //reserve contiguous regions, starting from largest chunk of physical memory
         zones = nullptr;
         size_t contigZones = 0;
         for (size_t i = 0; i < contiguousQuota;)
         {
-            const size_t count = sl::Min(contiguousQuota - i, (size_t)entries[0]->length / PageSize);
+            const size_t count = sl::Min(contiguousQuota - i, (size_t)entries[0].length / PageSize);
             i += count;
-            entries[0]->length -= count * PageSize;
+            entries[0].length -= count * PageSize;
 
             const size_t bitmapBytes = sl::AlignUp(count, 8) / 8;
             const size_t metadataBytes = bitmapBytes + (2 * sizeof(PmContigZone));
-            const uintptr_t metadataAddr = ClaimFromSmallest(entryCount, entries, sl::AlignUp(metadataBytes, PageSize) / PageSize);
+            const uintptr_t metadataAddr = ClaimFromSmallest(entries, sl::AlignUp(metadataBytes, PageSize) / PageSize);
             ASSERT_(metadataAddr != 0);
 
             PmContigZone* zone = reinterpret_cast<PmContigZone*>(sl::AlignUp(metadataAddr + hhdmBase, sizeof(PmContigZone)));
             new(zone) PmContigZone();
-            zone->base = entries[0]->base + entries[0]->length;
+            zone->base = entries[0].base + entries[0].length;
             zone->count = count;
             zone->bitmap = reinterpret_cast<uint8_t*>(zone + 1);
             sl::memset(zone->bitmap, 0, bitmapBytes);
@@ -86,14 +88,13 @@ namespace Npk::Memory
 
             contigZones++;
             Log("Contiguous physical memory zone: base=0x%tx, count=%zu", LogLevel::Verbose, zone->base,  zone->count);
-            SortMemoryMapBySize(entryCount, entries); //sort memory map again, since we just modified it.
+            SortMemoryMapBySize(entries); //sort memory map again, since we just modified it.
         }
 
         //allocate space for pageinfo segments
-        const size_t segmentStoreBytes = sizeof(PmInfoSegment) * (entryCount + contigZones + 1);
+        const size_t segmentStoreBytes = sizeof(PmInfoSegment) * (entries.Size() + contigZones + 1);
         const size_t infoStoreSize = segmentStoreBytes + sizeof(PageInfo) * (totalPages+ 1);
-        uintptr_t infoStoreAddr = ClaimFromSmallest(entryCount, entries, 
-            sl::AlignUp(infoStoreSize, PageSize) / PageSize);
+        uintptr_t infoStoreAddr = ClaimFromSmallest(entries, sl::AlignUp(infoStoreSize, PageSize) / PageSize);
         ASSERT_(infoStoreAddr != 0);
         infoStoreAddr = sl::AlignUp(infoStoreAddr, sizeof(PmInfoSegment)) + hhdmBase;
 
@@ -105,15 +106,15 @@ namespace Npk::Memory
 
         //create mappings from usable regions to PageInfo database
         PmInfoSegment* tail = nullptr;
-        for (size_t i = 0; i < entryCount; i++)
+        for (size_t i = 0; i < entries.Size(); i++)
         {
-            if (entries[i]->length == 0)
+            if (entries[i].length == 0)
                 continue;
 
             PmInfoSegment* segment = &segmentStore[segmentIndex++];
             new(segment) PmInfoSegment();
-            segment->base = entries[i]->base;
-            segment->length = entries[i]->length;
+            segment->base = entries[i].base;
+            segment->length = entries[i].length;
             segment->info = infoStore + infoIndex;
             infoIndex += segment->length / PageSize;
 
@@ -165,13 +166,13 @@ namespace Npk::Memory
 
         //all other physical memory is added to the freelist
         freelist.head = nullptr;
-        for (size_t i = 0; i < entryCount; i++)
+        for (size_t i = 0; i < entries.Size(); i++)
         {
-            if (entries[i]->length == 0)
+            if (entries[i].length == 0)
                 continue;
 
-            auto entry = reinterpret_cast<PmFreeEntry*>(entries[i]->base + hhdmBase);
-            entry->runLength = entries[i]->length / PageSize;
+            auto entry = reinterpret_cast<PmFreeEntry*>(entries[i].base + hhdmBase);
+            entry->runLength = entries[i].length / PageSize;
 
             entry->next = freelist.head;
             freelist.head = entry;
@@ -180,25 +181,27 @@ namespace Npk::Memory
 
     void PMM::Init()
     {
-        auto mmapResp = Boot::memmapRequest.response;
-
-        //scan the memory map and figure out how many usable entries and pages there are.
+        MemmapEntry mmapEntryStore[MemmapProcessSize];
+        sl::Span<MemmapEntry> entries = mmapEntryStore;
+        size_t entriesAccum = 0;
+        
         size_t usablePages = 0;
-        size_t usableEntries = 0;
-        limine_memmap_entry* usableMap[mmapResp->entry_count];
-        for (size_t i = 0; i < mmapResp->entry_count; i++)
+        while (true)
         {
-            limine_memmap_entry* entry = mmapResp->entries[i];
-            if (entry->type != LIMINE_MEMMAP_USABLE)
-                continue;
+            const size_t count = GetUsableMemmap(entries, entriesAccum);
+            entriesAccum += count;
 
-            usablePages += entry->length / PageSize;
-            usableMap[usableEntries++] = entry;
+            for (size_t i = 0; i < count; i++)
+                usablePages += entries[i].length;
+
+            if (count < entries.Size())
+                break;
         }
+        usablePages /= PageSize;
 
         auto conv = sl::ConvertUnits(usablePages * PageSize, sl::UnitBase::Binary);
         Log("PMM has %zu usable pages (%zu.%zu %sB), over %zu regions.", LogLevel::Info, usablePages,
-            conv.major, conv.minor, conv.prefix, usableEntries);
+            conv.major, conv.minor, conv.prefix, entriesAccum);
 
         //determine how much physical ram to reserve for contiguous allocations
         size_t contiguousPages = usablePages / PmContiguousPagesRatio;
@@ -212,36 +215,42 @@ namespace Npk::Memory
         if (trashAfterUse || trashBeforeUse)
             new (&rng) sl::XoshiroRng();
 
-        IngestMemory(usableEntries, usableMap, contiguousPages);
+        entriesAccum = 0;
+        while (true)
+        {
+            const size_t count = GetUsableMemmap(entries, entriesAccum);
+            entriesAccum += count;
+
+            IngestMemory({ entries.Begin(), count }, contiguousPages);
+
+            if (count < entries.Size())
+                break;
+        }
     }
 
     void PMM::ReclaimBootMemory()
     {
-        auto mmapResp = Boot::memmapRequest.response;
-        size_t totalLength = 0; //not needed here, I'm just being vain.
-
-        //when reclaiming the bootloader memory we need our own copy of the memory map
-        //(or at least the entries we care about) since the memory map is inside the regions
-        //we're reclaiming - which may be overwritten with control data for the PMM.
-        //So we make a copy of the reclaimable memory map entries on the stack and use that.
-        size_t entryCount = 0;
-        limine_memmap_entry entriesStore[mmapResp->entry_count];
-        limine_memmap_entry* entries[mmapResp->entry_count];
-        for (size_t i = 0; i < mmapResp->entry_count; i++)
+        MemmapEntry mmapEntryStore[MemmapProcessSize];
+        sl::Span<MemmapEntry> entries = mmapEntryStore;
+        size_t entriesAccum = 0;
+        
+        size_t usableLength = 0;
+        while (true)
         {
-            if (mmapResp->entries[i]->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE)
-                continue;
+            const size_t count = GetReclaimableMemmap(entries, entriesAccum);
+            entriesAccum += count;
 
-            entriesStore[entryCount] = *mmapResp->entries[i];
-            entries[entryCount] = entriesStore + entryCount;
-            totalLength += entries[entryCount]->length;
-            entryCount++;
+            for (size_t i = 0; i < count; i++)
+                usableLength += entries[i].length;
+            IngestMemory({ entries.Begin(), count }, 0);
+
+            if (count < entries.Size())
+                break;
         }
 
-        IngestMemory(entryCount, entries, 0);
-        auto conv = sl::ConvertUnits(totalLength, sl::UnitBase::Binary);
+        auto conv = sl::ConvertUnits(usableLength, sl::UnitBase::Binary);
         Log("Bootloader memory reclaimed: %zu.%zu %sB (%zu entries)", LogLevel::Info,
-            conv.major, conv.minor, conv.prefix, entryCount);
+            conv.major, conv.minor, conv.prefix, entriesAccum);
     }
 
     PageInfo* PMM::Lookup(uintptr_t physAddr)

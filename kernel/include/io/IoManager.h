@@ -38,8 +38,6 @@ namespace Npk::Io
     public:
         static IoManager& Global();
 
-        void Init();
-
         sl::Handle<IoPacket> Begin(npk_iop_beginning* beginning);
         bool End(sl::Handle<IoPacket> iop);
         sl::Opt<bool> ContinueOne(sl::Handle<IoPacket> iop);

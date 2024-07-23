@@ -1,7 +1,7 @@
 #include <debug/TerminalDriver.h>
 #include <debug/Terminal.h>
 #include <debug/Log.h>
-#include <boot/LimineTags.h>
+#include <interfaces/loader/Generic.h>
 #include <containers/List.h>
 #include <UnitConverter.h>
 #include <NanoPrintf.h>
@@ -143,68 +143,73 @@ namespace Npk::Debug
         }
     }
 
+    static void AddFramebuffer(const LoaderFramebuffer& fb)
+    {
+        auto fontSize = Terminal::CalculateFontSize(DefaultTerminalStyle);
+        const size_t reservedHeight = fontSize.y * 2;
+        VALIDATE_(fb.height > reservedHeight, );
+
+        const size_t sourceWidth = static_cast<size_t>(fb.width);
+        const size_t sourceHeight = static_cast<size_t>(fb.height);
+        const GTFramebuffer logFb
+        {
+            .address = fb.address,
+            .size = { sourceWidth, sourceHeight - reservedHeight },
+            .pitch = fb.stride
+        };
+        const GTFramebuffer statsFb
+        {
+            .address = fb.address + (logFb.size.y * logFb.pitch),
+            .size = { sourceWidth, reservedHeight },
+            .pitch = fb.stride
+        };
+
+        //TOOD: we should honour pixel layout and pass it to terminal renderers
+        TerminalHead* head = new TerminalHead();
+        bool success = head->logRenderer.Init(DefaultTerminalStyle, logFb);
+        success = head->statsRenderer.Init(StatsStyle, statsFb);
+
+        if (!success)
+        {
+            Log("Failed to init graphical terminal head.", LogLevel::Error);
+            head->logRenderer.Deinit();
+            head->statsRenderer.Deinit();
+            delete head;
+            return;
+        }
+
+        head->statsRenderer.DisableCursor();
+        const char statsInitStr[] = "\e[H\e[7m\e[2K\r\n\e[2K";
+        head->statsRenderer.Write(statsInitStr, sizeof(statsInitStr));
+
+        head->next = nullptr;
+        termHeads.PushFront(head);
+        Log("Added gterminal head: %zux%zu, bpp=%zu, base=0x%tx", LogLevel::Info,
+            fb.width, fb.height, fb.pixelStride * 4, logFb.address);
+    }
+
     void InitEarlyTerminals()
     {
-        auto fbResponse = Boot::framebufferRequest.response;
-        if (fbResponse == nullptr)
-            return;
-
         autoRefreshStarted = false;
         refreshStatsDpc.data.function = UpdateRenderedStats;
         refreshStatsEvent.duration = 10_ms;
         refreshStatsEvent.callbackCore = NoCoreAffinity;
         refreshStatsEvent.dpc = &refreshStatsDpc;
 
-        //Make full use of all framebuffers reported by the bootloader. We also split each
-        //'source' framebuffer into two smaller terminals: the first one occupies most of the screen,
-        //and the second one occupies the bottom 2 lines (worth of text). The lower terminal
-        //is doesnt scroll and is used to display some cool stats about kernel internals.
-        //Thanks to the keyronex for the inspiration for this one.
-        auto fontSize = Terminal::CalculateFontSize(DefaultTerminalStyle);
-        const size_t reservedHeight = fontSize.y * 2;
+        size_t fbsOffset = 0;
+        LoaderFramebuffer fbStore[4];
+        sl::Span<LoaderFramebuffer> fbs = fbStore;
 
-        for (size_t i = 0; i < fbResponse->framebuffer_count; i++)
+        while (true)
         {
-            const auto sourceFb = fbResponse->framebuffers[i];
-            ASSERT_(sourceFb->height > reservedHeight);
+            const size_t count = GetFramebuffers(fbs, fbsOffset);
+            fbsOffset += count;
 
-            const size_t sourceWidth = static_cast<size_t>(sourceFb->width);
-            const size_t sourceHeight = static_cast<size_t>(sourceFb->height);
-            const GTFramebuffer logFb
-            {
-                .address = reinterpret_cast<uintptr_t>(sourceFb->address),
-                .size = { sourceWidth, sourceHeight - reservedHeight },
-                .pitch = static_cast<size_t>(sourceFb->pitch)
-            };
-            const GTFramebuffer statsFb
-            {
-                .address = reinterpret_cast<uintptr_t>(sourceFb->address) + (logFb.size.y * logFb.pitch),
-                .size = { sourceWidth, reservedHeight },
-                .pitch = static_cast<size_t>(sourceFb->pitch)
-            };
+            for (size_t i = 0; i < count; i++)
+                AddFramebuffer(fbs[i]);
 
-            //TOOD: we should honour pixel layout and pass it to terminal renderers
-            TerminalHead* head = new TerminalHead();
-            bool success = head->logRenderer.Init(DefaultTerminalStyle, logFb);
-            success = head->statsRenderer.Init(StatsStyle, statsFb);
-
-            if (!success)
-            {
-                Log("Failed to init graphical terminal head #%zu.", LogLevel::Error, i);
-                head->logRenderer.Deinit();
-                head->statsRenderer.Deinit();
-                delete head;
-                continue;
-            }
-
-            head->statsRenderer.DisableCursor();
-            const char statsInitStr[] = "\e[H\e[7m\e[2K\r\n\e[2K";
-            head->statsRenderer.Write(statsInitStr, sizeof(statsInitStr));
-
-            head->next = nullptr;
-            termHeads.PushFront(head);
-            Log("Added gterminal head #%zu: %ux%u, bpp=%u, base=0x%tx", LogLevel::Info,
-                i, (unsigned)sourceFb->width, (unsigned)sourceFb->height, sourceFb->bpp, logFb.address);
+            if (count < fbs.Size())
+                break;
         }
 
         if (!termHeads.Empty())

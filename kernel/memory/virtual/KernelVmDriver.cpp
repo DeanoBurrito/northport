@@ -1,7 +1,7 @@
 #include <memory/virtual/KernelVmDriver.h>
 #include <debug/Log.h>
 #include <boot/LinkerSyms.h>
-#include <boot/LimineTags.h>
+#include <interfaces/loader/Generic.h>
 #include <Maths.h>
 
 namespace Npk::Memory::Virtual
@@ -14,11 +14,13 @@ namespace Npk::Memory::Virtual
     void KernelVmDriver::Init(uintptr_t enableFeatures)
     {
         (void)enableFeatures;
+        const uintptr_t physBase = GetKernelPhysAddr();
+        ASSERT_(physBase != 0);
+        const uintptr_t virtBase = (uintptr_t)KERNEL_BLOB_BEGIN;
 
         //map the kernel binary itself into the kernel map
         auto MapSection = [&](VmRange& range, uintptr_t addr, size_t length, VmFlags vmFlags, HatFlags flags)
         {
-            const auto* resp = Boot::kernelAddrRequest.response;
             length = sl::AlignUp(addr + length, PageSize);
             addr = sl::AlignDown(addr, PageSize);
             length -= addr;
@@ -29,7 +31,7 @@ namespace Npk::Memory::Virtual
             range.mdlCount = 1;
             
             for (uintptr_t i = addr; i < addr + length; i += PageSize)
-                Map(KernelMap(), i, i - resp->virtual_base + resp->physical_base, 0, flags, false);
+                Map(KernelMap(), i, i - virtBase + physBase, 0, flags, false);
         };
 
         //mapping the HHDM belongs here as well, but it's performed as part of the HAT init,

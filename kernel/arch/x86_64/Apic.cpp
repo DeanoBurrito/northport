@@ -1,5 +1,5 @@
 #include <arch/x86_64/Apic.h>
-#include <arch/Cpu.h>
+#include <arch/x86_64/Cpuid.h>
 #include <arch/Timers.h>
 #include <config/AcpiTables.h>
 #include <debug/Log.h>

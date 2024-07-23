@@ -1,7 +1,6 @@
 #include <arch/Platform.h>
-#include <arch/Cpu.h>
-#include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Apic.h>
+#include <arch/x86_64/Cpuid.h>
 #include <debug/Log.h>
 #include <Maths.h>
 #include <Memory.h>
@@ -165,7 +164,7 @@ namespace Npk
         case RunLevel::Interrupt:
         case RunLevel::Clock:
             return WriteCr8(0xF);
-        //TODO: conditional disabling of interrupts at other levels
+        //TODO: conditional disabling of interrupts at other levels (and enabling interrupts)
         default:
             return WriteCr8(0);
         }

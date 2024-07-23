@@ -1,6 +1,6 @@
 #include <debug/Symbols.h>
 #include <debug/Log.h>
-#include <boot/LimineTags.h>
+#include <interfaces/loader/Generic.h>
 #include <formats/Elf.h>
 #include <containers/LinkedList.h>
 #include <Locks.h>
@@ -20,43 +20,28 @@ namespace Npk::Debug
         return SymbolFlag::Public;
     }
 
-    static void ProcessElfSymbolTables(sl::NativePtr file, SymbolRepo& repo, uintptr_t loadBase)
+    static void ProcessElfSymbolTable(sl::Span<const sl::Elf64_Sym> symtab, sl::Span<const char> strtab, SymbolRepo& repo, uintptr_t loadBase)
     {
-        auto ehdr = file.As<const sl::Elf_Ehdr>();
-        auto shdrs = file.As<const sl::Elf_Shdr>(ehdr->e_shoff);
-        auto symTables = sl::FindShdrs(ehdr, sl::SHT_SYMTAB); //TODO: dont use section headers, use PT_DYNAMIC info
-
-        //first pass over the symbol tables: get counts for each category, make a copy of the string table.
+        //make a copy of the string table
+        repo.stringTable = VmObject(strtab.Size(), VmFlag::Anon | VmFlag::Write);
+        VALIDATE_(repo.stringTable.Valid(), );
+        sl::memcopy(strtab.Begin(), repo.stringTable->ptr, strtab.Size());
+        repo.stringTable.Flags({}); //clear permissions, making string table readonly
+        
         size_t countPublic = 0;
         size_t countPrivate = 0;
         size_t countOther = 0;
-        for (size_t i = 0; i < symTables.Size(); i++)
+        for (size_t i = 0; i < symtab.Size(); i++)
         {
-            const size_t symbolCount = symTables[i]->sh_size / symTables[i]->sh_entsize;
-            auto syms = file.As<const sl::Elf_Sym>(symTables[i]->sh_offset);
+            if (symtab[i].st_name == 0 || symtab[i].st_size == 0)
+                continue; //ignore nameless or sizeless symbols
 
-            //TODO: would be nice to just make a private mapping of this part of the file (0 copies),
-            //instead of copying into anonymous memory.
-            auto strTable = shdrs[symTables[i]->sh_link];
-            ASSERT(!repo.stringTable.Valid(), "All symtabs must share the same strtab (for now)");
-            repo.stringTable = VmObject(strTable.sh_size, VmFlag::Anon | VmFlag::Write);
-            VALIDATE_(repo.stringTable.Valid(),);
-
-            sl::memcopy(file.As<const void>(strTable.sh_offset), repo.stringTable->ptr, strTable.sh_size);
-            repo.stringTable.Flags({}); //clear permissions flags, making string table readonly.
-
-            for (size_t j = 0; j < symbolCount; j++)
+            switch (ClassifySymbol(symtab[i]))
             {
-                if (syms[j].st_name == 0 || syms[j].st_size == 0)
-                    continue; //ignore nameless and sizeless symbols
-
-                switch (ClassifySymbol(syms[j]))
-                {
-                    case SymbolFlag::Public: countPublic++; break;
-                    case SymbolFlag::Private: countPrivate++; break;
-                    case SymbolFlag::NonFunction: countOther++; break;
-                    default: ASSERT_UNREACHABLE();
-                }
+                case SymbolFlag::Public: countPublic++; break;
+                case SymbolFlag::Private: countPrivate++; break;
+                case SymbolFlag::NonFunction: countOther++; break;
+                default: ASSERT_UNREACHABLE();
             }
         }
 
@@ -64,38 +49,24 @@ namespace Npk::Debug
         repo.privateFunctions.EnsureCapacity(countPrivate);
         repo.nonFunctions.EnsureCapacity(countOther);
 
-        //second iteration over symbol tables: store data about the symbols.
-        for (size_t i = 0; i < symTables.Size(); i++)
+        for (size_t i = 0; i < symtab.Size(); i++)
         {
-            const size_t symbolCount = symTables[i]->sh_size / symTables[i]->sh_entsize;
-            auto syms = file.As<const sl::Elf_Sym>(symTables[i]->sh_offset);
+            if (symtab[i].st_name == 0 || symtab[i].st_size == 0)
+                continue;
 
-            for (size_t j = 0; j < symbolCount; j++)
+            KernelSymbol* storage;
+            switch (ClassifySymbol(symtab[i]))
             {
-                if (syms[j].st_name == 0 || syms[j].st_size == 0)
-                    continue; //ignore nameless and sizeless symbols
-
-                KernelSymbol* storage = nullptr;
-                switch (ClassifySymbol(syms[j]))
-                {
-                    case SymbolFlag::Public: 
-                        storage = &repo.publicFunctions.EmplaceBack();
-                        break;
-                    case SymbolFlag::Private:
-                        storage = &repo.privateFunctions.EmplaceBack();
-                        break;
-                    case SymbolFlag::NonFunction:
-                        storage = &repo.nonFunctions.EmplaceBack();
-                        break;
-                    default: 
-                        ASSERT_UNREACHABLE();
-                }
-
-                storage->base = loadBase + syms[j].st_value;
-                storage->length = syms[j].st_size;
-                const char* symbolName = repo.stringTable->As<const char>() + syms[j].st_name;
-                storage->name = { symbolName, sl::memfirst(symbolName, 0, 0) };
+                case SymbolFlag::Public: storage = &repo.publicFunctions.EmplaceBack(); break;
+                case SymbolFlag::Private: storage = &repo.privateFunctions.EmplaceBack(); break;
+                case SymbolFlag::NonFunction: storage = &repo.nonFunctions.EmplaceBack(); break;
+                default: ASSERT_UNREACHABLE();
             }
+
+            storage->base = loadBase + symtab[i].st_value;
+            storage->length = symtab[i].st_size;
+            const char* symName = repo.stringTable->As<const char>() + symtab[i].st_name;
+            storage->name = { symName, sl::memfirst(symName, 0, 0) };
         }
 
         Log("Loaded symbols for %s: public=%zu, private=%zu, other=%zu", LogLevel::Info,
@@ -117,16 +88,19 @@ namespace Npk::Debug
         SymbolRepo& repo = symbolRepos.EmplaceBack();
         repoListLock.WriterUnlock();
         repo.name = "kernel";
-        
-        if (Boot::kernelFileRequest.response == nullptr)
-        {
-            //TODO: other ways to load kernel symbols
-            Log("Bootloader did not provide kernel file feature response", LogLevel::Warning);
-            return;
-        }
 
-        void* kernelFileAddr = Boot::kernelFileRequest.response->kernel_file->address;
-        ProcessElfSymbolTables(kernelFileAddr, repo, 0);
+        const sl::Span<uint8_t> symtab = GetKernelSymbolTable();
+        const sl::Span<const char> strtab = GetKernelStringTable();
+
+        VALIDATE_(!symtab.Empty(), );
+        VALIDATE_(!strtab.Empty(), );
+
+        const sl::Span<const sl::Elf_Sym> realSymtab 
+        { 
+            reinterpret_cast<const sl::Elf_Sym*>(symtab.Begin()),
+            symtab.SizeBytes() / sizeof(sl::Elf_Sym) 
+        };
+        ProcessElfSymbolTable(realSymtab, strtab, repo, 0);
 
         totalStats.publicCount = repo.publicFunctions.Size();
         totalStats.privateCount = repo.privateFunctions.Size();
@@ -138,7 +112,7 @@ namespace Npk::Debug
         repoListLock.WriterLock();
         SymbolRepo& repo = symbolRepos.EmplaceBack();
         repo.name = name;
-        ProcessElfSymbolTables(file->ptr, repo, loadBase);
+        //ProcessElfSymbolTable(file->ptr, repo, loadBase);
 
         totalStats.publicCount += repo.publicFunctions.Size();
         totalStats.privateCount += repo.privateFunctions.Size();

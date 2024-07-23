@@ -8,11 +8,6 @@ namespace Npk::Io
     IoManager& IoManager::Global()
     { return globalIoManager; }
 
-    void IoManager::Init()
-    {
-        Log("IO manager initialized.", LogLevel::Info);
-    }
-
     sl::Handle<IoPacket> IoManager::Begin(npk_iop_beginning* beginning)
     {
         VALIDATE_(beginning != nullptr, {});

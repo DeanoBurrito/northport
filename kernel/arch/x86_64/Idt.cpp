@@ -1,6 +1,5 @@
 #include <arch/x86_64/Idt.h>
 #include <arch/x86_64/Apic.h>
-#include <arch/x86_64/Gdt.h>
 #include <debug/Log.h>
 #include <debug/Panic.h>
 #include <interrupts/Router.h>

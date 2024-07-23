@@ -30,7 +30,13 @@
     - Added similar features to physical memory manager.
     - These are all opt-in as they have memory and performance penalties, but are useful for catching bugs.
 
+- Refactored kernel startup:
+    - Abstracted boot protocol behind a generic interface in the interfaces layer.
+    - Added tentative support for crow protocol.
+    - Unified init sequence of kernel. Now kernel init happens in a common function, which calls arch-specific hooks at various points in time. Makes following the code a bit easier as more of it is in one place, and removes some near-duplicates.
+- Arch-specific includes in arch layer headers are not defined in `arch/__Select.h`, centralizing the huge mess of #ifdefs.
 - Added config store, a glorified kernel command line parser. Allows for overriding previously hardcoded config values.
+- Added command line option for inhibiting smp startup.
 - Thread switches are delayed until a core's runlevel drops back to normal.
 - Removed PolledSleep() from architecture timers interface. It's not used and we can achieve the same functionality with PollTimer().
 

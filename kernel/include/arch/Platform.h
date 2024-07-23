@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arch/__Select.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <tasking/RunLevels.h>
@@ -26,9 +27,9 @@ namespace Npk
     struct CoreLocalInfo
     {
         uintptr_t scratch;
+        void* nextStack; //next stack available for kernel use. On x86_64 this is a duplicate of tss->rsp0
         uintptr_t id;
         uintptr_t acpiId;
-        void* nextStack; //next stack available for kernel use. On x86_64 this is a duplicate of tss->rsp0
         RunLevel runLevel;
         sl::QueueMpSc<Tasking::Dpc> dpcs;
         sl::QueueMpSc<Tasking::Apc> apcs;
@@ -39,7 +40,7 @@ namespace Npk
     };
 
     extern uintptr_t hhdmBase;
-    extern uintptr_t hhdmLength;
+    extern size_t hhdmLength;
 
     template<typename T>
     inline T AddHhdm(T value)
@@ -90,7 +91,7 @@ namespace Npk
     CoreLocalInfo& CoreLocal();
     bool CoreLocalAvailable();
 
-    [[gnu::always_inline, noreturn]]
+    [[noreturn]]
     inline void Halt()
     { 
         while (true) 
@@ -99,12 +100,6 @@ namespace Npk
     }
 }
 
-#if defined(__x86_64__)
-    #include <arch/x86_64/Platform.h>
-#elif __riscv_xlen == 64
-    #include <arch/riscv64/Platform.h>
-#elif defined(__m68k__)
-    #include <arch/m68k/Platform.h>
-#else
-    #error "Compiling kernel for unsupoorted ISA."
+#ifdef NPK_ARCH_INCLUDE_PLATFORM
+#include NPK_ARCH_INCLUDE_PLATFORM
 #endif

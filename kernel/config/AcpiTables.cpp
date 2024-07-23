@@ -9,9 +9,9 @@ namespace Npk::Config
 {
     sl::LinkedList<VmObject> tables;
 
-    void SetRsdp(void* providedRsdp)
+    void SetRsdp(uintptr_t providedRsdp)
     {
-        ASSERT(providedRsdp != nullptr, "RSDP is null.");
+        ASSERT(providedRsdp != 0, "RSDP is null.");
         
         VmObject rsdpWindow(sizeof(Rsdp), (uintptr_t)providedRsdp, VmFlag::Mmio);
         const Rsdp& rsdpAccess = *rsdpWindow->As<Rsdp>();
@@ -58,7 +58,7 @@ namespace Npk::Config
             tables.EmplaceBack(fullRsdt.Size(), (uintptr_t)rsdpAccess.rsdt, VmFlag::Mmio);
         }
 
-        Log("Rsdp set: %p, revision=%u, tables=%zu", LogLevel::Info, 
+        Log("Rsdp set: 0x%tx, revision=%u, tables=%zu", LogLevel::Info, 
             providedRsdp, rsdpAccess.revision, tables.Size());
 
         for (auto it = tables.Begin(); it != tables.End(); ++it)

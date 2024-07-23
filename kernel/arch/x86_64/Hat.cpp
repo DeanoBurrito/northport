@@ -1,5 +1,5 @@
 #include <arch/Hat.h>
-#include <arch/Cpu.h>
+#include <arch/x86_64/Cpuid.h>
 #include <memory/Pmm.h>
 #include <debug/Log.h>
 #include <Memory.h>
@@ -17,6 +17,7 @@ namespace Npk
     };
 
     constexpr size_t PageTableEntries = 512;
+    constexpr size_t MaxPtIndices = 6; //max of 5 levels, +1 because its 1 based counting.
 
     struct PageTable
     {
@@ -80,7 +81,7 @@ namespace Npk
     static inline WalkResult WalkTables(PageTable* root, uintptr_t vaddr)
     {
         //TODO: use fractal paging to accelerate walks in the same address space
-        size_t indices[pagingLevels + 1];
+        size_t indices[MaxPtIndices];
         GetAddressIndices(vaddr, indices);
 
         WalkResult result {};
@@ -203,7 +204,7 @@ namespace Npk
             return false; //invalid mode
         
         const PageSizes selectedSize = (PageSizes)(mode + 1);
-        size_t indices[pagingLevels + 1];
+        size_t indices[MaxPtIndices];
         GetAddressIndices(vaddr, indices);
         WalkResult path = WalkTables(map->root, vaddr);
 

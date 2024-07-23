@@ -4,7 +4,7 @@
 #include <Atomic.h>
 #include <Random.h>
 
-extern "C" { struct limine_memmap_entry; }
+namespace Npk { struct MemmapEntry; } //defined in interfaces/loader/Generic.h
 
 namespace Npk::Memory
 {
@@ -61,7 +61,7 @@ namespace Npk::Memory
         bool trashAfterUse;
         bool trashBeforeUse;
 
-        void IngestMemory(size_t entryCount, limine_memmap_entry** entries, size_t contiguousQuota);
+        void IngestMemory(sl::Span<MemmapEntry> entries, size_t contiguousQuota);
         void* AllocMeta(size_t size);
 
     public:

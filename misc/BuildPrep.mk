@@ -12,7 +12,7 @@ endif
 
 ifeq ($(CPU_ARCH), x86_64)
 	ifeq ($(X86_64_ENABLE_DEBUGCON_E9), yes)
-		KERNEL_CXX_FLAGS += -DNP_X86_64_E9_ALLOWED
+		KERNEL_CXX_FLAGS += -DNPK_X86_DEBUGCON_ENABLED
 	endif
 endif
 

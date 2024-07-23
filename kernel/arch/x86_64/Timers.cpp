@@ -1,5 +1,5 @@
 #include <arch/Timers.h>
-#include <arch/Cpu.h>
+#include <arch/x86_64/Cpuid.h>
 #include <arch/x86_64/Apic.h>
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
@@ -117,7 +117,10 @@ namespace Npk
             selectedSysTimer = TimerName::Tsc;
     }
 
-    void InitTimers()
+    void InitLocalTimers()
+    {}
+
+    void InitGlobalTimers()
     {
         timerIoApicPin = 0;
         selectedSysTimer = (TimerName)-1;
