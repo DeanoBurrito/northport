@@ -504,7 +504,7 @@ namespace Npk
 
             //needed because ASSERT concats this into a format string (the % causes errors lol)
             const size_t bppMod4 = fb->bpp % 4;
-            ASSERT_(bppMod4 == 4);
+            ASSERT_(bppMod4 == 0);
 
             outFb.pixelStride = fb->bpp / 4;
             outFb.rShift = fb->red_mask_shift;

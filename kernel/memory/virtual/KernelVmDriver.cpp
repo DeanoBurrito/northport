@@ -31,7 +31,7 @@ namespace Npk::Memory::Virtual
             range.mdlCount = 1;
             
             for (uintptr_t i = addr; i < addr + length; i += PageSize)
-                Map(KernelMap(), i, i - virtBase + physBase, 0, flags, false);
+                HatDoMap(KernelMap(), i, i - virtBase + physBase, 0, flags, false);
         };
 
         //mapping the HHDM belongs here as well, but it's performed as part of the HAT init,
@@ -60,7 +60,7 @@ namespace Npk::Memory::Virtual
 
     SplitResult KernelVmDriver::Split(VmDriverContext& context, size_t offset)
     {
-        const uintptr_t alignment = GetHatLimits().modes[0].granularity;
+        const uintptr_t alignment = HatGetLimits().modes[0].granularity;
         offset = sl::AlignUp(offset, alignment);
 
         if (offset > context.range.length)
@@ -84,7 +84,7 @@ namespace Npk::Memory::Virtual
         QueryResult result;
         result.success = true;
         result.hatMode = 0;
-        result.alignment = GetHatLimits().modes[result.hatMode].granularity;
+        result.alignment = HatGetLimits().modes[result.hatMode].granularity;
         result.length = sl::AlignUp(length, result.alignment);
 
         if (flags.Has(VmFlag::Guarded))
@@ -109,7 +109,7 @@ namespace Npk::Memory::Virtual
         attachArg = sl::AlignDown(attachArg, query.alignment);
         sl::ScopedLock scopeLock(context.lock);
         for (size_t i = 0; i < context.range.length; i += query.alignment)
-            Map(context.map, context.range.base + i, attachArg + i, query.hatMode, flags, false);
+            HatDoMap(context.map, context.range.base + i, attachArg + i, query.hatMode, flags, false);
 
         context.stats.mmioWorkingSize += context.range.length;
         return result;
@@ -117,14 +117,14 @@ namespace Npk::Memory::Virtual
     
     bool KernelVmDriver::Detach(VmDriverContext& context)
     {
-        const HatLimits& hatLimits = GetHatLimits();
+        const HatLimits& hatLimits = HatGetLimits();
         sl::ScopedLock ptLock(context.lock);
 
         for (uintptr_t base = context.range.base; base < context.range.base + context.range.length;)
         {
             uintptr_t ignored;
             size_t mode;
-            if (Unmap(context.map, base, ignored, mode, true))
+            if (HatDoUnmap(context.map, base, ignored, mode, true))
             {
                 base += hatLimits.modes[mode].granularity;
                 context.stats.mmioWorkingSize -= hatLimits.modes[mode].granularity;

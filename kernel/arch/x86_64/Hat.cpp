@@ -142,7 +142,7 @@ namespace Npk
         //now map the hhdm
         constexpr HatFlags hhdmFlags = HatFlags::Write | HatFlags::Global;
         for (uintptr_t i = 0; i < hhdmLength; i += GetPageSize((PageSizes)hhdmPageSize))
-            Map(KernelMap(), hhdmBase + i, i, hhdmPageSize - 1, hhdmFlags, false);
+            HatDoMap(KernelMap(), hhdmBase + i, i, hhdmPageSize - 1, hhdmFlags, false);
         
         //adjust HHDM length so matches the memory we mapped, since the VMM uses hhdmLength
         //to know where it can start allocating virtual address space.
@@ -156,10 +156,10 @@ namespace Npk
             mmuFeatures.nx ? "yes" : "no", mmuFeatures.globalPages ? "yes" : "no");
     }
 
-    const HatLimits& GetHatLimits()
+    const HatLimits& HatGetLimits()
     { return limits; }
 
-    HatMap* InitNewMap()
+    HatMap* HatCreateMap()
     {
         HatMap* map = new HatMap;
         map->root = reinterpret_cast<PageTable*>(PMM::Global().Alloc());
@@ -185,7 +185,7 @@ namespace Npk
         PMM::Global().Free(reinterpret_cast<uintptr_t>(pt) - hhdmBase, 1);
     }
 
-    void CleanupMap(HatMap* map)
+    void HatDestroyMap(HatMap* map)
     {
         if (map == nullptr)
             return;
@@ -197,7 +197,7 @@ namespace Npk
     HatMap* KernelMap()
     { return &kernelMap; }
     
-    bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
+    bool HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
     {
         ASSERT_(map != nullptr);
         if (mode >= limits.modeCount)
@@ -246,7 +246,7 @@ namespace Npk
         return true;
     }
 
-    bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
+    bool HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
     {
         ASSERT_(map != nullptr);
 
@@ -268,7 +268,7 @@ namespace Npk
         return true;
     }
 
-    sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
+    sl::Opt<uintptr_t> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
     {
         ASSERT_(map != nullptr);
 
@@ -281,7 +281,7 @@ namespace Npk
         return (*path.pte & addrMask) | (vaddr & offsetMask);
     }
 
-    bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
+    bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
     {
         ASSERT_(map != nullptr);
 
@@ -321,7 +321,7 @@ namespace Npk
             dest->entries[i] = source->entries[i];
     }
 
-    void MakeActiveMap(HatMap* map, bool supervisor)
+    void HatMakeActive(HatMap* map, bool supervisor)
     {
         (void)supervisor;
 

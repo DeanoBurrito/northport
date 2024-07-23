@@ -6,6 +6,7 @@ SYSLIB_CXX_FLAGS += -m68040
 KERNEL_LD_FLAGS +=
 
 ARCH_DEFAULT_TARGET = m68k-loader
+KERNEL_BOOT_PROTOCOL = limine
 
 QEMU_BASE = qemu-system-m68k -machine virt -cpu m68040 -m 256M \
 	-serial mon:stdio -kernel $(LOADER_FULL_FILEPATH) -initrd $(INITDISK_FULL_FILEPATH)

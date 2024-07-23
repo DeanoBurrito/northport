@@ -6,6 +6,7 @@
 #include <config/ConfigStore.h>
 #include <config/AcpiTables.h>
 #include <debug/BakedConstants.h>
+#include <debug/TerminalDriver.h>
 #include <debug/Log.h>
 #include <debug/Symbols.h>
 #include <drivers/DriverManager.h>
@@ -38,7 +39,9 @@ namespace Npk
     {
         ArchThreadedInit();
 
-        //TODO: scan for loadable modules, add pci descriptors, add acpi runtime descriptor
+        Drivers::ScanForModules("/initdisk/drivers");
+
+        //TODO: add pci descriptors, add acpi runtime descriptor
         Tasking::Thread::Current().Exit(0);
     }
 
@@ -107,7 +110,7 @@ namespace Npk
         //set up other subsystems, now that the kernel heap is available
         Config::LateInitConfigStore();
         LoadKernelSymbols();
-        //TODO: early terms
+        InitEarlyTerminals();
 
         Drivers::DriverManager::Global().Init();
         //TODO: attach rsdp to tree for acpi runtime driver

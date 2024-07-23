@@ -262,12 +262,12 @@ namespace Npk::Memory
          *   the user code, which can lead to some bad things. It's documented by the Fuchsia
          *   team at: https://fuchsia.dev/fuchsia-src/concepts/kernel/sysret_problem
          */
-        const size_t granuleSize = GetHatLimits().modes[0].granularity;
+        const size_t granuleSize = HatGetLimits().modes[0].granularity;
         globalLowerBound = granuleSize;
         globalUpperBound = ~hhdmBase - granuleSize;
 
         CommonInit();
-        hatMap = InitNewMap();
+        hatMap = HatCreateMap();
 
         const size_t usableSpace = globalUpperBound - globalLowerBound;
         auto conv = sl::ConvertUnits(usableSpace, sl::UnitBase::Binary);
@@ -286,11 +286,11 @@ namespace Npk::Memory
          */
         globalLowerBound = hhdmBase + hhdmLength;
         globalUpperBound = sl::AlignUp((uintptr_t)KERNEL_BLOB_BEGIN + (uintptr_t)KERNEL_BLOB_SIZE, 
-            GetHatLimits().modes[0].granularity);
+            HatGetLimits().modes[0].granularity);
 
         CommonInit();
         hatMap = KernelMap();
-        MakeActiveMap(hatMap, true);
+        HatMakeActive(hatMap, true);
 
         auto kernelRanges = Virtual::GetKernelRanges();
         for (size_t i = 0; i < kernelRanges.Size(); i++)
@@ -308,7 +308,7 @@ namespace Npk::Memory
 
         //Not strictly necessary, but better to know we're not using the VMM we're
         //about to destroy. Switch to the kernel map.
-        MakeActiveMap(KernelMap(), true);
+        HatMakeActive(KernelMap(), true);
         
         //iterate through active ranges, detaching each one and freeing the backing memory.
         //This also frees the VM range structs as well.
@@ -338,13 +338,13 @@ namespace Npk::Memory
 
         //cleanup memory used by HAT structures, no need to lock as no one else
         //can access the VMM at this stage in its life.
-        CleanupMap(hatMap);
+        HatDestroyMap(hatMap);
         hatMap = nullptr;
     }
 
     void VMM::MakeActive()
     {
-        MakeActiveMap(hatMap, globalUpperBound > hhdmBase);
+        HatMakeActive(hatMap, globalUpperBound > hhdmBase);
     }
 
     bool VMM::HandleFault(uintptr_t addr, VmFaultFlags flags)
@@ -651,7 +651,7 @@ namespace Npk::Memory
     sl::Opt<uintptr_t> VMM::GetPhysical(uintptr_t vaddr)
     {
         size_t ignored;
-        return GetMap(hatMap, vaddr, ignored);
+        return HatGetMap(hatMap, vaddr, ignored);
     }
 
     size_t VMM::CopyIn(void* foreignBase, void* localBase, size_t length)
@@ -665,12 +665,12 @@ namespace Npk::Memory
         while (count < length)
         {
             size_t ignored;
-            auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
+            auto maybePhys = HatGetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
             if (!maybePhys.HasValue())
             {
                 if (!HandleFault((uintptr_t)foreignBase + count, VmFaultFlag::Write))
                     return count;
-                maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
+                maybePhys = HatGetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
             }
             
             size_t copyLength = sl::Min(PageSize, length - count);
@@ -693,7 +693,7 @@ namespace Npk::Memory
         while (count < length)
         {
             size_t ignored;
-            auto maybePhys = GetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
+            auto maybePhys = HatGetMap(hatMap, (uintptr_t)foreignBase + count, ignored);
             if (!maybePhys)
                 return count;
             
@@ -722,17 +722,17 @@ namespace Npk::Memory
             size_t mode = 0;
 
             //get physical memory or fault it in if necessary
-            auto maybeMap = GetMap(hatMap, base + scan, mode);
+            auto maybeMap = HatGetMap(hatMap, base + scan, mode);
             if (!maybeMap.HasValue())
             {
                 ASSERT_(HandleFault(base + scan, VmFaultFlag::Write));
-                maybeMap = GetMap(hatMap, base + scan, mode);
+                maybeMap = HatGetMap(hatMap, base + scan, mode);
             }
 
             ASSERT_(maybeMap.HasValue());
             auto& ptr = ptrs.EmplaceBack();
             ptr.physAddr = *maybeMap;
-            ptr.length = GetHatLimits().modes[mode].granularity;
+            ptr.length = HatGetLimits().modes[mode].granularity;
 
             scan += ptr.length;
         }

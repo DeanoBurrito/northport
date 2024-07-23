@@ -95,15 +95,15 @@ namespace Npk
 
         constexpr HatFlags hhdmFlags = HatFlags::Write | HatFlags::Global;
         for (uintptr_t i = 0; i < hhdmLength; i += PageSize)
-            Map(KernelMap(), hhdmBase + i, i, 0, hhdmFlags, false);
+            HatDoMap(KernelMap(), hhdmBase + i, i, 0, hhdmFlags, false);
 
         Log("Hat init (paging): levels=3, pageSize=4K", LogLevel::Info);
     }
 
-    const HatLimits& GetHatLimits()
+    const HatLimits& HatGetLimits()
     { return limits; }
 
-    HatMap* InitNewMap()
+    HatMap* HatCreateMap()
     {
         HatMap* map = new HatMap();
         map->root = reinterpret_cast<PageTable*>(PMM::Global().Alloc());
@@ -112,7 +112,7 @@ namespace Npk
         return map;
     }
 
-    void CleanupMap(HatMap* map)
+    void HatDestroyMap(HatMap* map)
     {
         ASSERT_UNREACHABLE();
     }
@@ -133,7 +133,7 @@ namespace Npk
         return (*clusterBase & tableAddrMask) + (index * sizeof(PageTable));
     }
 
-    bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
+    bool HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
     {
         ASSERT_(map != nullptr);
         if (mode != 0)
@@ -169,7 +169,7 @@ namespace Npk
         return true;
     }
 
-    bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
+    bool HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
     {
         ASSERT_(map != nullptr);
 
@@ -187,7 +187,7 @@ namespace Npk
         return true;
     }
 
-    sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
+    sl::Opt<uintptr_t> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
     {
         ASSERT_(map != nullptr);
 
@@ -199,7 +199,7 @@ namespace Npk
         return (*path.pte & descAddrMask) | (vaddr & ~descAddrMask);
     }
 
-    bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
+    bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
     {
         ASSERT_(map != nullptr);
 
@@ -223,7 +223,7 @@ namespace Npk
         return true;
     }
 
-    void MakeActiveMap(HatMap* map, bool supervisor)
+    void HatMakeActive(HatMap* map, bool supervisor)
     {
         if (supervisor)
             asm("movec %0, %%srp" :: "d"(map->root) : "memory");

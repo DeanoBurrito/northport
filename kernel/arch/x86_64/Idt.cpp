@@ -32,17 +32,21 @@ namespace Npk
     [[gnu::aligned(8)]]
     IdtEntry idtEntries[IntVectorCount];
 
+    struct [[gnu::packed, gnu::aligned(8)]]
+    {
+        uint16_t limit;
+        uint64_t base;
+    } idtr;
+
     void PopulateIdt()
     {
+        idtr.limit = sizeof(idtEntries) - 1;
+        idtr.base = (uintptr_t)idtEntries;
+
         for (size_t i = 0; i < IntVectorCount; i++)
             idtEntries[i] = IdtEntry((uintptr_t)VectorStub0 + i * 0x10, false, 0);
     }
 
-    struct [[gnu::packed, gnu::aligned(8)]]
-    {
-        uint16_t limit = IntVectorCount * sizeof(IdtEntry) - 1;
-        uint64_t base = (uintptr_t)idtEntries;
-    } idtr;
 
     [[gnu::naked]]
     void LoadIdt()

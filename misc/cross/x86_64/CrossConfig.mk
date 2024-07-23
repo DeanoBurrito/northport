@@ -7,6 +7,7 @@ SYSLIB_CXX_FLAGS += -mcmodel=large
 KERNEL_LD_FLAGS += -ztext --no-relax
 
 ARCH_DEFAULT_TARGET = iso-hybrid
+KERNEL_BOOT_PROTOCOL = limine
 UEFI_BOOT_NAME = BOOTX64.EFI
 
 QEMU_BASE = qemu-system-x86_64 -machine q35 \

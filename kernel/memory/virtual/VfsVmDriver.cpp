@@ -32,7 +32,7 @@ namespace Npk::Memory::Virtual
         VALIDATE_(cache.Valid(), { .goodFault = false });
 
         const FileCacheInfo fcInfo = GetFileCacheInfo();
-        const size_t granuleSize = GetHatLimits().modes[fcInfo.hatMode].granularity;
+        const size_t granuleSize = HatGetLimits().modes[fcInfo.hatMode].granularity;
         const HatFlags hatFlags = ConvertFlags(context.range.flags);
 
         where = sl::AlignDown(where, granuleSize);
@@ -51,7 +51,7 @@ namespace Npk::Memory::Virtual
             }
 
             sl::ScopedLock scopeLock(context.lock);
-            Map(context.map, context.range.base + mappingOffset + i, cachePart->physBase + ((i + mappingOffset + link->fileOffset) % fcInfo.unitSize), 
+            HatDoMap(context.map, context.range.base + mappingOffset + i, cachePart->physBase + ((i + mappingOffset + link->fileOffset) % fcInfo.unitSize), 
                 fcInfo.hatMode, hatFlags, false);
             context.stats.fileResidentSize += granuleSize;
         }
@@ -86,7 +86,7 @@ namespace Npk::Memory::Virtual
         QueryResult result;
         result.success = true;
         result.hatMode = GetFileCacheInfo().hatMode;
-        result.alignment = GetHatLimits().modes[result.hatMode].granularity;
+        result.alignment = HatGetLimits().modes[result.hatMode].granularity;
         result.length = sl::AlignUp(length, result.alignment);
         
         if (flags.Has(VmFlag::Guarded))
@@ -137,7 +137,7 @@ namespace Npk::Memory::Virtual
         link->fileOffset = arg->offset;
 
         const FileCacheInfo fcInfo = GetFileCacheInfo();
-        const size_t granuleSize = GetHatLimits().modes[query.hatMode].granularity;
+        const size_t granuleSize = HatGetLimits().modes[query.hatMode].granularity;
         const AttachResult result
         {
             .token = link,
@@ -161,7 +161,7 @@ namespace Npk::Memory::Virtual
                 break;
 
             sl::ScopedLock scopeLock(context.lock);
-            Map(context.map, context.range.base + i, handle->physBase + (i % fcInfo.unitSize), 
+            HatDoMap(context.map, context.range.base + i, handle->physBase + (i % fcInfo.unitSize), 
                 query.hatMode, hatFlags, false);
             context.stats.fileResidentSize += granuleSize;
         }
@@ -177,7 +177,7 @@ namespace Npk::Memory::Virtual
 
         VfsVmLink* link = static_cast<VfsVmLink*>(context.range.token);
 
-        const size_t granuleSize = GetHatLimits().modes[fcInfo.hatMode].granularity;
+        const size_t granuleSize = HatGetLimits().modes[fcInfo.hatMode].granularity;
         size_t mode;
         size_t phys;
 
@@ -185,7 +185,7 @@ namespace Npk::Memory::Virtual
         for (size_t i = 0; i < context.range.length; i += granuleSize)
         {
             //TODO: if page has dirty bit set, we'll need to mark the file cache entry as dirtied as well
-            if (Unmap(context.map, context.range.base + i, phys, mode, true))
+            if (HatDoUnmap(context.map, context.range.base + i, phys, mode, true))
                 context.stats.fileResidentSize -= granuleSize;
         }
 

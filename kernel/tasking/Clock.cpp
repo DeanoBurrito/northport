@@ -2,22 +2,13 @@
 #include <arch/Timers.h>
 #include <debug/Log.h>
 #include <interrupts/Ipi.h>
-#include <containers/List.h>
-#include <Locks.h>
 #include <Maths.h>
 
 namespace Npk::Tasking
 {
     constexpr sl::ScaledTime TimekeepingEventDuration = 5_ms;
 
-    struct ClockQueue
-    {
-        size_t managingCore;
-        sl::SpinLock lock;
-        sl::IntrFwdList<ClockEvent> events;
-        size_t modifiedTicks;
-    };
-
+    size_t globalQueueOwnerCore;
     ClockQueue globalQueue;
 
     sl::Atomic<size_t> uptimeMillis;
@@ -27,7 +18,7 @@ namespace Npk::Tasking
     static void UpdateTimerQueue()
     {
         const size_t pollTicks = PollTimer();
-        size_t listDelta = PolledTicksToNanos(pollTicks - globalQueue.modifiedTicks);
+        size_t listDelta = PollTicksToNanos(pollTicks - globalQueue.modifiedTicks);
         globalQueue.modifiedTicks = pollTicks;
 
         auto scan = globalQueue.events.Begin();
@@ -70,8 +61,8 @@ namespace Npk::Tasking
 
         if (!globalQueue.events.Empty())
         {
-            const size_t clockArmTime = sl::Min(SysTimerMaxNanos(), globalQueue.events.Front().duration.units);
-            SetSysTimer(clockArmTime, ClockTickHandler);
+            const size_t clockArmTime = sl::Min(InterruptTimerMaxNanos(), globalQueue.events.Front().duration.units);
+            ArmInterruptTimer(clockArmTime, ClockTickHandler);
         }
 
         //return value isnt super important here, it just allows *not* enqueueing a dpc associated with the interrupt
@@ -83,13 +74,16 @@ namespace Npk::Tasking
     {
         uptimeMillis.Add(TimekeepingEventDuration.ToMillis(), sl::Relaxed);
 
+        if (uptimeMillis % 1000 == 0)
+            Log("A second has passed!", LogLevel::Debug);
+
         timekeepingEvent.duration = TimekeepingEventDuration;
         QueueClockEvent(&timekeepingEvent);
     }
 
     void StartSystemClock()
     {
-        globalQueue.managingCore = 0; //TODO: per-timer queues
+        globalQueueOwnerCore = 0; //TODO: per-cpu queues
 
         timekeepingDpc.data.function = ClockUptimeDpc;
         timekeepingEvent.callbackCore = CoreLocal().id;
@@ -98,7 +92,7 @@ namespace Npk::Tasking
         QueueClockEvent(&timekeepingEvent);
 
         Log("System clock started: intTimer=%s, pollTimer=%s", LogLevel::Info,
-            SysTimerName(), PollTimerName());
+            InterruptTimerName(), PollTimerName());
     }
 
     static void RemoteQueueClockEvent(void* arg)
@@ -112,8 +106,8 @@ namespace Npk::Tasking
         if (event->callbackCore == NoCoreAffinity)
             event->callbackCore = CoreLocal().id;
 
-        if (globalQueue.managingCore != CoreLocal().id)
-            return Interrupts::SendIpiMail(globalQueue.managingCore, RemoteQueueClockEvent, event);
+        if (globalQueueOwnerCore != CoreLocal().id)
+            return Interrupts::SendIpiMail(globalQueueOwnerCore, RemoteQueueClockEvent, event);
 
         const auto prevRl = EnsureRunLevel(RunLevel::Clock);
         globalQueue.lock.Lock();
@@ -127,8 +121,8 @@ namespace Npk::Tasking
             if (!globalQueue.events.Empty())
                 globalQueue.events.Front().duration.units -= event->duration.units;
             globalQueue.events.PushFront(event);
-            const size_t clockArmTime = sl::Min(SysTimerMaxNanos(), event->duration.units);
-            SetSysTimer(clockArmTime, ClockTickHandler);
+            const size_t clockArmTime = sl::Min(InterruptTimerMaxNanos(), event->duration.units);
+            ArmInterruptTimer(clockArmTime, ClockTickHandler);
 
             globalQueue.lock.Unlock();
             if (prevRl.HasValue())
