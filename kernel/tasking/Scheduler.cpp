@@ -94,9 +94,6 @@ namespace Npk::Tasking
     Scheduler& Scheduler::Global()
     { return globalScheduler; }
 
-    void Scheduler::Init()
-    {}
-
     void Scheduler::AddEngine()
     {
         Engine* engine = nullptr;

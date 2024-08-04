@@ -13,8 +13,8 @@ CXX_SRCS = arch/Helpers.cpp \
 	interfaces/driver/Filesystem.cpp interfaces/driver/General.cpp interfaces/driver/Io.cpp \
 	interfaces/driver/Memory.cpp interfaces/driver/Scheduling.cpp interfaces/driver/Interrupts.cpp \
 	interfaces/driver/Time.cpp interfaces/driver/Events.cpp \
-	interrupts/Router.cpp interrupts/Ipi.cpp \
-	io/IoManager.cpp \
+	interrupts/Ipi.cpp \
+	io/IntrRouter.cpp io/IoManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
 	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \
 	memory/virtual/KernelVmDriver.cpp memory/virtual/VfsVmDriver.cpp \

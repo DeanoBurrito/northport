@@ -12,6 +12,7 @@ namespace Npk
     void ArchLateKernelEntry();
 
     //called early in the init-sequence for each core, allows set up of core-local data structures.
+    //on the BSP this is called after LateKernelEntry().
     void ArchInitCore(size_t myId);
 
     //called from inside the init thread.

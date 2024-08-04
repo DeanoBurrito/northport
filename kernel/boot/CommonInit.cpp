@@ -13,7 +13,7 @@
 #include <drivers/DriverManager.h>
 #include <filesystem/Filesystem.h>
 #include <interrupts/Ipi.h>
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <memory/Heap.h>
@@ -106,7 +106,7 @@ namespace Npk
             Drivers::DriverManager::Global().AddDescriptor(descriptor);
         }
 
-
+        Drivers::DriverManager::Global().PrintInfo();
         Tasking::Thread::Current().Exit(0);
     }
 
@@ -121,7 +121,7 @@ namespace Npk
         //TODO: per-core heap caches
         Debug::InitCoreLogBuffers();
         Interrupts::InitIpiMailbox();
-        Interrupts::InterruptRouter::Global().InitCore();
+        Io::InterruptRouter::Global().InitCore();
         Tasking::Scheduler::Global().AddEngine();
     }
 

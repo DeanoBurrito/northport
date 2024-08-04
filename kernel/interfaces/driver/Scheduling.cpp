@@ -94,7 +94,14 @@ extern "C"
         thread->Exit(code);
     }
 
+    DRIVER_API_FUNC
     void npk_thread_join(npk_handle tid)
+    {
+        ASSERT_UNREACHABLE();
+    }
+
+    DRIVER_API_FUNC
+    void npk_thread_sleep(npk_handle tid, npk_duration duration)
     {
         ASSERT_UNREACHABLE();
     }

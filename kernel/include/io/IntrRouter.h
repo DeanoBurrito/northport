@@ -7,7 +7,7 @@
 #include <containers/List.h>
 #include <Locks.h>
 
-namespace Npk::Interrupts
+namespace Npk::Io
 {
     struct CoreIntrRouting;
 
@@ -60,17 +60,17 @@ namespace Npk::Interrupts
 
 namespace Npk
 {
-    using Interrupts::InterruptRoute;
+    using Io::InterruptRoute;
 
     static inline bool AddInterruptRoute(InterruptRoute* route, size_t core = NoCoreAffinity)
-    { return Interrupts::InterruptRouter::Global().AddRoute(route, core); }
+    { return Io::InterruptRouter::Global().AddRoute(route, core); }
 
     static inline bool ClaimInterruptRoute(InterruptRoute* route, size_t core, size_t vector)
-    { return Interrupts::InterruptRouter::Global().ClaimRoute(route, core, vector); }
+    { return Io::InterruptRouter::Global().ClaimRoute(route, core, vector); }
 
     static inline bool RemoveInterruptRoute(InterruptRoute* route)
-    { return Interrupts::InterruptRouter::Global().RemoveRoute(route); }
+    { return Io::InterruptRouter::Global().RemoveRoute(route); }
 
-    static inline sl::Opt<Interrupts::MsiConfig> ConstructMsi(InterruptRoute* route)
-    { return Interrupts::InterruptRouter::Global().GetMsi(route); }
+    static inline sl::Opt<Io::MsiConfig> ConstructMsi(InterruptRoute* route)
+    { return Io::InterruptRouter::Global().GetMsi(route); }
 }

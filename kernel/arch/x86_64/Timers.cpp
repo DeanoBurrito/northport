@@ -4,7 +4,7 @@
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <memory/VmObject.h>
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 
 namespace Npk
 {

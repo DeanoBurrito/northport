@@ -1,7 +1,7 @@
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 #include <debug/Log.h>
 
-namespace Npk::Interrupts
+namespace Npk::Io
 {
     struct CoreIntrRouting
     {

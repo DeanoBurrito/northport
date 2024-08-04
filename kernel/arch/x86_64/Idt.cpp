@@ -2,7 +2,7 @@
 #include <arch/x86_64/Apic.h>
 #include <debug/Log.h>
 #include <debug/Panic.h>
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 #include <interrupts/Ipi.h>
 #include <memory/Vmm.h>
 #include <tasking/RunLevels.h>
@@ -141,7 +141,7 @@ extern "C"
             if (frame->vector == IntVectorIpi)
                 Interrupts::ProcessIpiMail();
             else
-                Interrupts::InterruptRouter::Global().Dispatch(frame->vector);
+                Io::InterruptRouter::Global().Dispatch(frame->vector);
         }
 
         LowerRunLevel(prevRl);
