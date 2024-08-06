@@ -74,9 +74,6 @@ namespace Npk::Tasking
     {
         uptimeMillis.Add(TimekeepingEventDuration.ToMillis(), sl::Relaxed);
 
-        if (uptimeMillis % 1000 == 0)
-            Log("A second has passed!", LogLevel::Debug);
-
         timekeepingEvent.duration = TimekeepingEventDuration;
         QueueClockEvent(&timekeepingEvent);
     }

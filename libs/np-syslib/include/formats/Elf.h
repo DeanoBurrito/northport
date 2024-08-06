@@ -26,6 +26,8 @@
     #define ELF_R_TYPE ELF64_R_TYPE
     #define ELF_R_SYM ELF64_R_SYM
     #define ELF_R_INFO ELF64_R_INFO
+
+    #define PRIelfRelInfo PRIx64
 #elif __SIZEOF_POINTER__ == 4
     #include <formats/Elf32.h>
 
@@ -52,6 +54,8 @@
     #define ELF_R_TYPE ELF32_R_TYPE
     #define ELF_R_SYM ELF32_R_SYM
     #define ELF_R_INFO ELF32_R_INFO
+
+    #define PRIelfRelInfo PRIx32
 #else
     #error "Unsupported ELF spec"
 #endif

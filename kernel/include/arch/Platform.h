@@ -29,7 +29,6 @@ namespace Npk
         uintptr_t scratch;
         void* nextStack; //next stack available for kernel use. On x86_64 this is a duplicate of tss->rsp0
         uintptr_t id;
-        uintptr_t acpiId;
         RunLevel runLevel;
         sl::QueueMpSc<Tasking::Dpc> dpcs;
         sl::QueueMpSc<Tasking::Apc> apcs;

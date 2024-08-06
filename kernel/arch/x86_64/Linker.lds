@@ -20,6 +20,8 @@ SECTIONS
     {
         *(.text)
         *(.text.*)
+        *(.ltext)
+        *(.ltext.*)
     } :text
     KERNEL_TEXT_SIZE = . - KERNEL_TEXT_BEGIN;
 
@@ -30,6 +32,8 @@ SECTIONS
     {
         *(.rodata)
         *(.rodata.*)
+        *(.lrodata)
+        *(.lrodata.*)
     } :rodata
 
     .limine_reqs :
@@ -45,6 +49,8 @@ SECTIONS
     {
         *(.data)
         *(.data.*)
+        *(.ldata)
+        *(.ldata.*)
     } :data
 
     .dynamic :
@@ -56,6 +62,8 @@ SECTIONS
     {
         *(COMMON)
         *(.bss)
+        *(.lbss)
+        *(.lbss.*)
     } :data
 
     /DISCARD/ :

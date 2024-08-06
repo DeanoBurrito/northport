@@ -273,6 +273,13 @@ namespace Npk::Debug
     sl::Span<LogOutput*> AcquirePanicOutputs(size_t tryLockCount)
     {
         ASSERT(panicFlag.Load() > 0, "Attempt to acquire panic outputs while not in a kernel panic");
+        
+        //other cores will eventually make their way to panic handlers, but they may already be
+        //outputting logs or have interrupts disabled. So we make a local copy of the outputs,
+        //and set the active output count to 0, so no one else uses them.
+        //This prevents a handful of cases where the panic output gets corrupted.
+        sl::Span<LogOutput*> outs = { logOuts, logOutCount };
+        logOutCount = 0;
 
         bool gotLock = false;
         for (size_t i = 0; i < tryLockCount; i++)
@@ -296,7 +303,7 @@ namespace Npk::Debug
                     logOuts[i]->Write(PanicLockFailedStr);
             }
         }
-        return { logOuts, logOutCount };
+        return outs;
     }
 
     constexpr size_t ShortTraceDepth = 8;

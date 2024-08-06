@@ -85,7 +85,7 @@ namespace Npk
         //otherwise we'd have to make use of EH/unwind metadata (no thanks).
         Frame* current = reinterpret_cast<Frame*>(start);
         if (start == 0)
-            current = reinterpret_cast<Frame*>((uintptr_t)__builtin_frame_address(0) - 16);
+            current = static_cast<Frame*>(__builtin_frame_address(0)) - 1;
         for (size_t i = 0; i <= level; i++)
         {
             if (current == nullptr)

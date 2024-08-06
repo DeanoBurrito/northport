@@ -15,10 +15,10 @@
     #define LBP_CPU_IS_BSP(InfoPtr) (InfoPtr)->lapic_id == smpRequest.response->bsp_lapic_id
 #elif __riscv_xlen == 64
     #define LBP_CPU_ID(InfoPtr) (InfoPtr)->hartid
-    #define LBPLBP_CPU_IS_BSP(InfoPtr) (InfoPtr)->hartid == smpRequest.reponse->bsp_hartid
+    #define LBP_CPU_IS_BSP(InfoPtr) (InfoPtr)->hartid == smpRequest.response->bsp_hartid
 #elif defined(__m68k__)
     #define LBP_CPU_ID(InfoPtr) (InfoPtr)->id
-    #define LBP_CPU_IS_BSP(InfoPtr) (InfoPtr)->id == smpRequest.reponse->bsp_id
+    #define LBP_CPU_IS_BSP(InfoPtr) (InfoPtr)->id == smpRequest.response->bsp_id
 #endif
 
 namespace Npk

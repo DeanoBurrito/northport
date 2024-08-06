@@ -63,8 +63,8 @@ namespace Npk
 
     constexpr inline size_t TrapFrameArgCount = 8;
     constexpr inline size_t PageSize = 0x1000;
-    constexpr inline size_t IntVectorAllocBase = 0x10;
-    constexpr inline size_t IntVectorAllocLimit = 0xFF; //we can theoritically have up to SXLEN/2 interrupts.
+    constexpr inline size_t IntVectorAllocBase = 1;
+    constexpr inline size_t IntVectorAllocLimit = 2048; //defined by AIA spec
 
     #define ReadCsr(csr) \
     ({ uint64_t value; asm volatile("csrr %0, " csr : "=r"(value) :: "memory"); value; })

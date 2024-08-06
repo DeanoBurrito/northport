@@ -4,6 +4,9 @@
 #include <Memory.h>
 #include <Maths.h>
 
+#define SFENCE_VMA_VADDR(vaddr) do { asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory"); } while (false)
+#define SFENCE_VMA_ALL() do { asm volatile("sfence.vma zero, %0" :: "r"(0) : "memory"); } while (false)
+
 namespace Npk
 {
     enum PageSizes
@@ -223,7 +226,7 @@ namespace Npk
         *path.pte |= (uint64_t)flags & 0x3FF;
 
         if (flush)
-            asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
+            SFENCE_VMA_VADDR(vaddr);
         if (map == &kernelMap)
             kernelMap.generation++;
         return true;
@@ -242,7 +245,7 @@ namespace Npk
         *path.pte = 0;
 
         if (flush)
-            asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
+            SFENCE_VMA_VADDR(vaddr);
         if (map == &kernelMap)
             kernelMap.generation++;
         return true;
@@ -275,7 +278,7 @@ namespace Npk
             *path.pte = (*path.pte & addrMask) | ((uint64_t)*flags & 0x3FF) | ReadFlag | ValidFlag;
 
         if (flush)
-            asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
+            SFENCE_VMA_VADDR(vaddr);
         if (map == &kernelMap)
             kernelMap.generation++;
         return true;
@@ -290,8 +293,6 @@ namespace Npk
             SyncWithMasterMap(map);
         
         WriteCsr("satp", satpBits | ((uintptr_t)map->root >> 12));
-        //writing to satp DOES NOT flush the tlb, this sfence instruction flushes all
-        //non-global tlb entries.
-        asm volatile("sfence.vma zero, %0" :: "r"(0) : "memory");
+        SFENCE_VMA_ALL();
     }
 }
