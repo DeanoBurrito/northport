@@ -913,7 +913,6 @@ def:
         context.currentPrimary = -1;
         context.scrollTopMargin = 0;
         context.scrollBottomMargin = size.y;
-        autoflush = true;
     }
 
     void Terminal::Write(const char* str, size_t length)
@@ -923,9 +922,7 @@ def:
 
         for (size_t i = 0; i < length; i++)
             Putchar(str[i]);
-        
-        if (autoflush)
-            Flush();
+        Flush();
     }
 
     void Terminal::Clear(bool move)

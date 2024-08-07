@@ -5,11 +5,10 @@
 
 namespace Npk
 {
-    struct CoreConfig
+    struct ArchConfig
     {
         uint64_t xSaveBitmap;
         size_t xSaveBufferSize;
-        uint8_t* featureBitmap;
     };
     
     struct TrapFrame
@@ -62,6 +61,12 @@ namespace Npk
     constexpr inline uint16_t PortDebugcon = 0xE9;
     constexpr inline uint16_t PortPitCmd = 0x43;
     constexpr inline uint16_t PortPitData = 0x40;
+
+    constexpr uint16_t SelectorKernelCode = 0x08 | 0;
+    constexpr uint16_t SelectorKernelData = 0x10 | 0;
+    constexpr uint16_t SelectorUserData   = 0x18 | 3;
+    constexpr uint16_t SelectorUserCode   = 0x20 | 3;
+    constexpr uint16_t SelectorTss        = 0x28;
 
     [[gnu::always_inline]]
     inline void Wfi()
@@ -240,8 +245,6 @@ namespace Npk
         return (ReadMsr(MsrApicBase) >> 8) & 1;
     }
 
-    struct CoreLocalInfo;
-    
     [[gnu::always_inline]]
     inline CoreLocalInfo& CoreLocal()
     {

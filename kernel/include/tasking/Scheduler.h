@@ -67,7 +67,6 @@ namespace Npk::Tasking
     public:
         static Scheduler& Global();
 
-        void Init();
         void AddEngine();
         [[noreturn]]
         void StartEngine();

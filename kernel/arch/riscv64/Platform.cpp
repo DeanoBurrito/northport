@@ -5,28 +5,17 @@
 
 namespace Npk
 {
-    enum class ExtState : uint8_t
-    {
-        Off = 0,
-        Initial = 1,
-        Clean = 2,
-        Dirty = 3,
-    };
+    constexpr const char ArchPanicStr[] = "extRegsSize=%zu, isa=%.*s\r\n";
 
-    struct ExtendedRegs
+    void ArchPrintPanicInfo(void (*Print)(const char *, ...))
     {
-        union
-        {
-            struct
-            {
-                ExtState fpu;
-                ExtState vector;
-            };
-            uintptr_t alignment;
-        } state;
+        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::ArchConfig] == nullptr)
+            return;
 
-        uint8_t buffer[];
-    };
+        auto cfg = static_cast<const ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig]);
+        Print(ArchPanicStr, cfg->extRegsBufferSize, (int)cfg->isaString.Size(),
+            cfg->isaString);
+    }
 
     void ExplodeKernelAndReset()
     {
@@ -85,7 +74,7 @@ namespace Npk
         //otherwise we'd have to make use of EH/unwind metadata (no thanks).
         Frame* current = reinterpret_cast<Frame*>(start);
         if (start == 0)
-            current = reinterpret_cast<Frame*>((uintptr_t)__builtin_frame_address(0) - 16);
+            current = static_cast<Frame*>(__builtin_frame_address(0)) - 1;
         for (size_t i = 0; i <= level; i++)
         {
             if (current == nullptr)

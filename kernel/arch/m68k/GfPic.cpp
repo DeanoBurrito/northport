@@ -1,6 +1,6 @@
 #include <arch/m68k/GfPic.h>
 #include <debug/Log.h>
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 #include <memory/Vmm.h>
 
 namespace Npk
@@ -55,7 +55,7 @@ namespace Npk
             irq &= ~(1 << pin);
 
             const size_t redirectIndex = pin + (vector * PicPins);
-            Interrupts::InterruptRouter::Global().Dispatch(redirectTable[redirectIndex]);
+            Io::InterruptRouter::Global().Dispatch(redirectTable[redirectIndex]);
         }
     }
 

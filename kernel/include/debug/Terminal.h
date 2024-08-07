@@ -50,7 +50,7 @@ namespace Npk::Debug
     {
         uintptr_t address;
         Vector2 size;
-        uint64_t pitch;
+        size_t pitch;
     };
 
     struct GTFont
@@ -127,7 +127,6 @@ namespace Npk::Debug
         GTFramebuffer fb;
         volatile uint32_t* fbAddr;
         bool initialized;
-        bool autoflush;
 
         Vector2 size;
         Vector2 fontSize;

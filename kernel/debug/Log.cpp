@@ -13,8 +13,8 @@ namespace Npk::Debug
     constexpr sl::StringSpan PanicLockFailedStr = 
         "\r\n [!!] Failed to acquire log output lock - latest messages will be dropped! [!!] \r\n";
     constexpr sl::StringSpan EndLineStr = "\r\n";
-    constexpr sl::StringSpan UptimeStr = "%lu.%03lu ";
-    constexpr sl::StringSpan ProcThreadStr = "p%lut%lu ";
+    constexpr sl::StringSpan UptimeStr = "%zu.%03zu ";
+    constexpr sl::StringSpan ProcThreadStr = "p%zu%.3s%zu ";
     constexpr sl::StringSpan LogLevelStrs[] =
     {
         "\e[91m[ Fatal ]\e[39m ", 
@@ -64,7 +64,8 @@ namespace Npk::Debug
         LogBuffIdx begin;
         LogBuffIdx length;
         LogBuffIdx processorId;
-        LogLevel level;
+        LogLevel loglevel;
+        RunLevel runlevel;
         size_t threadId;
     };
     using LogMessageItem = sl::QueueMpSc<LogMessage>::Item;
@@ -82,8 +83,8 @@ namespace Npk::Debug
     static LogMessageItem* AllocMessage(size_t length)
     {
         LogBuffer* buff = &earlyBuffer;
-        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Log] != nullptr)
-            buff = static_cast<LogBuffer*>(CoreLocal()[LocalPtr::Log]);
+        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Logs] != nullptr)
+            buff = static_cast<LogBuffer*>(CoreLocal()[LocalPtr::Logs]);
 
         const size_t realLength = sl::AlignUp(length + sizeof(LogMessageItem), sizeof(LogMessageItem));
         LogBuffIdx begin = 0;
@@ -132,11 +133,13 @@ namespace Npk::Debug
         npf_snprintf(uptimeBuff, uptimeLen, UptimeStr.Begin(), uptimeMajor, uptimeMinor);
 
         const size_t procId = msg.processorId == (LogBuffIdx)-1 ? 0 : msg.processorId;
-        const size_t procThreadLen = npf_snprintf(nullptr, 0, ProcThreadStr.Begin(), procId, msg.threadId) + 1;
+        const char* rlStr = msg.runlevel != RunLevel::Normal ? Tasking::GetRunLevelName(msg.runlevel) : "t";
+        const size_t procThreadLen = npf_snprintf(nullptr, 0, ProcThreadStr.Begin(), procId, rlStr, msg.threadId) + 1;
         char procThreadBuff[procThreadLen];
-        npf_snprintf(procThreadBuff, procThreadLen, ProcThreadStr.Begin(), procId, msg.threadId);
+        npf_snprintf(procThreadBuff, procThreadLen, ProcThreadStr.Begin(), procId, rlStr, msg.threadId);
         if (msg.processorId == (LogBuffIdx)-1)
             procThreadBuff[1] = '?';
+
 
         for (size_t i = 0; i < logOutCount; i++)
         {
@@ -146,7 +149,7 @@ namespace Npk::Debug
             //print headers: uptime, processor + thread ids, level
             logOuts[i]->Write({ uptimeBuff, uptimeLen });
             logOuts[i]->Write({ procThreadBuff, procThreadLen });
-            logOuts[i]->Write(LogLevelStrs[(unsigned)msg.level]);
+            logOuts[i]->Write(LogLevelStrs[(unsigned)msg.loglevel]);
 
             //print message body + newline
             logOuts[i]->Write({ &msg.textBuffer->buffer[msg.begin], length });
@@ -221,7 +224,13 @@ namespace Npk::Debug
         
         //we've got a place to store this message, field out the fields
         msg->data.ticks = Tasking::GetUptime().ToScale(logTimescale).units;
-        msg->data.level = level;
+        msg->data.loglevel = level;
+        if (prevRl.HasValue())
+            msg->data.runlevel = *prevRl;
+        else if (CoreLocalAvailable())
+            msg->data.runlevel = CoreLocal().runLevel;
+        else
+            msg->data.runlevel = RunLevel::Dpc;
         msg->data.processorId = CoreLocalAvailable() ? CoreLocal().id : -1;
         if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
             msg->data.threadId = Tasking::Thread::Current().Id();
@@ -249,7 +258,7 @@ namespace Npk::Debug
         buffer->size = LogBufferSize;
         buffer->buffer = AddHhdm(reinterpret_cast<char*>(PMM::Global().Alloc(LogBufferSize / PageSize)));
 
-        CoreLocal()[LocalPtr::Log] = buffer;
+        CoreLocal()[LocalPtr::Logs] = buffer;
     }
 
     void AddLogOutput(LogOutput* output)
@@ -264,6 +273,13 @@ namespace Npk::Debug
     sl::Span<LogOutput*> AcquirePanicOutputs(size_t tryLockCount)
     {
         ASSERT(panicFlag.Load() > 0, "Attempt to acquire panic outputs while not in a kernel panic");
+        
+        //other cores will eventually make their way to panic handlers, but they may already be
+        //outputting logs or have interrupts disabled. So we make a local copy of the outputs,
+        //and set the active output count to 0, so no one else uses them.
+        //This prevents a handful of cases where the panic output gets corrupted.
+        sl::Span<LogOutput*> outs = { logOuts, logOutCount };
+        logOutCount = 0;
 
         bool gotLock = false;
         for (size_t i = 0; i < tryLockCount; i++)
@@ -287,7 +303,7 @@ namespace Npk::Debug
                     logOuts[i]->Write(PanicLockFailedStr);
             }
         }
-        return { logOuts, logOutCount };
+        return outs;
     }
 
     constexpr size_t ShortTraceDepth = 8;

@@ -1,217 +1,190 @@
-#include <boot/CommonInit.h>
-#include <boot/LimineTags.h>
-#include <arch/Cpu.h>
+#include <interfaces/loader/Generic.h>
 #include <arch/Platform.h>
+#include <arch/Init.h>
+#include <arch/Timers.h>
+#include <boot/CommonInit.h>
 #include <config/ConfigStore.h>
-#include <config/DeviceTree.h>
 #include <config/AcpiTables.h>
-#include <debug/Log.h>
-#include <debug/TerminalDriver.h>
-#include <debug/Symbols.h>
+#include <config/DeviceTree.h>
 #include <debug/BakedConstants.h>
+#include <debug/TerminalDriver.h>
+#include <debug/Log.h>
+#include <debug/Symbols.h>
 #include <drivers/DriverManager.h>
-#include <drivers/ElfLoader.h>
 #include <filesystem/Filesystem.h>
 #include <interrupts/Ipi.h>
-#include <interrupts/Router.h>
-#include <io/IoManager.h>
+#include <io/IntrRouter.h>
 #include <memory/Pmm.h>
 #include <memory/Vmm.h>
 #include <memory/Heap.h>
 #include <tasking/Clock.h>
-#include <tasking/Threads.h>
 #include <tasking/Scheduler.h>
 #include <NanoPrintf.h>
-#include <UnitConverter.h>
 
 namespace Npk
 {
     uintptr_t hhdmBase;
-    uintptr_t hhdmLength;
-    sl::Atomic<size_t> bootloaderRefs;
+    size_t hhdmLength;
 
-    npk_device_desc* acpiRuntimeDescriptor;
+    sl::Atomic<size_t> loaderDataRefs;
 
-    void ThreadedArchInit(); //defined in Init.cpp for the current architecture
-    
-    void InitEarlyPlatform()
+    bool CoresInEarlyInit()
+    { return loaderDataRefs.Load(sl::Relaxed) != 0; }
+
+    void ReclaimMemoryThread(void* arg)
     {
-        using namespace Debug;
-        Log("\r\nNorthport kernel %zu.%zu.%zu for %s started, based on commit %s, compiled by %s.", LogLevel::Info, 
-            versionMajor, versionMinor, versionRev, targetArchStr, gitCommitShortHash, toolchainUsed);
-        Config::InitConfigStore();
-        Boot::CheckLimineTags();
+        PMM::Global().ReclaimBootMemory();
+        Tasking::Thread::Current().Exit(0);
+    }
 
-        hhdmBase = Boot::hhdmRequest.response->offset;
-        for (size_t i = Boot::memmapRequest.response->entry_count - 1; i > 0; i--)
+    void InitThread(void* arg)
+    {
+        ArchThreadedInit();
+
+        Drivers::ScanForModules("/initdisk/drivers");
+
+        //add device descriptors for any pci segments we find via acpi
+        using namespace Config;
+        if (auto maybeMcfg = FindAcpiTable(SigMcfg); maybeMcfg.HasValue())
         {
-            auto entry = Boot::memmapRequest.response->entries[i];
-            switch (entry->type)
+            auto* mcfg = static_cast<const Mcfg*>(*maybeMcfg);
+            const size_t segmentCount = (mcfg->length - sizeof(Mcfg)) / sizeof(McfgSegment);
+
+            for (size_t i = 0; i < segmentCount; i++)
             {
-            case LIMINE_MEMMAP_USABLE:
-            case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
-            case LIMINE_MEMMAP_KERNEL_AND_MODULES:
-            case LIMINE_MEMMAP_FRAMEBUFFER:
-                break;
-            default:
-                continue;
+                const McfgSegment* seg = &mcfg->segments[i];
+
+                auto loadName = new npk_load_name();
+                loadName->length = 0;
+                loadName->type = npk_load_type::PciHost;
+
+                auto initTag = new npk_init_tag_pci_host();
+                initTag->header.type = npk_init_tag_type::PciHostAdaptor;
+                initTag->type = npk_pci_host_type::Ecam;
+                initTag->base_addr = seg->base;
+                initTag->id = seg->id;
+                initTag->first_bus = seg->firstBus;
+                initTag->last_bus = seg->lastBus;
+
+                auto descriptor = new npk_device_desc();
+                descriptor->load_name_count = 1;
+                descriptor->load_names = loadName;
+                descriptor->init_data = &initTag->header;
+
+                constexpr const char NameFormat[] = "ECAM segment %u (paddr=0x%" PRIx64"), busses %u-%u";
+                const size_t nameLen = npf_snprintf(nullptr, 0, NameFormat, seg->id,
+                    seg->base, seg->firstBus, seg->lastBus) + 1;
+                char* nameBuf = new char[nameLen];
+                npf_snprintf(nameBuf, nameLen, NameFormat, seg->id, seg->base, seg->firstBus, seg->lastBus);
+                descriptor->friendly_name.length = nameLen;
+                descriptor->friendly_name.data = nameBuf;
+                //NOTE: the descriptor owns the friendly name string, so we're not leaking anything here.
+
+                Drivers::DriverManager::Global().AddDescriptor(descriptor);
             }
-
-            hhdmLength = sl::AlignUp(entry->base + entry->length, PageSize);
-            break;
         }
-        Log("Hhdm: base=0x%tx, length=0x%tx", LogLevel::Info, hhdmBase, hhdmLength);
 
-        const auto loaderResp = Boot::bootloaderInfoRequest.response;
-        if (loaderResp != nullptr)
-            Log("Kernel loaded by: %s v%s", LogLevel::Info, loaderResp->name, loaderResp->version);
-
-        if (Boot::smpRequest.response == nullptr)
-            bootloaderRefs = 1;
-        else
-            bootloaderRefs = Boot::smpRequest.response->cpu_count;
-    }
-
-    void InitMemory()
-    {
-        PMM::Global().Init();
-        VMM::InitKernel();
-        Memory::Heap::Global().Init();
-    }
-
-    void InitPlatform()
-    {
-        Config::LateInitConfigStore();
-        Debug::LoadKernelSymbols();
-
-        using namespace Boot;
-        if (framebufferRequest.response != nullptr)
-            Debug::InitEarlyTerminals();
-        else
-            Log("Bootloader did not provide framebuffer.", LogLevel::Warning);
-
-        acpiRuntimeDescriptor = nullptr;
-        if (rsdpRequest.response != nullptr && rsdpRequest.response->address != nullptr)
+        //add device descriptor for rsdp if its available, so we can load an acpi runtime.
+        if (auto rsdp = Config::GetRsdp(); rsdp.HasValue())
         {
-            Config::SetRsdp(SubHhdm(rsdpRequest.response->address));
-
             npk_load_name* loadName = new npk_load_name();
             loadName->type = npk_load_type::AcpiRuntime;
             loadName->length = 0;
             loadName->str = nullptr;
 
             auto initTag = new npk_init_tag_rsdp();
-            initTag->rsdp = SubHhdm(rsdpRequest.response->address);
+            initTag->rsdp = *rsdp;
             initTag->header.type = npk_init_tag_type::Rsdp;
 
-            acpiRuntimeDescriptor = new npk_device_desc();
-            acpiRuntimeDescriptor->load_name_count = 1;
-            acpiRuntimeDescriptor->load_names = loadName;
-            acpiRuntimeDescriptor->friendly_name.data = "rsdp";
-            acpiRuntimeDescriptor->friendly_name.length = 4;
-            acpiRuntimeDescriptor->init_data = &initTag->header;
+            auto descriptor = new npk_device_desc();
+            descriptor->load_name_count = 1;
+            descriptor->load_names = loadName;
+            descriptor->friendly_name.data = "rsdp";
+            descriptor->friendly_name.length = 4;
+            descriptor->init_data = &initTag->header;
+
+            Drivers::DriverManager::Global().AddDescriptor(descriptor);
         }
-        
-        if (dtbRequest.response != nullptr && dtbRequest.response->dtb_ptr != nullptr)
-            Config::DeviceTree::Global().Init(dtbRequest.response->dtb_ptr);
-
-        ScanGlobalTopology();
-        Drivers::DriverManager::Global().Init();
-        Filesystem::InitVfs();
-
-        Tasking::ProgramManager::Global().Init();
-        Tasking::Scheduler::Global().Init();
-        Io::IoManager::Global().Init();
-    }
-
-    void ReclaimMemoryThread(void*)
-    {
-        Boot::CheckLimineTags();
-        PMM::Global().ReclaimBootMemory();
-        Tasking::Thread::Current().Exit(0);
-    }
-
-    void InitThread(void*)
-    {
-        ThreadedArchInit();
-        Drivers::ScanForModules("/initdisk/drivers/");
-
-        //check for PCI controllers presenting themselves via MCFG
-        using namespace Config;
-        if (auto maybeMcfg = FindAcpiTable(SigMcfg); maybeMcfg.HasValue())
-        {
-            auto* mcfg = static_cast<const Mcfg*>(*maybeMcfg);
-            const size_t segmentCount = (mcfg->length - sizeof(Mcfg)) / sizeof(McfgSegment);
-            for (size_t i = 0; i < segmentCount; i++)
-            {
-                const McfgSegment* segment = &mcfg->segments[i];
-
-                npk_load_name* loadName = new npk_load_name();
-                loadName->length = 0;
-                loadName->type = npk_load_type::PciHost;
-
-                npk_init_tag_pci_host* initTag = new npk_init_tag_pci_host();
-                initTag->header.type = npk_init_tag_type::PciHostAdaptor;
-                initTag->type = npk_pci_host_type::Ecam;
-                initTag->base_addr = segment->base;
-                initTag->id = segment->id;
-                initTag->first_bus = segment->firstBus;
-                initTag->last_bus = segment->lastBus;
-
-                npk_device_desc* descriptor = new npk_device_desc();
-                descriptor->load_name_count = 1;
-                descriptor->load_names = loadName;
-                descriptor->init_data = &initTag->header;
-
-                constexpr const char NameFormat[] = "ECAM segment %u (paddr=0x%" PRIx64"), busses %u-%u";
-                const size_t friendlyNameLen = npf_snprintf(nullptr, 0, NameFormat, segment->id, 
-                    segment->base, segment->firstBus, segment->lastBus);
-                char* friendlyNameBuff = new char[friendlyNameLen + 1];
-                npf_snprintf(friendlyNameBuff, friendlyNameLen + 1, NameFormat, segment->id, 
-                    segment->base, segment->firstBus, segment->lastBus);
-                descriptor->friendly_name.length = friendlyNameLen;
-                descriptor->friendly_name.data = friendlyNameBuff;
-                //NOTE: the descriptor owns the string buffer, so we're not leaking anything here.
-                
-                Drivers::DriverManager::Global().AddDescriptor(descriptor);
-            }
-        }
-
-        if (acpiRuntimeDescriptor != nullptr)
-            Drivers::DriverManager::Global().AddDescriptor(acpiRuntimeDescriptor);
 
         Drivers::DriverManager::Global().PrintInfo();
         Tasking::Thread::Current().Exit(0);
     }
 
-    bool CoresInEarlyInit()
+    void PerCoreEntry(size_t myId)
     {
-        return bootloaderRefs.Load(sl::Relaxed) != 0;
-    }
+        Log("Core %zu has entered the kernel.", LogLevel::Info, myId);
 
-    void PerCoreCommonInit()
-    {
-        //Memory::CreateLocalHeapCaches();
+        VMM::Kernel().MakeActive();
+        ArchInitCore(myId);
+        InitLocalTimers();
+
+        //TODO: per-core heap caches
         Debug::InitCoreLogBuffers();
         Interrupts::InitIpiMailbox();
-        Interrupts::InterruptRouter::Global().InitCore();
+        Io::InterruptRouter::Global().InitCore();
+        Tasking::Scheduler::Global().AddEngine();
     }
 
     [[noreturn]]
     void ExitCoreInit()
     {
         using namespace Tasking;
-        Scheduler::Global().AddEngine();
-
-        if (--bootloaderRefs == 0)
+        if (--loaderDataRefs == 0)
         {
-            auto initThread = Thread::Create(Process::Kernel().Id(), ReclaimMemoryThread, nullptr);
-            ASSERT_(initThread != nullptr);
-            Log("Bootloader reclamation thread spawned, tid=%zu", LogLevel::Verbose, initThread->Id());
-            initThread->Start(nullptr);
+            auto reclaimThread = Thread::Create(Process::Kernel().Id(), ReclaimMemoryThread, nullptr);
+            ASSERT_(reclaimThread != nullptr);
+            Log("Bootloader reclaimation thread spawned: id=%zu", LogLevel::Info, reclaimThread->Id());
+            reclaimThread->Start(nullptr);
         }
 
         Scheduler::Global().StartEngine();
         ASSERT_UNREACHABLE();
+    }
+
+    extern "C" void KernelEntry()
+    {
+        loaderDataRefs = 1;
+        ArchKernelEntry();
+
+        using namespace Debug;
+        Log("\r\nNorthport kernel %zu.%zu.%zu for %s started, based on commit %s, compiled by %s.", LogLevel::Info, 
+            versionMajor, versionMinor, versionRev, targetArchStr, gitCommitShortHash, toolchainUsed);
+
+        //get early access to config data, then validate what the bootloader gave us is what we expect.
+        Config::InitConfigStore();
+        ValidateLoaderData();
+
+        ASSERT(GetHhdmBounds(hhdmBase, hhdmLength), "Boot protocol doesnt provide HHDM.");
+        Log("Hhdm: base=0x%tx, length=0x%tx", LogLevel::Info, hhdmBase, hhdmLength);
+        
+        //init memory management stack
+        PMM::Global().Init();
+        VMM::InitKernel();
+        Memory::Heap::Global().Init();
+
+        if (auto rsdp = GetRsdp(); rsdp.HasValue())
+            Config::SetRsdp(*rsdp);
+        if (auto fdt = GetDtb(); fdt.HasValue()) //TODO: replace this junk with smoldtb
+            Config::DeviceTree::Global().Init(*fdt);
+
+        ArchLateKernelEntry();
+
+        //set up other subsystems, now that the kernel heap is available
+        Config::LateInitConfigStore();
+        LoadKernelSymbols();
+        InitEarlyTerminals();
+
+        Drivers::DriverManager::Global().Init();
+        Filesystem::InitVfs();
+        Tasking::ProgramManager::Global().Init();
+
+        if ((loaderDataRefs = StartupAps()) == 1)
+            Log("Boot protocol did not start APs, assuming uni-processor system for now.", LogLevel::Info);
+        else
+            Log("Boot protocol started %zu other cores.", LogLevel::Info, loaderDataRefs.Load());
+
+        InitGlobalTimers();
+        Tasking::StartSystemClock();
+        ExitCoreInit();
     }
 }

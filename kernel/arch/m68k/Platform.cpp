@@ -4,6 +4,9 @@
 
 namespace Npk
 {
+    void ArchPrintPanicInfo(void (*Print)(const char *, ...))
+    {} //no-op
+
     void ExplodeKernelAndReset()
     {
         ASSERT_UNREACHABLE(); //trip reset vector

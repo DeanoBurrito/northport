@@ -1,15 +1,14 @@
 #pragma once
 
+#include <stddef.h>
+
 namespace Npk
 {
-    void InitEarlyPlatform();
-    void InitMemory();
-    void InitPlatform();
-
+    bool CoresInEarlyInit(); //TODO: hacky workaround, better solution? (see early anon demand paging)
     void InitThread(void*);
-    bool CoresInEarlyInit();
 
-    void PerCoreCommonInit();
+    void PerCoreEntry(size_t myId); //called by boot protocol AP spinup code.
     [[noreturn]]
-    void ExitCoreInit();
+    void ExitCoreInit(); //called by boot protocol AP spinup code after PerCoreEntry
+    extern "C" void KernelEntry(); //called by boot protocol entry function.
 }

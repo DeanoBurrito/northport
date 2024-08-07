@@ -1,39 +1,14 @@
+#include <arch/Init.h>
 #include <arch/Platform.h>
-#include <arch/Timers.h>
-#include <arch/m68k/Interrupts.h>
 #include <arch/m68k/GfPic.h>
-#include <boot/CommonInit.h>
-#include <boot/LimineTags.h>
-#include <memory/Vmm.h>
 #include <debug/Log.h>
-#include <tasking/Clock.h>
+#include <memory/Vmm.h>
 #include <NativePtr.h>
 
 namespace Npk
 {
-    CoreLocalInfo* coreLocalControl;
-
-    void InitCore(size_t coreId, uint32_t acpiId)
-    {
-        CoreLocalInfo* clb = new CoreLocalInfo();
-        clb->id = coreId;
-        clb->acpiId = acpiId;
-        clb->runLevel = RunLevel::Dpc;
-        clb->nextStack = nullptr;
-        coreLocalControl = clb;
-
-        LoadVectorTable();
-        PerCoreCommonInit();
-    }
-
-    void ThreadedArchInit()
-    {} //no-op
-}
-
-extern "C"
-{
-#define NP_M68K_ASSUME_TTY 0xff008000
-#ifdef NP_M68K_ASSUME_TTY
+#define NPK_M68K_ASSUME_TTY 0xff008000
+#ifdef NPK_M68K_ASSUME_TTY
     sl::NativePtr ttyRegs;
 
     static void TtyWrite(sl::StringSpan text)
@@ -42,53 +17,40 @@ extern "C"
             ttyRegs.Write<uint32_t>(text[i]); //device regs are 32-bits wide
     }
 
-    Npk::Debug::LogOutput ttyOutput
+    Debug::LogOutput ttyOutput
     {
         .Write = TtyWrite,
         .BeginPanic = nullptr
     };
 #endif
+    CoreLocalInfo* coreLocalBlocks = nullptr;
 
-    void KernelEntry()
+    void ArchKernelEntry()
+    {} //no-op
+
+    void ArchLateKernelEntry()
     {
-        using namespace Npk;
-
-        coreLocalControl = nullptr;
-        InitEarlyPlatform();
-        InitMemory();
-
-#ifdef NP_M68K_ASSUME_TTY
-        auto maybeTtyRegs = VMM::Kernel().Alloc(0x20, NP_M68K_ASSUME_TTY, VmFlag::Write | VmFlag::Mmio);
-        if (maybeTtyRegs.HasValue())
+#ifdef NPK_M68K_ASSUME_TTY
+        auto maybeTtyRegs = VMM::Kernel().Alloc(0x20, NPK_M68K_ASSUME_TTY, VmFlag::Mmio | VmFlag::Write);
+        if (maybeTtyRegs)
         {
             ttyRegs = *maybeTtyRegs;
-            ttyRegs.Offset(8).Write<uint32_t>(0); //disable interrupts from the device
+            ttyRegs.Offset(8).Write<uint32_t>(0); //disable interrupts from uart
             Debug::AddLogOutput(&ttyOutput);
         }
 #endif
-        InitPlatform();
+
         InitPics();
-
-        if (Boot::smpRequest.response != nullptr)
-        {  
-            for (size_t i = 0; i < Boot::smpRequest.response->cpu_count; i++)
-            {
-                limine_smp_info* procInfo = Boot::smpRequest.response->cpus[i];
-                if (procInfo->id == Boot::smpRequest.response->bsp_id)
-                {
-                    InitCore(procInfo->id, procInfo->processor_id);
-                    continue;
-                }
-
-                ASSERT_UNREACHABLE(); //TODO: we dont support multi-core (yet)
-            }
-        }
-        else
-            InitCore(0, 0);
-
-        InitTimers();
-        Tasking::StartSystemClock();
-        ExitCoreInit();
-        ASSERT_UNREACHABLE();
     }
+
+    void ArchInitCore(size_t myId)
+    {
+        CoreLocalInfo* clb = new CoreLocalInfo();
+        coreLocalBlocks = clb;
+        clb->id = myId;
+        clb->runLevel = RunLevel::Dpc;
+    }
+
+    void ArchThreadedInit()
+    {} //no-op
 }

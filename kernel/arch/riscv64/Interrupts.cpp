@@ -1,8 +1,8 @@
 #include <arch/riscv64/Interrupts.h>
 #include <arch/riscv64/Sbi.h>
+#include <arch/riscv64/Aia.h>
 #include <debug/Log.h>
 #include <debug/Panic.h>
-#include <interrupts/Router.h>
 #include <interrupts/Ipi.h>
 #include <memory/Vmm.h>
 #include <tasking/Scheduler.h>
@@ -118,14 +118,17 @@ extern "C"
             switch (frame->vector)
             {
             case 1: //IPI
+                ClearCsrBits("sip", 1); //sip.ssip is the only one we can clear ourselves.
                 Interrupts::ProcessIpiMail();
-                ClearCsrBits("sip", 1); //sip.ssip is the only one we can clear ourselves
                 break;
             case 5: //Timer
-                SbiSetTimer(-1ul);
+                SbiSetTimer(-1ul); //clear sip.stip by re-arming timer far into the future.
                 if (timerCallback != nullptr)
                     timerCallback(nullptr);
-            case 9: //external interrupt (SIP bit must be cleared by interrupt controller)
+                break;
+            case 9: //external interrupt, sip.seip must be cleared by the ext interrupt controller.
+                HandleAiaInterrupt();
+                break;
             default:
                 ASSERT_UNREACHABLE();
             };

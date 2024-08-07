@@ -5,7 +5,8 @@
 
 namespace Npk::Config
 {
-    void SetRsdp(void* rsdp);
+    void SetRsdp(uintptr_t rsdp);
+    sl::Opt<uintptr_t> GetRsdp();
 
     bool VerifyChecksum(const Sdt* table);
     sl::Opt<const Sdt*> FindAcpiTable(const char* signature);

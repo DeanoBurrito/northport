@@ -28,7 +28,7 @@ namespace Npk::Filesystem
     {
         //find the smallest granularity supported by the MMU, we'll use that as a cache unit size.
         cacheInfo.unitSize = -1ul;
-        const HatLimits& mmuLimits = GetHatLimits();
+        const HatLimits& mmuLimits = HatGetLimits();
         for (size_t i = 0; i < mmuLimits.modeCount; i++)
         {
             if (mmuLimits.modes[i].granularity < cacheInfo.unitSize)

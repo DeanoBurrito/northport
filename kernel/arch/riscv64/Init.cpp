@@ -1,65 +1,21 @@
 #include <arch/riscv64/Interrupts.h>
-#include <arch/riscv64/IntControllers.h>
-#include <arch/Timers.h>
+#include <arch/riscv64/Aia.h>
 #include <arch/Platform.h>
-#include <arch/Cpu.h>
 #include <boot/CommonInit.h>
-#include <boot/LimineTags.h>
+#include <config/AcpiTables.h>
+#include <config/DeviceTree.h>
 #include <debug/Log.h>
-#include <memory/Vmm.h>
-
-#include <tasking/Clock.h>
+#include <NativePtr.h>
+#include <ArchHints.h>
+#include <NanoPrintf.h>
 
 namespace Npk
 {
-    void InitCore(uintptr_t id, uintptr_t acpiId)
-    {
-        VMM::Kernel().MakeActive();
-        
-        BlockSumac();
-        LoadStvec();
-
-        ClearCsrBits("sstatus", 1 << 19); //disable MXR.
-
-        CoreLocalInfo* clb = new CoreLocalInfo();
-        clb->id = id;
-        clb->acpiId = acpiId;
-        clb->runLevel = RunLevel::Dpc;
-        asm volatile("mv tp, %0" :: "r"((uint64_t)clb));
-
-        CoreConfig* config = new CoreConfig();
-        CoreLocal()[LocalPtr::Config] = config;
-        ScanLocalCpuFeatures();
-        ScanLocalTopology();
-
-        if (CpuHasFeature(CpuFeature::QuadFPU))
-            config->extRegsBufferSize = 16 * 32 + 4; //32 regs, 16 bytes each, +4 for FCSR
-        else if (CpuHasFeature(CpuFeature::DoubleFPU))
-            config->extRegsBufferSize = 8 * 32 + 4;
-        else if (CpuHasFeature(CpuFeature::SingleFPU))
-            config->extRegsBufferSize = 4 * 32 + 4;
-        else
-            config->extRegsBufferSize = 0;
-
-        EnableInterrupts();
-        Log("Core %lu finished core init.", LogLevel::Info, id);
-    }
-
-    void ApEntry(limine_smp_info* info)
-    {
-        asm volatile("mv tp, zero"); 
-        asm volatile("csrw sscratch, zero");
-        InitCore(info->hartid, info->processor_id);
-
-        PerCoreCommonInit();
-        ExitCoreInit();
-        ASSERT_UNREACHABLE();
-    }
-
-#define NP_RISCV64_ASSUME_SERIAL 0x10000000
-#ifdef NP_RISCV64_ASSUME_SERIAL
+#define NPK_RV64_ASSUME_UART 0x10000000
+#ifdef NPK_RV64_ASSUME_UART
     sl::NativePtr uartRegs;
-    void UartWrite(sl::StringSpan text)
+
+    static void UartWrite(sl::StringSpan text)
     {
         for (size_t i = 0; i < text.Size(); i++)
         {
@@ -69,64 +25,138 @@ namespace Npk
         }
     }
 
-    Debug::LogOutput uartLogOutput
+    Debug::LogOutput uartOutput
     {
         .Write = UartWrite,
-        .BeginPanic = nullptr
+        .BeginPanic = nullptr,
     };
 #endif
 
-    void ThreadedArchInit()
-    {}
-}
-
-extern "C"
-{
-    void KernelEntry()
+    void ArchKernelEntry()
     {
-        using namespace Npk;
-        
-        //these ensure we don't try to load bogus values as the core-local block.
-        asm volatile("mv tp, zero"); //implicitly volatile, but for clarity
-        asm volatile("csrw sscratch, zero"); 
+        asm volatile("mv tp, zero");
+        asm volatile("csrw sscratch, zero");
+    }
 
-        InitEarlyPlatform();
-
-#ifdef NP_RISCV64_ASSUME_SERIAL
-        uartRegs = Npk::hhdmBase + NP_RISCV64_ASSUME_SERIAL;
-        Debug::AddLogOutput(&uartLogOutput);
+    void ArchLateKernelEntry()
+    {
+#ifdef NPK_RV64_ASSUME_UART
+        uartRegs = hhdmBase + NPK_RV64_ASSUME_UART;
+        Debug::AddLogOutput(&uartOutput);
 #endif
 
-        InitMemory();
-        InitPlatform();
-        InitIntControllers(); 
-        InitTimers();
-
-        if (Boot::smpRequest.response != nullptr)
-        {
-            auto resp = Boot::smpRequest.response;
-            for (size_t i = 0; i < resp->cpu_count; i++)
-            {
-                auto cpuInfo = resp->cpus[i];
-                if (cpuInfo->hartid == resp->bsp_hartid)
-                {
-                    InitCore(cpuInfo->hartid, cpuInfo->processor_id);
-                    PerCoreCommonInit();
-                    continue;
-                }
-
-                cpuInfo->goto_address = ApEntry;
-                Log("Sending bring-up request to core %lu.", LogLevel::Verbose, cpuInfo->hartid);
-            }
-        }
-        else
-        {
-            InitCore(0, 0);
-            PerCoreCommonInit();
-        }
-
-        Tasking::StartSystemClock();
-        ExitCoreInit();
-        ASSERT_UNREACHABLE();
+        ASSERT(InitAia(), "AIA is required for riscv platform");
     }
+
+    static void StoreIsaString()
+    {
+        using namespace Config;
+
+        auto maybeMadt = FindAcpiTable(SigMadt);
+        auto maybeRhct = FindAcpiTable(SigRhct);
+        if (maybeMadt.HasValue() && maybeRhct.HasValue())
+        {
+            uint32_t hartAcpiId = -1;
+
+            //ok so this is way more work it has to be (classic riscv moment). First we need to
+            //find the acpi processor id for this hart.
+            sl::CNativePtr madtEntries = static_cast<const Madt*>(*maybeMadt)->sources;
+            while (madtEntries.raw < (uintptr_t)*maybeMadt + maybeMadt.Value()->length)
+            {
+                auto source = madtEntries.As<const MadtSource>();
+                if (source->type == MadtSourceType::RvLocalController)
+                {
+                    auto rvIntrController = madtEntries.As<MadtSources::RvLocalController>();
+                    if (rvIntrController->hartId == CoreLocal().id)
+                    {
+                        hartAcpiId = rvIntrController->acpiProcessorId;
+                        break;
+                    }
+                }
+                madtEntries.raw += source->length;
+            }
+            ASSERT(hartAcpiId != -1, "Could not find current hart in MADT.");
+
+            //now with the acpi processor id, we can find the matching interrupt controller
+            //entry in the RHCT.
+            auto rhct = static_cast<const Rhct*>(*maybeRhct);
+            const RhctNodes::HartInfoNode* hartInfo = nullptr;
+            while (true)
+            {
+                auto maybeNode = FindRhctNode(rhct, RhctNodeType::HartInfo, hartInfo);
+                if (!maybeNode)
+                {
+                    hartInfo = nullptr;
+                    break;
+                }
+                
+                hartInfo = static_cast<const RhctNodes::HartInfoNode*>(*maybeNode);
+                if (hartInfo->acpiProcessorId != hartAcpiId)
+                    continue;
+                break;
+            }
+            ASSERT_(hartInfo != nullptr);
+
+            bool foundIsaString = false;
+            sl::CNativePtr rhctAccess = rhct;
+            for (size_t i = 0; i < hartInfo->offsetCount; i++)
+            {
+                auto node = rhctAccess.Offset(hartInfo->offsets[i]).As<const RhctNode>();
+                if (node->type != RhctNodeType::IsaString)
+                    continue;
+
+                foundIsaString = true;
+                auto isaNode = static_cast<const RhctNodes::IsaStringNode*>(node);
+                sl::StringSpan isaString { (const char*)isaNode->str, 0 };
+
+                static_cast<ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig])->isaString = isaString;
+                Log("Found isa string via acpi: %.*s", LogLevel::Info, (int)isaString.Size(),
+                    isaString.Begin());
+                break;
+            }
+
+            ASSERT_(foundIsaString);
+            return;
+        }
+        else if (DeviceTree::Global().Available())
+        {
+            constexpr size_t MaxNodeNameLen = 64;
+
+            char nodeName[MaxNodeNameLen];
+            const size_t nodeNameLen = npf_snprintf(nodeName, MaxNodeNameLen, "/cpus/cpu@%lu", CoreLocal().id);
+            ASSERT_(nodeNameLen < MaxNodeNameLen);
+
+            const DtNode* cpuNode = DeviceTree::Global().Find({ nodeName, nodeNameLen });
+            ASSERT_(cpuNode != nullptr);
+            DtProp* isaProp = cpuNode->FindProp("riscv,isa");
+            ASSERT_(isaProp != nullptr);
+            
+            auto isaString = isaProp->ReadString(0);
+            static_cast<ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig])->isaString = isaString;
+            Log("Found isa string in device tree: %.*s", LogLevel::Info, (int)isaString.Size(), 
+                isaString.Begin());
+            return;
+        }
+
+        ASSERT(false, "No known way to get ISA string.");
+    }
+
+    void ArchInitCore(size_t myId)
+    {
+        LoadStvec();
+        ClearCsrBits("sstatus", 1 << 19); //enable MXR
+
+        CoreLocalInfo* clb = new CoreLocalInfo();
+        asm volatile("mv tp, %0" :: "r"(clb));
+        CoreLocal()[LocalPtr::ArchConfig] = new ArchConfig();
+        clb->id = myId;
+        clb->runLevel = RunLevel::Dpc;
+
+        StoreIsaString();
+
+        //TODO: extended state init
+    }
+
+    void ArchThreadedInit()
+    {}
 }

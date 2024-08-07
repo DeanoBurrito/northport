@@ -2,7 +2,7 @@
 #include "Memory.h"
 #include "Util.h"
 #include <formats/Elf.h>
-#include <boot/Limine.h>
+#include <interfaces/loader/Limine.h>
 
 //bit of assembly in the global scope - you love to see it
 asm("\
@@ -197,7 +197,7 @@ namespace Npl
         auto phdrs = blob.Offset(ehdr->e_phoff).As<sl::Elf_Phdr>();
         for (size_t i = 0; i < phdrCount; i++)
         {
-            if (phdrs[i].p_type != sl::PT_LOAD)
+            if (phdrs[i].p_type != sl::PT_LOAD || phdrs[i].p_memsz == 0)
                 continue;
 
             if (phdrs[i].p_vaddr < kernelBase)
@@ -222,7 +222,7 @@ namespace Npl
         for (size_t i = 0; i < phdrCount; i++)
         {
             const sl::Elf_Phdr phdr = phdrs[i];
-            if (phdr.p_type != sl::PT_LOAD)
+            if (phdr.p_type != sl::PT_LOAD || phdr.p_memsz == 0)
                 continue;
 
             void* dest = slate.Offset(phdr.p_vaddr - kernelBase).ptr;

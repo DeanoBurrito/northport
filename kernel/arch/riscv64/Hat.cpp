@@ -4,6 +4,9 @@
 #include <Memory.h>
 #include <Maths.h>
 
+#define SFENCE_VMA_VADDR(vaddr) do { asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory"); } while (false)
+#define SFENCE_VMA_ALL() do { asm volatile("sfence.vma zero, %0" :: "r"(0) : "memory"); } while (false)
+
 namespace Npk
 {
     enum PageSizes
@@ -128,7 +131,7 @@ namespace Npk
         //...and actually map the HHDM.
         constexpr HatFlags hhdmFlags = HatFlags::Write | HatFlags::Global;
         for (uintptr_t i = 0; i < hhdmLength; i += GetPageSize((PageSizes)hhdmPageSize))
-            Map(KernelMap(), hhdmBase + i, i, hhdmPageSize - 1, hhdmFlags, false);
+            HatDoMap(KernelMap(), hhdmBase + i, i, hhdmPageSize - 1, hhdmFlags, false);
         
         //adjust the HHDM length to match what we mapped, since the VMM will use hhdmLength,
         //to know where it can begin allocating virtual address space.
@@ -140,7 +143,7 @@ namespace Npk
             pagingLevels, SizeStrs[maxTranslationLevel]);
     }
 
-    const HatLimits& GetHatLimits()
+    const HatLimits& HatGetLimits()
     { return limits; }
 
     static void SyncWithMasterMap(HatMap* map)
@@ -153,7 +156,7 @@ namespace Npk
             dest->entries[i] = source->entries[i];
     }
 
-    HatMap* InitNewMap()
+    HatMap* HatCreateMap()
     {
         HatMap* map = new HatMap;
         map->root = reinterpret_cast<PageTable*>(PMM::Global().Alloc());
@@ -180,7 +183,7 @@ namespace Npk
         PMM::Global().Free(reinterpret_cast<uintptr_t>(pt) - hhdmBase, 1);
     }
 
-    void CleanupMap(HatMap* map)
+    void HatDestroyMap(HatMap* map)
     {
         if (map == nullptr)
             return;
@@ -192,7 +195,7 @@ namespace Npk
     HatMap* KernelMap()
     { return &kernelMap; }
 
-    bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
+    bool HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
     {
         ASSERT_(map != nullptr);
         if (mode >= limits.modeCount)
@@ -223,13 +226,13 @@ namespace Npk
         *path.pte |= (uint64_t)flags & 0x3FF;
 
         if (flush)
-            asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
+            SFENCE_VMA_VADDR(vaddr);
         if (map == &kernelMap)
             kernelMap.generation++;
         return true;
     }
 
-    bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
+    bool HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
     {
         ASSERT_(map != nullptr);
 
@@ -242,13 +245,13 @@ namespace Npk
         *path.pte = 0;
 
         if (flush)
-            asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
+            SFENCE_VMA_VADDR(vaddr);
         if (map == &kernelMap)
             kernelMap.generation++;
         return true;
     }
 
-    sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
+    sl::Opt<uintptr_t> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
     {
         ASSERT_(map != nullptr);
 
@@ -261,7 +264,7 @@ namespace Npk
         return((*path.pte & addrMask) << 2) | (vaddr & offsetMask);
     }
 
-    bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
+    bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
     {
         ASSERT_(map != nullptr);
 
@@ -275,13 +278,13 @@ namespace Npk
             *path.pte = (*path.pte & addrMask) | ((uint64_t)*flags & 0x3FF) | ReadFlag | ValidFlag;
 
         if (flush)
-            asm volatile("sfence.vma %0, zero" :: "r"(vaddr) : "memory");
+            SFENCE_VMA_VADDR(vaddr);
         if (map == &kernelMap)
             kernelMap.generation++;
         return true;
     }
 
-    void MakeActiveMap(HatMap* map, bool supervisor)
+    void HatMakeActive(HatMap* map, bool supervisor)
     {
         (void)supervisor;
         ASSERT_(map != nullptr);
@@ -290,8 +293,6 @@ namespace Npk
             SyncWithMasterMap(map);
         
         WriteCsr("satp", satpBits | ((uintptr_t)map->root >> 12));
-        //writing to satp DOES NOT flush the tlb, this sfence instruction flushes all
-        //non-global tlb entries.
-        asm volatile("sfence.vma zero, %0" :: "r"(0) : "memory");
+        SFENCE_VMA_ALL();
     }
 }

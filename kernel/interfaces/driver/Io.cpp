@@ -24,6 +24,8 @@ extern "C"
     bool npk_end_iop(npk_handle iop)
     {
         sl::Handle<IoPacket> handle = reinterpret_cast<IoPacket*>(iop);
-        return IoManager::Global().End(handle);
+        const bool success = IoManager::Global().End(handle);
+        handle->references--;
+        return success;
     }
 }

@@ -1,10 +1,10 @@
 #include <arch/Timers.h>
-#include <arch/Cpu.h>
+#include <arch/x86_64/Cpuid.h>
 #include <arch/x86_64/Apic.h>
 #include <config/AcpiTables.h>
 #include <debug/Log.h>
 #include <memory/VmObject.h>
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 
 namespace Npk
 {
@@ -53,7 +53,7 @@ namespace Npk
         return low | (high << 32);
     }
 
-    void PitSleep(size_t nanos)
+    static void PitSleep(size_t nanos)
     {
         ASSERT((nanos / PitPeriod) < 0xFFFF, "Sleep time too long for PIT.");
         const uint16_t target = 0xFFFF - (nanos / PitPeriod);
@@ -67,7 +67,7 @@ namespace Npk
             sl::HintSpinloop();
     }
 
-    void HpetSleep(size_t nanos)
+    static void HpetSleep(size_t nanos)
     {
         ASSERT(hpetRegs.Valid(), "No HPET sleep: device is not available.");
         
@@ -86,7 +86,7 @@ namespace Npk
             PitSleep(nanoseconds);
     }
 
-    void InitTsc()
+    static void InitTsc()
     {
         if (!CpuHasFeature(CpuFeature::Tsc))
             return;
@@ -117,7 +117,10 @@ namespace Npk
             selectedSysTimer = TimerName::Tsc;
     }
 
-    void InitTimers()
+    void InitLocalTimers()
+    {}
+
+    void InitGlobalTimers()
     {
         timerIoApicPin = 0;
         selectedSysTimer = (TimerName)-1;
@@ -149,7 +152,7 @@ namespace Npk
         InitTsc();
     }
 
-    void InitSysTimer()
+    void InitInterruptTimer()
     {
         if (LocalApic::Local().CalibrateTimer())
         {
@@ -189,10 +192,10 @@ namespace Npk
         }
     }
 
-    void SetSysTimer(size_t nanoseconds, bool (*callback)(void*))
+    void ArmInterruptTimer(size_t nanoseconds, bool (*callback)(void*))
     {
         if ((size_t)selectedSysTimer == -1ul)
-            InitSysTimer();
+            InitInterruptTimer();
 
         if (callback != nullptr)
             timerIntrRoute.Callback = callback;
@@ -236,7 +239,7 @@ namespace Npk
         }
     }
 
-    size_t SysTimerMaxNanos()
+    size_t InterruptTimerMaxNanos()
     {
         return -1ul;
         switch (selectedSysTimer)
@@ -280,7 +283,7 @@ namespace Npk
         }
     }
 
-    size_t PolledTicksToNanos(size_t ticks)
+    size_t PollTicksToNanos(size_t ticks)
     {
         switch (selectedPollTimer)
         {
@@ -295,7 +298,7 @@ namespace Npk
         }
     }
     
-    const char* SysTimerName()
+    const char* InterruptTimerName()
     {
         return TimerStrs[(size_t)selectedSysTimer];
     }

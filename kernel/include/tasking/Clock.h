@@ -3,6 +3,7 @@
 #include <arch/Platform.h>
 #include <stddef.h>
 #include <containers/List.h>
+#include <Locks.h>
 #include <Time.h>
 
 namespace Npk::Tasking
@@ -20,6 +21,13 @@ namespace Npk::Tasking
 
         ClockEvent() : next(nullptr), dpc(nullptr), callbackCore(NoCoreAffinity)
         {}
+    };
+
+    struct ClockQueue
+    {
+        sl::SpinLock lock;
+        sl::IntrFwdList<ClockEvent> events;
+        size_t modifiedTicks;
     };
 
     void StartSystemClock();

@@ -2,13 +2,13 @@
 #include <interfaces/driver/Interrupts.h>
 #include <interfaces/Helpers.h>
 #include <tasking/RunLevels.h>
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 
 extern "C"
 {
     using namespace Npk;
     using namespace Npk::Tasking;
-    using namespace Npk::Interrupts;
+    using namespace Npk::Io;
 
     static_assert((size_t)RunLevel::Normal == npk_runlevel::Normal);
     static_assert((size_t)RunLevel::Apc == npk_runlevel::Apc);
@@ -29,7 +29,7 @@ extern "C"
     static_assert(offsetof(npk_apc, arg) == offsetof(ApcStore, data.arg));
     static_assert(offsetof(npk_apc, thread_id) == offsetof(ApcStore, data.threadId));
 
-    using IntrRoute = Interrupts::InterruptRoute;
+    using IntrRoute = Io::InterruptRoute;
     static_assert(sizeof(npk_interrupt_route) == sizeof(IntrRoute));
     static_assert(alignof(npk_interrupt_route) == alignof(IntrRoute));
     static_assert(offsetof(npk_interrupt_route, callback_arg) == offsetof(IntrRoute, callbackArg));

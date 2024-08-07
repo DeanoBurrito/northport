@@ -18,7 +18,7 @@ namespace Npk
         return value;
     }
 
-    void InitTimers()
+    void InitGlobalTimers()
     {
         ASSERT(SbiExtensionAvail(SbiExt::Time), "SBI time extension not available.");
 
@@ -47,8 +47,11 @@ namespace Npk
             freqUnits.minor, freqUnits.prefix, usedAcpi ? "acpi" : "dtb");
     }
 
+    void InitLocalTimers()
+    {}
+
     bool (*timerCallback)(void*);
-    void SetSysTimer(size_t nanoseconds, bool (*callback)(void*))
+    void ArmInterruptTimer(size_t nanoseconds, bool (*callback)(void*))
     {
         const size_t triggerTime = RdTime() + (nanoseconds / timerPeriod.ToNanos());
         if (callback != nullptr)
@@ -57,18 +60,17 @@ namespace Npk
         SbiSetTimer(triggerTime);
     }
 
-    size_t SysTimerMaxNanos()
+    bool DisarmInterruptTimer()
+    {
+        SbiSetTimer(-1);
+        return true;
+    }
+
+    size_t InterruptTimerMaxNanos()
     {
         if (timerPeriod.ToNanos() > 0)
             return (size_t)-1ul; //more nanoseconds than we can count.
         ASSERT_UNREACHABLE();
-    }
-
-    void PolledSleep(size_t nanoseconds)
-    {
-        const uint64_t target = RdTime() + (nanoseconds / timerPeriod.ToNanos());
-        while (RdTime() < target)
-            sl::HintSpinloop();
     }
 
     size_t PollTimer()
@@ -76,12 +78,12 @@ namespace Npk
         return RdTime();
     }
 
-    size_t PolledTicksToNanos(size_t ticks)
+    size_t PollTicksToNanos(size_t ticks)
     {
         return ticks * timerPeriod.ToNanos();
     }
     
-    const char* SysTimerName()
+    const char* InterruptTimerName()
     {
         return "sbi";
     }

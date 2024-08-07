@@ -1,9 +1,8 @@
 #include <arch/x86_64/Idt.h>
 #include <arch/x86_64/Apic.h>
-#include <arch/x86_64/Gdt.h>
 #include <debug/Log.h>
 #include <debug/Panic.h>
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 #include <interrupts/Ipi.h>
 #include <memory/Vmm.h>
 #include <tasking/RunLevels.h>
@@ -33,17 +32,21 @@ namespace Npk
     [[gnu::aligned(8)]]
     IdtEntry idtEntries[IntVectorCount];
 
+    struct [[gnu::packed, gnu::aligned(8)]]
+    {
+        uint16_t limit;
+        uint64_t base;
+    } idtr;
+
     void PopulateIdt()
     {
+        idtr.limit = sizeof(idtEntries) - 1;
+        idtr.base = (uintptr_t)idtEntries;
+
         for (size_t i = 0; i < IntVectorCount; i++)
             idtEntries[i] = IdtEntry((uintptr_t)VectorStub0 + i * 0x10, false, 0);
     }
 
-    struct [[gnu::packed, gnu::aligned(8)]]
-    {
-        uint16_t limit = IntVectorCount * sizeof(IdtEntry) - 1;
-        uint64_t base = (uintptr_t)idtEntries;
-    } idtr;
 
     [[gnu::naked]]
     void LoadIdt()
@@ -138,7 +141,7 @@ extern "C"
             if (frame->vector == IntVectorIpi)
                 Interrupts::ProcessIpiMail();
             else
-                Interrupts::InterruptRouter::Global().Dispatch(frame->vector);
+                Io::InterruptRouter::Global().Dispatch(frame->vector);
         }
 
         LowerRunLevel(prevRl);

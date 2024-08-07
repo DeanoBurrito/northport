@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arch/__Select.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <Optional.h>
@@ -13,14 +14,8 @@
     The HAT API is intended for use mainly by the VMM, and not by other kernel subsystems.
 */
 
-#if defined(__x86_64__)
-    #include <arch/x86_64/Hat.h>
-#elif __riscv_xlen == 64
-    #include <arch/riscv64/Hat.h>
-#elif defined(__m68k__)
-    #include <arch/m68k/Hat.h>
-#else
-    #error "Compiling for unsupported ISA."
+#ifdef NPK_ARCH_INCLUDE_HAT
+#include NPK_ARCH_INCLUDE_HAT
 #endif
 
 namespace Npk
@@ -64,30 +59,30 @@ namespace Npk
     void HatInit();
 
     //returns the modes supported by the current MMU.
-    const HatLimits& GetHatLimits();
+    const HatLimits& HatGetLimits();
 
     //creates a new address space (without loading it).
-    HatMap* InitNewMap();
+    HatMap* HatCreateMap();
 
     //destroys (and frees) structures for an existing address space.
-    void CleanupMap(HatMap* map);
+    void HatDestroyMap(HatMap* map);
     
     //gets the kernel map
     HatMap* KernelMap();
 
     //creates a virt <-> phys mapping in an address space.
-    bool Map(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush);
+    bool HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush);
 
     //attempts to remove an existing mapping from an address space.
     //NOTE: paddr and mode are references and return the previously used values.
-    bool Unmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush);
+    bool HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush);
 
     //attempts to return the physical address and size of a mapping
-    sl::Opt<uintptr_t> GetMap(HatMap* map, uintptr_t vaddr, size_t& mode);
+    sl::Opt<uintptr_t> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode);
 
     //attempts to update an existing mapping: either flags, physical address of both.
-    bool SyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
+    bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
 
     //replaces the currently active HAT address space with this one.
-    void MakeActiveMap(HatMap* map, bool supervisor);
+    void HatMakeActive(HatMap* map, bool supervisor);
 }

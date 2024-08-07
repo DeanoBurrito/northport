@@ -58,6 +58,7 @@ export BUILD_DIR = build
 export CPU_ARCH
 export TOOLCHAIN
 export ARCH_TARGET = $(CPU_ARCH)-elf
+export KERNEL_BOOT_PROTOCOL
 
 PROJ_DIR_INITDISK = initdisk
 PROJ_DIR_KERNEL = kernel
@@ -86,7 +87,7 @@ all: $(ARCH_DEFAULT_TARGET)
 .PHONY: options
 options:
 	@printf "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST)\
-	 $(CPU_ARCH), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)\r\n"
+	 $(CPU_ARCH), $(C_CYAN)Boot Protocol:$(C_RST) $(KERNEL_BOOT_PROTOCOL), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)\r\n"
 	@printf "$(C_CYAN)Kernel C++ flags:$(C_RST) $(KERNEL_CXX_FLAGS)\r\n"
 	@printf "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)\r\n"
 

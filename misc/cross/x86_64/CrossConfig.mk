@@ -7,12 +7,12 @@ SYSLIB_CXX_FLAGS += -mcmodel=large
 KERNEL_LD_FLAGS += -ztext --no-relax
 
 ARCH_DEFAULT_TARGET = iso-hybrid
+KERNEL_BOOT_PROTOCOL = limine
 UEFI_BOOT_NAME = BOOTX64.EFI
 
 QEMU_BASE = qemu-system-x86_64 -machine q35 \
 	-smp cores=2,threads=2 -m 256M -cdrom $(ISO_FULL_FILEPATH) \
-	-debugcon /dev/stdout -monitor stdio -device virtio-gpu \
-	-drive file=nvm-backing.img,format=raw,if=none,id=nvm -device nvme,serial=pls_star,drive=nvm
+	-debugcon /dev/stdout -monitor stdio -device virtio-gpu
 QEMU_KVM = --enable-kvm -cpu host
 QEMU_NO_KVM = -cpu qemu64,+smap,+smep
 QEMU_DEBUG = -s -S -no-reboot -no-shutdown

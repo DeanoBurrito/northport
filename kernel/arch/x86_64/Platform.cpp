@@ -1,13 +1,23 @@
 #include <arch/Platform.h>
-#include <arch/Cpu.h>
-#include <arch/x86_64/Gdt.h>
 #include <arch/x86_64/Apic.h>
+#include <arch/x86_64/Cpuid.h>
 #include <debug/Log.h>
 #include <Maths.h>
 #include <Memory.h>
 
 namespace Npk
 {
+    constexpr const char ArchPanicStr[] = "xsaveBits=0x%" PRIx64", extRegsSize=0x%zu\r\n";
+
+    void ArchPrintPanicInfo(void (*Print)(const char* format, ...))
+    {
+        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::ArchConfig] == nullptr)
+            return;
+
+        auto cfg = static_cast<const ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig]);
+        Print(ArchPanicStr, cfg->xSaveBitmap, cfg->xSaveBufferSize);
+    }
+
     void ExplodeKernelAndReset()
     {
         struct [[gnu::packed, gnu::aligned(8)]]
@@ -92,7 +102,7 @@ namespace Npk
     void InitExtendedRegs(ExtendedRegs** regs)
     {
         constexpr size_t FxSaveBufferSize = 512;
-        const CoreConfig* config = static_cast<CoreConfig*>(CoreLocal()[LocalPtr::Config]);
+        const ArchConfig* config = static_cast<ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig]);
         const size_t bufferSize = sl::Max(config->xSaveBufferSize, FxSaveBufferSize);
 
         *regs = reinterpret_cast<ExtendedRegs*>(new uint8_t[bufferSize]);
@@ -104,7 +114,7 @@ namespace Npk
         sl::InterruptGuard intGuard;
         WriteCr0(ReadCr0() & ~(1ul << 3));
 
-        const CoreConfig* config = static_cast<CoreConfig*>(CoreLocal()[LocalPtr::Config]);
+        const ArchConfig* config = static_cast<ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig]);
         if (config->xSaveBitmap != 0)
             asm volatile("xsave %0" :: "m"(*regs), "a"(config->xSaveBitmap), 
                 "d"(config->xSaveBitmap >> 32) : "memory");
@@ -117,7 +127,7 @@ namespace Npk
         sl::InterruptGuard intGuard;
         WriteCr0(ReadCr0() & ~(1ul << 3));
 
-        const CoreConfig* config = static_cast<CoreConfig*>(CoreLocal()[LocalPtr::Config]);
+        const ArchConfig* config = static_cast<ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig]);
         if (config->xSaveBitmap != 0)
             asm volatile("xrstor %0" :: "m"(*regs), "a"(config->xSaveBitmap), "d"(config->xSaveBitmap >> 32));
         else 
@@ -165,7 +175,7 @@ namespace Npk
         case RunLevel::Interrupt:
         case RunLevel::Clock:
             return WriteCr8(0xF);
-        //TODO: conditional disabling of interrupts at other levels
+        //TODO: conditional disabling of interrupts at other levels (and enabling interrupts)
         default:
             return WriteCr8(0);
         }

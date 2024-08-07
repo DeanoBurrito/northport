@@ -1,7 +1,7 @@
 KERNEL_CXX_FLAGS += -I../libs/np-syslib/include -I../libs/np-driverlib/include
 
 CXX_SRCS = arch/Helpers.cpp \
-	boot/CommonInit.cpp boot/LimineTags.cpp \
+	boot/CommonInit.cpp \
 	config/ConfigStore.cpp config/DeviceTree.cpp config/AcpiTables.cpp \
 	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
 	debug/Log.cpp debug/Panic.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
@@ -13,8 +13,8 @@ CXX_SRCS = arch/Helpers.cpp \
 	interfaces/driver/Filesystem.cpp interfaces/driver/General.cpp interfaces/driver/Io.cpp \
 	interfaces/driver/Memory.cpp interfaces/driver/Scheduling.cpp interfaces/driver/Interrupts.cpp \
 	interfaces/driver/Time.cpp interfaces/driver/Events.cpp \
-	interrupts/Router.cpp interrupts/Ipi.cpp \
-	io/IoManager.cpp \
+	interrupts/Ipi.cpp \
+	io/IntrRouter.cpp io/IoManager.cpp \
 	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
 	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \
 	memory/virtual/KernelVmDriver.cpp memory/virtual/VfsVmDriver.cpp \
@@ -25,6 +25,7 @@ AS_SRCS =
 
 ARCH_DIR = arch/$(CPU_ARCH)
 include $(ARCH_DIR)/Arch.mk
+include interfaces/loader/BootProtocol.mk
 
 LD_SCRIPT = $(ARCH_DIR)/Linker.lds
 CXX_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.cpp.o, $(CXX_SRCS))

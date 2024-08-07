@@ -1,7 +1,6 @@
 #include <config/ConfigStore.h>
-#include <boot/LimineTags.h>
+#include <interfaces/loader/Generic.h>
 #include <debug/Log.h>
-#include <String.h>
 #include <Memory.h>
 
 namespace Npk::Config
@@ -9,7 +8,8 @@ namespace Npk::Config
     constexpr sl::StringSpan AffirmativeStrs[] = { "true", "yes", "yeah" };
     constexpr size_t AffirmStrsCount = sizeof(AffirmativeStrs) / sizeof(sl::StringSpan);
 
-    sl::String cmdLine;
+    char* ownedCmdline;
+    sl::StringSpan cmdline;
 
     static bool IsDigit(const char c, size_t base)
     {
@@ -72,30 +72,17 @@ namespace Npk::Config
 
     void InitConfigStore()
     {
-        cmdLine = sl::String();
-        if (Boot::kernelFileRequest.response != nullptr)
-        {
-            /* Removing const from the string is quite dangerous, I know - however the config
-             * store always returns const views of the config string, so we only have to worry
-             * about code within this file writing to the formerly const data.
-             * We also only use this const-removed version of the cmdLine until memory management
-             * is initialized, then we make a separate copy which is writable.
-             */
-            auto bootCmdLine = const_cast<char*>(Boot::kernelFileRequest.response->kernel_file->cmdline);
-            cmdLine = sl::String(bootCmdLine, true);
-        }
+        ownedCmdline = nullptr;
+        cmdline = GetCommandLine();
 
-        Log("Config store init: %.*s", LogLevel::Info, (int)cmdLine.Size(), cmdLine.C_Str());
+        Log("Config store init: %.*s", LogLevel::Info, (int)cmdline.Size(), cmdline.Begin());
     }
 
     void LateInitConfigStore()
     {
-        if (Boot::kernelFileRequest.response == nullptr)
-            return;
-
-        (void)cmdLine.DetachBuffer();
-        auto bootCmdLine = Boot::kernelFileRequest.response->kernel_file->cmdline;
-        cmdLine = bootCmdLine; //copy operation
+        ownedCmdline = new char[cmdline.Size()];
+        sl::memcopy(cmdline.Begin(), ownedCmdline, cmdline.Size());
+        cmdline = sl::StringSpan(ownedCmdline, cmdline.Size());
     }
 
     sl::StringSpan GetConfig(sl::StringSpan key)
@@ -105,7 +92,7 @@ namespace Npk::Config
         if (key[key.Size() - 1] == 0)
             key = key.Subspan(0, key.Size() - 1);
 
-        sl::StringSpan source = cmdLine.Span();
+        sl::StringSpan source = cmdline;
         while (!source.Empty())
         {
             const sl::StringSpan compare = source.Subspan(0, key.Size());

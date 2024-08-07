@@ -41,7 +41,7 @@ namespace Npk::Memory::Virtual
         //so we map some usable memory here and return to the program.
         (void)flags;
         const size_t hatMode = reinterpret_cast<size_t>(context.range.token);
-        const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
+        const size_t granuleSize = HatGetLimits().modes[hatMode].granularity;
         const size_t mapLength = sl::Min(FaultMaxMapAhead * granuleSize, context.range.Top() - where);
         const size_t mapCount = sl::AlignUp(mapLength, granuleSize) / granuleSize;
         where = sl::AlignDown(where, granuleSize);
@@ -55,9 +55,9 @@ namespace Npk::Memory::Virtual
             const uintptr_t paddr = PMM::Global().Alloc();
             ASSERT(granuleSize == PageSize, "TODO: allocate an appropriate amount of physical memory for the granule size");
             if (features.zeroPage)
-                SyncMap(context.map, where + i * granuleSize, paddr, convFlags, true);
+                HatSyncMap(context.map, where + i * granuleSize, paddr, convFlags, true);
             else
-                ASSERT_(Map(context.map, where + i * granuleSize, paddr, hatMode, convFlags, false));
+                ASSERT_(HatDoMap(context.map, where + i * granuleSize, paddr, hatMode, convFlags, false));
         }
 
         context.stats.anonResidentSize += mapCount * granuleSize;
@@ -72,7 +72,7 @@ namespace Npk::Memory::Virtual
             return false;
 
         const size_t hatMode = reinterpret_cast<size_t>(context.range.token);
-        const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
+        const size_t granuleSize = HatGetLimits().modes[hatMode].granularity;
         const bool doFlush = args.clearFlags.Any() || HatLimits().flushOnPermsUpgrade;
 
         HatFlags flags = ConvertFlags(context.range.flags);
@@ -81,7 +81,7 @@ namespace Npk::Memory::Virtual
 
         sl::ScopedLock lock(context.lock);
         for (size_t i = 0; i < context.range.length; i += granuleSize)
-            SyncMap(context.map, context.range.base + i, {}, flags, doFlush);
+            HatSyncMap(context.map, context.range.base + i, {}, flags, doFlush);
 
         return true;
     }
@@ -89,7 +89,7 @@ namespace Npk::Memory::Virtual
     SplitResult AnonVmDriver::Split(VmDriverContext& context, size_t offset)
     {
         const size_t hatMode = reinterpret_cast<size_t>(context.range.token);
-        const size_t granuleSize = GetHatLimits().modes[hatMode].granularity;
+        const size_t granuleSize = HatGetLimits().modes[hatMode].granularity;
 
         offset = sl::AlignUp(offset, granuleSize);
         if (offset > context.range.length)
@@ -112,7 +112,7 @@ namespace Npk::Memory::Virtual
         QueryResult result;
         result.success = true;
         
-        const HatLimits limits = GetHatLimits();
+        const HatLimits limits = HatGetLimits();
         result.hatMode = 0;
         result.alignment = limits.modes[result.hatMode].granularity;
         result.length = sl::AlignUp(length, result.alignment);
@@ -152,13 +152,13 @@ namespace Npk::Memory::Virtual
             flags.Clear(VmFlag::Write); //fault on next write to this page
 
         const HatFlags hatFlags = ConvertFlags(flags);
-        const size_t granuleSize = GetHatLimits().modes[query.hatMode].granularity;
+        const size_t granuleSize = HatGetLimits().modes[query.hatMode].granularity;
 
         sl::ScopedLock scopeLock(context.lock);
         for (size_t i = 0; i < context.range.length; i += granuleSize)
         {
             const uintptr_t phys = doZeroPage ? zeroPage : PMM::Global().Alloc();
-            Map(context.map, context.range.base + i, phys, 0, hatFlags, false);
+            HatDoMap(context.map, context.range.base + i, phys, 0, hatFlags, false);
         }
 
         if (!doZeroPage)
@@ -169,7 +169,7 @@ namespace Npk::Memory::Virtual
     bool AnonVmDriver::Detach(VmDriverContext& context)
     {
         context.stats.anonWorkingSize -= context.range.length - context.range.offset;
-        const HatLimits& hatLimits = GetHatLimits();
+        const HatLimits& hatLimits = HatGetLimits();
 
         sl::ScopedLock scopeLock(context.lock);
 
@@ -177,7 +177,7 @@ namespace Npk::Memory::Virtual
         {
             uintptr_t phys;
             size_t mode;
-            if (Unmap(context.map, context.range.base, phys, mode, true))
+            if (HatDoUnmap(context.map, context.range.base, phys, mode, true))
             {
                 const size_t length = hatLimits.modes[mode].granularity;
                 if (phys != zeroPage)
