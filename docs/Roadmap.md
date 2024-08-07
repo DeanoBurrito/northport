@@ -1,28 +1,26 @@
 - Kernel:
-    - [ ] Arch Layer:
-        - [ ] EFI entry stub.
+    - [x] Arch Layer:
         - [x] Abstractions:
-            - [x] Feature detection.
+            - [x] MMU.
             - [x] Timers.
             - [x] Interrupts.
-            - [x] MMU.
-            - [ ] System topology.
+            - [x] Extended CPU state (fpu, vector regs).
         - [x] x86_64:
-            - [x] Core (paging, interrupts).
+            - [x] MMU (paging).
             - [x] Timers (LAPIC, TSC, HPET, PIT).
-            - [x] FPU, SSE, AVX.
-            - [x] Map cpu topology.
+            - [x] Interrupts.
+            - [ ] Extended state.
         - [x] riscv64:
-            - [x] Core (paging, interrupts).
-            - [x] Timer (SBI, sstc).
-            - [ ] Map cpu topology.
-            - [x] F/D/Q and V extension support.
-            - [x] AIA (imsic, aplic) and ACLINT support.
+            - [x] MMU.
+            - [x] Timers (SBI, sstc).
+            - [ ] Interrupts (AIA).
+            - [ ] Extended state.
         - [x] m68k:
-            - [x] Limine protocol loader.
-            - [x] Core (paging, interrupts).
-            - [x] Timer.
-            - [ ] FPU.
+            - [x] Limine protocol loader!
+            - [x] MMU.
+            - [x] Timers (goldfish RTC).
+            - [x] Interrupts.
+            - [ ] Extended state (fpu).
     - [x] Core Layer:
         - [x] Logging Infrastructure:
             - [x] Fully lockless.
@@ -30,6 +28,7 @@
             - [x] Panic sequence.
             - [x] Stack frame walker.
             - [x] Symbol lookup.
+            - [x] Short traces for recent errors.
         - [x] Memory Management:
             - [x] PMM with multiple zones.
                 - [x] Reclaim bootloader memory.
@@ -52,7 +51,7 @@
             - [x] Tickless.
             - [x] Infinite expiry.
             - [ ] Continuous calibration.
-            - [x] Per-core timer support.
+            - [ ] Per-core timer support.
             - [ ] Stopwatches.
         - [x] IPI mailboxes.
             - [ ] Lockless.
@@ -79,7 +78,7 @@
             - [ ] Address.
         - [x] Peripheral discovery.
             - [x] ACPI table parser.
-            - [x] DTB parser.
+            - [x] DTB parser (smoldtb).
         - [x] IO Manager.
         - [x] Driver management:
             - [x] Scanning and loading ELF-based drivers.
@@ -91,8 +90,10 @@
             - [ ] Audio.
             - [ ] Networking.
     - [ ] Interface Layer:
-        - [x] Driver API binds.
-        - [ ] System calls.
+        - [x] Bootloader interface.
+            - [ ] EFI shim.
+        - [x] Driver api and kernel-side bindings.
+        - [ ] System calls and userspace vDSO.
 
 - Drivers:
     - [x] PCI.
@@ -150,14 +151,3 @@
     - [x] Basic locks.
     - [x] Psuedo-RNG.
     - [x] 2D primitives (vectors, rects).
-
-- np-gfx:
-    - [ ] Resource API.
-        - [ ] Shared resources.
-    - [ ] Generic 2D rendering API.
-        - [ ] Software backend.
-        - [ ] Kernel device backend.
-
-- np-syscall:
-    - [ ] C++ system call wrappers.
-
