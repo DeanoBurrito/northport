@@ -239,10 +239,10 @@ namespace Npk::Memory
     { return *kernelVmm; }
 
     VMM& VMM::Current()
-    { return *static_cast<VMM*>(CoreLocal()[LocalPtr::Vmm]); }
+    { return *static_cast<VMM*>(CoreLocal()[LocalPtr::UserVmm]); }
 
     bool VMM::CurrentActive()
-    { return CoreLocal()[LocalPtr::Vmm] != nullptr; }
+    { return CoreLocal()[LocalPtr::UserVmm] != nullptr; }
 
     VMM::VirtualMemoryManager()
     {

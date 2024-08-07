@@ -12,13 +12,13 @@ namespace Npk
     //each of the subsystems that get to store core-local data.
     enum class LocalPtr : size_t
     {
-        Config, //core-specific settings, supported features etc
-        IntControl, //interrupt controller data: lapic/imsic
-        Scheduler, //core-local data for scheduler
-        Thread, //currently running thread
-        Vmm, //active *lower-half* VMM
-        Log, //debug log buffer for this core
-        HeapCache, //core-local caches to speed up heap interactions
+        ArchConfig,
+        IntrControl,
+        Scheduler,
+        Thread,
+        UserVmm,
+        Logs,
+        HeapCache,
         IntrRouting,
 
         Count
@@ -60,6 +60,7 @@ namespace Npk
     struct TrapFrame;
     struct ExtendedRegs;
 
+    void ArchPrintPanicInfo(void (*Print)(const char* format, ...));
     void ExplodeKernelAndReset();
     void Wfi();
     bool InterruptsEnabled();

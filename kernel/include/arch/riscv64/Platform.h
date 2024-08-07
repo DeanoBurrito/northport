@@ -2,16 +2,17 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <Span.h>
 
 //risc-v has multiple names per register, this allows us to use any of the given names.
 #define REG_ALIAS(a, b) union { uint64_t a; uint64_t b; };
 
 namespace Npk
 {
-    struct CoreConfig
+    struct ArchConfig
     {
         size_t extRegsBufferSize;
-        uint8_t* featureBitmap;
+        sl::StringSpan isaString;
     };
 
     struct TrapFrame

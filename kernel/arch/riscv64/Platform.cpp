@@ -5,28 +5,17 @@
 
 namespace Npk
 {
-    enum class ExtState : uint8_t
-    {
-        Off = 0,
-        Initial = 1,
-        Clean = 2,
-        Dirty = 3,
-    };
+    constexpr const char ArchPanicStr[] = "extRegsSize=%zu, isa=%.*s\r\n";
 
-    struct ExtendedRegs
+    void ArchPrintPanicInfo(void (*Print)(const char *, ...))
     {
-        union
-        {
-            struct
-            {
-                ExtState fpu;
-                ExtState vector;
-            };
-            uintptr_t alignment;
-        } state;
+        if (!CoreLocalAvailable() || CoreLocal()[LocalPtr::ArchConfig] == nullptr)
+            return;
 
-        uint8_t buffer[];
-    };
+        auto cfg = static_cast<const ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig]);
+        Print(ArchPanicStr, cfg->extRegsBufferSize, (int)cfg->isaString.Size(),
+            cfg->isaString);
+    }
 
     void ExplodeKernelAndReset()
     {

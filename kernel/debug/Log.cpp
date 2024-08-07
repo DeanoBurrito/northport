@@ -83,8 +83,8 @@ namespace Npk::Debug
     static LogMessageItem* AllocMessage(size_t length)
     {
         LogBuffer* buff = &earlyBuffer;
-        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Log] != nullptr)
-            buff = static_cast<LogBuffer*>(CoreLocal()[LocalPtr::Log]);
+        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Logs] != nullptr)
+            buff = static_cast<LogBuffer*>(CoreLocal()[LocalPtr::Logs]);
 
         const size_t realLength = sl::AlignUp(length + sizeof(LogMessageItem), sizeof(LogMessageItem));
         LogBuffIdx begin = 0;
@@ -258,7 +258,7 @@ namespace Npk::Debug
         buffer->size = LogBufferSize;
         buffer->buffer = AddHhdm(reinterpret_cast<char*>(PMM::Global().Alloc(LogBufferSize / PageSize)));
 
-        CoreLocal()[LocalPtr::Log] = buffer;
+        CoreLocal()[LocalPtr::Logs] = buffer;
     }
 
     void AddLogOutput(LogOutput* output)

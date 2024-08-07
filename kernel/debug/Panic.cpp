@@ -9,11 +9,11 @@
 
 namespace Npk::Debug
 {
-    constexpr const char* ExceptFormatStr = "Unhandled exception: %s, stack=0x%lx, flags=0x%x, s=0x%lx\r\n";
-    constexpr const char* CoreFormatStr = "Core %lu: runLevel %lu (%s), logs=%p\r\n";
-    constexpr const char* ProgramFormatStr = "Thread %lu.%lu: name=%.*s, driverShadow=%.*s\r\n";
-    constexpr const char* TraceFrameFormatStr = "%3u: 0x%016lx %.*s!%.*s+0x%lx\r\n";
-    constexpr const char* ResetStr = "\r\nSystem has halted indefinitely, manual reset required.";
+    constexpr const char* ExceptFormatStr = "Unhandled exception: %s, stack=0x%tx, flags=0x%x, s=0x%tx\r\n";
+    constexpr const char* CoreFormatStr = "Core %tu: runLevel %u (%s), archCfg=%p, thread=%p, logs=%p\r\n";
+    constexpr const char* ProgramFormatStr = "Thread %zu.%zu: name=%.*s, driverShadow=%.*s\r\n";
+    constexpr const char* TraceFrameFormatStr = "%3zu: 0x%016lx %.*s!%.*s+0x%lx\r\n";
+    constexpr const char* ResetStr = "\r\nSystem has halted indefinitely, manual reset required.\r\n";
     constexpr size_t MaxTraceDepth = 16;
     constexpr int MaxProgramNameLen = 16;
     constexpr int MaxSymbolNameLen = 52;
@@ -31,6 +31,7 @@ namespace Npk::Debug
     sl::Atomic<size_t> panicFlag;
     sl::Span<LogOutput*> panicOutputs;
 
+    [[gnu::format(printf, 1, 2)]]
     static void PanicPrint(const char* format, ...)
     {
         va_list args;
@@ -123,7 +124,8 @@ namespace Npk::Debug
         }
 
         PanicPrint(CoreFormatStr, CoreLocal().id, (unsigned)CoreLocal().runLevel,
-            Tasking::GetRunLevelName(CoreLocal().runLevel), CoreLocal()[LocalPtr::Log]);
+            Tasking::GetRunLevelName(CoreLocal().runLevel), CoreLocal()[LocalPtr::ArchConfig],
+            CoreLocal()[LocalPtr::Thread], CoreLocal()[LocalPtr::Logs]);
     }
 
     static void PrintProgramInfo()
@@ -155,6 +157,7 @@ namespace Npk::Debug
         PanicPrint("\r\n");
         PrintCoreInfo();
         PrintProgramInfo();
+        ArchPrintPanicInfo(PanicPrint);
 
         PanicPrint(ResetStr);
         Halt();
@@ -193,7 +196,7 @@ namespace Npk::Debug
     {
         BeginPanic();
 
-        PanicPrint(reason.Begin());
+        PanicPrint("%.*s", (int)reason.Size(), reason.Begin());
         PanicPrint("\r\n");
         PrintTrace(0);
         EndPanic();

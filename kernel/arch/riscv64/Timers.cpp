@@ -62,7 +62,8 @@ namespace Npk
 
     bool DisarmInterruptTimer()
     {
-        ASSERT_UNREACHABLE();
+        SbiSetTimer(-1);
+        return true;
     }
 
     size_t InterruptTimerMaxNanos()

@@ -5,11 +5,10 @@
 
 namespace Npk
 {
-    struct CoreConfig
+    struct ArchConfig
     {
         uint64_t xSaveBitmap;
         size_t xSaveBufferSize;
-        uint8_t* featureBitmap;
     };
     
     struct TrapFrame

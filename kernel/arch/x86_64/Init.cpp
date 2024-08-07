@@ -81,7 +81,7 @@ namespace Npk
 
         CoreLocalInfo* clb = new CoreLocalInfo();
         WriteMsr(MsrGsBase, reinterpret_cast<uintptr_t>(clb));
-        clb->subsystemPtrs[(size_t)LocalPtr::IntControl] = new LocalApic();
+        clb->subsystemPtrs[(size_t)LocalPtr::IntrControl] = new LocalApic();
         clb->id = myId;
         clb->runLevel = RunLevel::Dpc;
 
