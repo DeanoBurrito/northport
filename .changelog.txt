@@ -1,14 +1,16 @@
 # current
-- Added a new architecture: Motorola 68K series, namely 68040 and higher.
+- Architecture Layer:
+    - Added a new architecture: Motorola 68K series - namely the 68040 and higher.
     - This is also the first 32-bit architecture supported by the kernel!
     - A custom boot shim was written for the qemu virt board, which supports the limine protocol.
     - Added github actions CI to test compile the kernel on m68k with GCC.
 
-- Added more drivers:
+- Drivers:
     - uACPI: first third-party driver, provides ACPI runtime services to the kernel.
+    - Virtio: pci and mmio transports added, as well as a virtio gpu driver.
     - NVMe: basic first implementation, but flexible enough and has read and write support. Plays nicely with MDLs from the kernel.
 
-- Driver API improvements:
+- Driver API:
     - Exposed kernel waitable events.
     - Exposed MSIs.
     - Driver manifest supports having multiple load strings.
@@ -43,8 +45,9 @@
 - Removed PolledSleep() from architecture timers interface. It's not used and we can achieve the same functionality with PollTimer().
 
 - Panic stack traces now include the program name prepended to the function name, useful for driver/kernel stack traces.
+- Added hook for arch-layer to print info during panic sequence (`ArchPrintPanicInfo()`).
 - Simplified logging subsystem, level/time/source are now stored as their raw values rather than printing them as strings.
-- Added names and type info for symbols defined in assembler sources.
+- Added names, type info and size for symbols defined in assembler sources.
 - Added support for building C sources for drivers.
 - Added elf32 definitions to syslib, and generic macros that resolve to elf32/elf64 versions depending on target architecture.
 - Error log levels now capture a snapshot of the callstack, for logging or retrieval later on.
@@ -53,6 +56,7 @@
 - Fixed crash when enabling terminal background with the stats renderer.
 - Fixed spelling mistake in driver api (monotomic -> monotonic), thanks IProgramInCpp for pointing that out!
 - Fixed misuse of `invlpg` on x86, accidentally evicting wrong entry from TLB.
+- Fixed bug in m68k loader where zero-sized phdrs were included in determining the kernel load window (thanks oberrow).
 
 # v0.3.0
 - Added 'interrupt router' to replace previous interrupt manager, which offloads memory allocation to the caller.
