@@ -1,7 +1,7 @@
 #include <arch/Timers.h>
 #include <debug/Log.h>
 #include <memory/VmObject.h>
-#include <interrupts/Router.h>
+#include <io/IntrRouter.h>
 
 namespace Npk
 {
@@ -32,7 +32,7 @@ namespace Npk
         return timerCallback(arg);
     }
 
-    void InitTimers()
+    void InitGlobalTimers()
     {
         timerRegs = VmObject(0x1000, QemuGoldfishPaddr, VmFlag::Mmio | VmFlag::Write);
         ASSERT_(timerRegs.Valid());
@@ -43,7 +43,10 @@ namespace Npk
         ASSERT_(ClaimInterruptRoute(&timerIntrRoute, CoreLocal().id, GoldfishTimerIrq));
     }
 
-    void SetSysTimer(size_t nanoseconds, bool (*callback)(void*))
+    void InitLocalTimers()
+    {}
+
+    void ArmInterruptTimer(size_t nanoseconds, bool (*callback)(void*))
     {
         if (callback != nullptr)
             timerCallback = callback;
@@ -56,7 +59,10 @@ namespace Npk
         timerRegs->Offset(TimerReg::AlarmLow).Write<uint32_t>(target & 0xFFFF'FFFF);
     }
 
-    size_t SysTimerMaxNanos()
+    bool DisarmInterruptTimer()
+    { return false; }
+
+    size_t InterruptTimerMaxNanos()
     {
         return (size_t)-1;
     }
@@ -69,12 +75,12 @@ namespace Npk
         return accum;
     }
 
-    size_t PolledTicksToNanos(size_t ticks)
+    size_t PollTicksToNanos(size_t ticks)
     {
         return ticks;
     }
     
-    const char* SysTimerName()
+    const char* InterruptTimerName()
     {
         return "goldfish rtc";
     }

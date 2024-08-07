@@ -101,18 +101,18 @@ namespace Npk
     {}
 
     struct CoreLocalInfo;
-    extern CoreLocalInfo* coreLocalControl; //TODO: SMP for m68k platforms?
+    extern CoreLocalInfo* coreLocalBlocks; //TODO: SMP for m68k platforms?
 
     [[gnu::always_inline]]
     inline CoreLocalInfo& CoreLocal()
     {
-        return *coreLocalControl;
+        return *coreLocalBlocks;
     }
 
     [[gnu::always_inline]]
     inline bool CoreLocalAvailable()
     {
-        return coreLocalControl != nullptr;
+        return coreLocalBlocks != nullptr;
     }
 
     [[gnu::always_inline]]
