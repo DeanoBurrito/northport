@@ -121,6 +121,18 @@ namespace sl
 #endif
     }
 
+    constexpr inline uint8_t HostToLe(uint8_t value)
+    { return LeToHost(value); }
+
+    constexpr inline uint16_t HostToLe(uint16_t value)
+    { return LeToHost(value); }
+
+    constexpr inline uint32_t HostToLe(uint32_t value)
+    { return LeToHost(value); }
+
+    constexpr inline uint64_t HostToLe(uint64_t value)
+    { return LeToHost(value); }
+
     constexpr inline uint8_t BeToHost(uint8_t value)
     {
         return value;
@@ -152,6 +164,18 @@ namespace sl
         return ByteSwap(value);
 #endif
     }
+
+    constexpr inline uint8_t HostToBe(uint8_t value)
+    { return BeToHost(value); }
+
+    constexpr inline uint16_t HostToBe(uint16_t value)
+    { return BeToHost(value); }
+
+    constexpr inline uint32_t HostToBe(uint32_t value)
+    { return BeToHost(value); }
+
+    constexpr inline uint64_t HostToBe(uint64_t value)
+    { return BeToHost(value); }
 
     template<typename T>
     constexpr inline T SquareRoot(T value)

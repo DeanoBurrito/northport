@@ -148,6 +148,32 @@ namespace sl
                 Npk::EnableInterrupts();
         }
     };
+
+    template<RunLevel CriticalLevel>
+    class RunLevelLock
+    {
+    private:
+        sl::Opt<RunLevel> prevLevel;
+        sl::SpinLock lock;
+
+    public:
+        constexpr RunLevelLock() : prevLevel(), lock()
+        {}
+
+        inline void Lock()
+        {
+            if (Npk::CoreLocalAvailable())
+                prevLevel = Npk::Tasking::EnsureRunLevel(CriticalLevel);
+            return lock.Lock();
+        }
+
+        inline void Unlock()
+        {
+            lock.Unlock();
+            if (Npk::CoreLocalAvailable() && prevLevel.HasValue())
+                Npk::Tasking::LowerRunLevel(*prevLevel);
+        }
+    };
 #endif
 
     class RwLock

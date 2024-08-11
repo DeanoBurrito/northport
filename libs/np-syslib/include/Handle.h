@@ -1,7 +1,13 @@
 #pragma once
 
+#include <stddef.h>
+#include <Atomic.h>
+
 namespace sl
 {
+    using RefCount = Atomic<size_t>;
+    using RefCountSmall = Atomic<short>;
+
     template<typename T>
     inline void NoHandleDtor(T*)
     {}
