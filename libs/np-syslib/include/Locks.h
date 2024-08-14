@@ -172,6 +172,7 @@ namespace sl
             lock.Unlock();
             if (Npk::CoreLocalAvailable() && prevLevel.HasValue())
                 Npk::Tasking::LowerRunLevel(*prevLevel);
+            prevLevel = {};
         }
     };
 #endif

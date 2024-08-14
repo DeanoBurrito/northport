@@ -4,11 +4,6 @@
 
 namespace Npk::Memory
 {
-    Mdl::~Mdl()
-    {
-        vmm->ReleaseMdl(base.raw);
-    }
-
     VmObject::VmObject(VMM* vmm, size_t length, uintptr_t initArg, VmFlags flags, VmAllocLimits limits)
     {
         if (vmm == nullptr)

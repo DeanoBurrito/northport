@@ -90,23 +90,21 @@ extern "C"
         if (mdl == nullptr)
             return false;
 
-        auto handle = VMM::Kernel().AcquireMdl(reinterpret_cast<uintptr_t>(vaddr), length);
-        if (!handle.Valid())
+        auto maybeMdl = VMM::Kernel().AcquireMdl(reinterpret_cast<uintptr_t>(vaddr), length);
+        if (!maybeMdl.HasValue())
             return false;
 
-        handle->references++;
-        //TODO: stash handle so it remains valid after this call
         mdl->addr_space = nullptr; //TODO: allow for mdls to access non-kernel VMMs
         mdl->virt_base = reinterpret_cast<uintptr_t>(vaddr);
         mdl->length = length;
-        mdl->ptr_count = handle->ptrs.Size();
+        mdl->ptr_count = maybeMdl->ptrs.Size();
 
         //TODO: some way of marshalling the existing structs rather than creating a copy for driver use?
         mdl->ptrs = new npk_mdl_ptr[mdl->ptr_count];
         for (size_t i = 0; i < mdl->ptr_count; i++)
         {
-            mdl->ptrs[i].length = handle->ptrs[i].length;
-            mdl->ptrs[i].phys_base = handle->ptrs[i].physAddr;
+            mdl->ptrs[i].length = maybeMdl->ptrs[i].length;
+            mdl->ptrs[i].phys_base = maybeMdl->ptrs[i].physAddr;
         }
 
         return true;

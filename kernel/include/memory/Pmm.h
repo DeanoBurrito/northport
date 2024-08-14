@@ -22,7 +22,7 @@ namespace Npk::Memory
 
     struct PmContigZone
     {
-        sl::InterruptLock lock;
+        sl::RunLevelLock<RunLevel::Dpc> lock;
         uint8_t* bitmap;
         uintptr_t base;
         size_t count;
@@ -53,7 +53,7 @@ namespace Npk::Memory
         PmInfoSegment* segments;
         struct
         {
-            sl::InterruptLock lock;
+            sl::RunLevelLock<RunLevel::Dpc> lock; //TODO: lockless
             PmFreeEntry* head;
         } freelist;
 

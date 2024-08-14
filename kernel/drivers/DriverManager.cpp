@@ -212,10 +212,15 @@ namespace Npk::Drivers
 
         if (!driver->ProcessEvent(EventType::AddDevice, &event))
         {
-            SetShadow(prevShadow);
             Log("Driver %s refused descriptor %zu (%.*s)", LogLevel::Error, driver->friendlyName.C_Str(),
                 device->id, (int)api->friendly_name.length, api->friendly_name.data);
-            //TOOD: free instance, remove from tree
+
+            SetShadow(prevShadow);
+            nodeTreeLock.WriterLock();
+            nodeTree.Remove(*instance);
+            nodeTreeLock.WriterUnlock();
+
+            device->attachedDriver = nullptr;
             return false;
         }
 

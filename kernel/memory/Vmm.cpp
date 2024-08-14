@@ -706,43 +706,43 @@ namespace Npk::Memory
         return count;
     }
 
-    sl::Handle<Mdl> VMM::AcquireMdl(uintptr_t base, size_t length)
+    sl::Opt<Mdl> VMM::AcquireMdl(uintptr_t base, size_t length)
     {
         VmRange* range = FindRange(base);
         if (range == nullptr || length == 0)
             return {};
+        length = sl::Min(base + length, range->base + range->length) - base;
 
         //TODO: store mdlCount in the smallest unit possible (page or group-of-pages level) instead of pinning the entire range.
         range->mdlCount++;
 
         //create the mdl list
         sl::Vector<MdlPtr> ptrs;
-        for (size_t scan = 0; scan < range->length;)
+        for (size_t scan = base; scan < base + length;)
         {
             size_t mode = 0;
 
             //get physical memory or fault it in if necessary
-            auto maybeMap = HatGetMap(hatMap, base + scan, mode);
+            auto maybeMap = HatGetMap(hatMap, scan, mode);
             if (!maybeMap.HasValue())
             {
-                ASSERT_(HandleFault(base + scan, VmFaultFlag::Write));
-                maybeMap = HatGetMap(hatMap, base + scan, mode);
+                ASSERT_(HandleFault(scan, VmFaultFlag::Write));
+                maybeMap = HatGetMap(hatMap, scan, mode);
             }
 
             ASSERT_(maybeMap.HasValue());
             auto& ptr = ptrs.EmplaceBack();
             ptr.physAddr = *maybeMap;
-            ptr.length = HatGetLimits().modes[mode].granularity;
+            ptr.length = sl::Min(HatGetLimits().modes[mode].granularity, length + base - scan);
 
             scan += ptr.length;
         }
 
-        Mdl* mdl = new Mdl();
-        mdl->base = base;
-        mdl->length = length;
-        mdl->vmm = this;
-        mdl->references = 0;
-        mdl->ptrs = sl::Move(ptrs);
+        Mdl mdl {};
+        mdl.base = base;
+        mdl.length = length;
+        mdl.vmm = this;
+        mdl.ptrs = sl::Move(ptrs);
 
         return mdl;
     }

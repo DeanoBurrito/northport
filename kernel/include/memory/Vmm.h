@@ -195,7 +195,7 @@ namespace Npk::Memory
         size_t CopyOut(void* localBase, void* foreignBase, size_t length);
         //gets a memory descriptor list for a range of virtual memory, pinning it in place and allowing
         //for directly access to the physical backing memory.
-        sl::Handle<Mdl> AcquireMdl(uintptr_t base, size_t length);
+        sl::Opt<Mdl> AcquireMdl(uintptr_t base, size_t length);
         //allows pinned memory regions for an MDL to become fully virtual again.
         void ReleaseMdl(uintptr_t base);
     };

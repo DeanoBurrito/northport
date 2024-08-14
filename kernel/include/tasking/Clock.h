@@ -25,7 +25,7 @@ namespace Npk::Tasking
 
     struct ClockQueue
     {
-        sl::SpinLock lock;
+        sl::RunLevelLock<RunLevel::Clock> lock;
         sl::IntrFwdList<ClockEvent> events;
         size_t modifiedTicks;
     };

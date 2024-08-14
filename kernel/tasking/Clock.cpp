@@ -106,8 +106,7 @@ namespace Npk::Tasking
         if (globalQueueOwnerCore != CoreLocal().id)
             return Interrupts::SendIpiMail(globalQueueOwnerCore, RemoteQueueClockEvent, event);
 
-        const auto prevRl = EnsureRunLevel(RunLevel::Clock);
-        globalQueue.lock.Lock();
+        sl::ScopedLock scopeLock(globalQueue.lock);
 
         UpdateTimerQueue();
         event->duration = event->duration.ToScale(sl::TimeScale::Nanos);
@@ -121,9 +120,6 @@ namespace Npk::Tasking
             const size_t clockArmTime = sl::Min(InterruptTimerMaxNanos(), event->duration.units);
             ArmInterruptTimer(clockArmTime, ClockTickHandler);
 
-            globalQueue.lock.Unlock();
-            if (prevRl.HasValue())
-                LowerRunLevel(*prevRl);
             return;
         }
 
@@ -149,24 +145,37 @@ namespace Npk::Tasking
 
         if (!inserted)
             globalQueue.events.PushBack(event);
-
-        globalQueue.lock.Unlock();
-        if (prevRl.HasValue())
-            LowerRunLevel(*prevRl);
     }
+
+    static void RemoteDequeueClockEvent(void* arg)
+    { DequeueClockEvent(static_cast<ClockEvent*>(arg)); }
 
     void DequeueClockEvent(ClockEvent* event)
     {
         VALIDATE_(event != nullptr, );
 
-        const auto prevRl = EnsureRunLevel(RunLevel::Clock);
-        globalQueue.lock.Lock();
+        if (globalQueueOwnerCore != CoreLocal().id)
+            return Interrupts::SendIpiMail(globalQueueOwnerCore, RemoteDequeueClockEvent, event);
+
+        sl::ScopedLock scopeLock(globalQueue.lock);
+        UpdateTimerQueue();
+
+        if (globalQueue.events.Begin() == event)
+        {
+            globalQueue.events.PopFront();
+            if (globalQueue.events.Empty())
+                return;
+
+            auto& front = globalQueue.events.Front();
+            front.duration.units -= event->duration.units;
+            const size_t clockArmTime = sl::Min(InterruptTimerMaxNanos(), front.duration.units);
+            ArmInterruptTimer(clockArmTime, ClockTickHandler);
+            return;
+        }
+
         ClockEvent* following = globalQueue.events.Remove(event);
         if (following != nullptr)
             following->duration.units += event->duration.units;
-        globalQueue.lock.Unlock();
-        if (prevRl.HasValue())
-            LowerRunLevel(*prevRl);
     }
 
     sl::ScaledTime GetUptime()

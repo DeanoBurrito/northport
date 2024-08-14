@@ -14,7 +14,7 @@ namespace Npk::Debug
         "\r\n [!!] Failed to acquire log output lock - latest messages will be dropped! [!!] \r\n";
     constexpr sl::StringSpan EndLineStr = "\r\n";
     constexpr sl::StringSpan UptimeStr = "%zu.%03zu ";
-    constexpr sl::StringSpan ProcThreadStr = "p%zu%.3s%zu ";
+    constexpr sl::StringSpan ProcThreadStr = "%zu%.1s%zu ";
     constexpr sl::StringSpan LogLevelStrs[] =
     {
         "\e[91m[ Fatal ]\e[39m ", 
@@ -133,12 +133,12 @@ namespace Npk::Debug
         npf_snprintf(uptimeBuff, uptimeLen, UptimeStr.Begin(), uptimeMajor, uptimeMinor);
 
         const size_t procId = msg.processorId == (LogBuffIdx)-1 ? 0 : msg.processorId;
-        const char* rlStr = msg.runlevel != RunLevel::Normal ? Tasking::GetRunLevelName(msg.runlevel) : "t";
+        const char* rlStr = Tasking::GetRunLevelName(msg.runlevel);
         const size_t procThreadLen = npf_snprintf(nullptr, 0, ProcThreadStr.Begin(), procId, rlStr, msg.threadId) + 1;
         char procThreadBuff[procThreadLen];
         npf_snprintf(procThreadBuff, procThreadLen, ProcThreadStr.Begin(), procId, rlStr, msg.threadId);
         if (msg.processorId == (LogBuffIdx)-1)
-            procThreadBuff[1] = '?';
+            procThreadBuff[0] = '?';
 
 
         for (size_t i = 0; i < logOutCount; i++)

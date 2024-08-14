@@ -3,6 +3,7 @@
 #include <arch/x86_64/Cpuid.h>
 #include <boot/CommonInit.h>
 #include <debug/Log.h>
+#include <interfaces/driver/Api.h>
 
 namespace Npk
 {
@@ -117,6 +118,26 @@ namespace Npk
         LocalApic::Local().Init();
     }
 
+    static bool PortIoAccess(size_t width, uintptr_t addr, uintptr_t* data, bool write)
+    {
+        switch (width)
+        {
+        case 1:
+            write ? Out8(addr, *data) : (void)(*data = In8(addr));
+            return true;
+        case 2:
+            write ? Out16(addr, *data) : (void)(*data = In16(addr));
+            return true;
+        case 4:
+            write ? Out32(addr, *data) : (void)(*data = In32(addr));
+            return true;
+        default:
+            return false;
+        }
+    }
+
     void ArchThreadedInit()
-    {} //TODO: add port IO access to npk_add_bus_access()
+    {
+        npk_add_bus_access(npk_bus_type::BusPortIo, PortIoAccess);
+    }
 }

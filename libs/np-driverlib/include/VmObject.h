@@ -76,12 +76,13 @@ namespace dl
 #ifdef NP_KERNEL
         VMM* vmm;
 #endif
-        size_t references;
         sl::NativePtr base;
         size_t length;
         sl::Vector<MdlPtr> ptrs; //TODO: store inline with flexible array member?
 
+#ifndef NP_KERNEL
         ~Mdl();
+#endif
     };
 
     class VmObject
