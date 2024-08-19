@@ -67,11 +67,6 @@ typedef struct
 
 typedef struct
 {
-    size_t width;
-    size_t height;
-    size_t bpp;
-    size_t stride;
-
     uint8_t shift_r;
     uint8_t shift_g;
     uint8_t shift_b;
@@ -80,6 +75,15 @@ typedef struct
     uint8_t mask_g;
     uint8_t mask_b;
     uint8_t mask_a;
+} npk_pixel_format;
+
+typedef struct
+{
+    size_t width;
+    size_t height;
+    size_t bpp;
+    size_t stride;
+    npk_pixel_format format;
 } npk_framebuffer_mode;
 
 typedef struct
@@ -87,11 +91,24 @@ typedef struct
     npk_device_api header;
     REQUIRED npk_framebuffer_mode (*get_mode)(npk_device_api* api);
     OPTIONAL bool (*set_mode)(npk_device_api* api, REQUIRED const npk_framebuffer_mode* mode);
+    OPTIONAL void (*begin_draw)(npk_device_api* api);
+    OPTIONAL void (*end_draw)(npk_device_api* api, size_t x, size_t y, size_t w, size_t h);
 } npk_framebuffer_device_api;
 
 typedef struct
 {
+    npk_handle id;
+    size_t edid_size;
+} npk_scanout_info;
+
+typedef struct
+{
     npk_device_api header;
+
+    REQUIRED npk_handle (*create_framebuffer)(npk_device_api* api, size_t x, size_t y, npk_pixel_format format);
+    REQUIRED bool (*destroy_framebuffer)(npk_device_api* api, npk_handle fb);
+    REQUIRED bool (*set_scanout_framebuffer)(npk_device_api* api, npk_handle scanout_index, npk_framebuffer_device_api* fb);
+    REQUIRED size_t (*get_scanout_info)(npk_device_api* api, REQUIRED npk_scanout_info* buff, size_t buff_count, size_t first);
 } npk_gpu_device_api;
 
 typedef struct
