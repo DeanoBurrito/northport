@@ -7,10 +7,8 @@ namespace Npk::Drivers
     { 
         auto ioApi = reinterpret_cast<const npk_io_device_api*>(api);
 
-        if (ioApi->begin_op == nullptr)
-            return false;
-        if (ioApi->end_op == nullptr)
-            return false;
+        VALIDATE_(ioApi->begin_op != nullptr, false);
+        VALIDATE_(ioApi->end_op != nullptr, false);
 
         return true;
     }
@@ -18,17 +16,22 @@ namespace Npk::Drivers
     bool VerifyFramebufferApi(const npk_device_api* api)
     { 
         auto fbApi = reinterpret_cast<const npk_framebuffer_device_api*>(api);
-        
-        if (fbApi->get_mode == nullptr)
-            return false;
+
+        VALIDATE_(fbApi->get_mode != nullptr, false);
 
         return true;
     }
 
     bool VerifyGpuApi(const npk_device_api* api)
     { 
-        (void)api;
-        return false; 
+        auto gpuApi = reinterpret_cast<const npk_gpu_device_api*>(api);
+
+        VALIDATE_(gpuApi->create_framebuffer != nullptr, false);
+        VALIDATE_(gpuApi->destroy_framebuffer != nullptr, false);
+        VALIDATE_(gpuApi->set_scanout_framebuffer != nullptr, false);
+        VALIDATE_(gpuApi->get_scanout_info != nullptr, false);
+
+        return true; 
     }
 
     bool VerifyKeyboardApi(const npk_device_api* api)
@@ -41,28 +44,17 @@ namespace Npk::Drivers
     {
         auto fsApi = reinterpret_cast<const npk_filesystem_device_api*>(api);
 
-        if (fsApi->enter_cache == nullptr)
-            return false;
-        if (fsApi->exit_cache == nullptr)
-            return false;
-        if (fsApi->get_root == nullptr)
-            return false;
-        if (fsApi->mount == nullptr)
-            return false;
-        if (fsApi->unmount == nullptr)
-            return false;
-        if (fsApi->create == nullptr)
-            return false;
-        if (fsApi->remove == nullptr)
-            return false;
-        if (fsApi->find_child == nullptr)
-            return false;
-        if (fsApi->get_attribs == nullptr) 
-            return false;
-        if (fsApi->set_attribs == nullptr)
-            return false;
-        if (fsApi->read_dir == nullptr)
-            return false;
+        VALIDATE_(fsApi->enter_cache != nullptr, false);
+        VALIDATE_(fsApi->exit_cache != nullptr, false);
+        VALIDATE_(fsApi->get_root != nullptr, false);
+        VALIDATE_(fsApi->mount != nullptr, false);
+        VALIDATE_(fsApi->unmount != nullptr, false);
+        VALIDATE_(fsApi->create != nullptr, false);
+        VALIDATE_(fsApi->remove != nullptr, false);
+        VALIDATE_(fsApi->find_child != nullptr, false);
+        VALIDATE_(fsApi->get_attribs != nullptr, false);
+        VALIDATE_(fsApi->set_attribs != nullptr, false);
+        VALIDATE_(fsApi->read_dir != nullptr, false);
 
         return true;
     }

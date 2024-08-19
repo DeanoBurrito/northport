@@ -79,11 +79,11 @@ namespace Qemu
         WriteDispiReg(DispiReg::Enable, DispiEnable | DispiLfbEnabled | DispiNoClearMem);
 
         mode.stride = mode.width * (mode.bpp / 8);
-        mode.mask_a = mode.shift_a = 0;
-        mode.mask_r = mode.mask_g = mode.mask_b = 0xFF;
-        mode.shift_r = 0;
-        mode.shift_g = 8;
-        mode.shift_b = 16;
+        mode.format.mask_a = mode.format.shift_a = 0;
+        mode.format.mask_r = mode.format.mask_g = mode.format.mask_b = 0xFF;
+        mode.format.shift_r = 0;
+        mode.format.shift_g = 8;
+        mode.format.shift_b = 16;
 
         RegenSummary();
 
