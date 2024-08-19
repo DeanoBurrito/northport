@@ -41,6 +41,11 @@ SECTIONS
     . += CONSTANT(MAXPAGESIZE);
 
     KERNEL_DATA_BEGIN = .;
+    .got : { 
+        *(.got.plt) 
+        *(.got) 
+    } :data
+
     .data : 
     {
         *(.data)
@@ -62,6 +67,8 @@ SECTIONS
     {
         *(.note)
         *(.note.*)
+        *(.interp)
+        *(.comment)
     }
     KERNEL_DATA_SIZE = . - KERNEL_DATA_BEGIN;
 

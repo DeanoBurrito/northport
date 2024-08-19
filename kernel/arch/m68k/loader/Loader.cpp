@@ -70,15 +70,24 @@ namespace Npl
         {
             const auto op = sl::ComputeRelocation(type, 0, b, s, p);
             if (op.length == 0)
+            {
+                NPL_LOG("Relocation failed: unknown type %u\r\n", type);
                 return false;
+            }
             sl::memcopy(reinterpret_cast<void*>(p), &a, op.length);
         }
 
         const auto op = sl::ComputeRelocation(type, a, b, s, p);
         if (op.usedSymbol && s == 0)
-            return false; //tried to reference an external symbol
+        {
+            NPL_LOG("Relocation failed: tried to reference external symbol.\r\n");
+            return false;
+        }
         if (op.length == 0)
-            return false; //unknown relocation type. *sigh* time to crack open _that_ version of the m68k elf psABI.
+        {
+            NPL_LOG("Relocation failed: unknown type %u\r\n", type);
+            return false;
+        }
 
         sl::memcopy(&op.value, reinterpret_cast<void*>(p), op.length);
         return true;
@@ -124,10 +133,10 @@ namespace Npl
             case sl::DT_NEEDED: 
                 return false;
             case sl::DT_SYMTAB:
-                symTable = reinterpret_cast<const sl::Elf_Sym*>(scan->d_ptr - kernelBase + blob.raw);
+                symTable = reinterpret_cast<const sl::Elf_Sym*>(scan->d_ptr + kernelSlide);
                 break;
             case sl::DT_JMPREL:
-                pltRelocs = reinterpret_cast<const uint8_t*>(scan->d_ptr - kernelBase + blob.raw);
+                pltRelocs = reinterpret_cast<const uint8_t*>(scan->d_ptr + kernelSlide);
                 break;
             case sl::DT_PLTRELSZ:
                 pltRelocSize = scan->d_val;
@@ -136,10 +145,10 @@ namespace Npl
                 pltUsesRela = (scan->d_val == sl::DT_RELA);
                 break;
             case sl::DT_RELA:
-                relas = reinterpret_cast<const sl::Elf_Rela*>(scan->d_ptr - kernelBase + blob.raw);
+                relas = reinterpret_cast<const sl::Elf_Rela*>(scan->d_ptr + kernelSlide);
                 break;
             case sl::DT_REL:
-                rels = reinterpret_cast<const sl::Elf_Rel*>(scan->d_ptr - kernelBase + blob.raw);
+                rels = reinterpret_cast<const sl::Elf_Rel*>(scan->d_ptr + kernelSlide);
                 break;
             case sl::DT_RELASZ:
                 relaCount = scan->d_val / sizeof(sl::Elf_Rela);
@@ -152,15 +161,16 @@ namespace Npl
             }
         }
 
+        size_t failedCount = 0;
         for (size_t i = 0; i < relCount; i++)
         {
             if (!DoRelocation(false, reinterpret_cast<const sl::Elf_Rela*>(&rels[i]), symTable))
-                return false;
+                failedCount++;
         }
         for (size_t i = 0; i < relaCount; i++)
         {
             if (!DoRelocation(true, &relas[i], symTable))
-                return false;
+                failedCount++;
         }
 
         size_t pltCount = 0;
@@ -168,10 +178,16 @@ namespace Npl
         {
             auto rela = reinterpret_cast<const sl::Elf_Rela*>(pltRelocs + off);
             if (!DoRelocation(pltUsesRela, rela, symTable))
-                return false;
+                failedCount++;
 
             off += pltUsesRela ? sizeof(sl::Elf_Rela) : sizeof(sl::Elf_Rel);
             pltCount++;
+        }
+
+        if (failedCount != 0)
+        {
+            NPL_LOG("Kernel relocations done: %u failed.\r\n", failedCount);
+            return false;
         }
 
         NPL_LOG("Kernel relocations done: rel=%u, rela=%u, plt=%u\r\n", relCount, relaCount, pltCount);

@@ -1,6 +1,7 @@
 #include <arch/Init.h>
 #include <arch/Platform.h>
 #include <arch/m68k/GfPic.h>
+#include <arch/m68k/Interrupts.h>
 #include <debug/Log.h>
 #include <memory/Vmm.h>
 #include <NativePtr.h>
@@ -45,6 +46,8 @@ namespace Npk
 
     void ArchInitCore(size_t myId)
     {
+        LoadVectorTable();
+
         CoreLocalInfo* clb = new CoreLocalInfo();
         coreLocalBlocks = clb;
         clb->id = myId;

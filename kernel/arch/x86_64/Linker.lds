@@ -70,6 +70,8 @@ SECTIONS
     {
         *(.note)
         *(.note.*)
+        *(.comment)
+        *(.interp)
     }
     KERNEL_DATA_SIZE = . - KERNEL_DATA_BEGIN;
 
