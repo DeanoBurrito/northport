@@ -6,6 +6,47 @@
 
 namespace Virtio
 {
+    static sl::Opt<GpuFormat> NpkFormatToVirtio(npk_pixel_format format)
+    {
+        if (format.mask_r != 0xFF || format.mask_g != 0xFF || format.mask_b != 0xFF)
+        {
+            Log("Pixel format must have exactly 8 bits per colour channel.", LogLevel::Error);
+            return {};
+        }
+        if (format.mask_a != 0 && format.mask_a != 0xFF)
+        {
+            Log("Pixel format must have 0 or 8 bits for the alpha channel.", LogLevel::Error);
+            return {};
+        }
+
+        if (format.shift_r == 0 && format.shift_g == 8 && format.shift_b == 16)
+            return format.mask_a == 0xFF ? GpuFormat::R8G8B8A8 : GpuFormat::R8G8B8X8;
+        if (format.shift_r == 8 && format.shift_g == 16 && format.shift_b == 24)
+            return format.mask_a == 0xFF ? GpuFormat::A8R8G8B8 : GpuFormat::X8R8G8B8;
+        if (format.shift_b == 0 && format.shift_g == 8 && format.shift_r == 16)
+            return format.mask_a == 0xFF ? GpuFormat::B8G8R8A8 : GpuFormat::B8G8R8X8;
+        if (format.shift_b == 8 && format.shift_g == 16 && format.shift_r == 24)
+            return format.mask_a == 0xFF ? GpuFormat::A8B8G8R8 : GpuFormat::X8B8G8R8;
+
+        return {};
+    }
+
+    static const char* GpuFormatToStr(GpuFormat format)
+    {
+        switch (format)
+        {
+        case GpuFormat::B8G8R8A8: return "b8g8r8a8";
+        case GpuFormat::B8G8R8X8: return "b8g8r8x8";
+        case GpuFormat::A8R8G8B8: return "a8r8g8b8";
+        case GpuFormat::X8R8G8B8: return "x8r8g8b8";
+        case GpuFormat::R8G8B8A8: return "r8g8b8a8";
+        case GpuFormat::X8B8G8R8: return "x8b8g8r8";
+        case GpuFormat::A8B8G8R8: return "a8b8g8r8";
+        case GpuFormat::R8G8B8X8: return "r8g8b8x8";
+        default: return "unknown format";
+        }
+    }
+
     sl::Opt<uint32_t> Gpu::AllocRid()
     {
         sl::ScopedLock scopelock(freeRidsLock);
@@ -44,9 +85,13 @@ namespace Virtio
         }
 
         auto token = transport.PrepareCommand(0, mdls);
-        if (token.HasValue() && !transport.BeginCommand(0, *token))
+        CommandHandle handle {};
+        handle.queueIndex = 0;
+        handle.descId = *token;
+
+        if (token.HasValue() && !transport.BeginCommand(handle))
             token = {};
-        if (token.HasValue() && !transport.EndCommand(0, *token))
+        if (token.HasValue() && !transport.EndCommand(handle, -1))
             token = {};
 
         npk_vm_release_mdl(cmd);
@@ -79,6 +124,7 @@ namespace Virtio
         command.resourceId = *rid;
 
         GpuCmdResponse response {};
+        VALIDATE_(DoCommand(&command, sizeof(command), &response, sizeof(response)), {});
         VALIDATE_(response.respType == GpuCmdRespType::OkNoData, {});
 
         return *rid;
@@ -229,10 +275,67 @@ namespace Virtio
     };
 
     npk_handle Gpu::CreateFramebuffer(sl::Vector2u size, npk_pixel_format format)
-    {}
+    {
+        auto maybeFormat = NpkFormatToVirtio(format);
+        VALIDATE(maybeFormat.HasValue(), NPK_INVALID_HANDLE, "Framebuffer creation failed, invalid pixel format.");
+
+        auto maybeRes = CmdCreateResource2D(*maybeFormat, size);
+        VALIDATE(maybeRes, NPK_INVALID_HANDLE, "Framebuffer creation failed, CreateResource2d() error.");
+
+        GpuFramebuffer* fb = new GpuFramebuffer();
+        if (fb == nullptr)
+        {
+            Log("Framebuffer creation failed, malloc() failure", LogLevel::Error);
+
+            delete fb;
+            CmdResourceUnref(*maybeRes);
+            return NPK_INVALID_HANDLE;
+        }
+
+        fb->gpu = this;
+        fb->size = size;
+        fb->rid = *maybeRes;
+        fb->scanout = NoRid;
+        fb->format = *maybeFormat;
+
+        fb->npkApi.header.type = npk_device_api_type::Framebuffer;
+        fb->npkApi.header.driver_data = fb;
+        //fb->npkApi.header.get_summary = ApiGetFbSummary;
+        fb->npkApi.header.get_summary = nullptr;
+        fb->npkApi.get_mode = ApiGetMode;
+        fb->npkApi.set_mode = nullptr; //TODO: modesetting for virtio framebuffers
+        fb->npkApi.begin_draw = nullptr;
+        fb->npkApi.end_draw = ApiEndDraw;
+
+        if (!npk_add_device_api(&fb->npkApi.header))
+        {
+            Log("Framebuffer creation failed, npk_add_device_api() failure", LogLevel::Error);
+
+            delete fb;
+            CmdResourceUnref(*maybeRes);
+            return NPK_INVALID_HANDLE;
+        }
+
+        scanoutFramebufferLock.WriterLock();
+        framebuffers.EmplaceAt(fb->rid, fb);
+        scanoutFramebufferLock.WriterUnlock();
+
+        Log("Framebuffer %zu created: w=%lu, h=%lu, format=%s, handle=%zu", LogLevel::Info,
+            fb->rid, fb->size.x, fb->size.y, GpuFormatToStr(fb->format), fb->npkApi.header.id);
+        return fb->npkApi.header.id;
+    }
 
     bool Gpu::SetScanout(size_t scanoutId, npk_framebuffer_device_api* fb)
-    {}
+    { ASSERT_UNREACHABLE(); }
+
+    npk_string ApiGetFbSummary(npk_device_api* api)
+    { ASSERT_UNREACHABLE(); }
+
+    npk_framebuffer_mode ApiGetMode(npk_device_api* api)
+    { ASSERT_UNREACHABLE(); }
+
+    void ApiEndDraw(npk_device_api* api, size_t x, size_t y, size_t w, size_t h)
+    { ASSERT_UNREACHABLE(); }
 
     npk_string ApiGetSummary(npk_device_api* api)
     { return static_cast<Gpu*>(api->driver_data)->GetSummaryString(); }
@@ -247,5 +350,5 @@ namespace Virtio
     { return static_cast<Gpu*>(api->driver_data)->SetScanout(scanout_index, fb); }
 
     size_t ApiGetScanoutInfo(npk_device_api* api, REQUIRED npk_scanout_info* buff, size_t buff_count, size_t first)
-    { ASSERT_UNREACHABLE(); } //TODO:
+    { ASSERT_UNREACHABLE(); }
 }

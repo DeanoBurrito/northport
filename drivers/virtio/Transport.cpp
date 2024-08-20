@@ -393,47 +393,56 @@ namespace Virtio
         return firstDesc;
     }
 
-    bool Transport::BeginCommand(size_t q, uint16_t id)
+    bool Transport::BeginCommand(CommandHandle& cmd)
     {
-        VALIDATE_(q < virtqPtrs.Size(), {});
-        VALIDATE_(id < virtqPtrs[q].size, {});
+        VALIDATE_(cmd.queueIndex < virtqPtrs.Size(), false);
+        VALIDATE_(cmd.descId < virtqPtrs[cmd.queueIndex].size, false);
 
-        sl::ScopedLock scopeLock(virtqPtrs[q].ringLock);
-        volatile VirtqAvailable* avail = virtqPtrs[q].avail;
+        sl::ScopedLock scopeLock(virtqPtrs[cmd.queueIndex].ringLock);
+        volatile VirtqAvailable* avail = virtqPtrs[cmd.queueIndex].avail;
+        cmd.usedStartId = virtqPtrs[cmd.queueIndex].used->index;
 
         sl::DmaWriteBarrier();
-        const uint16_t availIndex = avail->index; //TODO: we should check for space in the available ring
-        avail->ring[availIndex] = id;
-        avail->index = (availIndex + 1) % virtqPtrs[q].size;
+        const uint16_t availIndex = avail->index;
+        avail->ring[availIndex] = cmd.descId;
+        avail->index = (availIndex + 1) % virtqPtrs[cmd.queueIndex].size;
 
-        NotifyDevice(q);
+        NotifyDevice(cmd.queueIndex);
 
         return true;
     }
 
-    bool Transport::EndCommand(size_t q, uint16_t id)
+    bool Transport::EndCommand(CommandHandle& cmd, size_t timeoutNs)
     {
-        VALIDATE_(q < virtqPtrs.Size(), {});
-        VALIDATE_(id < virtqPtrs[q].size, {});
-        //TODO: use waiting instead of polling (have interrupt -> dpc -> wake up this thread)
+        VALIDATE_(cmd.queueIndex < virtqPtrs.Size(), false);
+        VALIDATE_(cmd.descId< virtqPtrs[cmd.queueIndex].size, false);
 
+        auto& q = virtqPtrs[cmd.queueIndex];
         bool found = false;
-        volatile VirtqUsedElement* ring = virtqPtrs[q].used->ring;
+        volatile VirtqUsedElement* ring = q.used->ring;
 
-        sl::ScopedLock scopeLock(virtqPtrs[q].ringLock);
+        sl::ScopedLock scopeLock(q.ringLock);
         while (!found)
         {
-            for (size_t i = 0; i < virtqPtrs[q].size; i++)
+            for (size_t i = cmd.usedStartId; i != ring->index; i = (i + 1) % q.size)
             {
-                if (ring[i].index != id)
+                if (ring[i].index != cmd.descId)
                     continue;
 
                 found = true;
                 break;
             }
+
+            continue; //TODO: this is broken (below) until we signal events from dpcs/intr handlers
+            npk_wait_entry waitEntry {};
+            npk_duration timeout {};
+            timeout.ticks = timeoutNs;
+            timeout.scale = npk_time_scale::Nanos;
+            if (!npk_wait_one(&cmd.completed, &waitEntry, timeout))
+                return false; //event not fired before timeout, meaning we couldnt complete the operation
         }
 
-        FreeDesc(q, id);
+        FreeDesc(cmd.queueIndex, cmd.descId);
         return true;
     }
 }

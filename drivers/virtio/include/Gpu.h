@@ -19,11 +19,17 @@ namespace Virtio
         uint32_t attachedFb;
     };
 
+    class Gpu;
+
     struct GpuFramebuffer
     {
+        Gpu* gpu;
+        npk_framebuffer_device_api npkApi;
+
         uint32_t rid;
         uint32_t scanout;
         sl::Vector2u size;
+        GpuFormat format;
     };
 
     class Gpu
@@ -43,7 +49,7 @@ namespace Virtio
 
         sl::RwLock scanoutFramebufferLock;
         sl::Vector<GpuScanout> scanouts;
-        sl::LinkedList<GpuFramebuffer> framebuffers;
+        sl::Vector<GpuFramebuffer*> framebuffers;
 
         npk_gpu_device_api kernelApi;
 
@@ -75,6 +81,10 @@ namespace Virtio
         npk_handle CreateFramebuffer(sl::Vector2u size, npk_pixel_format format);
         bool SetScanout(size_t scanoutId, npk_framebuffer_device_api* fb);
     };
+
+    npk_string ApiGetFbSummary(npk_device_api* api);
+    npk_framebuffer_mode ApiGetMode(npk_device_api* api);
+    void ApiEndDraw(npk_device_api* api, size_t x, size_t y, size_t w, size_t h);
 
     npk_string ApiGetSummary(npk_device_api* api);
     npk_handle ApiCreateFramebuffer(npk_device_api* api, size_t x, size_t y, npk_pixel_format format);

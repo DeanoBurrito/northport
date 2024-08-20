@@ -3,6 +3,7 @@
 #include <SpecDefs.h>
 #include <interfaces/driver/Api.h>
 #include <interfaces/driver/Memory.h>
+#include <interfaces/driver/Events.h>
 #include <containers/Vector.h>
 #include <PciAddress.h>
 #include <VmObject.h>
@@ -37,6 +38,14 @@ namespace Virtio
 
         sl::SpinLock descLock;
         sl::SpinLock ringLock;
+    };
+
+    struct CommandHandle
+    {
+        npk_event completed;
+        uint16_t descId;
+        uint16_t usedStartId;
+        uint16_t queueIndex;
     };
 
     class Transport
@@ -77,7 +86,7 @@ namespace Virtio
         bool NotificationsEnabled(size_t index, sl::Opt<bool> yes = {});
 
         sl::Opt<uint16_t> PrepareCommand(size_t q, sl::Span<npk_mdl> mdls);
-        bool BeginCommand(size_t q, uint16_t id);
-        bool EndCommand(size_t q, uint16_t id);
+        bool BeginCommand(CommandHandle& cmd);
+        bool EndCommand(CommandHandle& cmd, size_t timeoutNs);
     };
 }
