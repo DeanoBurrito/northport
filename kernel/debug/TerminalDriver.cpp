@@ -118,17 +118,17 @@ namespace Npk::Debug
         for (auto it = termHeads.Begin(); it != termHeads.End(); it = it->next)
             it->logRenderer.Write(text.Begin(), text.Size());
 
-        if (!autoRefreshStarted)
+        if (autoRefreshStarted)
+            return;
+
+        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
         {
-            if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
-            {
-                Log("Starting GTerm stats bar auto-refresh", LogLevel::Info);
-                autoRefreshStarted = true;
-                Tasking::QueueClockEvent(&refreshStatsEvent);
-            }
-            else
-                UpdateRenderedStats(nullptr);
+            Log("Starting GTerm stats bar auto-refresh.", LogLevel::Info);
+            autoRefreshStarted = true;
+            Tasking::QueueClockEvent(&refreshStatsEvent);
         }
+        else
+            UpdateRenderedStats(nullptr);
     }
 
     void TerminalBeginPanic()

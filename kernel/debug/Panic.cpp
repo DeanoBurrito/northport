@@ -11,7 +11,7 @@ namespace Npk::Debug
 {
     constexpr const char* ExceptFormatStr = "Unhandled exception: %s, stack=0x%tx, flags=0x%x, s=0x%tx\r\n";
     constexpr const char* CoreFormatStr = "Core %tu: runLevel %u (%s), archCfg=%p, thread=%p, logs=%p\r\n";
-    constexpr const char* ProgramFormatStr = "Thread %zu.%zu: name=%.*s, driverShadow=%.*s\r\n";
+    constexpr const char* ProgramFormatStr = "Thread %zu.%zu: name=%.*s, procName=%.*s driverShadow=%.*s\r\n";
     constexpr const char* TraceFrameFormatStr = "%3zu: 0x%016lx %.*s!%.*s+0x%lx\r\n";
     constexpr const char* ResetStr = "\r\nSystem has halted indefinitely, manual reset required.\r\n";
     constexpr size_t MaxTraceDepth = 16;
