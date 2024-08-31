@@ -101,6 +101,8 @@ extern "C"
 
     uacpi_status uacpi_kernel_io_map(uacpi_io_addr base, uacpi_size len, uacpi_handle* out_handle)
     {
+        (void)len;
+
         *out_handle = reinterpret_cast<uacpi_handle>(base);
         return UACPI_STATUS_OK;
     }
