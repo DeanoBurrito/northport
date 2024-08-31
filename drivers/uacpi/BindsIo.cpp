@@ -73,13 +73,13 @@ extern "C"
 
     uacpi_status uacpi_kernel_raw_io_read(uacpi_io_addr address, uacpi_u8 byte_width, uacpi_u64* out_value)
     {
-        return npk_access_bus(BusPortIo, byte_width, address, out_value, false)
+        return npk_access_bus(BusPortIo, byte_width, address, reinterpret_cast<uintptr_t*>(out_value), false)
             ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
     uacpi_status uacpi_kernel_raw_io_write(uacpi_io_addr address, uacpi_u8 byte_width, uacpi_u64 in_value)
     {
-        return npk_access_bus(BusPortIo, byte_width, address, &in_value, true)
+        return npk_access_bus(BusPortIo, byte_width, address, reinterpret_cast<uintptr_t*>(&in_value), true)
             ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
@@ -87,7 +87,7 @@ extern "C"
     {
         const uintptr_t busAddr = NPK_MAKE_PCI_BUS_ADDR(addr->segment, addr->bus, addr->device, addr->function, offset);
 
-        return npk_access_bus(BusPci, byte_width, busAddr, value, false)
+        return npk_access_bus(BusPci, byte_width, busAddr, reinterpret_cast<uintptr_t*>(value), false)
             ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
@@ -95,7 +95,7 @@ extern "C"
     {
         const uintptr_t busAddr = NPK_MAKE_PCI_BUS_ADDR(addr->segment, addr->bus, addr->device, addr->function, offset);
 
-        return npk_access_bus(BusPci, byte_width, busAddr, &value, true)
+        return npk_access_bus(BusPci, byte_width, busAddr, reinterpret_cast<uintptr_t*>(&value), true)
             ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
@@ -113,14 +113,14 @@ extern "C"
     uacpi_status uacpi_kernel_io_read(uacpi_handle handle, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64* value)
     {
         auto base = reinterpret_cast<uacpi_io_addr>(handle);
-        return npk_access_bus(BusPortIo, byte_width, base + offset, value, false)
+        return npk_access_bus(BusPortIo, byte_width, base + offset, reinterpret_cast<uintptr_t*>(value), false)
             ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
     uacpi_status uacpi_kernel_io_write(uacpi_handle handle, uacpi_size offset, uacpi_u8 byte_width, uacpi_u64 value)
     {
         auto base = reinterpret_cast<uacpi_io_addr>(handle);
-        return npk_access_bus(BusPortIo, byte_width, base + offset, &value, false)
+        return npk_access_bus(BusPortIo, byte_width, base + offset, reinterpret_cast<uintptr_t*>(&value), false)
             ? UACPI_STATUS_OK : UACPI_STATUS_INTERNAL_ERROR;
     }
 
