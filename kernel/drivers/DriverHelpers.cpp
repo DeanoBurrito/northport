@@ -34,12 +34,6 @@ namespace Npk::Drivers
         return true; 
     }
 
-    bool VerifyKeyboardApi(const npk_device_api* api)
-    { 
-        (void)api;
-        return false; 
-    }
-
     bool VerifyFilesystemApi(const npk_device_api* api)
     {
         auto fsApi = reinterpret_cast<const npk_filesystem_device_api*>(api);
@@ -75,8 +69,6 @@ namespace Npk::Drivers
             return VerifyFramebufferApi(api);
         case npk_device_api_type::Gpu:
             return VerifyGpuApi(api);
-        case npk_device_api_type::Keyboard:
-            return VerifyKeyboardApi(api);
         case npk_device_api_type::Filesystem:
             return VerifyFilesystemApi(api);
         case npk_device_api_type::SysPower:

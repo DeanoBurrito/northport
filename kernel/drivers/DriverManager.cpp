@@ -12,7 +12,6 @@ namespace Npk::Drivers
         "io",
         "framebuffer",
         "gpu",
-        "keyboard",
         "filesystem",
         "syspower",
         "network",
@@ -21,9 +20,8 @@ namespace Npk::Drivers
     static_assert(npk_device_api_type::Io == 0);
     static_assert(npk_device_api_type::Framebuffer == 1);
     static_assert(npk_device_api_type::Gpu == 2);
-    static_assert(npk_device_api_type::Keyboard == 3);
-    static_assert(npk_device_api_type::Filesystem == 4);
-    static_assert(npk_device_api_type::SysPower == 5);
+    static_assert(npk_device_api_type::Filesystem == 3);
+    static_assert(npk_device_api_type::SysPower == 4);
 
     constexpr size_t DeviceNodeStackReserveSize = 4;
 
@@ -214,7 +212,22 @@ namespace Npk::Drivers
         Log("Loaded driver %s: processEvent=%p", LogLevel::Info, manifest->friendlyName.C_Str(),  manifest->ProcessEvent);
         stats.loadedCount++;
 
-        ASSERT_(manifest->ProcessEvent(EventType::Init, nullptr));
+        DriverInstance initInstance {};
+        initInstance.manifest = manifest;
+        initInstance.references++;
+        auto prevShadow = GetShadow();
+        SetShadow(&initInstance);
+
+        if (!manifest->ProcessEvent(EventType::Init, nullptr))
+        {
+            SetShadow(prevShadow);
+            Log("Driver %s refused Init event, aborting load.", LogLevel::Error,
+                manifest->friendlyName.C_Str());
+            stats.loadedCount--;
+
+            return false;
+        }
+        SetShadow(prevShadow);
         return true;
     }
 

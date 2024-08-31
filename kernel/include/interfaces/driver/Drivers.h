@@ -41,9 +41,8 @@ typedef enum
     Io = 0,
     Framebuffer = 1,
     Gpu = 2,
-    Keyboard = 3,
-    Filesystem = 4,
-    SysPower = 5,
+    Filesystem = 3,
+    SysPower = 4,
 } npk_device_api_type;
 
 struct npk_device_api_
@@ -110,11 +109,6 @@ typedef struct
     REQUIRED bool (*set_scanout_framebuffer)(npk_device_api* api, npk_handle scanout_index, npk_framebuffer_device_api* fb);
     REQUIRED size_t (*get_scanout_info)(npk_device_api* api, REQUIRED npk_scanout_info* buff, size_t buff_count, size_t first);
 } npk_gpu_device_api;
-
-typedef struct
-{
-    npk_device_api header;
-} npk_keyboard_device_api;
 
 typedef struct
 {

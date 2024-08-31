@@ -38,7 +38,7 @@ extern "C" {
 
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
-#define NP_MODULE_API_VER_MINOR 5
+#define NP_MODULE_API_VER_MINOR 6
 #define NP_MODULE_API_VER_REV 0
 
 #define NP_MODULE_MANIFEST_GUID { 0x23, 0x1e, 0x1f, 0xeb, 0xcf, 0xf6, 0x4f, 0xfc, 0x97, 0x76, 0x26, 0x07, 0x42, 0x77, 0x18, 0x96 }
@@ -108,10 +108,12 @@ typedef enum
     PciHost = 4,
     DtbCompat = 5,
     AcpiRuntime = 6,
+    AcpiPnpId = 7,
 } npk_load_type;
 
 #define NPK_PCI_ID_LOAD_STR(vendor, device) { (vendor) & 0xFF, ((vendor) >> 8) & 0xFF, (device) & 0xFF, ((device) >> 8) & 0xFF }
 #define NPK_PCI_CLASS_LOAD_STR(cl, subcl, iface) { cl, subcl, iface }
+#define NPK_PNP_ID_STR(data) { .type = AcpiPnpId, .length = sizeof(data) - 1, .str = (const uint8_t*)data }
 
 typedef enum
 {
