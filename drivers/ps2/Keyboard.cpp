@@ -1,5 +1,6 @@
 #include <Keyboard.h>
 #include <Controller.h>
+#include <ScancodeTables.h>
 #include <Log.h>
 #include <ApiStrings.h>
 #include <NanoPrintf.h>
@@ -12,16 +13,64 @@ namespace Ps2
     uint8_t workingBuff[WorkingBuffSize];
     size_t workingBuffHead;
 
+    bool ctrlDown;
+    bool altDown;
+    bool deleteDown;
+    bool nextIsMagicKey;
+
     npk_interrupt_route kbIntrRoute;
     npk_dpc kbDpc;
     npk_io_device_api kbApi;
 
     static bool TryParseScancode()
     {
+        if (workingBuffHead == 0)
+            return false;
+
+        //TODO: pause key edge case (0xe1)
+        const bool extended = workingBuff[0] == 0xE0;
+        size_t buffHead = extended ? 1 : 0;
+        if (buffHead == workingBuffHead)
+            return false;
+
+        const bool released = workingBuff[buffHead] == 0xF0;
+        buffHead += released ? 1 : 0;
+        if (buffHead == workingBuffHead)
+            return false;
+
+        sl::Span<uint8_t> buff(workingBuff + buffHead, workingBuffHead - buffHead);
+        auto parsed = extended ? TryParseSet2Extended(buff) : TryParseSet2Base(buff);
+        if (!parsed.HasValue())
+            return false;
+
+        //magic key handling
+        if (nextIsMagicKey && !released)
+        {
+            npk_send_magic_key(*parsed);
+            nextIsMagicKey = false;
+        }
+        switch (*parsed)
+        {
+        case npk_key_id_lctrl:
+            ctrlDown = !released;
+            break;
+        case npk_key_id_lalt:
+            altDown = !released;
+            break;
+        case npk_key_id_delete:
+            deleteDown = !released;
+            break;
+        default: 
+            break;
+        }
+        if (ctrlDown && altDown && deleteDown)
+            nextIsMagicKey = true;
+
         //TODO: if there are any queued iops for this device, create an npk_input_event and add it
         //to their buffer.
+        Log("Key parsed, dont forget to send this to an iop!", LogLevel::Debug);
 
-        return false;
+        return true;
     }
 
     static void KeyboardDpc(void* unused)
@@ -52,10 +101,10 @@ namespace Ps2
     { return "ps/2 keyboard"_apistr; }
 
     static bool BeginKeyboardOp(npk_device_api* api, npk_iop_context* context, npk_iop_frame* frame)
-    {}
+    { return false; }
 
     static bool EndKeyboardOp(npk_device_api* api, npk_iop_context* context, npk_iop_frame* frame)
-    {}
+    { return false; }
 
     static bool ResetKeyboard()
     { return true; }
@@ -67,6 +116,8 @@ namespace Ps2
 
         //TODO: set scancode set 2, do self test
 
+        ctrlDown = altDown = deleteDown = false;
+        nextIsMagicKey = false;
         workingBuffHead = 0;
         kbIntrRoute.callback = nullptr;
         kbIntrRoute.dpc = &kbDpc;
