@@ -181,7 +181,7 @@ namespace Npk
         if ((loaderDataRefs = StartupAps()) == 1)
             Log("Boot protocol did not start APs, assuming uni-processor system for now.", LogLevel::Info);
         else
-            Log("Boot protocol started %zu other cores.", LogLevel::Info, loaderDataRefs.Load());
+            Log("Boot protocol started %zu other cores.", LogLevel::Info, loaderDataRefs.Load() - 1);
 
         InitGlobalTimers();
         Tasking::StartSystemClock();

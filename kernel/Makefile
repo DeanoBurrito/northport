@@ -9,7 +9,7 @@ CXX_SRCS = arch/Helpers.cpp \
 	drivers/DriverManager.cpp drivers/DriverHelpers.cpp drivers/ElfLoader.cpp \
 	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TreeCache.cpp \
 	filesystem/TempFs.cpp filesystem/InitDisk.cpp \
-	interfaces/driver/Devices.cpp interfaces/driver/Drivers.cpp \
+	interfaces/driver/Config.cpp interfaces/driver/Devices.cpp interfaces/driver/Drivers.cpp \
 	interfaces/driver/Filesystem.cpp interfaces/driver/General.cpp interfaces/driver/Io.cpp \
 	interfaces/driver/Memory.cpp interfaces/driver/Scheduling.cpp interfaces/driver/Interrupts.cpp \
 	interfaces/driver/Time.cpp interfaces/driver/Events.cpp \
@@ -45,7 +45,7 @@ $(KERNEL_FULL_FILEPATH): $(OBJS) $(LD_SCRIPT)
 .PHONY: clean
 clean:
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Cleaning build files ...\r\n"
-	$(LOUD)-rm -r $(BUILD_DIR)
+	$(LOUD)-rm -r $(BUILD_DIR) $(LOUD_REDIRECT) ||:
 	@printf "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 .PHONY: debug/BakedConstants.cpp

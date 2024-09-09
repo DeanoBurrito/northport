@@ -67,12 +67,10 @@ namespace Npk::Debug
 
     static void BeginPanic()
     {
+        DisableInterrupts();
         const size_t continuePanic = panicFlag.FetchAdd(1);
         if (continuePanic != 0)
-        {
-            DisableInterrupts();
             Halt();
-        }
 
         Interrupts::BroadcastPanicIpi();
         panicOutputs = AcquirePanicOutputs(AcquireOutputLockAttempts);
@@ -91,7 +89,7 @@ namespace Npk::Debug
 
         for (size_t i = 0; i < MaxTraceDepth; i++)
         {
-            const uintptr_t addr = GetReturnAddr(i, start);
+            const uintptr_t addr = GetReturnAddr(i + 1, start);
             if (addr == 0)
                 break;
 
