@@ -335,7 +335,7 @@ namespace Npk::Drivers
         return true;
     }
 
-    bool DriverManager::AddManifest(sl::Handle<DriverManifest> manifest)
+    bool DriverManager::AddManifest(sl::Handle<DriverManifest> manifest, bool loadNow)
     {
         manifestsLock.WriterLock();
         //check that the manifest doesnt have a conflicting friendly name or load type/string.
@@ -364,10 +364,11 @@ namespace Npk::Drivers
         manifests.PushBack(manifest);
         manifestsLock.WriterUnlock();
 
-        Log("Driver manifest added: %s, module=%s", LogLevel::Info, manifest->friendlyName.C_Str()
-            , manifest->sourcePath.C_Str());
+        Log("Driver manifest added: %s, module=%s, loadNow=%s", LogLevel::Info, manifest->friendlyName.C_Str()
+            , manifest->sourcePath.C_Str(), loadNow ? "yes" : "no");
 
-        //TODO: driver flags (always load)
+        if (loadNow)
+            EnsureRunning(manifest);
 
         //check existing devices for any that might be handled by this driver.
         while (true)

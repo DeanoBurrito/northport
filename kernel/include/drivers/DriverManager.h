@@ -124,7 +124,7 @@ namespace Npk::Drivers
         sl::Handle<DriverInstance> GetShadow();
         bool SetTransportApi(sl::Handle<DriverInstance> driver, size_t api);
 
-        bool AddManifest(sl::Handle<DriverManifest> manifest);
+        bool AddManifest(sl::Handle<DriverManifest> manifest, bool loadNow);
         bool RemoveManifest(sl::StringSpan friendlyName);
         size_t AddDescriptor(npk_device_desc* descriptor);
         sl::Opt<void*> RemoveDescriptor(size_t descriptorId);

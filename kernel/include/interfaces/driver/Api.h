@@ -141,6 +141,9 @@ typedef struct
     REQUIRED OWNING const uint8_t* str;
 } npk_load_name;
 
+#define NP_MANIFEST_FLAG_NONE 0
+#define NP_MANIFEST_FLAG_ALWAYS_LOAD (1 << 0)
+
 typedef struct 
 {
     uint8_t guid[16];
@@ -178,7 +181,6 @@ typedef enum
 
 /* Global functions available to any drivers within a kernel module */
 void npk_log(npk_string str, npk_log_level level);
-void npk_panic(REQUIRED const char* why);
 bool npk_add_bus_access(npk_bus_type type, bool (*func)(size_t width, uintptr_t addr, uintptr_t* data, bool write));
 bool npk_access_bus(npk_bus_type type, size_t width, uintptr_t addr, REQUIRED uintptr_t* data, bool write);
 

@@ -83,7 +83,7 @@ namespace Npk::Interrupts
         }
         const bool emitError = (mailbox.fullErrorCount % EmitErrorOnCount) == 0;
         mailbox.fullErrorCount++;
-        mailbox.lock.Lock();
+        mailbox.lock.Unlock();
 
         if (emitError)
             Log("Mailbox queue for core %zu is full, mail dropped.", LogLevel::Error, dest);
