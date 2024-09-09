@@ -111,7 +111,6 @@ namespace Npk
 
     void SaveExtendedRegs(ExtendedRegs* regs)
     {
-        sl::InterruptGuard intGuard;
         WriteCr0(ReadCr0() & ~(1ul << 3));
 
         const ArchConfig* config = static_cast<ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig]);
@@ -124,7 +123,6 @@ namespace Npk
 
     void LoadExtendedRegs(ExtendedRegs* regs)
     {
-        sl::InterruptGuard intGuard;
         WriteCr0(ReadCr0() & ~(1ul << 3));
 
         const ArchConfig* config = static_cast<ArchConfig*>(CoreLocal()[LocalPtr::ArchConfig]);

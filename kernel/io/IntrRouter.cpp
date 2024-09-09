@@ -8,7 +8,7 @@ namespace Npk::Io
         CoreIntrRouting* next;
 
         size_t coreId;
-        sl::InterruptLock lock;
+        sl::RunLevelLock<RunLevel::Interrupt> lock;
         IntrTree tree;
     };
     

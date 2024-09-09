@@ -17,6 +17,7 @@
     - Added kernel waitable events.
     - Added MSIs.
     - Added access to kernel config store.
+    - Added input event header and definitions.
     - Removed concept of keyboard driver, this is now just a generic io device.
     - Removed all usage of ELF section headers: kernel now detects driver manifests via a custom phdr.
         - Unfortunately this does mean drivers now require a custom linker script to set this up.
@@ -47,6 +48,7 @@
 - Added command line option for inhibiting smp startup.
 - Thread switches are delayed until a core's runlevel drops back to normal.
 - Removed PolledSleep() from architecture timers interface. It's not used and we can achieve the same functionality with PollTimer().
+- Removed `InterruptLock` struct and `InterruptGuard`, `RunLevelLock` is preferred instead.
 
 - Panic stack traces now include the program name prepended to the function name, useful for driver/kernel stack traces.
 - Added hook for arch-layer to print info during panic sequence (`ArchPrintPanicInfo()`).
@@ -55,7 +57,8 @@
 - Added support for building C sources for drivers.
 - Added elf32 definitions to syslib, and generic macros that resolve to elf32/elf64 versions depending on target architecture.
 - Error log levels now capture a snapshot of the callstack, for logging or retrieval later on.
-    - These traces are stored in a small circular buffer.
+    - These traces are stored in a small circular buffer so as not to waste too much memory.
+- Updated nanoprintf to v0.5.3, which includes some freestanding fixes.
 
 - Fixed incorrect handling of logs wrapping around circular buffer, log text could be truncated.
 - Fixed crash when enabling terminal background with the stats renderer.

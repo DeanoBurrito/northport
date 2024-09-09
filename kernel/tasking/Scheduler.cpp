@@ -184,10 +184,11 @@ namespace Npk::Tasking
     void Scheduler::DoPendingSwitch()
     {
         ASSERT_(CoreLocal().runLevel == RunLevel::Normal);
+        ASSERT_(!InterruptsEnabled());
+
         auto& engine = LocalEngine();
         ASSERT_(engine.pendingThread != nullptr);
 
-        sl::InterruptGuard intGuard;
         //put current thread back in queue if required
         Thread* current = static_cast<Thread*>(CoreLocal()[LocalPtr::Thread]);
         TrapFrame** prevFrame = current != nullptr ? &current->frame : nullptr;

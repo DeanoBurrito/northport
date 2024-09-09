@@ -10,6 +10,7 @@
 #include <debug/TerminalDriver.h>
 #include <debug/Log.h>
 #include <debug/Symbols.h>
+#include <debug/MagicKeys.h>
 #include <drivers/DriverManager.h>
 #include <filesystem/Filesystem.h>
 #include <interrupts/Ipi.h>
@@ -141,6 +142,12 @@ namespace Npk
         ASSERT_UNREACHABLE();
     }
 
+    static void HandlePanicMagicKey(npk_key_id key)
+    {
+        (void)key;
+        Log("Manually triggered via magic key combo.", LogLevel::Fatal);
+    }
+
     extern "C" void KernelEntry()
     {
         loaderDataRefs = 1;
@@ -170,6 +177,7 @@ namespace Npk
         ArchLateKernelEntry();
 
         //set up other subsystems, now that the kernel heap is available
+        AddMagicKey(npk_key_id_p, HandlePanicMagicKey);
         Config::LateInitConfigStore();
         LoadKernelSymbols();
         InitEarlyTerminals();

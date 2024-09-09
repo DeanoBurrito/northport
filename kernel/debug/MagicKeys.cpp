@@ -58,7 +58,9 @@ namespace Npk::Debug
         {
             if (it->key != key)
                 continue;
+
             handlers.Remove(it);
+            delete it;
             return true;
         }
 
