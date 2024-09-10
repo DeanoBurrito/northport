@@ -39,9 +39,12 @@ namespace Npk::Memory::Virtual
         //for details.
 
         //map the program segments from the kernel binary with appropriate permissions.
-        MapSection(kernelRanges[0], (uintptr_t)KERNEL_TEXT_BEGIN, (size_t)KERNEL_TEXT_SIZE, VmFlag::Execute, HatFlags::Execute | HatFlags::Global);
-        MapSection(kernelRanges[1], (uintptr_t)KERNEL_RODATA_BEGIN, (size_t)KERNEL_RODATA_SIZE, {}, HatFlags::Global);
-        MapSection(kernelRanges[2], (uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_SIZE, VmFlag::Write, HatFlags::Write | HatFlags::Global);
+        MapSection(kernelRanges[0], (uintptr_t)KERNEL_TEXT_BEGIN, (size_t)KERNEL_TEXT_END - (size_t)KERNEL_TEXT_BEGIN, 
+            VmFlag::Execute, HatFlags::Execute | HatFlags::Global);
+        MapSection(kernelRanges[1], (uintptr_t)KERNEL_RODATA_BEGIN, (size_t)KERNEL_RODATA_END - 
+            (size_t)KERNEL_RODATA_BEGIN, {}, HatFlags::Global);
+        MapSection(kernelRanges[2], (uintptr_t)KERNEL_DATA_BEGIN, (size_t)KERNEL_DATA_END - (size_t)KERNEL_DATA_BEGIN,
+            VmFlag::Write, HatFlags::Write | HatFlags::Global);
 
         Log("VmDriver init: kernel", LogLevel::Info);
     }

@@ -21,7 +21,7 @@ SECTIONS
         *(.text)
         *(.text.*)
     } :text
-    KERNEL_TEXT_SIZE = . - KERNEL_TEXT_BEGIN;
+    KERNEL_TEXT_END = .;
 
     . += CONSTANT(MAXPAGESIZE);
 
@@ -36,7 +36,7 @@ SECTIONS
     {
         KEEP(*(.limine_reqs))
     } :rodata
-    KERNEL_RODATA_SIZE = . - KERNEL_RODATA_BEGIN;
+    KERNEL_RODATA_END = .;
 
     . += CONSTANT(MAXPAGESIZE);
 
@@ -70,7 +70,7 @@ SECTIONS
         *(.interp)
         *(.comment)
     }
-    KERNEL_DATA_SIZE = . - KERNEL_DATA_BEGIN;
+    KERNEL_DATA_END = .;
 
-    KERNEL_BLOB_SIZE = . - KERNEL_BLOB_BEGIN;
+    KERNEL_BLOB_END = .;
 }
