@@ -9,7 +9,7 @@ extern "C"
     using namespace Npk::Drivers;
 
     DRIVER_API_FUNC
-    npk_handle npk_add_device_desc(REQUIRED OWNING npk_device_desc* descriptor, bool as_child)
+    npk_handle npk_add_device_desc(REQUIRED OWNING npk_device_desc* descriptor)
     {
         VALIDATE_(descriptor != nullptr, NPK_INVALID_HANDLE);
 

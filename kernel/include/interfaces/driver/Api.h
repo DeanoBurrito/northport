@@ -38,7 +38,7 @@ extern "C" {
 
 /* API version defined by this header */
 #define NP_MODULE_API_VER_MAJOR 0
-#define NP_MODULE_API_VER_MINOR 6
+#define NP_MODULE_API_VER_MINOR 7
 #define NP_MODULE_API_VER_REV 0
 
 #define NP_MODULE_MANIFEST_GUID { 0x23, 0x1e, 0x1f, 0xeb, 0xcf, 0xf6, 0x4f, 0xfc, 0x97, 0x76, 0x26, 0x07, 0x42, 0x77, 0x18, 0x96 }

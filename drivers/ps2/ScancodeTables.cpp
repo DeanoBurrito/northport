@@ -114,6 +114,8 @@ namespace Ps2
 
         switch (buffer[0])
         {
+        default: return {};
+
         case 0x11: return npk_key_id_ralt;
         case 0x14: return npk_key_id_rctrl;
         case 0x1F: return npk_key_id_lgui;

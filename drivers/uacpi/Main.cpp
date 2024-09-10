@@ -124,7 +124,7 @@ uacpi_ns_iteration_decision NamespaceEnumerator(void* user, uacpi_namespace_node
     desc->friendly_name.data = reinterpret_cast<const char*>(names[0].str);
     SetPnpDescriptorName(node, desc);
 
-    if (!npk_add_device_desc(desc, true))
+    if (!npk_add_device_desc(desc))
     {
         Log("Failed to add pnp device descriptor: %.*s", LogLevel::Error, (int)names[0].length, names[0].str);
         delete desc;

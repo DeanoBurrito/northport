@@ -2,6 +2,7 @@
 #include <interfaces/driver/Memory.h>
 #include <Log.h>
 #include <NativePtr.h>
+#include <Maths.h>
 
 namespace dl
 {
@@ -23,9 +24,9 @@ namespace dl
 
             const npk_vm_flags vmFlags = (npk_vm_flags)(VmWrite | VmMmio);
             msixTable = npk_vm_alloc(vectors * 16, reinterpret_cast<void*>(tablePhysAddr), vmFlags, nullptr);
-            msixPba = npk_vm_alloc(vectors / 8, reinterpret_cast<void*>(pbaPhysAddr), vmFlags, nullptr);
+            msixPba = npk_vm_alloc(sl::AlignUp(vectors, 8) / 8, reinterpret_cast<void*>(pbaPhysAddr), vmFlags, nullptr);
             VALIDATE(msixTable != nullptr,, "Failed to map MSI-X vector table");
-            VALIDATE(msixPba!= nullptr,, "Failed to map MSI-X PBA table");
+            VALIDATE(msixPba != nullptr,, "Failed to map MSI-X PBA table");
         }
         else
         {

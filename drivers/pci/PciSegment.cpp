@@ -109,7 +109,7 @@ namespace Pci
             descriptor->friendly_name.data = name.DetachBuffer();
         }
 
-        VALIDATE_(npk_add_device_desc(descriptor, true) != NPK_INVALID_HANDLE, );
+        VALIDATE_(npk_add_device_desc(descriptor) != NPK_INVALID_HANDLE, );
         (void)descriptor;
     }
 
