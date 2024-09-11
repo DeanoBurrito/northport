@@ -4,6 +4,7 @@
 #include <interfaces/driver/Api.h>
 #include <interfaces/driver/Memory.h>
 #include <interfaces/driver/Events.h>
+#include <interfaces/driver/Interrupts.h>
 #include <containers/Vector.h>
 #include <PciAddress.h>
 #include <VmObject.h>
@@ -56,6 +57,8 @@ namespace Virtio
         dl::VmObject notifyAccess;
         dl::VmObject deviceCfgAccess;
         uint32_t notifyStride;
+        npk_interrupt_route intrRoute;
+        npk_dpc intrDpc;
 
         bool isPciTransport;
         bool isLegacy;
@@ -74,6 +77,7 @@ namespace Virtio
     public:
         bool Init(npk_event_add_device* event);
         bool Shutdown();
+        void HandleInterrupt();
 
         bool Reset();
         bool ProgressInit(InitPhase phase);

@@ -118,6 +118,9 @@ namespace Virtio
             MMIO_WRITE(QueueNotify, qIndex);
     }
 
+    static void HandleTransportIntr(void* arg)
+    { static_cast<Transport*>(arg)->HandleInterrupt(); }
+
     bool Transport::Init(npk_event_add_device* event)
     {
         ASSERT_(event->descriptor_id != NPK_INVALID_HANDLE); //TODO: support for virtio over mmio
@@ -135,12 +138,22 @@ namespace Virtio
         Log("Device features: 0x%" PRIx32", 0x%" PRIx32", 0x%" PRIx32", 0x%" PRIx32,
             LogLevel::Verbose, features[0], features[1], features[2], features[3]);
 
+        intrRoute.dpc = &intrDpc;
+        intrDpc.function = HandleTransportIntr;
+        intrDpc.arg = this;
+        VALIDATE_(npk_add_interrupt_route(&intrRoute, NPK_NO_AFFINITY), false);
+
         return true;
     }
 
     bool Transport::Shutdown()
     {
         ASSERT_UNREACHABLE();
+    }
+
+    void Transport::HandleInterrupt()
+    {
+        Log("VIRTIO interrupt", LogLevel::Debug);
     }
 
     bool Transport::Reset()
@@ -260,12 +273,29 @@ namespace Virtio
 
             queueSize = sl::Min(cfg->queueSize.Load(), maxEntries);
             cfg->queueSize = queueSize;
+
+            auto maybeMsi = dl::FindMsi(pciAddr);
+            VALIDATE_(maybeMsi.HasValue(), false);
+            npk_msi_config msiConfig {};
+            VALIDATE_(npk_construct_msi(&intrRoute, &msiConfig), false);
+            Log("Using MSI%s for interrupts: addr=0x%tx, data=0x%tx", LogLevel::Verbose,
+                maybeMsi->IsMsix() ? "-X" : "", msiConfig.address, msiConfig.data);
+
+            for (size_t i = 0; i < maybeMsi->VectorCount(); i++)
+                maybeMsi->SetVector(i, msiConfig.address, msiConfig.data, false);
+            maybeMsi->Enable();
+
+            cfg->queueMsixVector = 0;
+            VALIDATE_(cfg->queueMsixVector.Load() != 0xFFFF, false);
         }
         else
         {
             MMIO_WRITE(QueueSelect, index);
             queueSize = sl::Min(static_cast<uint16_t>(MMIO_READ(QueueSizeMax)), maxEntries);
             MMIO_WRITE(QueueSize, queueSize);
+
+            //TODO: MMIO transport interrupt routing
+            Log("VIRTIO is broken on mmio for now, no interrupts fired", LogLevel::Warning);
         }
         const size_t pageSize = npk_pm_alloc_size();
         const size_t usedRingAlign = isLegacy ? pageSize : 4; //legacy spec recommend page alignment for used ring
@@ -282,8 +312,6 @@ namespace Virtio
             accum += usedSize;
             return accum;
         }();
-
-        //TODO: interrupt routing for this device + queue (PCI: msix)
 
         const uintptr_t queueBuff = npk_pm_alloc_many(sl::AlignUp(totalSize, pageSize) / pageSize, nullptr);
         VALIDATE_(queueBuff != 0, false);
@@ -398,6 +426,8 @@ namespace Virtio
         VALIDATE_(cmd.queueIndex < virtqPtrs.Size(), false);
         VALIDATE_(cmd.descId < virtqPtrs[cmd.queueIndex].size, false);
 
+        //npk_reset_event(&cmd.completed);
+
         sl::ScopedLock scopeLock(virtqPtrs[cmd.queueIndex].ringLock);
         volatile VirtqAvailable* avail = virtqPtrs[cmd.queueIndex].avail;
         cmd.usedStartId = virtqPtrs[cmd.queueIndex].used->index;
@@ -433,7 +463,9 @@ namespace Virtio
                 break;
             }
 
-            continue; //TODO: this is broken (below) until we signal events from dpcs/intr handlers
+            if (timeoutNs == -1)
+                continue;
+
             npk_wait_entry waitEntry {};
             npk_duration timeout {};
             timeout.ticks = timeoutNs;

@@ -300,7 +300,7 @@ namespace Virtio
 
         fb->npkApi.header.type = npk_device_api_type::Framebuffer;
         fb->npkApi.header.driver_data = fb;
-        //fb->npkApi.header.get_summary = ApiGetFbSummary;
+        fb->npkApi.header.get_summary = ApiGetFbSummary;
         fb->npkApi.header.get_summary = nullptr;
         fb->npkApi.get_mode = ApiGetMode;
         fb->npkApi.set_mode = nullptr; //TODO: modesetting for virtio framebuffers
@@ -320,7 +320,7 @@ namespace Virtio
         framebuffers.EmplaceAt(fb->rid, fb);
         scanoutFramebufferLock.WriterUnlock();
 
-        Log("Framebuffer %zu created: w=%lu, h=%lu, format=%s, handle=%zu", LogLevel::Info,
+        Log("Framebuffer %u created: w=%lu, h=%lu, format=%s, handle=%zu", LogLevel::Info,
             fb->rid, fb->size.x, fb->size.y, GpuFormatToStr(fb->format), fb->npkApi.header.id);
         return fb->npkApi.header.id;
     }
