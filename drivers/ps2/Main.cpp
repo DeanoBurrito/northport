@@ -7,9 +7,9 @@ bool ProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
     {
-    case npk_event_type::Init:
+    case npk_event_type_init:
         return Ps2::InitController();
-    case npk_event_type::AddDevice:
+    case npk_event_type_add_device:
         return Ps2::InitKeyboard(static_cast<npk_event_add_device*>(arg));
     default:
         Log("Unhandled event type: %u", LogLevel::Error, type);

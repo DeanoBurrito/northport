@@ -27,8 +27,7 @@
  */
 
 #include <stdint.h>
-#include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,11 +35,11 @@ extern "C" {
 
 typedef enum
 {
-    Normal = 0,
-    Apc = 1,
-    Dpc = 2,
-    Clock = 3,
-    Interrupt = 4,
+    npk_runlevel_normal = 0,
+    npk_runlevel_apc = 1,
+    npk_runlevel_dpc = 2,
+    npk_runlevel_clock = 3,
+    npk_runlevel_interrupt = 4,
 } npk_runlevel;
 
 typedef struct

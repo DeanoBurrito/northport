@@ -30,13 +30,13 @@ namespace Pci
             return false;
         if (iop_frame->length != 1 && iop_frame->length != 2 && iop_frame->length != 4)
             return false;
-        if (context->op_type != Read && context->op_type != Write)
+        if (context->op_type != npk_iop_type_read && context->op_type != npk_iop_type_write)
             return false;
 
         void* pciAddr = (void*)((uintptr_t)iop_frame->descriptor_data + iop_frame->addr);
         uintptr_t data = 0;
         sl::memcopy(iop_frame->buffer, &data, iop_frame->length);
-        RawRw(pciAddr, data, iop_frame->length, context->op_type == npk_iop_type::Write);
+        RawRw(pciAddr, data, iop_frame->length, context->op_type == npk_iop_type_write);
         sl::memcopy(&data, iop_frame->buffer, iop_frame->length);
 
         return true;
@@ -60,14 +60,14 @@ namespace Pci
         const uint32_t type = ReadReg(addr, 2);
 
         npk_init_tag_pci_function* initTag = new npk_init_tag_pci_function();
-        initTag->header.type = npk_init_tag_type::PciFunction;
+        initTag->header.type = npk_init_tag_type_pci_function;
         initTag->segment = id;
         initTag->bus = bus;
         initTag->device = dev;
         initTag->function = func;
 
         npk_load_name* names = new npk_load_name[2];
-        names[0].type = npk_load_type::PciClass;
+        names[0].type = npk_load_type_pci_class;
         names[0].length = 3;
         uint8_t* buffClass = new uint8_t[3];
         buffClass[0] = type >> 24;
@@ -75,7 +75,7 @@ namespace Pci
         buffClass[2] = type >> 8;
         names[0].str = buffClass;
 
-        names[1].type = npk_load_type::PciId;
+        names[1].type = npk_load_type_pci_id;
         names[1].length = 4;
         uint8_t* buffId = new uint8_t[4];
         buffId[0] = vendor;
@@ -144,13 +144,13 @@ namespace Pci
 
     bool PciSegment::Init(const npk_init_tag_pci_host* host)
     {
-        VALIDATE(host->type == npk_pci_host_type::Ecam, false, "PCI host type not supported");
+        VALIDATE(host->type == npk_pci_host_type_ecam, false, "PCI host type not supported");
         id = host->id;
         base = host->base_addr;
         //TODO: add support for x86 port io
 
         //create IO device API for the kernel, this will be the 'transport api' for PCI devices we create.
-        ioApi.header.type = npk_device_api_type::Io;
+        ioApi.header.type = npk_device_api_type_io;
         ioApi.header.driver_data = this;
         ioApi.begin_op = BeginOp;
         ioApi.end_op = EndOp;

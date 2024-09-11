@@ -3,6 +3,7 @@
 #include <arch/Init.h>
 #include <arch/Timers.h>
 #include <boot/CommonInit.h>
+#include <boot/LinkerSyms.h>
 #include <config/ConfigStore.h>
 #include <config/AcpiTables.h>
 #include <config/DeviceTree.h>
@@ -34,12 +35,15 @@ namespace Npk
 
     void ReclaimMemoryThread(void* arg)
     {
+        (void)arg;
+
         PMM::Global().ReclaimBootMemory();
         Tasking::Thread::Current().Exit(0);
     }
 
     void InitThread(void* arg)
     {
+        (void)arg;
         ArchThreadedInit();
 
         Drivers::ScanForModules("/initdisk/drivers");
@@ -57,11 +61,11 @@ namespace Npk
 
                 auto loadName = new npk_load_name();
                 loadName->length = 0;
-                loadName->type = npk_load_type::PciHost;
+                loadName->type = npk_load_type_pci_host;
 
                 auto initTag = new npk_init_tag_pci_host();
-                initTag->header.type = npk_init_tag_type::PciHostAdaptor;
-                initTag->type = npk_pci_host_type::Ecam;
+                initTag->header.type = npk_init_tag_type_pci_host;
+                initTag->type = npk_pci_host_type_ecam;
                 initTag->base_addr = seg->base;
                 initTag->id = seg->id;
                 initTag->first_bus = seg->firstBus;
@@ -89,13 +93,13 @@ namespace Npk
         if (auto rsdp = Config::GetRsdp(); rsdp.HasValue())
         {
             npk_load_name* loadName = new npk_load_name();
-            loadName->type = npk_load_type::AcpiRuntime;
+            loadName->type = npk_load_type_acpi_runtime;
             loadName->length = 0;
             loadName->str = nullptr;
 
             auto initTag = new npk_init_tag_rsdp();
             initTag->rsdp = *rsdp;
-            initTag->header.type = npk_init_tag_type::Rsdp;
+            initTag->header.type = npk_init_tag_type_rsdp;
 
             auto descriptor = new npk_device_desc();
             descriptor->load_name_count = 1;
@@ -156,6 +160,11 @@ namespace Npk
         using namespace Debug;
         Log("\r\nNorthport kernel %zu.%zu.%zu for %s started, based on commit %s, compiled by %s.", LogLevel::Info, 
             versionMajor, versionMinor, versionRev, targetArchStr, gitCommitShortHash, toolchainUsed);
+
+        const size_t globalCtorCount = ((uintptr_t)INIT_ARRAY_END - (uintptr_t)INIT_ARRAY_BEGIN) / sizeof(void*);
+        for (size_t i = 0; i < globalCtorCount; i++)
+            INIT_ARRAY_BEGIN[i]();
+        Log("Ran %zu global constructors.", LogLevel::Verbose, globalCtorCount);
 
         //get early access to config data, then validate what the bootloader gave us is what we expect.
         Config::InitConfigStore();

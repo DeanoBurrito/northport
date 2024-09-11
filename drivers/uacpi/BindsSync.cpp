@@ -25,7 +25,7 @@ extern "C"
         auto event = static_cast<npk_event*>(handle);
         
         npk_wait_entry waitEntry {};
-        npk_duration waitDuration { .scale = npk_time_scale::Millis, .ticks = timeout };
+        npk_duration waitDuration { .scale = npk_time_scale_millis, .ticks = timeout };
         if (timeout == 0xFFFF)
             waitDuration.ticks = -1ul;
 
@@ -57,7 +57,7 @@ extern "C"
         auto event = static_cast<npk_event*>(handle);
         
         npk_wait_entry waitEntry {};
-        npk_duration waitDuration { .scale = npk_time_scale::Millis, .ticks = timeout };
+        npk_duration waitDuration { .scale = npk_time_scale_millis, .ticks = timeout };
         if (timeout == 0xFFFF)
             waitDuration.ticks = -1ul;
 
@@ -91,7 +91,7 @@ extern "C"
 
         uacpi_cpu_flags flags = -1ul;
         npk_runlevel prevRl;
-        if (npk_ensure_runlevel(npk_runlevel::Interrupt, &prevRl))
+        if (npk_ensure_runlevel(npk_runlevel_interrupt, &prevRl))
             flags = prevRl;
         lock->Lock();
         return flags;

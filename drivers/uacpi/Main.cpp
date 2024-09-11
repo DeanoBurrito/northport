@@ -90,7 +90,7 @@ uacpi_ns_iteration_decision NamespaceEnumerator(void* user, uacpi_namespace_node
     ASSERT_(names != nullptr);
 
     //_HID
-    names[0].type = npk_load_type::AcpiPnpId;
+    names[0].type = npk_load_type_acpi_pnp;
     names[0].length = info->hid.size - 1;
     uint8_t* strBuff = new uint8_t[info->hid.size];
     ASSERT_(strBuff != nullptr);
@@ -102,7 +102,7 @@ uacpi_ns_iteration_decision NamespaceEnumerator(void* user, uacpi_namespace_node
     {
         for (size_t i = 0; i < info->cid.num_ids; i++)
         {
-            names[i + 1].type = npk_load_type::AcpiPnpId;
+            names[i + 1].type = npk_load_type_acpi_pnp;
             names[i + 1].length = info->cid.ids[i].size - 1;
             strBuff = new uint8_t[info->hid.size];
             ASSERT_(strBuff != nullptr);
@@ -142,9 +142,9 @@ bool ProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
     {
-    case npk_event_type::Init:
+    case npk_event_type_init:
         return true;
-    case npk_event_type::AddDevice:
+    case npk_event_type_add_device:
         {
             uacpi_init_params params {};
             params.log_level = UACPI_LOG_TRACE;
@@ -154,7 +154,7 @@ bool ProcessEvent(npk_event_type type, void* arg)
             auto scan = event->tags;
             while (scan != nullptr)
             {
-                if (scan->type != npk_init_tag_type::Rsdp)
+                if (scan->type != npk_init_tag_type_rsdp)
                 {
                     scan = scan->next;
                     continue;
@@ -227,7 +227,7 @@ extern "C"
 
 NPK_METADATA const npk_load_name loadNames[] =
 {
-    { .type = npk_load_type::AcpiRuntime, .length = 0, .str = nullptr }
+    { .type = npk_load_type_acpi_runtime, .length = 0, .str = nullptr }
 };
 NPK_METADATA const char friendlyName[] = "uacpi";
 NPK_METADATA const npk_driver_manifest manifest

@@ -28,7 +28,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,10 +45,10 @@ extern "C" {
 
 typedef enum
 {
-    PciFunction = 0,
-    DtbPath = 1,
-    PciHostAdaptor = 2,
-    Rsdp = 3,
+    npk_init_tag_type_pci_function = 0,
+    npk_init_tag_type_dtb_path = 1,
+    npk_init_tag_type_pci_host = 2,
+    npk_init_tag_type_rsdp = 3,
 } npk_init_tag_type;
 
 struct npk_init_tag_
@@ -77,8 +77,8 @@ typedef struct
 
 typedef enum
 {
-    Ecam = 0,
-    X86PortIo = 1,
+    npk_pci_host_type_ecam = 0,
+    npk_pci_host_type_port_io = 1,
 } npk_pci_host_type;
 
 typedef struct
@@ -101,26 +101,26 @@ typedef struct
 
 typedef enum
 {
-    Never = 0,
-    Always = 1,
-    PciClass = 2,
-    PciId = 3,
-    PciHost = 4,
-    DtbCompat = 5,
-    AcpiRuntime = 6,
-    AcpiPnpId = 7,
+    npk_load_type_never = 0,
+    npk_load_type_always = 1,
+    npk_load_type_pci_class = 2,
+    npk_load_type_pci_id = 3,
+    npk_load_type_pci_host = 4,
+    npk_load_type_dtb_compat = 5,
+    npk_load_type_acpi_runtime = 6,
+    npk_load_type_acpi_pnp = 7,
 } npk_load_type;
 
 #define NPK_PCI_ID_LOAD_STR(vendor, device) { (vendor) & 0xFF, ((vendor) >> 8) & 0xFF, (device) & 0xFF, ((device) >> 8) & 0xFF }
 #define NPK_PCI_CLASS_LOAD_STR(cl, subcl, iface) { cl, subcl, iface }
-#define NPK_PNP_ID_STR(data) { .type = AcpiPnpId, .length = sizeof(data) - 1, .str = (const uint8_t*)data }
+#define NPK_PNP_ID_STR(data) { .type = npk_load_type_acpi_pnp, .length = sizeof(data) - 1, .str = (const uint8_t*)data }
 
 typedef enum
 {
-    Init = 0,
-    Exit = 1,
-    AddDevice = 2,
-    RemoveDevice = 3,
+    npk_event_type_init = 0,
+    npk_event_type_exit = 1,
+    npk_event_type_add_device = 2,
+    npk_event_type_remove_device = 3,
 } npk_event_type;
 
 typedef struct
@@ -163,18 +163,18 @@ typedef struct
 
 typedef enum
 {
-    Fatal = 0,
-    Error = 1,
-    Warning = 2,
-    Info = 3,
-    Verbose = 4,
-    Debug = 5,
+    npk_log_level_fatal = 0,
+    npk_log_level_error = 1,
+    npk_log_level_warning = 2,
+    npk_log_level_info = 3,
+    npk_log_level_verbose = 4,
+    npk_log_level_debug = 5,
 } npk_log_level;
 
 typedef enum
 {
-    BusPortIo = 0,
-    BusPci = 1,
+    npk_bus_type_port_io = 0,
+    npk_bus_type_pci = 1,
 } npk_bus_type;
 
 #define NPK_MAKE_PCI_BUS_ADDR(seg, bus, dev, func, reg) (((uintptr_t)(seg) << 32) | ((uintptr_t)(bus) << 20) | ((uintptr_t)(dev) << 15) | ((uintptr_t)(func) << 12) | (reg))

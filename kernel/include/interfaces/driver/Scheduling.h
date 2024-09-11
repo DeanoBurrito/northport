@@ -28,7 +28,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 #include "Time.h"
 
 #ifdef __cplusplus
@@ -50,11 +50,11 @@ typedef struct
 
 typedef enum
 {
-    Setup = 0,
-    Dead = 1,
-    Ready = 2,
-    Queued = 3,
-    Running = 4,
+    npk_thread_state_setup = 0,
+    npk_thread_state_dead = 1,
+    npk_thread_state_ready = 2,
+    npk_thread_state_queued = 3,
+    npk_thread_state_running = 4,
 } npk_thread_state;
 
 npk_handle npk_create_process(OPTIONAL npk_process_create_args* args);

@@ -26,9 +26,8 @@
  * SOFTWARE.
  */
 
-#include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 #include "Api.h"
 
 #ifdef __cplusplus

@@ -44,6 +44,11 @@
     - Arch-specific includes in arch layer headers are now defined in `arch/__Select.h`, centralizing the huge mess of #ifdefs.
     - Cleaned up Timer and HAT interface.
 
+- Syslib:
+    - Added doubly linked list template.
+    - Updated FwdList<T> to use member pointer arg, so an object can exist in multiple lists.
+
+- Added linker symbols and init-time hooks for global object constructors.
 - Added config store, a glorified kernel command line parser. Allows for overriding previously hardcoded config values.
 - Added command line option for inhibiting smp startup.
 - Thread switches are delayed until a core's runlevel drops back to normal.

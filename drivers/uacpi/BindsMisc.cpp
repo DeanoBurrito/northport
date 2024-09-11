@@ -3,6 +3,7 @@
 #include <interfaces/driver/Api.h>
 #include <interfaces/driver/Interrupts.h>
 #include <interfaces/driver/Scheduling.h>
+#include <containers/Queue.h>
 #include <NanoPrintf.h>
 #include <Log.h>
 #include <Memory.h>
@@ -45,11 +46,11 @@ extern "C"
         npk_log_level npkLevel;
         switch (level)
         {
-        case UACPI_LOG_DEBUG: npkLevel = npk_log_level::Debug; break;
-        case UACPI_LOG_TRACE: npkLevel = npk_log_level::Verbose; break;
-        case UACPI_LOG_INFO: npkLevel = npk_log_level::Info; break;
-        case UACPI_LOG_WARN: npkLevel = npk_log_level::Warning; break;
-        case UACPI_LOG_ERROR: npkLevel = npk_log_level::Error; break;
+        case UACPI_LOG_DEBUG: npkLevel = npk_log_level_debug; break;
+        case UACPI_LOG_TRACE: npkLevel = npk_log_level_verbose; break;
+        case UACPI_LOG_INFO: npkLevel = npk_log_level_info; break;
+        case UACPI_LOG_WARN: npkLevel = npk_log_level_warning; break;
+        case UACPI_LOG_ERROR: npkLevel = npk_log_level_error; break;
         }
 
         char buffer[UacpiLogLength];
@@ -81,7 +82,7 @@ extern "C"
 
     void uacpi_kernel_sleep(uacpi_u64 msec)
     {
-        const npk_duration dur { .scale = npk_time_scale::Millis, .ticks = msec };
+        const npk_duration dur { .scale = npk_time_scale_millis, .ticks = msec };
         npk_thread_sleep(npk_current_thread(), dur);
     }
 
@@ -108,8 +109,7 @@ extern "C"
 
         npk_interrupt_route* route = new npk_interrupt_route();
         route->callback_arg = ctx;
-        route->dpc = nullptr;
-        route->callback = (bool (*)(void*))callback;
+        route->callback = reinterpret_cast<bool (*)(void*)>(callback);
         /* A note about this cast: the uacpi handler returns whether the interrupt was handled (1)
          * or not handled (0). The northport kernel api uses the return value as a way to suppress 
          * queueing the DPC associated with the interrupt route (if one exists). In our case there

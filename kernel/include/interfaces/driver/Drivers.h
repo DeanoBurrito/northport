@@ -28,7 +28,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 #include "Filesystem.h"
 #include "Io.h"
 
@@ -38,11 +38,11 @@ extern "C" {
 
 typedef enum
 {
-    Io = 0,
-    Framebuffer = 1,
-    Gpu = 2,
-    Filesystem = 3,
-    SysPower = 4,
+    npk_device_api_type_io = 0,
+    npk_device_api_type_framebuffer = 1,
+    npk_device_api_type_gpu = 2,
+    npk_device_api_type_filesystem = 3,
+    npk_device_api_type_syspower = 4,
 } npk_device_api_type;
 
 struct npk_device_api_
@@ -119,9 +119,9 @@ typedef struct
 
 typedef enum
 {
-    FsAttribSize = 1 << 0,
-    FsAttribName = 1 << 1,
-    FsAttribCaps = 1 << 2,
+    npk_fs_attrib_flag_size = 1 << 0,
+    npk_fs_attrib_flag_name = 1 << 1,
+    npk_fs_attrib_flag_caps = 1 << 2,
 } npk_fs_attrib_flags;
 
 typedef struct

@@ -41,10 +41,10 @@ typedef struct
 
 typedef enum
 {
-    Nanos = 1'000'000'000,
-    Micros = 1'000'000,
-    Millis = 1'000,
-    Seconds = 1,
+    npk_time_scale_nanos = 1'000'000'000,
+    npk_time_scale_micros = 1'000'000,
+    npk_time_scale_millis = 1'000,
+    npk_time_scale_seconds = 1,
 } npk_time_scale;
 
 typedef struct

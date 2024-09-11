@@ -36,6 +36,14 @@ SECTIONS
         *(.lrodata.*)
     } :rodata
 
+    .init_array :
+    {
+        INIT_ARRAY_BEGIN = .;
+        *(.init_array)
+        *(.init_array.*)
+        INIT_ARRAY_END = .;
+    } :rodata
+
     .limine_reqs :
     {
         KEEP(*(.limine_reqs))

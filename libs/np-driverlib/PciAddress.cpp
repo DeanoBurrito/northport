@@ -7,7 +7,7 @@ namespace dl
     void PciAddress::Write(size_t offset, uint32_t value) const
     {
         npk_iop_beginning iop {};
-        iop.type = npk_iop_type::Write;
+        iop.type = npk_iop_type_write;
         iop.device_api_id = apiId;
         iop.length = sizeof(uint32_t);
         iop.buffer = &value;
@@ -21,7 +21,7 @@ namespace dl
         uint32_t value = 0;
 
         npk_iop_beginning iop {};
-        iop.type = npk_iop_type::Read;
+        iop.type = npk_iop_type_read;
         iop.device_api_id = apiId;
         iop.length = sizeof(uint32_t);
         iop.buffer = &value;

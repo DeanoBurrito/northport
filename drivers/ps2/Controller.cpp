@@ -27,7 +27,7 @@ namespace Ps2
             sl::HintSpinloop();
 
         uintptr_t data = byte;
-        VALIDATE_(npk_access_bus(BusPortIo, 1, 0x64, &data, true), );
+        VALIDATE_(npk_access_bus(npk_bus_type_port_io, 1, 0x64, &data, true), );
     }
 
     bool InitController()
@@ -75,7 +75,7 @@ namespace Ps2
     bool InputReady()
     {
         uintptr_t byte;
-        VALIDATE_(npk_access_bus(BusPortIo, 1, 0x64, &byte, false), false);
+        VALIDATE_(npk_access_bus(npk_bus_type_port_io, 1, 0x64, &byte, false), false);
 
         return (byte & 0b10) == 0;
     }
@@ -83,7 +83,7 @@ namespace Ps2
     bool OutputReady()
     {
         uintptr_t byte;
-        VALIDATE_(npk_access_bus(BusPortIo, 1, 0x64, &byte, false), false);
+        VALIDATE_(npk_access_bus(npk_bus_type_port_io, 1, 0x64, &byte, false), false);
 
         return (byte & 0b01) == 1;
     }
@@ -100,7 +100,7 @@ namespace Ps2
         while (!InputReady())
             sl::HintSpinloop();
         uintptr_t byte = data;
-        VALIDATE_(npk_access_bus(BusPortIo, 1, 0x60, &byte, true), );
+        VALIDATE_(npk_access_bus(npk_bus_type_port_io, 1, 0x60, &byte, true), );
     }
 
     sl::Opt<uint8_t> ReadByte(bool wait)
@@ -113,7 +113,7 @@ namespace Ps2
             sl::HintSpinloop();
 
         uintptr_t data;
-        VALIDATE_(npk_access_bus(BusPortIo, 1, 0x60, &data, false), {});
+        VALIDATE_(npk_access_bus(npk_bus_type_port_io, 1, 0x60, &data, false), {});
         return static_cast<uint8_t>(data);
     }
 

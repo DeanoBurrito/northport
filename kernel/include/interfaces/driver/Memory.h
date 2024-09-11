@@ -28,7 +28,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,14 +42,14 @@ typedef struct
 
 typedef enum
 {
-    VmWrite = 1 << 0,
-    VmExecute = 1 << 1,
-    VmUser = 1 << 2,
-    VmGuarded = 1 << 3,
+    npk_vm_flag_write = 1 << 0,
+    npk_vm_flag_execute = 1 << 1,
+    npk_vm_flag_user = 1 << 2,
+    npk_vm_flag_guarded = 1 << 3,
 
-    VmAnon = 1 << 24,
-    VmMmio = 1 << 25,
-    VmFile = 1 << 26
+    npk_vm_flag_anon = 1 << 24,
+    npk_vm_flag_mmio = 1 << 25,
+    npk_vm_flag_file = 1 << 26
 } npk_vm_flags;
 
 #define NPK_VM_FLAG_TYPE_MASK (0xFF << 24)
@@ -63,7 +63,7 @@ typedef struct
 
 typedef enum
 {
-   NoDeferBacking = 1 << 1,
+   npk_file_vm_flag_back_now = 1 << 1,
 } npk_file_vm_flags;
 
 typedef struct

@@ -63,15 +63,15 @@ namespace Npk::Drivers
     {
         switch (api->type)
         {
-        case npk_device_api_type::Io:
+        case npk_device_api_type_io:
             return VerifyIoApi(api);
-        case npk_device_api_type::Framebuffer:
+        case npk_device_api_type_framebuffer:
             return VerifyFramebufferApi(api);
-        case npk_device_api_type::Gpu:
+        case npk_device_api_type_gpu:
             return VerifyGpuApi(api);
-        case npk_device_api_type::Filesystem:
+        case npk_device_api_type_filesystem:
             return VerifyFilesystemApi(api);
-        case npk_device_api_type::SysPower:
+        case npk_device_api_type_syspower:
             return VerifySysPowerApi(api);
         default:
             return false;

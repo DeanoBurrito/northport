@@ -24,10 +24,10 @@ bool ProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
     {
-    case npk_event_type::Init:
+    case npk_event_type_init:
         Pci::InitNameLookup();
         return true;
-    case npk_event_type::AddDevice:
+    case npk_event_type_add_device:
         {
             auto event = static_cast<const npk_event_add_device*>(arg);
             auto& segment = pciSegments.EmplaceBack();
@@ -35,7 +35,7 @@ bool ProcessEvent(npk_event_type type, void* arg)
             const npk_init_tag* scan = event->tags;
             while (scan != nullptr)
             {
-                if (scan->type == npk_init_tag_type::PciHostAdaptor)
+                if (scan->type == npk_init_tag_type_pci_host)
                     break;
                 scan = scan->next;
             }
@@ -45,7 +45,7 @@ bool ProcessEvent(npk_event_type type, void* arg)
             if (!segment.Init(hostTag))
                 return false;
             if (pciSegments.Size() == 1)
-                return npk_add_bus_access(BusPci, PciBusAccess);
+                return npk_add_bus_access(npk_bus_type_pci, PciBusAccess);
             return true;
         }
     default:
@@ -57,7 +57,7 @@ bool ProcessEvent(npk_event_type type, void* arg)
 
 NPK_METADATA const npk_load_name loadNames[] =
 {
-    { .type = npk_load_type::PciHost, .length = 0, .str = nullptr }
+    { .type = npk_load_type_pci_host, .length = 0, .str = nullptr }
 };
 NPK_METADATA const char friendlyName[] = "pci";
 NPK_METADATA const npk_driver_manifest driverManifest

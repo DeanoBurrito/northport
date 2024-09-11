@@ -128,7 +128,7 @@ namespace Ps2
         Log("Keyboard interrupt on gsi-%zu", LogLevel::Verbose, irqNum);
         EnableInterrupts(false, true);
 
-        kbApi.header.type = npk_device_api_type::Io;
+        kbApi.header.type = npk_device_api_type_io;
         kbApi.header.get_summary = GetSummary;
         kbApi.begin_op = BeginKeyboardOp;
         kbApi.end_op = EndKeyboardOp;

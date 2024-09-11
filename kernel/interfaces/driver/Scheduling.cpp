@@ -7,11 +7,11 @@ extern "C"
 {
     using namespace Npk::Tasking;
 
-    static_assert((size_t)ThreadState::Setup == npk_thread_state::Setup);
-    static_assert((size_t)ThreadState::Dead == npk_thread_state::Dead);
-    static_assert((size_t)ThreadState::Ready == npk_thread_state::Ready);
-    static_assert((size_t)ThreadState::Queued == npk_thread_state::Queued);
-    static_assert((size_t)ThreadState::Running == npk_thread_state::Running);
+    static_assert((size_t)ThreadState::Setup == npk_thread_state_setup);
+    static_assert((size_t)ThreadState::Dead == npk_thread_state_dead);
+    static_assert((size_t)ThreadState::Ready == npk_thread_state_ready);
+    static_assert((size_t)ThreadState::Queued == npk_thread_state_queued);
+    static_assert((size_t)ThreadState::Running == npk_thread_state_running);
 
     DRIVER_API_FUNC
     npk_handle npk_create_process(OPTIONAL npk_process_create_args* args)

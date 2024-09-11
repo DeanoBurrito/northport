@@ -17,11 +17,11 @@ namespace Npk::Drivers
         "network",
     };
 
-    static_assert(npk_device_api_type::Io == 0);
-    static_assert(npk_device_api_type::Framebuffer == 1);
-    static_assert(npk_device_api_type::Gpu == 2);
-    static_assert(npk_device_api_type::Filesystem == 3);
-    static_assert(npk_device_api_type::SysPower == 4);
+    static_assert(npk_device_api_type_io == 0);
+    static_assert(npk_device_api_type_framebuffer== 1);
+    static_assert(npk_device_api_type_gpu == 2);
+    static_assert(npk_device_api_type_filesystem == 3);
+    static_assert(npk_device_api_type_syspower == 4);
 
     constexpr size_t DeviceNodeStackReserveSize = 4;
 
@@ -279,6 +279,7 @@ namespace Npk::Drivers
 
     bool DriverManager::DetachDevice(sl::Handle<DeviceDescriptor>& device)
     {
+        (void)device;
         ASSERT_UNREACHABLE();
     }
 
@@ -389,6 +390,7 @@ namespace Npk::Drivers
 
     bool DriverManager::RemoveManifest(sl::StringSpan friendlyName)
     {
+        (void)friendlyName;
         ASSERT_UNREACHABLE();
     }
 
@@ -437,6 +439,7 @@ namespace Npk::Drivers
 
     sl::Opt<void*> DriverManager::RemoveDescriptor(size_t descriptorId)
     {
+        (void)descriptorId;
         ASSERT_UNREACHABLE();
     }
 
@@ -476,6 +479,7 @@ namespace Npk::Drivers
 
     bool DriverManager::RemoveApi(size_t id)
     {
+        (void)id;
         ASSERT_UNREACHABLE();
     }
 

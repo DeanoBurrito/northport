@@ -26,9 +26,9 @@ bool ProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
     {
-    case npk_event_type::Init:
+    case npk_event_type_init:
         return true;
-    case npk_event_type::AddDevice:
+    case npk_event_type_add_device:
         return AddNewDevice(arg);
     default:
         Log("Unknown event type: %u", LogLevel::Error, type);
@@ -39,7 +39,7 @@ bool ProcessEvent(npk_event_type type, void* arg)
 NPK_METADATA const uint8_t gpuPciId[] = NPK_PCI_ID_LOAD_STR(0x1AF4, 0x1050);
 NPK_METADATA const npk_load_name loadNames[] = 
 {
-    { .type = npk_load_type::PciId, .length = sizeof(gpuPciId), .str = gpuPciId },
+    { .type = npk_load_type_pci_id, .length = sizeof(gpuPciId), .str = gpuPciId },
 };
 NPK_METADATA const char friendlyName[] = "virtio";
 NPK_METADATA const npk_driver_manifest manifest

@@ -46,7 +46,7 @@ namespace Qemu
         const npk_init_tag* scan = event->tags;
         while (scan != nullptr)
         {
-            if (scan->type == npk_init_tag_type::PciFunction)
+            if (scan->type == npk_init_tag_type_pci_function)
             {
                 auto pciTag = reinterpret_cast<const npk_init_tag_pci_function*>(scan);
                 Log("PCI address: %02x::%02x:%02x:%01x", LogLevel::Debug, pciTag->segment,
@@ -89,7 +89,7 @@ namespace Qemu
 
         //create a device api so the kernel knows about this framebuffer.
         npk_framebuffer_device_api* fbApi = new npk_framebuffer_device_api();
-        fbApi->header.type = npk_device_api_type::Framebuffer;
+        fbApi->header.type = npk_device_api_type_framebuffer;
         fbApi->header.driver_data = this;
         fbApi->get_mode = GetModeWrapper;
         fbApi->header.get_summary = GetSummaryWrapper;
