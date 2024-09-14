@@ -21,7 +21,7 @@
     - Removed concept of keyboard driver, this is now just a generic io device.
     - Removed all usage of ELF section headers: kernel now detects driver manifests via a custom phdr.
         - Unfortunately this does mean drivers now require a custom linker script to set this up.
-    - ElfLoader no longer requires PLT to link with kernel (default code gen on modern distro compilers).
+    - `ElfLoader` no longer requires PLT to link with kernel (default code gen on modern distro compilers).
     - Driver manifests provide an array of load names rather than just one, easy for a driver to declare support for multiple devices now (rather than provoding multiple manifests).
 
 - Added 'program exception' concept to kernel.
@@ -46,7 +46,7 @@
 
 - Syslib:
     - Added doubly linked list template.
-    - Updated FwdList<T> to use member pointer arg, so an object can exist in multiple lists.
+    - Updated `FwdList<T>: to use member pointer arg, so an object can exist in multiple lists.
 
 - Added linker symbols and init-time hooks for global object constructors.
 - Added config store, a glorified kernel command line parser. Allows for overriding previously hardcoded config values.
