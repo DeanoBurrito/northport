@@ -1,153 +1,359 @@
 #pragma once
 
-#include <stddef.h>
 #include <CppUtils.h>
 
 namespace sl
 {
-    namespace Intrusive
+    struct FwdListHook
     {
-        template<typename T>
-        class FwdList
+        void* next;
+    };
+
+    template<typename T, FwdListHook T::*Hook>
+    class FwdList
+    {
+    private:
+        T* head;
+        T* tail;
+
+    public:
+        static FwdListHook* Hk(T* value)
+        { return &(value->*Hook); }
+
+        class Iterator
         {
+        friend FwdList;
         private:
-            T* head;
-            T* tail;
+            T* ptr;
+
+            constexpr Iterator(T* entry) : ptr(entry) {}
 
         public:
-            using Iterator = T*;
+            constexpr bool operator==(const Iterator& other) const
+            { return ptr == other.ptr; }
 
-            constexpr FwdList() : head(nullptr), tail(nullptr)
-            {}
+            constexpr bool operator!=(const Iterator& other) const
+            { return ptr != other.ptr; }
 
-            FwdList(const FwdList&) = delete;
-            FwdList& operator=(const FwdList&) = delete;
-            FwdList(FwdList&&) = delete;
-            FwdList& operator=(FwdList&&) = delete;
-
-            T& Front()
-            { return *head; }
-
-            T& Back()
-            { return *tail; }
-
-            Iterator Begin()
-            { return head; }
-
-            Iterator End()
-            { return nullptr; }
-
-            bool Empty()
-            { return head == nullptr; }
-
-            void PushFront(T* value)
+            constexpr Iterator& operator++()
             {
-                value->next = head;
+                ptr = static_cast<T*>(Hk(ptr)->next);
+                return *this;
+            }
+
+            constexpr T& operator*()
+            { return *ptr; }
+
+            constexpr T* operator->()
+            { return ptr; }
+
+            constexpr const T& operator*() const
+            { return *ptr; }
+
+            constexpr const T* operator->() const
+            { return ptr; }
+        };
+
+        constexpr FwdList() : head(nullptr), tail(nullptr) {}
+
+        FwdList(const FwdList&) = delete;
+        FwdList& operator=(const FwdList&) = delete;
+        FwdList(FwdList&&) = delete;
+        FwdList& operator=(FwdList&&) = delete;
+
+        T& Front() const
+        { return *head; }
+
+        T& Back() const
+        { return *tail; }
+
+        Iterator Begin()
+        { return head; }
+
+        Iterator End()
+        { return nullptr; }
+
+        const Iterator Begin() const
+        { return head; }
+
+        const Iterator End() const
+        { return nullptr; }
+
+        bool Empty() const
+        { return head == nullptr; }
+
+        void PushFront(T* value)
+        {
+            Hk(value)->next = head;
+            head = value;
+            if (tail == nullptr)
+                tail = head;
+        }
+
+        void PushBack(T* value)
+        {
+            Hk(value)->next = nullptr;
+            if (Empty())
                 head = value;
-                if (tail == nullptr)
-                    tail = head;
-            }
+            else
+                (tail->*Hook).next = value;
+            tail = value;
+        }
 
-            void PushBack(T* value)
-            {
-                value->next = nullptr;
-                if (Empty())
-                    head = value;
-                else
-                    tail->next = value;
-                tail = value;
-            }
-
-            T* PopFront()
-            {
-                if (head == nullptr)
-                    return nullptr;
-
-                T* temp = head;
-                head = head->next;
-
-                if (Empty())
-                    tail = nullptr;
-                return temp;
-            }
-
-            void InsertAfter(Iterator it, T* value)
-            {
-                if (it == End())
-                    return PushBack(value);
-
-                value->next = it->next;
-                it->next = value;
-                
-                if (it == tail)
-                    tail = value;
-            }
-
-            T* EraseAfter(Iterator it)
-            {
-                if (it == End())
-                    return nullptr;
-
-                T* temp = it->next;
-                if (temp != nullptr)
-                    it->next = temp->next;
-                else
-                    it->next = nullptr;
-                if (temp == tail)
-                    tail = temp->next;
-                return temp;
-            }
-
-            T* Remove(T* value)
-            {
-                if (value == nullptr || head == nullptr)
-                    return nullptr;
-
-                if (head == value)
-                {
-                    PopFront();
-                    return head;
-                }
-                    
-                T* scan = head;
-                while (scan->next != nullptr)
-                {
-                    if (scan->next == value)
-                        return EraseAfter(scan);
-                    scan = scan->next;
-                }
-
+        T* PopFront()
+        {
+            if (head == nullptr)
                 return nullptr;
+
+            T* temp = head;
+            head = static_cast<T*>(Hk(head)->next);
+
+            if (head == nullptr)
+                tail = nullptr;
+            return temp;
+        }
+
+        void InsertAfter(Iterator it, T* value)
+        {
+            if (it == End())
+                return PushBack(value);
+
+            Hk(value)->next = Hk(it.ptr)->next;
+            Hk(it.ptr)->next = value;
+            
+            if (it == tail)
+                tail = value;
+        }
+
+        Iterator EraseAfter(Iterator it)
+        {
+            if (it == End())
+                return nullptr;
+
+            T* temp = static_cast<T*>(Hk(it.ptr)->next);
+            if (temp != nullptr)
+                Hk(it.ptr)->next = Hk(temp)->next;
+            else
+                Hk(it.ptr)->next = nullptr;
+            if (temp == tail)
+                tail = static_cast<T*>(Hk(temp)->next);
+            return temp;
+        }
+
+        Iterator Remove(T* value)
+        {
+            if (value == nullptr || head == nullptr)
+                return nullptr;
+
+            if (head == value)
+            {
+                PopFront();
+                return head;
+            }
+                
+            T* scan = head;
+            while (Hk(scan)->next != nullptr)
+            {
+                if (Hk(scan)->next == value)
+                    return EraseAfter(scan);
+                scan = static_cast<T*>(Hk(scan)->next);
             }
 
-            template<typename Comparison>
-            void Sort(Comparison comp)
+            return nullptr;
+        }
+
+        Iterator Remove(Iterator it)
+        { return Remove(it.ptr); }
+
+        template<typename Comparison>
+        void Sort(Comparison comp)
+        {
+            for (auto i = head; i != nullptr; i = static_cast<T*>(Hk(i)->next))
             {
-                for (auto i = head; i != nullptr; i = i->next)
+                for (auto j = Hk(i)->next; j != nullptr; j = Hk(j)->next)
                 {
-                    for (auto j = i->next; j != nullptr; j = j->next)
+                    if (comp(*i, *j))
                     {
-                        if (comp(*i, *j))
-                        {
-                            sl::Swap(*i, *j);
-                            sl::Swap(i->next, j->next);
-                        }
+                        sl::Swap(*i, *j);
+                        sl::Swap(Hk(i)->next, Hk(j)->next);
                     }
                 }
             }
-        };
+        }
+    };
 
-        template<typename T>
-        class List
+    struct ListHook
+    {
+        void* prev;
+        void* next;
+    };
+
+    template<typename T, ListHook T::*Hook>
+    class List
+    {
+    private:
+        T* head;
+        T* tail;
+
+    public:
+        static ListHook* Hk(T* value)
+        { return &(value->*Hook); }
+
+        class Iterator
         {
+        friend List;
         private:
-            //TODO: impl, not copying other list
+            T* ptr;
+
+        public:
         };
-    }
 
-    template<typename T>
-    using IntrFwdList = Intrusive::FwdList<T>;
+        constexpr List() : head(nullptr), tail(nullptr) {}
 
-    template<typename T>
-    using IntrList = Intrusive::List<T>;
+        List(const List&) = delete;
+        List& operator=(const List&) = delete;
+        List(List&&) = delete;
+        List& operator=(List&&) = delete;
+
+        T& Front()
+        { return *head; }
+
+        T& Back()
+        { return *tail; }
+
+        Iterator Begin()
+        { return head; }
+
+        Iterator End()
+        { return {}; }
+
+        const Iterator Begin() const
+        { return head; }
+
+        const Iterator End() const
+        { return {}; }
+
+        bool Empty() const
+        { return head != nullptr; }
+
+        void PushFront(T* value)
+        {
+            Hk(value)->prev = nullptr;
+            Hk(value)->next = head;
+
+            if (head == nullptr)
+                tail = value;
+            else
+                Hk(head)->prev = value;
+            head = value;
+        }
+
+        void PushBack(T* value)
+        {
+            Hk(value)->next = nullptr;
+            Hk(value)->prev = tail;
+
+            if (tail == nullptr)
+                head = value;
+            else
+                Hk(tail)->next = value;
+            tail = value;
+        }
+
+        T* PopFront()
+        {
+            if (head == nullptr)
+                return nullptr;
+
+            T* temp = head;
+            head = static_cast<T*>(Hk(head)->next);
+            Hk(head)->prev = nullptr;
+
+            if (head == nullptr)
+                tail == nullptr;
+            return temp;
+        }
+
+        T* PopBack()
+        {
+            if (tail == nullptr)
+                return nullptr;
+
+            T* temp = tail;
+            tail = static_cast<T*>(Hk(tail)->prev);
+            Hk(tail)->next = nullptr;
+
+            if (tail == nullptr)
+                head = nullptr;
+            return temp;
+        }
+
+        void InsertAfter(Iterator it, T* value)
+        {
+            Hk(value)->prev = it.ptr;
+
+            if (it.ptr == nullptr)
+            {
+                Hk(value)->next = head;
+                head = value;
+            }
+            else
+            {
+                Hk(value)->next = Hk(it.ptr)->next;
+                Hk(it.ptr)->next = value;
+            }
+
+            if (Hk(value)->next == nullptr)
+                tail = value;
+            else
+                Hk(static_cast<T*>(Hk(value)->next))->prev = value;
+        }
+
+        void InsertBefore(Iterator it, T* value)
+        {
+            Hk(value)->next = it.ptr;
+
+            if (it.ptr == nullptr)
+            {
+                Hk(value).prev = nullptr;
+                Hk(value).next = head;
+                if (head == nullptr)
+                    tail = value;
+                else
+                    Hk(head)->prev = value;
+                head = value;
+            }
+            else
+            {
+                Hk(value)->prev = Hk(it.ptr).prev;
+                Hk(it.ptr).prev = value;
+
+                if (Hk(value)->prev == nullptr)
+                    head = value;
+                else
+                    Hk(static_cast<T*>(Hk(value)->prev))->next = value;
+            }
+        }
+
+        Iterator Remove(T* value)
+        {
+            T* prev = static_cast<T*>(Hk(value)->prev);
+            T* next = static_cast<T*>(Hk(value)->next);
+
+            if (prev == nullptr)
+                head = next;
+            else
+                Hk(prev)->next = next;
+
+            if (next == nullptr)
+                tail - prev;
+            else
+                Hk(next)->prev = prev;
+
+            return next;
+        }
+
+        Iterator Remove(Iterator it)
+        { return Remove(it.ptr); }
+    };
 }
