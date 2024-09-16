@@ -315,10 +315,11 @@ namespace Npk::Drivers
             manifest->loadNames = sl::Move(loadNames);
 
             usableDrivers++;
-            DriverManager::Global().AddManifest(manifest);
-            (void)manifest;
-            Log("Module %s provides driver: %s v%u.%u", LogLevel::Info, shortName.Begin(),
-                manifest->friendlyName.C_Str(), apiManifest->ver_major, apiManifest->ver_minor);
+            const bool loadNow = apiManifest->flags & NP_MANIFEST_FLAG_ALWAYS_LOAD;
+            DriverManager::Global().AddManifest(manifest, loadNow);
+            Log("Module %s provides driver: %s v%u.%u, flags=0x%zx", LogLevel::Info, shortName.Begin(),
+                manifest->friendlyName.C_Str(), apiManifest->ver_major, apiManifest->ver_minor, 
+                apiManifest->flags);
         }
 
         return usableDrivers > 0;

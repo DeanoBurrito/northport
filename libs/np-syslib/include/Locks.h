@@ -90,93 +90,6 @@ namespace sl
         }
     };
 
-#ifdef NP_KERNEL
-} //close the namespace to prevent contamination
-
-//These locks require the use of privileged functions only available in the northport kernel.
-//By default these functions are only made available in kernel code.
-//The following header is also relative to the kernel source, and will only resolve for the kernel.
-//It will generate errors for other projects.
-#include <arch/Platform.h>
-
-namespace sl
-{
-    struct InterruptGuard
-    {
-    private:
-        bool prevState;
-    public:
-        InterruptGuard()
-        {
-            prevState = Npk::InterruptsEnabled();
-            Npk::DisableInterrupts();
-        }
-
-        ~InterruptGuard()
-        {
-            if (prevState)
-                Npk::EnableInterrupts();
-        }
-
-        InterruptGuard(const InterruptGuard& other) = delete;
-        InterruptGuard& operator=(const InterruptGuard& other) = delete;
-        InterruptGuard(InterruptGuard&& other) = delete;
-        InterruptGuard& operator=(InterruptGuard&& other) = delete;
-    };
-
-    class InterruptLock
-    {
-    private:
-        bool restoreInts;
-        SpinLock lock;
-        
-    public:
-        constexpr InterruptLock() : restoreInts(false), lock{}
-        {}
-
-        inline void Lock()
-        {
-            restoreInts = Npk::InterruptsEnabled();
-            Npk::DisableInterrupts();
-            lock.Lock();
-        }
-
-        inline void Unlock()
-        {
-            lock.Unlock();
-            if (restoreInts)
-                Npk::EnableInterrupts();
-        }
-    };
-
-    template<RunLevel CriticalLevel>
-    class RunLevelLock
-    {
-    private:
-        sl::Opt<RunLevel> prevLevel;
-        sl::SpinLock lock;
-
-    public:
-        constexpr RunLevelLock() : prevLevel(), lock()
-        {}
-
-        inline void Lock()
-        {
-            if (Npk::CoreLocalAvailable())
-                prevLevel = Npk::Tasking::EnsureRunLevel(CriticalLevel);
-            return lock.Lock();
-        }
-
-        inline void Unlock()
-        {
-            lock.Unlock();
-            if (Npk::CoreLocalAvailable() && prevLevel.HasValue())
-                Npk::Tasking::LowerRunLevel(*prevLevel);
-            prevLevel = {};
-        }
-    };
-#endif
-
     class RwLock
     {
     private:
@@ -216,4 +129,43 @@ namespace sl
             lock.Unlock();
         }
     };
+
+#ifdef NP_KERNEL
+} //close the namespace to prevent contamination
+
+//These locks require the use of privileged functions only available in the northport kernel.
+//By default these functions are only made available in kernel code.
+//The following header is also relative to the kernel source, and will only resolve for the kernel.
+//It will generate errors for other projects.
+#include <arch/Platform.h>
+
+namespace sl
+{
+    template<RunLevel CriticalLevel>
+    class RunLevelLock
+    {
+    private:
+        sl::Opt<RunLevel> prevLevel;
+        sl::SpinLock lock;
+
+    public:
+        constexpr RunLevelLock() : prevLevel(), lock()
+        {}
+
+        inline void Lock()
+        {
+            if (Npk::CoreLocalAvailable())
+                prevLevel = Npk::Tasking::EnsureRunLevel(CriticalLevel);
+            return lock.Lock();
+        }
+
+        inline void Unlock()
+        {
+            lock.Unlock();
+            if (Npk::CoreLocalAvailable() && prevLevel.HasValue())
+                Npk::Tasking::LowerRunLevel(*prevLevel);
+            prevLevel = {};
+        }
+    };
+#endif
 }

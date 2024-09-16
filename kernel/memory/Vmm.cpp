@@ -285,8 +285,7 @@ namespace Npk::Memory
          * - everything in between is managed by the kernel VMM.
          */
         globalLowerBound = hhdmBase + hhdmLength;
-        globalUpperBound = sl::AlignUp((uintptr_t)KERNEL_BLOB_BEGIN + (uintptr_t)KERNEL_BLOB_SIZE, 
-            HatGetLimits().modes[0].granularity);
+        globalUpperBound = sl::AlignUp((uintptr_t)KERNEL_BLOB_END, HatGetLimits().modes[0].granularity);
 
         CommonInit();
         hatMap = KernelMap();

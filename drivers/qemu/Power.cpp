@@ -16,7 +16,7 @@ namespace Qemu
         .header = 
         {
             .id = 0,
-            .type = npk_device_api_type::SysPower,
+            .type = npk_device_api_type_syspower,
             .driver_data = nullptr,
             .get_summary = nullptr
         },

@@ -36,18 +36,19 @@ endif
 include misc/cross/$(CPU_ARCH)/CrossConfig.mk
 
 # Platform-agnostic compiler and linker flags for the kernel and drivers
-export KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fno-pic -fno-pie \
+export KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fPIE \
 	-fno-omit-frame-pointer -ffreestanding -fvisibility=hidden \
 	-std=c++17 -fno-rtti -fno-exceptions -fsized-deallocation -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -Iinclude -DNP_KERNEL 
 export KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
-	-nostdlib -zmax-page-size=0x1000 -static --no-dynamic-linker
+	-nostdlib -zmax-page-size=0x1000 -static -pie
 export SYSLIB_CXX_FLAGS += -fvisibility=default -fPIC
 export DRIVER_C_FLAGS += -Wall -Wextra -std=c17 -fno-unwind-tables -fno-asynchronous-unwind-tables \
 	-ffreestanding -fPIC -fvisibility=hidden -fno-omit-frame-pointer \
 	-I$(PROJ_ROOT_DIR)/kernel/include -I$(PROJ_ROOT_DIR)/libs/np-syslib/include
 export DRIVER_CXX_FLAGS += -Wall -Wextra -std=c++17 -fno-rtti -fno-exceptions -fno-unwind-tables \
 	-fno-asynchronous-unwind-tables -ffreestanding -fPIC -fvisibility=hidden -fno-omit-frame-pointer \
+	-fsized-deallocation \
 	-I$(PROJ_ROOT_DIR)/kernel/include -I$(PROJ_ROOT_DIR)/libs/np-syslib/include \
 	-I$(PROJ_ROOT_DIR)/libs/np-driverlib/include
 export DRIVER_LD_FLAGS += -nostdlib -shared -znorelro \

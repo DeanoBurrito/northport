@@ -10,11 +10,11 @@ extern "C"
     using namespace Npk::Tasking;
     using namespace Npk::Io;
 
-    static_assert((size_t)RunLevel::Normal == npk_runlevel::Normal);
-    static_assert((size_t)RunLevel::Apc == npk_runlevel::Apc);
-    static_assert((size_t)RunLevel::Dpc == npk_runlevel::Dpc);
-    static_assert((size_t)RunLevel::Clock == npk_runlevel::Clock);
-    static_assert((size_t)RunLevel::Interrupt == npk_runlevel::Interrupt);
+    static_assert((size_t)RunLevel::Normal == npk_runlevel_normal);
+    static_assert((size_t)RunLevel::Apc == npk_runlevel_apc);
+    static_assert((size_t)RunLevel::Dpc == npk_runlevel_dpc);
+    static_assert((size_t)RunLevel::Clock == npk_runlevel_clock);
+    static_assert((size_t)RunLevel::Interrupt == npk_runlevel_interrupt);
 
     static_assert(sizeof(npk_dpc) == sizeof(DpcStore));
     //static_assert(alignof(npk_dpc) == alignof(DpcStore));

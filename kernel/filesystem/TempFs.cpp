@@ -172,11 +172,11 @@ namespace Npk::Filesystem
         ASSERT_(attribs != nullptr);
 
         auto node = data->nodes[context.node_id];
-        if ((flags & FsAttribSize) != 0)
+        if (flags & npk_fs_attrib_flag_size)
             node->size = attribs->size;
-        if ((flags & FsAttribName) != 0)
+        if (flags & npk_fs_attrib_flag_name)
             node->name = sl::StringSpan(attribs->name.data, attribs->name.length);
-        if ((flags & FsAttribCaps) != 0)
+        if (flags & npk_fs_attrib_flag_caps)
             Log("tempFS doesnt implement capabilities yet: TODO:", LogLevel::Error);
 
         return true;
@@ -209,7 +209,7 @@ namespace Npk::Filesystem
         .header =
         {
             .id = 0,
-            .type = npk_device_api_type::Filesystem,
+            .type = npk_device_api_type_filesystem,
             .driver_data = nullptr,
             .get_summary = TempFsGetSummary,
         },

@@ -145,7 +145,7 @@ namespace Npk::Filesystem
         VALIDATE_(fsApi->read_dir(context, &childCount, nullptr), false);
         VALIDATE_(childCount == 0, false);
 
-        VALIDATE_(driver->api->type == npk_device_api_type::Filesystem, false);
+        VALIDATE_(driver->api->type == npk_device_api_type_filesystem, false);
 
         return true;
     }

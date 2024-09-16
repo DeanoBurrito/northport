@@ -3,6 +3,7 @@
 #include <debug/Log.h>
 #include <memory/Vmm.h>
 #include <tasking/Threads.h>
+#include <NanoPrintf.h>
 
 namespace Npk::Drivers
 {
@@ -11,57 +12,58 @@ namespace Npk::Drivers
         "io",
         "framebuffer",
         "gpu",
-        "keyboard",
         "filesystem",
         "syspower",
         "network",
     };
 
-    static_assert(npk_device_api_type::Io == 0);
-    static_assert(npk_device_api_type::Framebuffer == 1);
-    static_assert(npk_device_api_type::Gpu == 2);
-    static_assert(npk_device_api_type::Keyboard == 3);
-    static_assert(npk_device_api_type::Filesystem == 4);
-    static_assert(npk_device_api_type::SysPower == 5);
+    static_assert(npk_device_api_type_io == 0);
+    static_assert(npk_device_api_type_framebuffer== 1);
+    static_assert(npk_device_api_type_gpu == 2);
+    static_assert(npk_device_api_type_filesystem == 3);
+    static_assert(npk_device_api_type_syspower == 4);
 
     constexpr size_t DeviceNodeStackReserveSize = 4;
 
-    static void PrintNode(DeviceNode* node, size_t indent)
+    static void PrintNode(DeviceNode* node, char* indentBuff, size_t indentCount, bool isLast)
     {
         constexpr const char* TypeNames[] = { "driver", "descriptor", "api" };
-        Log("%*c |- id=%zu type=%s", LogLevel::Debug, (int)indent * 2, ' ', 
-            node->id, TypeNames[(size_t)node->type]);
+        constexpr char FormatStr[] = "%.*s%c id=%zu type=%s%.*s";
+        constexpr char DriverFormatStr[] = " name=%s loadBase=0x%tx";
+        constexpr char DescFormatStr[] = " name=%.*s";
+        constexpr char ApiFormatStr[] = ":%s \"%.*s\"";
+        constexpr size_t SubBufferSize = 80;
+        constexpr char Corner = '\\'; //0xC0;
+        constexpr char Cross = '+'; //0xC3;
+        constexpr char Bar = '|'; //0xB3;
+        constexpr char Space = ' ';
 
+        if (node == nullptr)
+            return;
+
+        const char indentCap = isLast ? Corner : Cross;
+        indentBuff[indentCount] = isLast ? Space : Bar;
+        indentBuff[indentCount + 1] = ' ';
+
+        size_t subBufferLen = 0;
+        char subBuffer[SubBufferSize];
         switch (node->type)
         {
         case DeviceNodeType::DriverInstance:
             {
                 auto* driver = static_cast<DriverInstance*>(node);
-                if (driver->manifest.Valid())
-                {
-                    Log("%*c |  name=%s, loadBase=0x%tx, transport=%zu", LogLevel::Debug, (int)indent * 2, ' ',
-                        driver->manifest->friendlyName.C_Str(), driver->manifest->runtimeImage->loadBase,
-                        driver->transportDevice.Valid() ? driver->transportDevice->id : 0);
-                }
-                else
-                {
-                    Log("%*c |  name=kernel, loadBase=0x%tx", LogLevel::Debug, (int)indent * 2, ' ',
-                        -2 * GiB);
-                }
+                const char* driverName = driver->manifest.Valid() ? driver->manifest->friendlyName.C_Str() : "kernel";
+                const uintptr_t loadBase = driver->manifest.Valid() ? driver->manifest->runtimeImage->loadBase : (-2 * GiB);
 
-                for (auto it = driver->apis.Begin(); it != driver->apis.End(); ++it)
-                    PrintNode(**it, indent + 1);
-                for (auto it = driver->providedDevices.Begin(); it != driver->providedDevices.End(); ++it)
-                    PrintNode(**it, indent + 1);
+                subBufferLen = npf_snprintf(subBuffer, SubBufferSize, DriverFormatStr,
+                    driverName, loadBase);
                 break;
             }
         case DeviceNodeType::Descriptor:
             {
                 auto* desc = static_cast<DeviceDescriptor*>(node);
-                Log("%*c |  name=%.*s", LogLevel::Debug, (int)indent * 2, ' ', 
+                subBufferLen = npf_snprintf(subBuffer, SubBufferSize, DescFormatStr, 
                     (int)desc->apiDesc->friendly_name.length, desc->apiDesc->friendly_name.data);
-                if (desc->attachedDriver.Valid())
-                    PrintNode(*desc->attachedDriver, indent + 1);
                 break;
             }
         case DeviceNodeType::Api:
@@ -70,10 +72,37 @@ namespace Npk::Drivers
                 npk_string summary {};
                 if (api->api->get_summary != nullptr)
                     summary = api->api->get_summary(api->api);
-                Log("%*c |  type=%s, summary=%.*s", LogLevel::Debug, (int)indent * 2, ' ',
+                subBufferLen = npf_snprintf(subBuffer, SubBufferSize, ApiFormatStr,
                     DeviceTypeStrs[api->api->type], (int)summary.length, summary.data);
                 break;
             }
+        }
+        subBufferLen = sl::Min(subBufferLen, SubBufferSize);
+
+        Log(FormatStr, LogLevel::Debug, (int)indentCount, indentBuff, indentCap,
+            node->id, TypeNames[(size_t)node->type], (int)subBufferLen, subBuffer);
+        indentCount += 2;
+
+        switch (node->type)
+        {
+        case DeviceNodeType::DriverInstance:
+            {
+                auto* driver = static_cast<DriverInstance*>(node);
+                for (auto it = driver->apis.Begin(); it != driver->apis.End(); ++it)
+                    PrintNode(**it, indentBuff, indentCount, (**it)->id == driver->apis.Back()->id && !driver->providedDevices.Size());
+                for (auto it = driver->providedDevices.Begin(); it != driver->providedDevices.End(); ++it)
+                    PrintNode(**it, indentBuff, indentCount, (**it)->id == driver->providedDevices.Back()->id);
+                break;
+            }
+        case DeviceNodeType::Descriptor:
+            {
+                auto* desc = static_cast<DeviceDescriptor*>(node);
+                if (desc->attachedDriver.Valid())
+                    PrintNode(*desc->attachedDriver, indentBuff, indentCount, true);
+                break;
+            }
+        case DeviceNodeType::Api:
+            break;
         }
     }
 
@@ -93,8 +122,9 @@ namespace Npk::Drivers
         }
         manifestsLock.ReaderUnlock();
 
+        char indentBuff[80];
         nodeTreeLock.ReaderLock();
-        PrintNode(&kernelInstance, 0);
+        PrintNode(&kernelInstance, indentBuff, 0, true);
         nodeTreeLock.ReaderUnlock();
     }
 
@@ -182,7 +212,22 @@ namespace Npk::Drivers
         Log("Loaded driver %s: processEvent=%p", LogLevel::Info, manifest->friendlyName.C_Str(),  manifest->ProcessEvent);
         stats.loadedCount++;
 
-        ASSERT_(manifest->ProcessEvent(EventType::Init, nullptr));
+        DriverInstance initInstance {};
+        initInstance.manifest = manifest;
+        initInstance.references++;
+        auto prevShadow = GetShadow();
+        SetShadow(&initInstance);
+
+        if (!manifest->ProcessEvent(EventType::Init, nullptr))
+        {
+            SetShadow(prevShadow);
+            Log("Driver %s refused Init event, aborting load.", LogLevel::Error,
+                manifest->friendlyName.C_Str());
+            stats.loadedCount--;
+
+            return false;
+        }
+        SetShadow(prevShadow);
         return true;
     }
 
@@ -234,6 +279,7 @@ namespace Npk::Drivers
 
     bool DriverManager::DetachDevice(sl::Handle<DeviceDescriptor>& device)
     {
+        (void)device;
         ASSERT_UNREACHABLE();
     }
 
@@ -290,7 +336,7 @@ namespace Npk::Drivers
         return true;
     }
 
-    bool DriverManager::AddManifest(sl::Handle<DriverManifest> manifest)
+    bool DriverManager::AddManifest(sl::Handle<DriverManifest> manifest, bool loadNow)
     {
         manifestsLock.WriterLock();
         //check that the manifest doesnt have a conflicting friendly name or load type/string.
@@ -319,10 +365,11 @@ namespace Npk::Drivers
         manifests.PushBack(manifest);
         manifestsLock.WriterUnlock();
 
-        Log("Driver manifest added: %s, module=%s", LogLevel::Info, manifest->friendlyName.C_Str()
-            , manifest->sourcePath.C_Str());
+        Log("Driver manifest added: %s, module=%s, loadNow=%s", LogLevel::Info, manifest->friendlyName.C_Str()
+            , manifest->sourcePath.C_Str(), loadNow ? "yes" : "no");
 
-        //TODO: driver flags (always load)
+        if (loadNow)
+            EnsureRunning(manifest);
 
         //check existing devices for any that might be handled by this driver.
         while (true)
@@ -343,6 +390,7 @@ namespace Npk::Drivers
 
     bool DriverManager::RemoveManifest(sl::StringSpan friendlyName)
     {
+        (void)friendlyName;
         ASSERT_UNREACHABLE();
     }
 
@@ -391,6 +439,7 @@ namespace Npk::Drivers
 
     sl::Opt<void*> DriverManager::RemoveDescriptor(size_t descriptorId)
     {
+        (void)descriptorId;
         ASSERT_UNREACHABLE();
     }
 
@@ -430,6 +479,7 @@ namespace Npk::Drivers
 
     bool DriverManager::RemoveApi(size_t id)
     {
+        (void)id;
         ASSERT_UNREACHABLE();
     }
 

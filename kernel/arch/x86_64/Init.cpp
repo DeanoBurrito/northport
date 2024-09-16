@@ -138,6 +138,6 @@ namespace Npk
 
     void ArchThreadedInit()
     {
-        npk_add_bus_access(npk_bus_type::BusPortIo, PortIoAccess);
+        npk_add_bus_access(npk_bus_type_port_io, PortIoAccess);
     }
 }

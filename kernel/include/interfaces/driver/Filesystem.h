@@ -26,9 +26,8 @@
  * SOFTWARE.
  */
 
-#include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,9 +41,9 @@ typedef struct
 
 typedef enum
 {
-    File = 0,
-    Directory = 1,
-    Link = 2,
+    npk_fsnode_type_file = 0,
+    npk_fsnode_type_dir = 1,
+    npk_fsnode_type_link = 2,
 } npk_fsnode_type;
 
 typedef struct

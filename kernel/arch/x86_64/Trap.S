@@ -7,7 +7,6 @@
 .size TrapEntry,(_EndOfTrapEntry - TrapEntry)
 
 TrapEntry:
-    clac
     push %rax
     push %rbx
     push %rcx

@@ -10,9 +10,9 @@ bool ProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
     {
-    case npk_event_type::Init:
+    case npk_event_type_init:
         return true;
-    case npk_event_type::AddDevice:
+    case npk_event_type_add_device:
         {
             Qemu::InitPowerDevice(); //TODO: we cant register APIs in the INIT event
 
@@ -31,7 +31,7 @@ bool ProcessEvent(npk_event_type type, void* arg)
 NPK_METADATA const uint8_t loadName[] = NPK_PCI_ID_LOAD_STR(0x1234, 0x1111);
 NPK_METADATA const npk_load_name loadNames[] =
 {
-    { .type = npk_load_type::PciId, .length = sizeof(loadName), .str = loadName }
+    { .type = npk_load_type_pci_id, .length = sizeof(loadName), .str = loadName }
 };
 NPK_METADATA const char friendlyName[] = "qemu";
 NPK_METADATA const npk_driver_manifest driverManifest

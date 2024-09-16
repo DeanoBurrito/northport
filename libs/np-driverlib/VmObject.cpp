@@ -5,13 +5,13 @@
 namespace dl
 {
     //checks to ensure our c++ enum flags match the C API ones.
-    static_assert(VmFlags(VmFlag::Write).Raw() == VmWrite);
-    static_assert(VmFlags(VmFlag::Execute).Raw() == VmExecute);
-    static_assert(VmFlags(VmFlag::User).Raw() == VmUser);
-    static_assert(VmFlags(VmFlag::Guarded).Raw() == VmGuarded);
-    static_assert(VmFlags(VmFlag::Anon).Raw() == VmAnon);
-    static_assert(VmFlags(VmFlag::Mmio).Raw() == VmMmio);
-    static_assert(VmFlags(VmFlag::File).Raw() == VmFile);
+    static_assert(VmFlags(VmFlag::Write).Raw() == npk_vm_flag_write);
+    static_assert(VmFlags(VmFlag::Execute).Raw() == npk_vm_flag_execute);
+    static_assert(VmFlags(VmFlag::User).Raw() == npk_vm_flag_user);
+    static_assert(VmFlags(VmFlag::Guarded).Raw() == npk_vm_flag_guarded);
+    static_assert(VmFlags(VmFlag::Anon).Raw() == npk_vm_flag_anon);
+    static_assert(VmFlags(VmFlag::Mmio).Raw() == npk_vm_flag_mmio);
+    static_assert(VmFlags(VmFlag::File).Raw() == npk_vm_flag_file);
 
     static_assert(VmFlagTypeMask == (size_t)NPK_VM_FLAG_TYPE_MASK);
 

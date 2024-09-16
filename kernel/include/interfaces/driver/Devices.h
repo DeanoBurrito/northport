@@ -26,9 +26,8 @@
  * SOFTWARE.
  */
 
-#include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 #include "Api.h"
 
 #ifdef __cplusplus
@@ -44,7 +43,7 @@ typedef struct
     OPTIONAL void* driver_data;
 } npk_device_desc;
 
-npk_handle npk_add_device_desc(REQUIRED OWNING npk_device_desc* descriptor, bool as_child);
+npk_handle npk_add_device_desc(REQUIRED OWNING npk_device_desc* descriptor);
 bool npk_remove_device_desc(npk_handle which, OPTIONAL void** driver_data);
 
 #ifdef __cplusplus

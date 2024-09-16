@@ -151,7 +151,6 @@ namespace Npk
 
     void LocalApic::SetTimer(bool tsc, size_t nanos, size_t vector)
     {
-        sl::InterruptGuard guard;
         sl::ScopedLock scopeLock(lock);
 
         if (tsc)

@@ -18,14 +18,6 @@ extern "C"
         Log("(driver:%s) %.*s", static_cast<LogLevel>(level), driverName, (int)str.length, str.data);
     }
 
-    DRIVER_API_FUNC
-    void npk_panic(REQUIRED const char* why)
-    {
-        const size_t whyLength = sl::memfirst(why, 0, 0);
-        Debug::Panic({ why, whyLength });
-        ASSERT_UNREACHABLE();
-    }
-
     static sl::RwLock accessLock;
     static sl::Vector<bool (*)(size_t width, uintptr_t addr, uintptr_t* data, bool write)> accessFuncs;
 

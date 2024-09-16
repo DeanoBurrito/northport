@@ -46,7 +46,7 @@ namespace Qemu
         const npk_init_tag* scan = event->tags;
         while (scan != nullptr)
         {
-            if (scan->type == npk_init_tag_type::PciFunction)
+            if (scan->type == npk_init_tag_type_pci_function)
             {
                 auto pciTag = reinterpret_cast<const npk_init_tag_pci_function*>(scan);
                 Log("PCI address: %02x::%02x:%02x:%01x", LogLevel::Debug, pciTag->segment,
@@ -79,17 +79,17 @@ namespace Qemu
         WriteDispiReg(DispiReg::Enable, DispiEnable | DispiLfbEnabled | DispiNoClearMem);
 
         mode.stride = mode.width * (mode.bpp / 8);
-        mode.mask_a = mode.shift_a = 0;
-        mode.mask_r = mode.mask_g = mode.mask_b = 0xFF;
-        mode.shift_r = 0;
-        mode.shift_g = 8;
-        mode.shift_b = 16;
+        mode.format.mask_a = mode.format.shift_a = 0;
+        mode.format.mask_r = mode.format.mask_g = mode.format.mask_b = 0xFF;
+        mode.format.shift_r = 0;
+        mode.format.shift_g = 8;
+        mode.format.shift_b = 16;
 
         RegenSummary();
 
         //create a device api so the kernel knows about this framebuffer.
         npk_framebuffer_device_api* fbApi = new npk_framebuffer_device_api();
-        fbApi->header.type = npk_device_api_type::Framebuffer;
+        fbApi->header.type = npk_device_api_type_framebuffer;
         fbApi->header.driver_data = this;
         fbApi->get_mode = GetModeWrapper;
         fbApi->header.get_summary = GetSummaryWrapper;

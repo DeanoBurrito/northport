@@ -9,9 +9,9 @@ bool NvmeProcessEvent(npk_event_type type, void* arg)
 {
     switch (type)
     {
-    case npk_event_type::Init:
+    case npk_event_type_init:
         return true;
-    case npk_event_type::AddDevice:
+    case npk_event_type_add_device:
         {
             auto& controller = controllers.EmplaceBack();
             const bool success = controller.Init(static_cast<npk_event_add_device*>(arg));
@@ -30,7 +30,7 @@ bool NvmeProcessEvent(npk_event_type type, void* arg)
 NPK_METADATA const uint8_t loadName[] = NPK_PCI_CLASS_LOAD_STR(1, 8, 2);
 NPK_METADATA const npk_load_name loadNames[] =
 {
-    { .type = npk_load_type::PciClass, .length = sizeof(loadName), .str = loadName }
+    { .type = npk_load_type_pci_class, .length = sizeof(loadName), .str = loadName }
 };
 NPK_METADATA const char friendlyName[] = "nvme";
 NPK_METADATA const npk_driver_manifest driverManifest

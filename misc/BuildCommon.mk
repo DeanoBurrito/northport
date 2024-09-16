@@ -26,9 +26,9 @@ $(TARGET_DRIVER): $(OBJS)
 
 clean:
 	@printf "$(C_BLUE)[$(TARGET)]$(C_RST) Cleaning build files ...\r\n"
-	$(LOUD)-rm -r $(BUILD_DIR)
-	$(LOUD)-rm -r $(TARGET_STATIC)
-	$(LOUD)-rm -r $(TARGET_DRIVER)
+	$(LOUD)-rm -r $(BUILD_DIR) $(LOUD_REDIRECT) ||:
+	$(LOUD)-rm -r $(TARGET_STATIC) $(LOUD_REDIRECT) ||:
+	$(LOUD)-rm -r $(TARGET_DRIVER) $(LOUD_REDIRECT) ||:
 	@printf "$(C_BLUE)[$(TARGET)]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
 $(BUILD_DIR)/%.cpp.o: %.cpp

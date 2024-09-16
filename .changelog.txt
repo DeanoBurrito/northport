@@ -1,22 +1,27 @@
-# current
+# v0.4.0
 - Architecture Layer:
     - Added a new architecture: Motorola 68K series - namely the 68040 and higher.
     - This is also the first 32-bit architecture supported by the kernel!
     - A custom boot shim was written for the qemu virt board, which supports the limine protocol.
+        - This boot shim is available in a separate repo at https://github.com/deanoburrito/lisp
     - Added github actions CI to test compile the kernel on m68k with GCC.
 
 - Drivers:
     - uACPI: first third-party driver, provides ACPI runtime services to the kernel.
     - Virtio: pci and mmio transports added, as well as a virtio gpu driver.
     - NVMe: basic first implementation, but flexible enough and has read and write support. Plays nicely with MDLs from the kernel.
+    - PS/2 controller and peripherals: support for keyboard and mouse.
 
 - Driver API:
-    - Exposed kernel waitable events.
-    - Exposed MSIs.
-    - Driver manifest supports having multiple load strings.
-    - ElfLoader no longer requires PLT to link with kernel (default code gen on modern distro compilers).
+    - Added `AcpiPnpId` load name type. Drivers can be load based on a matching HID/CID provided by an acpi runtime driver.
+    - Added kernel waitable events.
+    - Added MSIs.
+    - Added access to kernel config store.
+    - Added input event header and definitions.
+    - Removed concept of keyboard driver, this is now just a generic io device.
     - Removed all usage of ELF section headers: kernel now detects driver manifests via a custom phdr.
         - Unfortunately this does mean drivers now require a custom linker script to set this up.
+    - `ElfLoader` no longer requires PLT to link with kernel (default code gen on modern distro compilers).
     - Driver manifests provide an array of load names rather than just one, easy for a driver to declare support for multiple devices now (rather than provoding multiple manifests).
 
 - Added 'program exception' concept to kernel.
@@ -39,10 +44,16 @@
     - Arch-specific includes in arch layer headers are now defined in `arch/__Select.h`, centralizing the huge mess of #ifdefs.
     - Cleaned up Timer and HAT interface.
 
+- Syslib:
+    - Added doubly linked list template.
+    - Updated `FwdList<T>: to use member pointer arg, so an object can exist in multiple lists.
+
+- Added linker symbols and init-time hooks for global object constructors.
 - Added config store, a glorified kernel command line parser. Allows for overriding previously hardcoded config values.
 - Added command line option for inhibiting smp startup.
 - Thread switches are delayed until a core's runlevel drops back to normal.
 - Removed PolledSleep() from architecture timers interface. It's not used and we can achieve the same functionality with PollTimer().
+- Removed `InterruptLock` struct and `InterruptGuard`, `RunLevelLock` is preferred instead.
 
 - Panic stack traces now include the program name prepended to the function name, useful for driver/kernel stack traces.
 - Added hook for arch-layer to print info during panic sequence (`ArchPrintPanicInfo()`).
@@ -51,12 +62,15 @@
 - Added support for building C sources for drivers.
 - Added elf32 definitions to syslib, and generic macros that resolve to elf32/elf64 versions depending on target architecture.
 - Error log levels now capture a snapshot of the callstack, for logging or retrieval later on.
-    - These traces are stored in a small circular buffer.
+    - These traces are stored in a small circular buffer so as not to waste too much memory.
+- Updated nanoprintf to v0.5.3, which includes some freestanding fixes.
 
+- Fixed incorrect handling of logs wrapping around circular buffer, log text could be truncated.
 - Fixed crash when enabling terminal background with the stats renderer.
 - Fixed spelling mistake in driver api (monotomic -> monotonic), thanks IProgramInCpp for pointing that out!
 - Fixed misuse of `invlpg` on x86, accidentally evicting wrong entry from TLB.
 - Fixed bug in m68k loader where zero-sized phdrs were included in determining the kernel load window (thanks oberrow).
+- Fixed issue with m68k linker script where ld would emit incorrect relocations for the kernel.
 
 # v0.3.0
 - Added 'interrupt router' to replace previous interrupt manager, which offloads memory allocation to the caller.

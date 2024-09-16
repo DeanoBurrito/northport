@@ -330,7 +330,7 @@ namespace Nvme
         const npk_init_tag* scan = event->tags;
         while (scan != nullptr)
         {
-            if (scan->type == npk_init_tag_type::PciFunction)
+            if (scan->type == npk_init_tag_type_pci_function)
             {
                 auto pciTag = reinterpret_cast<const npk_init_tag_pci_function*>(scan);
                 Log("NVMe controller (over pci) located: %02x::%02x:%02x:%01x", LogLevel::Debug, pciTag->segment,
@@ -414,7 +414,7 @@ namespace Nvme
 
             ns.ioApi.begin_op = BeginOp;
             ns.ioApi.end_op = EndOp;
-            ns.ioApi.header.type = npk_device_api_type::Io;
+            ns.ioApi.header.type = npk_device_api_type_io;
             ns.ioApi.header.get_summary = GetSummary;
             ns.ioApi.header.driver_data = &namespaces[i];
             ns.ioApi.header.id = NPK_INVALID_HANDLE;

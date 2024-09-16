@@ -23,7 +23,7 @@ SECTIONS
         *(.ltext)
         *(.ltext.*)
     } :text
-    KERNEL_TEXT_SIZE = . - KERNEL_TEXT_BEGIN;
+    KERNEL_TEXT_END = .;
 
     . += CONSTANT(MAXPAGESIZE);
 
@@ -36,11 +36,19 @@ SECTIONS
         *(.lrodata.*)
     } :rodata
 
+    .init_array :
+    {
+        INIT_ARRAY_BEGIN = .;
+        *(.init_array)
+        *(.init_array.*)
+        INIT_ARRAY_END = .;
+    } :rodata
+
     .limine_reqs :
     {
         KEEP(*(.limine_reqs))
     } :rodata
-    KERNEL_RODATA_SIZE = . - KERNEL_RODATA_BEGIN;
+    KERNEL_RODATA_END = .;
 
     . += CONSTANT(MAXPAGESIZE);
 
@@ -73,7 +81,7 @@ SECTIONS
         *(.comment)
         *(.interp)
     }
-    KERNEL_DATA_SIZE = . - KERNEL_DATA_BEGIN;
+    KERNEL_DATA_END = .;
 
-    KERNEL_BLOB_SIZE = . - KERNEL_BLOB_BEGIN;
+    KERNEL_BLOB_END = .;
 }

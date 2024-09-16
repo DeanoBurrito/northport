@@ -28,7 +28,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "Decorators.h"
+#include "Primitives.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,8 +36,8 @@ extern "C" {
 
 typedef enum
 {
-    Read = 0,
-    Write = 1,
+    npk_iop_type_read = 0,
+    npk_iop_type_write = 1,
 } npk_iop_type;
 
 typedef struct

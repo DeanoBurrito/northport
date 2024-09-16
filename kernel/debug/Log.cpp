@@ -97,10 +97,10 @@ namespace Npk::Debug
             end = static_cast<LogBuffIdx>(bigEnd);
 
             const LogBuffIdx tail = buff->tail.Load();
-            if (begin < tail && end > tail)
+            if (begin < tail && end >= tail)
                 return nullptr; //new message would trample on tail of logbuffer
-            if (bigEnd >= buff->size && begin > tail && end >= tail)
-                return nullptr; //trampling, but with buffer wraparound.
+            if (buff->size - begin < realLength && end >= tail)
+                return nullptr; //trampling, but with wraparound
             if (buff->head.CompareExchange(begin, end))
                 break;
         }
@@ -237,9 +237,9 @@ namespace Npk::Debug
 
         if (msg->data.textBuffer->size < msg->data.begin + formattedLen) //handle wraparound
         {
-            const size_t snip = (msg->data.begin + formattedLen) - msg->data.textBuffer->size;
-            sl::memcopy(formatBuffer, 0, msg->data.textBuffer->buffer, msg->data.begin, snip);
-            sl::memcopy(formatBuffer, snip, msg->data.textBuffer->buffer, 0, formattedLen - snip);
+            const size_t runover = (msg->data.begin + formattedLen) - msg->data.textBuffer->size;
+            sl::memcopy(formatBuffer, 0, msg->data.textBuffer->buffer, msg->data.begin, formattedLen - runover);
+            sl::memcopy(formatBuffer, formattedLen - runover, msg->data.textBuffer->buffer, 0, runover);
         }
         else
             sl::memcopy(formatBuffer, msg->data.textBuffer->buffer + msg->data.begin, formattedLen);
@@ -292,12 +292,14 @@ namespace Npk::Debug
         {
             //since we're panicing, drain any logs in the queue if its safe to do so.
             sl::QueueMpSc<LogMessage>::Item* entry;
+            logOutCount = outs.Size(); //we know no other cores are trying to use this now, its safe to restore the count
             while ((entry = msgQueue.Pop()) != nullptr)
                 WriteoutLog(entry->data);
+            logOutCount = 0;
         }
         else
         {
-            for (size_t i = 0; i < logOutCount; i++)
+            for (size_t i = 0; i < outs.Size(); i++)
             {
                 if (logOuts[i]->Write != nullptr)
                     logOuts[i]->Write(PanicLockFailedStr);
