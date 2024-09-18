@@ -1,5 +1,4 @@
-#include <stdint.h>
-#include <debug/Log.h>
+#include <core/Log.h>
 
 extern "C"
 {

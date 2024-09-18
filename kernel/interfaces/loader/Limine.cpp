@@ -1,14 +1,13 @@
 #include <interfaces/loader/Generic.h>
 #include <interfaces/loader/Limine.h>
-#include <arch/Platform.h>
-#include <boot/CommonInit.h>
-#include <config/ConfigStore.h>
-#include <debug/Log.h>
+#include <Entry.h>
+#include <arch/Misc.h>
+#include <core/Log.h>
+#include <core/Config.h>
+#include <Hhdm.h>
 #include <formats/Elf.h>
 #include <UnitConverter.h>
 #include <NativePtr.h>
-#include <Maths.h>
-#include <Memory.h>
 
 #if defined(__x86_64__)
     #define LBP_CPU_ID(InfoPtr) (InfoPtr)->lapic_id
@@ -266,7 +265,7 @@ namespace Npk
 
     void ValidateLoaderData()
     {
-        const bool printDetails = Config::GetConfigNumber("kernel.boot.print_tags", true);
+        const bool printDetails = Core::GetConfigNumber("kernel.boot.print_tags", true);
         const size_t requestCount = (sizeof(requests) / sizeof(void*)) - 1;
         
         size_t responsesFound = 0;
@@ -314,7 +313,7 @@ namespace Npk
                 continue;
             }
 
-            length = sl::AlignUp(entry->base + entry->length, PageSize);
+            length = sl::AlignUp(entry->base + entry->length, PageSize());
         }
 
         ASSERT_(length != 0);
@@ -327,6 +326,32 @@ namespace Npk
             return 0;
         
         return kernelAddrRequest.response->physical_base;
+    }
+
+    sl::Opt<uintptr_t> EarlyPmAlloc(size_t length)
+    {
+        if (memmapRequest.response == nullptr)
+            return {};
+
+        length = sl::AlignUp(length, PageSize());
+        for (size_t i = 0; i < memmapRequest.response->entry_count; i++)
+        {
+            auto entry = memmapRequest.response->entries[i];
+            if (entry->type != LIMINE_MEMMAP_USABLE)
+                continue;
+            if (entry->length < length)
+                continue;
+
+            const uintptr_t base = entry->base;
+            entry->base += length;
+            entry->length -= length;
+            if (entry->length == 0)
+                entry->type = LIMINE_MEMMAP_RESERVED;
+
+            return base;
+        }
+
+        return {};
     }
 
     static size_t GetMemmapEntries(sl::Span<MemmapEntry> entries, size_t offset, uint64_t type)
@@ -450,7 +475,7 @@ namespace Npk
             return 1;
         }
 
-        const bool inhibitApStartup = Config::GetConfigNumber("kernel.smp.inhibit", false);
+        const bool inhibitApStartup = Core::GetConfigNumber("kernel.smp.inhibit", false);
         for (size_t i = 0; i < smpRequest.response->cpu_count; i++)
         {
             auto cpu = smpRequest.response->cpus[i];

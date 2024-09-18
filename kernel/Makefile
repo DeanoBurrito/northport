@@ -1,27 +1,9 @@
-KERNEL_CXX_FLAGS += -I../libs/np-syslib/include -I../libs/np-driverlib/include
-
-CXX_SRCS = arch/Helpers.cpp \
-	boot/CommonInit.cpp \
-	config/ConfigStore.cpp config/DeviceTree.cpp config/AcpiTables.cpp \
-	cpp/Stubs.cpp cpp/New.cpp cpp/UBSan.cpp \
-	debug/Log.cpp debug/Panic.cpp debug/TerminalImage.cpp debug/Terminal.cpp \
-	debug/TerminalDriver.cpp debug/Symbols.cpp debug/BakedConstants.cpp debug/MagicKeys.cpp \
-	drivers/DriverManager.cpp drivers/DriverHelpers.cpp drivers/ElfLoader.cpp \
-	filesystem/Filesystem.cpp filesystem/FileCache.cpp filesystem/TreeCache.cpp \
-	filesystem/TempFs.cpp filesystem/InitDisk.cpp \
-	interfaces/driver/Config.cpp interfaces/driver/Devices.cpp interfaces/driver/Drivers.cpp \
-	interfaces/driver/Filesystem.cpp interfaces/driver/General.cpp interfaces/driver/Io.cpp \
-	interfaces/driver/Memory.cpp interfaces/driver/Scheduling.cpp interfaces/driver/Interrupts.cpp \
-	interfaces/driver/Time.cpp interfaces/driver/Events.cpp interfaces/driver/Input.cpp \
-	interrupts/Ipi.cpp \
-	io/IntrRouter.cpp io/IoManager.cpp \
-	memory/Pmm.cpp memory/Vmm.cpp memory/VmObject.cpp memory/Heap.cpp memory/Slab.cpp \
-	memory/Pool.cpp memory/virtual/VmDriver.cpp memory/virtual/AnonVmDriver.cpp \
-	memory/virtual/KernelVmDriver.cpp memory/virtual/VfsVmDriver.cpp \
-	tasking/Clock.cpp tasking/Threads.cpp tasking/Scheduler.cpp tasking/RunLevels.cpp \
-	tasking/Waitable.cpp
-
-AS_SRCS =
+CXX_SRCS = Entry.cpp Panic.cpp \
+	core/Clock.cpp core/Config.cpp core/Event.cpp core/Heap.cpp core/IntrRouter.cpp \
+	core/Log.cpp core/Pmm.cpp core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp \
+	cpp/Stubs.cpp \
+	interfaces/intra/BakedConstants.cpp \
+	services/Program.cpp
 
 ARCH_DIR = arch/$(CPU_ARCH)
 include $(ARCH_DIR)/Arch.mk
@@ -48,21 +30,22 @@ clean:
 	$(LOUD)-rm -r $(BUILD_DIR) $(LOUD_REDIRECT) ||:
 	@printf "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)\r\n"
 
-.PHONY: debug/BakedConstants.cpp
-debug/BakedConstants.cpp:
+BAKED_CONSTANTS_FILE = interfaces/intra/BakedConstants.cpp
+.PHONY: $(BAKED_CONSTANTS_FILE)
+$(BAKED_CONSTANTS_FILE):
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Creating source file for build-time kernel constants\r\n"
 	@mkdir -p $(@D)
-	@printf "#include <debug/BakedConstants.h>\n \
-		namespace Npk::Debug \
-		{ \
+	@printf "#include <interfaces/intra/BakedConstants.h>\n \
+		namespace Npk \n\
+		{ \n\
 			const char* targetArchStr = \"$(CPU_ARCH)\"; \n\
 			const char* gitCommitHash = \"$(shell git rev-parse HEAD)\"; \n\
 			const char* gitCommitShortHash = \"$(shell git rev-parse --short HEAD)\"; \n\
 			size_t versionMajor = 0; \n\
-			size_t versionMinor = 3; \n\
+			size_t versionMinor = 4; \n\
 			size_t versionRev = 0; \n\
 			const char* toolchainUsed = \"$(TOOLCHAIN)\"; \n\
-		}" > debug/BakedConstants.cpp
+		}" > $(BAKED_CONSTANTS_FILE)
 
 $(BUILD_DIR)/%.S.o: %.S
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Assembling: $<\r\n"

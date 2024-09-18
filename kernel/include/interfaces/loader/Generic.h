@@ -43,6 +43,11 @@ namespace Npk
     //returns the physical address the kernel is loaded at.
     uintptr_t GetKernelPhysAddr();
 
+    //used in the initial stages of the kernel, before the pmm and wired heap are ready. It
+    //allocates physical memory and modifies the memory map to keep track of allocations.
+    //This memory can't be freed later on, so this function should be used sparingly.
+    sl::Opt<uintptr_t> EarlyPmAlloc(size_t length);
+
     //populates an array of memmap entries for consumption. Returns the number of entries
     //populated (the rest are untouched), and offset allows the caller to select where to start
     //populating the array from. Ideally you call this in a loop, with the return value accumulated

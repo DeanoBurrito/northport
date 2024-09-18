@@ -1,7 +1,6 @@
 #include <arch/x86_64/Cpuid.h>
-#include <debug/Log.h>
+#include <core/Log.h>
 #include <stdint.h>
-#include <stddef.h>
 
 namespace Npk
 {

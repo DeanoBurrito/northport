@@ -39,7 +39,8 @@ include misc/cross/$(CPU_ARCH)/CrossConfig.mk
 export KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fPIE \
 	-fno-omit-frame-pointer -ffreestanding -fvisibility=hidden \
 	-std=c++17 -fno-rtti -fno-exceptions -fsized-deallocation -fno-unwind-tables \
-	-fno-asynchronous-unwind-tables -Iinclude -DNP_KERNEL 
+	-fno-asynchronous-unwind-tables -Iinclude -DNP_KERNEL \
+	-I$(PROJ_ROOT_DIR)/libs/np-syslib/include
 export KERNEL_LD_FLAGS += -L$(LIBS_OUTPUT_DIR) -lknp-syslib \
 	-nostdlib -zmax-page-size=0x1000 -static -pie
 export SYSLIB_CXX_FLAGS += -fvisibility=default -fPIC

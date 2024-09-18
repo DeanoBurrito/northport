@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Optional.h>
+#include <Flags.h>
 
 /*
     The HAT (hardware address and translation) represents the MMU or whatever
@@ -20,20 +21,15 @@
 
 namespace Npk
 {
-    constexpr HatFlags operator|(const HatFlags& a, const HatFlags& b)
-    { return (HatFlags)((size_t)a | (size_t)b); }
+    enum class HatFlag
+    {
+        Write = 1,
+        Execute = 2,
+        User = 3,
+        Global = 4,
+    };
 
-    constexpr HatFlags operator|=(HatFlags& src, const HatFlags& other)
-    { return src = (HatFlags)((uintptr_t)src | (uintptr_t)other); }
-
-    constexpr HatFlags operator&(const HatFlags& a, const HatFlags& b)
-    { return (HatFlags)((size_t)a & (size_t)b); }
-
-    constexpr HatFlags operator&=(HatFlags& src, const HatFlags& other)
-    { return src = (HatFlags)((uintptr_t)src & (uintptr_t)other); }
-
-    constexpr HatFlags operator~(const HatFlags& src)
-    { return (HatFlags)(~(size_t)src); }
+    using HatFlags = sl::Flags<HatFlag>;
 
     constexpr size_t MaxHatModes = 8;
     //This struct is used to communicate the limits of the underlying MMU to the

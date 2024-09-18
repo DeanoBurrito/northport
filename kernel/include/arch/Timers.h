@@ -6,11 +6,6 @@
 
 namespace Npk
 {
-    //These are helper functions for use by platform-specific implemenations.
-    //You don't need to implement these yourself :) TODO: do we still need these?
-    sl::Opt<size_t> CoalesceTimerRuns(long* timerRuns, size_t runCount, size_t allowedFails);
-    //---
-    
     //discover and init system-wide timers, called exactly once on the BSP. This is called after
     //APs have started (with no synchronization between them however) and after the BSP has
     //run InitLocalTimers().
