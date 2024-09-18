@@ -18,27 +18,22 @@ namespace Npk::Core
     struct PageInfo
     {
         PmFlags flags;
-        uint16_t objOffset; //pages, not bytes
+        union 
+        {
+            uint16_t pmCount; //count of contiguous pages
+            uint16_t objOffset; //offset (in pages, not bytes) of this page within the VmObject
+        };
         //uint32_t unused here
-        sl::FwdListHook vmList;
-        sl::FwdListHook objList;
-    };
-
-    struct PmFreeEntry
-    {
-        PmFreeEntry* next;
-        size_t count;
+        sl::FwdListHook mmList; //used by pmm (when page is free), or vmm (page is used)
+        sl::FwdListHook objList; //used by vmo using this page
     };
 
     class Pmm
     {
     private:
-        struct
-        {
-            sl::RunLevelLock<RunLevel::Dpc> lock;
-            PmFreeEntry* head;
-            size_t size;
-        } freelist;
+        sl::RunLevelLock<RunLevel::Dpc> listLock;
+        sl::FwdList<PageInfo, &PageInfo::mmList> list;
+        size_t listSize;
 
         bool trashAfterUse;
         bool trashBeforeUse;

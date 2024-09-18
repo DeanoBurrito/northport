@@ -17,17 +17,15 @@ namespace Npk::Core
             const size_t dbBase = entries[i].base / PageSize();
 
             for (size_t i = 0; i < entryPages; i++)
-                infoDb[dbBase + i].flags = PmFlags::None;
+                new(infoDb + dbBase + i) PageInfo();
 
-            PmFreeEntry* listHead = reinterpret_cast<PmFreeEntry*>(entries[i].base + hhdmBase);
-            listHead->next = nullptr;
-            listHead->count = entryPages;
+            PageInfo* entry = &infoDb[dbBase];
+            entry->pmCount = entryPages;
 
-            freelist.lock.Lock();
-            listHead->next = freelist.head;
-            freelist.head = listHead;
-            freelist.size += entryPages;
-            freelist.lock.Unlock();
+            listLock.Lock();
+            list.PushBack(entry);
+            listSize += entryPages;
+            listLock.Unlock();
 
             Log("Physical memory ingested: 0x%tx-0x%tx (0x%zx)", LogLevel::Verbose,
                 entries[i].base, entries[i].base + entries[i].length, entries[i].length);
@@ -42,8 +40,8 @@ namespace Npk::Core
     
     void Pmm::Init()
     { 
-        freelist.head = nullptr;
-        freelist.size = 0;
+        listSize = 0;
+
         trashBeforeUse = GetConfigNumber("kernel.pmm.trash_before_use", false);
         trashAfterUse = GetConfigNumber("kernel.pmm.trash_after_use", false);
         infoDb = reinterpret_cast<PageInfo*>(hhdmBase + hhdmLength);
@@ -83,35 +81,35 @@ namespace Npk::Core
     sl::Opt<uintptr_t> Pmm::Alloc()
     {
         //TODO: per-core caches
-        sl::ScopedLock listLock(freelist.lock);
-        if (freelist.head == nullptr)
+        sl::ScopedLock scopeLock(listLock);
+        if (list.Empty())
             return {};
 
-        freelist.size--;
-        uintptr_t allocAddr = reinterpret_cast<uintptr_t>(SubHhdm(freelist.head));
-        if (freelist.head->count == 1)
-            freelist.head = freelist.head->next;
-        else
-        {
-            const size_t nextCount = freelist.head->count - 1;
-            freelist.head++;
-            freelist.head->count = nextCount;
-        }
+        PageInfo* allocated = list.PopFront();
+        listSize--;
+        const uintptr_t retAddr = (allocated - infoDb) * PageSize();
 
-        Lookup(allocAddr)->flags = PmFlags::None;
-        return allocAddr;
+        if (allocated->pmCount != 1)
+        {
+            PageInfo* heir = allocated + 1;
+            heir->pmCount = allocated->pmCount - 1;
+            list.PushFront(heir);
+        }
+        allocated->pmCount = 0;
+        allocated->flags = PmFlags::None;
+
+        return retAddr;
     }
 
     void Pmm::Free(uintptr_t paddr)
     {
         VALIDATE_(paddr != 0, );
 
-        PmFreeEntry* listEntry = reinterpret_cast<PmFreeEntry*>(paddr + hhdmBase);
-        listEntry->count = 1;
+        PageInfo* pageInfo = Lookup(paddr);
+        pageInfo->pmCount = 1;
 
-        sl::ScopedLock listLock(freelist.lock);
-        freelist.size++;
-        listEntry->next = freelist.head;
-        freelist.head = listEntry;
+        sl::ScopedLock scopeLock(listLock);
+        listSize++;
+        list.PushFront(pageInfo);
     }
 }
