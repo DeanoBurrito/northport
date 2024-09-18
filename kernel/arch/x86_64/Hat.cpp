@@ -13,6 +13,7 @@
 #include <NativePtr.h>
 
 #define INVLPG(vaddr) do { asm volatile("invlpg (%0)" :: "r"(vaddr) : "memory"); } while (false)
+#define SET_PTE(pte_ptr, value) do { asm volatile("mov %0, (%1)" :: "r"(value), "r"(pte_ptr)); } while (false)
 
 namespace Npk
 {
@@ -126,18 +127,14 @@ namespace Npk
             ASSERT_(maybePt.HasValue());
 
             sl::memset(reinterpret_cast<void*>(AddHhdm(*maybePt)), 0, sizeof(PageTable));
-            *path.pte = addrMask & *maybePt;
-            *path.pte |= PresentFlag | WriteFlag;
+            SET_PTE(path.pte, (addrMask & *maybePt) | PresentFlag | WriteFlag);
 
             path.level--;
             auto pt = reinterpret_cast<PageTable*>(AddHhdm(*maybePt));
             path.pte = &pt->ptes[indices[path.level]];
         }
 
-        *path.pte = PresentFlag | flags;
-        *path.pte |= paddr & addrMask;
-        if (size != PageSizes::_4K)
-            *path.pte |= SizeFlag;
+        SET_PTE(path.pte, PresentFlag | flags | (paddr & addrMask) | (size != PageSizes::_4K ? SizeFlag : 0));
     }
 
     void HatInit()
@@ -280,23 +277,23 @@ namespace Npk
             const uint64_t pt = *newPt;
             pmAllocs[path.level] = pt;
             sl::memset(reinterpret_cast<void*>(AddHhdm(pt)), 0, sizeof(PageTable));
-            *path.pte = addrMask & pt;
-            *path.pte |= PresentFlag | WriteFlag;
+            SET_PTE(path.pte, pt | PresentFlag | WriteFlag);
 
             path.level--;
             auto nextPt = reinterpret_cast<PageTable*>(pt + hhdmBase);
             path.pte = &nextPt->ptes[indices[path.level]];
         }
 
-        *path.pte = paddr & addrMask;
+        uint64_t pte = paddr & addrMask;
         if (flags.Has(HatFlag::Write))
-            *path.pte |= WriteFlag;
+            pte |= WriteFlag;
         if (!flags.Has(HatFlag::Execute) && nxSupport)
-            *path.pte |= NxFlag;
+            pte |= NxFlag;
         if (flags.Has(HatFlag::Global) && globalPageSupport)
-            *path.pte |= GlobalFlag;
+            pte |= GlobalFlag;
         if (selectedSize > PageSizes::_4K)
-            *path.pte |= SizeFlag;
+            pte |= SizeFlag;
+        SET_PTE(path.pte, pte);
 
         if (flush)
             INVLPG(vaddr);
@@ -314,7 +311,7 @@ namespace Npk
 
         paddr = *path.pte & addrMask;
         mode = path.level - 1;
-        *path.pte = 0;
+        SET_PTE(path.pte, 0);
 
         if (flush)
             INVLPG(vaddr);
@@ -343,7 +340,7 @@ namespace Npk
         VALIDATE_(path.complete, false);
 
         if (paddr.HasValue())
-            *path.pte = (*path.pte & ~addrMask) | (*paddr & addrMask);
+            SET_PTE(path.pte, (*path.pte & ~addrMask) | (*paddr & addrMask));
         if (flags.HasValue())
         {
             uint64_t newFlags = PresentFlag;
@@ -357,7 +354,7 @@ namespace Npk
             if (flags->Has(HatFlag::Global) && globalPageSupport)
                 newFlags |= GlobalFlag;
 
-            *path.pte = (*path.pte & addrMask) | newFlags;
+            SET_PTE(path.pte, (*path.pte & addrMask) | newFlags);
         }
 
         if (flush)
@@ -373,7 +370,7 @@ namespace Npk
         PageTable* dest = AddHhdm(map->root);
 
         for (size_t i = PtEntries / 2; i < PtEntries; i++)
-            dest->ptes[i] = source->ptes[i];
+            SET_PTE(dest->ptes + i, source->ptes[i]);
     }
 
     void HatMakeActive(HatMap* map, bool supervisor)
