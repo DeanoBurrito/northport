@@ -3,29 +3,34 @@
 #include <Locks.h>
 #include <containers/List.h>
 #include <Optional.h>
+#include <interfaces/intra/Compiler.h>
 
 namespace Npk { struct MemmapEntry; } //defined in interfaces/loader/Generic.h
 
 namespace Npk::Core
 {
-    enum PmFlags : uint16_t
-    {
-        None = 0,
-        Busy = 1 << 1,
-        Dirty = 1 << 2,
-    };
-
     struct PageInfo
     {
-        PmFlags flags;
-        union 
+        sl::FwdListHook mmList; //used whichever memory subsystem owns this page
+        union
         {
-            uint16_t pmCount; //count of contiguous pages
-            uint16_t objOffset; //offset (in pages, not bytes) of this page within the VmObject
+            struct
+            {
+                uint16_t count; //number of contiguous pages in this chunk
+            } pm;
+
+            struct
+            {
+                void* list[2]; //avoiding header pollution, see Heap.cpp for details
+                uint16_t used;
+            } slab;
+
+            struct
+            {
+                sl::FwdListHook objList; //linkage for VmObject page-list
+                uint16_t offset; //in pages (not bytes) of this page within the VmObject
+            } vm;
         };
-        //uint32_t unused here
-        sl::FwdListHook mmList; //used by pmm (when page is free), or vmm (page is used)
-        sl::FwdListHook objList; //used by vmo using this page
     };
 
     class Pmm
@@ -53,9 +58,15 @@ namespace Npk::Core
         void Free(uintptr_t paddr);
     };
 
-    static inline sl::Opt<uintptr_t> PmAlloc()
+    ALWAYS_INLINE
+    PageInfo* PmLookup(uintptr_t paddr) 
+    { return Pmm::Global().Lookup(paddr); }
+
+    ALWAYS_INLINE
+    sl::Opt<uintptr_t> PmAlloc()
     { return Pmm::Global().Alloc(); }
 
-    static inline void PmFree(uintptr_t paddr)
+    ALWAYS_INLINE
+    void PmFree(uintptr_t paddr)
     { Pmm::Global().Free(paddr); }
 }

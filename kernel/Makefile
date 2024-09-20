@@ -1,5 +1,5 @@
 CXX_SRCS = Entry.cpp Panic.cpp \
-	core/Clock.cpp core/Config.cpp core/Event.cpp core/Heap.cpp core/IntrRouter.cpp \
+	core/Clock.cpp core/Config.cpp core/Event.cpp core/WiredHeap.cpp core/IntrRouter.cpp \
 	core/Log.cpp core/Pmm.cpp core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp \
 	cpp/Stubs.cpp \
 	interfaces/intra/BakedConstants.cpp \

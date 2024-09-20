@@ -3,7 +3,7 @@
 #include <arch/x86_64/Cpuid.h>
 #include <core/Log.h>
 #include <core/Pmm.h>
-#include <core/Heap.h>
+#include <core/WiredHeap.h>
 #include <interfaces/intra/LinkerSymbols.h>
 #include <interfaces/loader/Generic.h>
 #include <Hhdm.h>

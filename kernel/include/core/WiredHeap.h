@@ -5,7 +5,6 @@
 
 namespace Npk::Core
 {
-    void InitHeap();
     void InitLocalHeapCache();
 
     void* WiredAlloc(size_t size); //will return nullptr if allocation fails.

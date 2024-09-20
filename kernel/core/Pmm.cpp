@@ -7,6 +7,8 @@
 
 namespace Npk::Core
 {
+    static_assert(sizeof(PageInfo) <= (sizeof(void*) * 4));
+
     constexpr size_t MemmapChunkSize = 32;
 
     void Pmm::IngestMemory(sl::Span<MemmapEntry> entries)
@@ -20,7 +22,7 @@ namespace Npk::Core
                 new(infoDb + dbBase + i) PageInfo();
 
             PageInfo* entry = &infoDb[dbBase];
-            entry->pmCount = entryPages;
+            entry->pm.count = entryPages;
 
             listLock.Lock();
             list.PushBack(entry);
@@ -89,15 +91,15 @@ namespace Npk::Core
         listSize--;
         const uintptr_t retAddr = (allocated - infoDb) * PageSize();
 
-        if (allocated->pmCount != 1)
+        if (allocated->pm.count != 1)
         {
             PageInfo* heir = allocated + 1;
-            heir->pmCount = allocated->pmCount - 1;
+            heir->pm.count = allocated->pm.count - 1;
             list.PushFront(heir);
         }
-        allocated->pmCount = 0;
-        allocated->flags = PmFlags::None;
+        allocated->pm.count = 0;
 
+        //TODO: trash before use
         return retAddr;
     }
 
@@ -106,10 +108,10 @@ namespace Npk::Core
         VALIDATE_(paddr != 0, );
 
         PageInfo* pageInfo = Lookup(paddr);
-        pageInfo->pmCount = 1;
+        pageInfo->pm.count = 1;
 
         sl::ScopedLock scopeLock(listLock);
         listSize++;
-        list.PushFront(pageInfo);
+        list.PushFront(pageInfo); //TODO: trash after use
     }
 }

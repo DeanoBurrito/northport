@@ -1,6 +1,6 @@
 #include <core/Log.h>
 #include <core/Clock.h>
-#include <core/Heap.h>
+#include <core/WiredHeap.h>
 #include <Panic.h>
 #include <Locks.h>
 #include <Maths.h>
