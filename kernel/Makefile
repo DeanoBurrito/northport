@@ -3,7 +3,7 @@ CXX_SRCS = Entry.cpp Panic.cpp \
 	core/Log.cpp core/Pmm.cpp core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp \
 	cpp/Stubs.cpp \
 	interfaces/intra/BakedConstants.cpp \
-	services/Program.cpp
+	services/AcpiTables.cpp services/MagicKeys.cpp services/Program.cpp
 
 ARCH_DIR = arch/$(CPU_ARCH)
 include $(ARCH_DIR)/Arch.mk
@@ -42,7 +42,7 @@ $(BAKED_CONSTANTS_FILE):
 			const char* gitCommitHash = \"$(shell git rev-parse HEAD)\"; \n\
 			const char* gitCommitShortHash = \"$(shell git rev-parse --short HEAD)\"; \n\
 			size_t versionMajor = 0; \n\
-			size_t versionMinor = 4; \n\
+			size_t versionMinor = 5; \n\
 			size_t versionRev = 0; \n\
 			const char* toolchainUsed = \"$(TOOLCHAIN)\"; \n\
 		}" > $(BAKED_CONSTANTS_FILE)

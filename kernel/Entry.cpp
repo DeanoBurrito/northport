@@ -1,12 +1,12 @@
 #include <arch/Init.h>
 #include <arch/Hat.h>
-#include <core/Log.h>
 #include <core/Config.h>
+#include <core/Log.h>
 #include <core/Pmm.h>
 #include <interfaces/intra/BakedConstants.h>
 #include <interfaces/intra/LinkerSymbols.h>
 #include <interfaces/loader/Generic.h>
-#include <Handle.h>
+#include <services/AcpiTables.h>
 
 namespace Npk
 {
@@ -50,10 +50,12 @@ namespace Npk
 
         HatInit();
         HatMakeActive(KernelMap(), true);
-
         Core::Pmm::Global().Init();
-        //heap init
-        //device discovery mechanisms: acpi tables and fdt (smoldtb) parsers
+
+        if (auto rsdp = GetRsdp(); rsdp.HasValue())
+            Services::SetRsdp(*rsdp);
+        //if (auto fdt = GetDtb(); fdt.HasValue())
+            //Services::SetFdtPoitner(*fdt); TODO: import smoldtb and do dtb stuff
 
         //ArchLateKernelEntry();
         //Add early magic keys: P for panic

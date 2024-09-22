@@ -11,8 +11,6 @@
     hardware is used to manage virtual memory. We're assuming paging on most accounts,
     but the interface is abstract enough that segmentation should also be a viable option,
     or some other esoteric method.
-
-    The HAT API is intended for use mainly by the VMM, and not by other kernel subsystems.
 */
 
 #ifdef NPK_ARCH_INCLUDE_HAT
@@ -51,7 +49,11 @@ namespace Npk
     */
     struct HatMap;
 
-    //hook to perform some init based on the MMU's capabilities if needed.
+    //a hook for the arch layer to perform some global mmu detection and setup. This function
+    //is also responsible for mapping the unchanging regions of the kernel map:
+    // - the kernel image
+    // - the HHDM
+    // - the virtually contiguous PageInfo database
     void HatInit();
 
     //returns the modes supported by the current MMU.
