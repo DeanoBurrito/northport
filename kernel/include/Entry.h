@@ -4,6 +4,7 @@
 
 namespace Npk
 {
+    //started on the first core to finish its local init and begin scheduling.
     void InitThread(void*);
 
     //called by boot protocol AP entry code.

@@ -60,7 +60,7 @@ namespace Npk
 
     static PanicOutputs BeginPanic()
     {
-        ArchBeginPanic();
+        DisableInterrupts();
         const size_t continuePanic = panicFlag.FetchAdd(1);
         if (continuePanic != 0)
             Halt(); //TODO: would be nice to signal a recursive panic somehow

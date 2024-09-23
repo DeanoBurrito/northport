@@ -43,15 +43,16 @@ namespace Npk::Core
         VALIDATE_(size != 0, nullptr);
         VALIDATE_(size < (BaseSlabSize << SlabCount), nullptr);
 
+        size /= BaseSlabSize;
         size_t slabIndex = 0;
-        while (size >> 1 >= BaseSlabSize)
+        while (size != 0)
         {
             slabIndex++;
             size >>= 1;
         }
 
         if (CoreLocalAvailable())
-            VALIDATE_(CoreLocal().runLevel == RunLevel::Normal, nullptr);
+            VALIDATE_(CurrentRunLevel() == RunLevel::Normal, nullptr);
 
         //TODO: per-core caches
         sl::ScopedLock listLock(slabLocks[slabIndex]);
@@ -70,7 +71,10 @@ namespace Npk::Core
 
         InitSlab(*allocatedPage, BaseSlabSize << slabIndex);
         PageInfo* pageInfo = PmLookup(*allocatedPage);
-        void* allocatedAddr = reinterpret_cast<SlabFreelist*>(&pageInfo->slab.list)->PopFront();
+        SlabFreelist* freelist = reinterpret_cast<SlabFreelist*>(pageInfo->slab.list);
+
+        pageInfo->slab.used++;
+        void* allocatedAddr = freelist->PopFront();
         slabs[slabIndex].PushBack(pageInfo);
 
         return allocatedAddr;
@@ -85,8 +89,9 @@ namespace Npk::Core
         if (ptr == nullptr || size == 0 || size >= (BaseSlabSize << SlabCount))
             return;
 
+        size /= BaseSlabSize;
         size_t slabIndex = 0;
-        while (size >> 1 >= BaseSlabSize)
+        while (size != 0)
         {
             slabIndex++;
             size >>= 1;

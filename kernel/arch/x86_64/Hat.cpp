@@ -183,15 +183,15 @@ namespace Npk
         const size_t imageSize = (uintptr_t)KERNEL_BLOB_END - (uintptr_t)KERNEL_BLOB_BEGIN;
         uint64_t imageFlags = globalPageSupport ? GlobalFlag : 0;
 
-        for (char* i = KERNEL_TEXT_BEGIN; i < KERNEL_TEXT_END; i += 0x1000)
+        for (char* i = sl::AlignDown(KERNEL_TEXT_BEGIN, 0x1000); i < KERNEL_TEXT_END; i += 0x1000)
             EarlyMap((uintptr_t)i, (uintptr_t)i - virtBase + physBase, PageSizes::_4K, imageFlags);
 
         imageFlags |= nxSupport ? NxFlag : 0;
-        for (char* i = KERNEL_RODATA_BEGIN; i < KERNEL_RODATA_END; i += 0x1000)
+        for (char* i = sl::AlignDown(KERNEL_RODATA_BEGIN, 0x1000); i < KERNEL_RODATA_END; i += 0x1000)
             EarlyMap((uintptr_t)i, (uintptr_t)i - virtBase + physBase, PageSizes::_4K, imageFlags);
 
         imageFlags |= WriteFlag;
-        for (char* i = KERNEL_DATA_BEGIN; i < KERNEL_DATA_END; i += 0x1000)
+        for (char* i = sl::AlignDown(KERNEL_DATA_BEGIN, 0x1000); i < KERNEL_DATA_END; i += 0x1000)
             EarlyMap((uintptr_t)i, (uintptr_t)i - virtBase + physBase, PageSizes::_4K, imageFlags);
         Log("Kernel image mapped: vbase=0x%tx pbase=0x%tx size=0x%tx", LogLevel::Info,
             virtBase, physBase, imageSize);
@@ -360,6 +360,11 @@ namespace Npk
         if (flush)
             INVLPG(vaddr);
         return true;
+    }
+
+    void HatFlushMap(uintptr_t vaddr)
+    {
+        INVLPG(vaddr);
     }
 
     static void SyncWithKernelMap(HatMap* map)

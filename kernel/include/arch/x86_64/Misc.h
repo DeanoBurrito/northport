@@ -30,12 +30,6 @@ namespace Npk
     }
 
     ALWAYS_INLINE
-    void ArchBeginPanic()
-    { 
-        asm("cli"); 
-    }
-
-    ALWAYS_INLINE
     uint8_t In8(uint16_t port)
     { 
         uint8_t value;

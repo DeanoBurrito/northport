@@ -184,7 +184,7 @@ namespace Npk::Core
         //subsystem is available) allows us to prevent being pre-empted by the scheduler and make this
         //part of the operation soft-atomic.
         sl::Opt<RunLevel> prevRl {};
-        if (CoreLocalAvailable())
+        if (CoreLocalAvailable() && CurrentRunLevel() < RunLevel::Dpc)
             prevRl = RaiseRunLevel(RunLevel::Dpc);
 
         //Attempt to allocate from the global or core-local ringbuffers. We do this in a loop as 
@@ -242,7 +242,7 @@ namespace Npk::Core
 
     void InitGlobalLogging()
     {
-        //TODO: tiny early framebuffer init with fixed sized buffer?
+        //TODO: tiny early framebuffer init with fixed sized buffer? replicated to all present laoder FBs
     }
 
     void InitLocalLogging(sl::Span<char> buffer)

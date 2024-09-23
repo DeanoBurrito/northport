@@ -81,6 +81,9 @@ namespace Npk
     //attempts to update an existing mapping: either flags, physical address of both.
     bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
 
+    //attempts to flush a cached mapping from the local translation cache.
+    void HatFlushMap(uintptr_t vaddr);
+
     //replaces the currently active HAT address space with this one.
     void HatMakeActive(HatMap* map, bool supervisor);
 }

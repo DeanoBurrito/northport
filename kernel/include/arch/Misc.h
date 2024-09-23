@@ -11,13 +11,9 @@ namespace Npk
     //each entry here is a place for the relevant subsystem to store core-local data
     enum class LocalPtr : size_t
     {
-        IntrControl,
-        Scheduler,
-        Thread,
-        UserVmm,
         Logs,
-        HeapCache,
-        IntrRouting,
+        Thread,
+        IpiMailbox,
 
         Count
     };
@@ -41,7 +37,6 @@ namespace Npk
     };
 
     size_t PageSize();
-    void ArchBeginPanic();
     void ExplodeKernelAndReset();
 
     //this struct represents any per-thread state not included in the TrapFrame.

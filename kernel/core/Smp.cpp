@@ -1,7 +1,133 @@
 #include <core/Smp.h>
+#include <arch/Hat.h>
+#include <core/Pmm.h>
+#include <core/Log.h>
+#include <core/WiredHeap.h>
+#include <Hhdm.h>
+#include <containers/List.h>
+#include <Locks.h>
 
 namespace Npk::Core
 {
+    struct MailboxEntry
+    {
+        SmpMailCallback callback;
+        void* arg;
+    };
+
+    struct MailboxControl
+    {
+        sl::FwdListHook hook;
+
+        size_t id;
+        ShootdownQueue tlbEvictions;
+        volatile bool shouldPanic;
+        sl::SpinLock entriesLock; //TODO: switch to lockfree ringbuffer
+        sl::Span<MailboxEntry> entries;
+    };
+
+    sl::RwLock mailboxesLock;
+    sl::FwdList<MailboxControl, &MailboxControl::hook> mailboxes; //TODO: bucket list instead, wiredheap would support that?
+
+    void InitLocalSmpMailbox()
+    {
+        MailboxControl* control = NewWired<MailboxControl>();
+        ASSERT_(control != nullptr);
+
+        auto maybePm = PmAlloc();
+        ASSERT_(maybePm.HasValue());
+
+        const size_t entryCount = PageSize() / sizeof(MailboxEntry);
+        MailboxEntry* entries = reinterpret_cast<MailboxEntry*>(*maybePm + hhdmBase);
+        control->entries = sl::Span<MailboxEntry>(entries, entryCount);
+        for (size_t i = 0; i < control->entries.Size(); i++)
+            control->entries[i].callback = nullptr;
+
+        control->id = CoreLocal().id;
+        CoreLocal()[LocalPtr::IpiMailbox] = control;
+
+        mailboxesLock.WriterLock();
+        mailboxes.PushBack(control);
+        mailboxesLock.WriterUnlock();
+
+        Log("Smp mailbox created: %p, entries=%zu", LogLevel::Verbose, control, entryCount);
+    }
+
+    void ProcessLocalMail()
+    {
+        ASSERT_(CoreLocal().runLevel == RunLevel::Interrupt);
+        auto* mailbox = static_cast<MailboxControl*>(CoreLocal()[LocalPtr::IpiMailbox]);
+        if (mailbox->shouldPanic)
+            Halt();
+
+        mailbox->entriesLock.Lock();
+        for (size_t i = 0; i < mailbox->entries.Size(); i++)
+        {
+            mailbox->entries[i].callback(mailbox->entries[i].arg);
+            mailbox->entries[i].callback = nullptr;
+        }
+        mailbox->entriesLock.Unlock();
+
+        TlbShootdown* evict = nullptr;
+        while ((evict = mailbox->tlbEvictions.Pop()) != nullptr)
+        {
+            for (size_t i = 0; i < evict->data.length; i += PageSize())
+                HatFlushMap(evict->data.base + i);
+            evict->data.pending--;
+        }
+    }
+
+    static MailboxControl* FindMailbox(size_t id)
+    {
+        MailboxControl* found = nullptr;
+        mailboxesLock.ReaderLock();
+
+        for (auto it = mailboxes.Begin(); it != mailboxes.End(); ++it)
+        {
+            if (it->id != id)
+                continue;
+            found = &*it;
+            break;
+        }
+        
+        mailboxesLock.ReaderUnlock();
+        return found;
+    }
+
+    void SendSmpMail(size_t destCore, SmpMailCallback callback, void* arg)
+    {
+        VALIDATE_(callback != nullptr, );
+        MailboxControl* dest = FindMailbox(destCore);
+        VALIDATE_(dest != nullptr, );
+
+        sl::ScopedLock scopeLock(dest->entriesLock);
+        for (size_t i = 0; i < dest->entries.Size(); i++)
+        {
+            if (dest->entries[i].callback != nullptr)
+                continue;
+
+            dest->entries[i].callback = callback;
+            dest->entries[i].arg = arg;
+            SendIpi(destCore);
+            return;
+        }
+
+        Log("Failed to send mail to core %zu, mailbox full.", LogLevel::Fatal, destCore);
+    }
+
+    void SendShootdown(size_t destCore, TlbShootdown* shootdown)
+    {
+        VALIDATE_(shootdown != nullptr, );
+        MailboxControl* dest = FindMailbox(destCore);
+        VALIDATE_(dest != nullptr, );
+
+        dest->tlbEvictions.Push(shootdown);
+    }
+
     void PanicAllCores()
-    {} //TODO: IPI mailboxes
+    {
+        mailboxesLock.ReaderLock();
+        for (auto it = mailboxes.Begin(); it != mailboxes.End(); ++it)
+            it->shouldPanic = true;
+    }
 }
