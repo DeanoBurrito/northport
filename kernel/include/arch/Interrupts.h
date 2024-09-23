@@ -16,8 +16,11 @@ namespace Npk
     struct TrapFrame;
     struct SyscallFrame;
 
+    bool InterruptsEnabled();
+    void EnableInterrupts();
+    void DisableInterrupts();
+
     bool SendIpi(size_t dest);
-    void SetHardwareRunLevel(RunLevel rl);
     bool RoutePinInterrupt(size_t pin, size_t core, size_t vector);
 
     void Wfi();
@@ -30,6 +33,7 @@ namespace Npk
     void* GetTrapFrameArg(TrapFrame* frame, size_t index);
     void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
 
+    size_t SyscallFrameArgCount();
     void SetSyscallArg(SyscallFrame* frame, size_t index, void* value);
     void* GetSyscallArg(SyscallFrame* frame, size_t index);
 

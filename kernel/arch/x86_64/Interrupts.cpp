@@ -10,18 +10,6 @@ namespace Npk
     bool SendIpi(size_t dest)
     { ASSERT_UNREACHABLE(); }
 
-    void SetHardwareRunLevel(RunLevel rl)
-    {
-        switch (rl)
-        {
-        case RunLevel::Interrupt:
-        case RunLevel::Clock:
-            return DisableInterrupts();
-        default:
-            return EnableInterrupts();
-        }
-    }
-
     bool RoutePinInterrupt(size_t pin, size_t core, size_t vector)
     { ASSERT_UNREACHABLE(); }
 

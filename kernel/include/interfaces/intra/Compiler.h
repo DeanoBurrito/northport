@@ -6,7 +6,7 @@
     #define NAKED_FUNCTION [[gnu::naked]]
     #define PACKED_STRUCT [[gnu::packed]]
 #else
-    #warning "Unexpeted copiler - things may get funky."
+    #warning "Unexpected compiler - things may get funky."
     #define ALWAYS_INLINE inline
     #define PRINTF_FUNCTION(fmt, args)
     #define NAKED_FUNCTION

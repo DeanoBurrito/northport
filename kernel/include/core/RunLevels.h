@@ -46,6 +46,7 @@ namespace Npk::Core
     using ApcStore = ApcQueue::Item;
 
     const char* RunLevelName(RunLevel rl);
+    RunLevel CurrentRunLevel();
     RunLevel RaiseRunLevel(RunLevel newRl);
     void LowerRunLevel(RunLevel newRl);
 

@@ -19,6 +19,12 @@ namespace Npk
     }
 
     ALWAYS_INLINE
+    size_t SyscallFrameArgCount()
+    {
+        return 6;
+    }
+
+    ALWAYS_INLINE
     bool InterruptsEnabled()
     {
         uint64_t flags;
