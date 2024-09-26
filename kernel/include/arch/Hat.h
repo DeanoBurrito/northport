@@ -21,10 +21,11 @@ namespace Npk
 {
     enum class HatFlag
     {
-        Write = 1,
-        Execute = 2,
-        User = 3,
-        Global = 4,
+        Write,
+        Execute,
+        User,
+        Global,
+        Mmio,
     };
 
     using HatFlags = sl::Flags<HatFlag>;

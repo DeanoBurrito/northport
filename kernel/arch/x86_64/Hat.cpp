@@ -32,6 +32,8 @@ namespace Npk
     constexpr uint64_t SizeFlag = 1 << 7;
     constexpr uint64_t GlobalFlag = 1 << 8;
     constexpr uint64_t NxFlag = 1ul << 63;
+    constexpr uint64_t PatUcFlag = (1 << 4) | (1 << 3); //(3) for mmio hint
+    //constexpr uint64_t PatWcFlag = (1 << 12) | (1 << 3); //(5) for framebuffer hint
 
     struct PageTable
     {
@@ -52,6 +54,7 @@ namespace Npk
     HatMap kernelMap;
     bool nxSupport;
     bool globalPageSupport;
+    bool patSupport;
 
     HatLimits limits 
     {
@@ -147,6 +150,9 @@ namespace Npk
             limits.modeCount = 2; //if the cpu doesn't support gigabyte pages, don't advertise it.
         nxSupport = CpuHasFeature(CpuFeature::NoExecute);
         globalPageSupport = CpuHasFeature(CpuFeature::GlobalPages);
+        patSupport = CpuHasFeature(CpuFeature::Pat);
+        if (!patSupport)
+            Log("PAT not supported on this cpu.", LogLevel::Warning);
 
         //determine the mask needed to separate the physical address from the flags
         addrMask = 1ul << (9 * pagingLevels + 12);
@@ -284,13 +290,15 @@ namespace Npk
             path.pte = &nextPt->ptes[indices[path.level]];
         }
 
-        uint64_t pte = paddr & addrMask;
+        uint64_t pte = (paddr & addrMask) | PresentFlag;
         if (flags.Has(HatFlag::Write))
             pte |= WriteFlag;
         if (!flags.Has(HatFlag::Execute) && nxSupport)
             pte |= NxFlag;
         if (flags.Has(HatFlag::Global) && globalPageSupport)
             pte |= GlobalFlag;
+        if (flags.Has(HatFlag::Mmio) && patSupport)
+            pte |= PatUcFlag;
         if (selectedSize > PageSizes::_4K)
             pte |= SizeFlag;
         SET_PTE(path.pte, pte);

@@ -35,6 +35,7 @@ namespace Npk
         { .leaf {6, 0}, .index = 'a', .shift = 2, .name = "arat" },
         { .leaf {1, 0}, .index = 'd', .shift = 4, .name = "tsc" },
         { .leaf {1, 0}, .index = 'c', .shift = 24, .name = "tsc-d" },
+        { .leaf {1, 0}, .index = 'd', .shift = 16, .name = "pat" },
         { .leaf {0x8000'0007, 0}, .index = 'd', .shift = 8, .name = "inv-tsc" },
     };
 

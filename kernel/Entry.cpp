@@ -22,8 +22,8 @@ namespace Npk
     void* EarlyVmAlloc(uintptr_t paddr, size_t length, bool writable, bool mmio, const char* tag)
     {
         VALIDATE_(earlyVmEnabled, nullptr);
-        Log("EarlyVmAlloc: paddr=0x%tx, len=0x%zu, tag=%s%s%s", LogLevel::Verbose, paddr,
-            length, tag, writable ? ", writable" : "", mmio ? ", mmio" : "");
+        Log("EarlyVmAlloc: vaddr=0x%tx, paddr=0x%tx, len=0x%zx, tag=%s%s%s", LogLevel::Verbose, 
+            earlyVmBase, paddr, length, tag, writable ? ", writable" : "", mmio ? ", mmio" : "");
 
         HatFlags flags = HatFlag::Global;
         if (writable)
@@ -32,12 +32,14 @@ namespace Npk
             flags.Set(HatFlag::Mmio);
 
         const size_t granuleSize = HatGetLimits().modes[0].granularity;
-        for (size_t i = 0; i < length; i += granuleSize)
-            HatDoMap(KernelMap(), earlyVmBase + i, paddr + i, 0, flags, false);
+        const uintptr_t pBase = sl::AlignDown(paddr, granuleSize);
+        const size_t pTop = paddr + length;
+        for (size_t i = pBase; i < pTop; i += granuleSize)
+            HatDoMap(KernelMap(), i - pBase + earlyVmBase, i, 0, flags, false);
 
         const uintptr_t retAddr = earlyVmBase;
-        earlyVmBase += sl::AlignUp(length, granuleSize);
-        return reinterpret_cast<void*>(retAddr);
+        earlyVmBase = sl::AlignUp(earlyVmBase + (pTop - pBase), granuleSize);
+        return reinterpret_cast<void*>(retAddr + (paddr - pBase));
     }
 
     uintptr_t EarlyVmControl(bool enable)
@@ -111,8 +113,8 @@ namespace Npk
         Core::Pmm::Global().Init();
         EarlyVmControl(true);
 
-        //if (auto rsdp = GetRsdp(); rsdp.HasValue())
-            //Services::SetRsdp(*rsdp);
+        if (auto rsdp = GetRsdp(); rsdp.HasValue())
+            Services::SetRsdp(*rsdp);
         //if (auto fdt = GetDtb(); fdt.HasValue())
             //Services::SetFdtPoitner(*fdt); TODO: import smoldtb and do dtb stuff
 
