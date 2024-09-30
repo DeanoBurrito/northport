@@ -1,6 +1,8 @@
 #include <arch/Init.h>
 #include <arch/Misc.h>
+#include <arch/x86_64/Apic.h>
 #include <arch/x86_64/Cpuid.h>
+#include <arch/x86_64/Timers.h>
 #include <core/Log.h>
 #include <core/WiredHeap.h>
 
@@ -107,12 +109,13 @@ namespace Npk
 
     void ArchLateKernelEntry()
     {
-        //TODO: ioapic discovery
+        InitIoApics();
+        CalibrationTimersInit();
     }
 
     void ArchInitCore(size_t myId)
     { 
-        //TODO: sync PAT layout and MTRRs
+        //TODO: sync MTRRs
         LoadGdt();
         LoadIdt();
 
@@ -148,7 +151,10 @@ namespace Npk
             CpuHasFeature(CpuFeature::NoExecute) ? ", nx" : "");
 
         //TODO: init fpu/sse state
-        //TODO: lapic init
+        LocalApic* lapic = NewWired<LocalApic>();
+        ASSERT_(lapic != nullptr);
+        CoreLocal()[LocalPtr::IntrCtrl] = lapic;
+        lapic->Init();
     }
 
     void ArchThreadedInit()
