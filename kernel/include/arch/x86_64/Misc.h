@@ -23,10 +23,14 @@ namespace Npk
     constexpr uint16_t SelectorUserCode   = 0x20 | 3;
     constexpr uint16_t SelectorTss        = 0x28;
 
+    constexpr uint8_t IntrVectorTimer = 0xFD;
+    constexpr uint8_t IntrVectorIpi = 0xFE;
+    constexpr uint8_t IntrVectorSpurious = 0xFF;
+
     ALWAYS_INLINE
-    size_t PageSize()
+    size_t PfnShift()
     {
-        return 0x1000;
+        return 12;
     }
 
     ALWAYS_INLINE
@@ -139,6 +143,15 @@ namespace Npk
     void WriteMsr(uint32_t addr, uint64_t data)
     {
         asm volatile("wrmsr" :: "a"(data & 0xFFFF'FFFF), "d"(data >> 32), "c"(addr));
+    }
+
+    ALWAYS_INLINE
+    uint64_t ReadTsc()
+    {
+        uint64_t low;
+        uint64_t high;
+        asm volatile("lfence; rdtsc" : "=a"(low), "=d"(high) :: "memory");
+        return low | (high << 32);
     }
 
     ALWAYS_INLINE

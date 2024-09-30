@@ -124,7 +124,6 @@ namespace Npk
         PrintCallstack(outputs, traceStart);
         PrintCoreInfo(outputs);
         PrintProgramInfo(outputs);
-        //TODO: arch layer callback here
 
         PanicPrint(outputs, ResetStr);
         Halt();

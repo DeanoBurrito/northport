@@ -313,7 +313,7 @@ namespace Npk
                 continue;
             }
 
-            length = sl::AlignUp(entry->base + entry->length, PageSize());
+            length = AlignUpPage(entry->base + entry->length);
         }
 
         ASSERT_(length != 0);
@@ -333,7 +333,7 @@ namespace Npk
         if (memmapRequest.response == nullptr)
             return {};
 
-        length = sl::AlignUp(length, PageSize());
+        length = AlignUpPage(length);
         for (size_t i = 0; i < memmapRequest.response->entry_count; i++)
         {
             auto entry = memmapRequest.response->entries[i];

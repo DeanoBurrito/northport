@@ -76,8 +76,7 @@ namespace Npk::Core
 
     PageInfo* Pmm::Lookup(uintptr_t paddr)
     {
-        paddr /= PageSize();
-        return infoDb + paddr;
+        return infoDb + (paddr >> PfnShift());
     }
 
     sl::Opt<uintptr_t> Pmm::Alloc()
@@ -89,7 +88,7 @@ namespace Npk::Core
 
         PageInfo* allocated = list.PopFront();
         listSize--;
-        const uintptr_t retAddr = (allocated - infoDb) * PageSize();
+        const uintptr_t retAddr = (allocated - infoDb) << PfnShift();
 
         if (allocated->pm.count != 1)
         {

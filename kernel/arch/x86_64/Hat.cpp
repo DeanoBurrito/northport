@@ -33,7 +33,6 @@ namespace Npk
     constexpr uint64_t GlobalFlag = 1 << 8;
     constexpr uint64_t NxFlag = 1ul << 63;
     constexpr uint64_t PatUcFlag = (1 << 4) | (1 << 3); //(3) for mmio hint
-    //constexpr uint64_t PatWcFlag = (1 << 12) | (1 << 3); //(5) for framebuffer hint
 
     struct PageTable
     {

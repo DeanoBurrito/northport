@@ -66,8 +66,8 @@ namespace Npk::Core
                         dpc->next = nullptr;
                         dpc->data.function(dpc->data.arg);
                     }
-                    break;
                     DisableInterrupts();
+                    break;
                 }
             case RunLevel::Apc: //TODO: APCs
                 break;

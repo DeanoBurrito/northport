@@ -1,5 +1,6 @@
 #include <arch/Init.h>
 #include <arch/Hat.h>
+#include <arch/Timers.h>
 #include <core/Config.h>
 #include <core/Log.h>
 #include <core/Pmm.h>
@@ -10,18 +11,23 @@
 #include <interfaces/loader/Generic.h>
 #include <services/AcpiTables.h>
 #include <services/MagicKeys.h>
+#include <Exit.h>
 #include <Maths.h>
 
 namespace Npk
 {
     uintptr_t hhdmBase;
     size_t hhdmLength;
+
+    sl::SpinLock earlyVmLock;
     uintptr_t earlyVmBase;
     bool earlyVmEnabled;
 
     void* EarlyVmAlloc(uintptr_t paddr, size_t length, bool writable, bool mmio, const char* tag)
     {
         VALIDATE_(earlyVmEnabled, nullptr);
+
+        sl::ScopedLock scopeLock(earlyVmLock);
         Log("EarlyVmAlloc: vaddr=0x%tx, paddr=0x%tx, len=0x%zx, tag=%s%s%s", LogLevel::Verbose, 
             earlyVmBase, paddr, length, tag, writable ? ", writable" : "", mmio ? ", mmio" : "");
 
@@ -44,11 +50,12 @@ namespace Npk
 
     uintptr_t EarlyVmControl(bool enable)
     {
+        sl::ScopedLock scopeLock(earlyVmLock);
         earlyVmEnabled = enable;
         if (enable)
         {
             earlyVmBase = hhdmBase + hhdmLength;
-            earlyVmBase += sl::AlignUp(hhdmLength / PageSize() * sizeof(Core::PageInfo), PageSize());
+            earlyVmBase += AlignUpPage(hhdmLength / PageSize() * sizeof(Core::PageInfo));
         }
 
         Log("EarlyVmControl: enabled=%s, base=0x%tx", LogLevel::Verbose, 
@@ -71,7 +78,7 @@ namespace Npk
         //Core::InitLocalHeapCache();
         //Core::Pmm::Global().InitLocalCache();
         //TODO: intr routing, scheduler, local logging
-        //TODO: local timers
+        InitLocalTimers();
     }
 
     [[noreturn]]
@@ -87,13 +94,19 @@ namespace Npk
         Log("Manually triggered by magic key.", LogLevel::Fatal);
     }
 
+    static void HandleMagicKeyShutdown(npk_key_id key)
+    {
+        (void)key;
+        KernelExit(true);
+    }
+
     extern "C" void KernelEntry()
     {
         earlyVmEnabled = false;
         ArchKernelEntry();
         Core::InitGlobalLogging();
 
-        Log("Northport kernel started: v%.zu.%zu.%zu for %s, compiled by %s from commit %s",
+        Log("Northport kernel started: v%zu.%zu.%zu for %s, compiled by %s from commit %s",
             LogLevel::Info, versionMajor, versionMinor, versionRev, targetArchStr,
             toolchainUsed, gitCommitShortHash);
 
@@ -120,8 +133,12 @@ namespace Npk
 
         ArchLateKernelEntry();
         //Core::LateInitConfigStore();
-        if (Core::GetConfigNumber("kernel.enable_panic_magic_key", false))
+
+        const bool enableAllMagics = Core::GetConfigNumber("kernel.enable_all_magic_keys", false);
+        if (enableAllMagics || Core::GetConfigNumber("kernel.enable_panic_magic_key", false))
             Services::AddMagicKey(npk_key_id_p, HandleMagicKeyPanic);
+        if (enableAllMagics || Core::GetConfigNumber("kerenl.enable_shutdown_magic_key", false))
+            Services::AddMagicKey(npk_key_id_s, HandleMagicKeyShutdown);
 
         //driver subsystem, threading and vfs init
         //startup APs

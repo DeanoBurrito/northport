@@ -80,7 +80,6 @@ namespace Npk::Core
         return allocatedAddr;
 
         //TODO: trash before use
-        //TODO: bounds check?
     } 
 
     void WiredFree(void* ptr, size_t size)
@@ -98,10 +97,10 @@ namespace Npk::Core
         }
 
         if (CoreLocalAvailable())
-            VALIDATE_(CoreLocal().runLevel == RunLevel::Normal, );
+            VALIDATE_(CurrentRunLevel() == RunLevel::Normal, );
 
-        const uintptr_t slabPage = sl::AlignDown(reinterpret_cast<uintptr_t>(ptr), PageSize()) - hhdmBase;
-        PageInfo* slabInfo = PmLookup(slabPage);
+        const void* slabPage = SubHhdm(AlignDownPage(ptr));
+        PageInfo* slabInfo = PmLookup(reinterpret_cast<uintptr_t>(slabPage));
         SlabFreelist* freelist = reinterpret_cast<SlabFreelist*>(&slabInfo->slab.list);
 
         sl::ScopedLock listLock(slabLocks[slabIndex]);
@@ -110,9 +109,9 @@ namespace Npk::Core
         slabInfo->slab.used--;
         if (slabInfo->slab.used == 0)
         {
-            Log("Wired slab removed: base=0x%tx, size=%zu B", LogLevel::Verbose,
+            Log("Wired slab removed: base=%p , size=%zu B", LogLevel::Verbose,
                 slabPage, BaseSlabSize << slabIndex);
-            PmFree(slabPage);
+            PmFree(reinterpret_cast<uintptr_t>(slabPage));
         }
     }
 }

@@ -101,7 +101,7 @@ namespace Npk::Core
         return item;
     }
 
-    static void WriteoutLog(const LogMessage& msg)
+    static void WriteoutLog(const LogMessage& msg, sl::Span<const LogOutput*> outputs)
     {
         if (msg.length == 0)
             return;
@@ -128,22 +128,21 @@ namespace Npk::Core
         if (msg.processorId == (size_t)-1)
             procThreadBuff[0] = '?';
 
-
-        for (size_t i = 0; i < logOutCount; i++)
+        for (size_t i = 0; i < outputs.Size(); i++)
         {
-            if (logOuts[i]->Write == nullptr)
+            if (outputs[i]->Write == nullptr)
                 continue;
 
             //print headers: uptime, processor + thread ids, level
-            logOuts[i]->Write({ uptimeBuff, uptimeLen });
-            logOuts[i]->Write({ procThreadBuff, procThreadLen });
-            logOuts[i]->Write(LogLevelStrs[(unsigned)msg.loglevel]);
+            outputs[i]->Write({ uptimeBuff, uptimeLen });
+            outputs[i]->Write({ procThreadBuff, procThreadLen });
+            outputs[i]->Write(LogLevelStrs[(unsigned)msg.loglevel]);
 
             //print message body + newline
-            logOuts[i]->Write({ &msg.textBuffer->buffer[msg.begin], length });
+            outputs[i]->Write({ &msg.textBuffer->buffer[msg.begin], length });
             if (runover > 0)
-                logOuts[i]->Write({ msg.textBuffer->buffer, runover });
-            logOuts[i]->Write(EndLineStr);
+                outputs[i]->Write({ msg.textBuffer->buffer, runover });
+            outputs[i]->Write(EndLineStr);
         }
 
         msg.textBuffer->tail = (msg.begin + msg.length) % msg.textBuffer->size;
@@ -159,7 +158,7 @@ namespace Npk::Core
             LogMessageItem* queueItem = msgQueue.Pop();
             if (queueItem == nullptr)
                 break;
-            WriteoutLog(queueItem->data);
+            WriteoutLog(queueItem->data, sl::Span(logOuts, logOutCount));
         }
         logOutLock.Unlock();
     }
@@ -281,7 +280,6 @@ namespace Npk::Core
         //and set the active output count to 0, so no one else uses them.
         //This prevents a handful of cases where the panic output gets corrupted.
         sl::Span<const LogOutput*> outs = { logOuts, logOutCount };
-        logOutCount = 0;
 
         bool gotLock = false;
         for (size_t i = 0; i < tryLockCount; i++)
@@ -289,22 +287,21 @@ namespace Npk::Core
             if ((gotLock = logOutLock.TryLock()) == true)
                 break;
         }
+        logOutCount = 0;
 
         if (gotLock)
         {
             //since we're panicing, drain any logs in the queue if its safe to do so.
             sl::QueueMpSc<LogMessage>::Item* entry;
-            logOutCount = outs.Size(); //we know no other cores are trying to use this now, its safe to restore the count
             while ((entry = msgQueue.Pop()) != nullptr)
-                WriteoutLog(entry->data);
-            logOutCount = 0;
+                WriteoutLog(entry->data, outs);
         }
         else
         {
             for (size_t i = 0; i < outs.Size(); i++)
             {
-                if (logOuts[i]->Write != nullptr)
-                    logOuts[i]->Write(PanicLockFailedStr);
+                if (outs[i]->Write != nullptr)
+                    outs[i]->Write(PanicLockFailedStr);
             }
         }
         return outs;

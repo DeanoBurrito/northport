@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <Span.h>
 #include <core/RunLevels.h>
+#include <interfaces/intra/Compiler.h>
 
 namespace Npk
 {
@@ -14,6 +15,7 @@ namespace Npk
         Logs,
         Thread,
         IpiMailbox,
+        IntrCtrl,
 
         Count
     };
@@ -36,7 +38,37 @@ namespace Npk
         { return subsystemPtrs[(size_t)index]; }
     };
 
-    size_t PageSize();
+    ALWAYS_INLINE
+    size_t PfnShift();
+
+    ALWAYS_INLINE
+    size_t PageSize()
+    {
+        return 1 << PfnShift();
+    }
+
+    ALWAYS_INLINE
+    uintptr_t PageMask()
+    {
+        return (1 << PfnShift()) - 1;
+    }
+
+    template<typename T>
+    ALWAYS_INLINE
+    T AlignUpPage(T value)
+    {
+        const uintptr_t addr = reinterpret_cast<uintptr_t>(value);
+        return reinterpret_cast<T>((addr + PageSize()) & ~PageMask());
+    }
+
+    template<typename T>
+    ALWAYS_INLINE
+    T AlignDownPage(T value)
+    {
+        const uintptr_t addr = reinterpret_cast<uintptr_t>(value);
+        return reinterpret_cast<T>(addr & ~PageMask());
+    }
+
     void ExplodeKernelAndReset();
 
     //this struct represents any per-thread state not included in the TrapFrame.
