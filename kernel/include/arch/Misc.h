@@ -16,6 +16,7 @@ namespace Npk
         Thread,
         IpiMailbox,
         IntrCtrl,
+        ClockQueue,
 
         Count
     };
@@ -83,6 +84,7 @@ namespace Npk
     bool ExtendedRegsFence();
 
     size_t GetCallstack(sl::Span<uintptr_t> store, uintptr_t start, size_t offset = 0);
+    void PoisonMemory(sl::Span<uint8_t> range);
 
     CoreLocalInfo& CoreLocal();
     bool CoreLocalAvailable();

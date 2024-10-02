@@ -1,6 +1,8 @@
 #include <core/WiredHeap.h>
 #include <core/Log.h>
 #include <core/Pmm.h>
+#include <core/Config.h>
+#include <arch/Misc.h>
 #include <Hhdm.h>
 #include <containers/List.h>
 #include <Maths.h>
@@ -17,6 +19,8 @@ namespace Npk::Core
 
     sl::RunLevelLock<RunLevel::Dpc> slabLocks[SlabCount];
     sl::FwdList<PageInfo, &PageInfo::mmList> slabs[SlabCount];
+    bool wiredTrashBefore;
+    bool wiredTrashAfter;
 
     using SlabFreelist = sl::FwdList<FreeSlab, &FreeSlab::next>; //the object inside PageInfo.slab.list
     static_assert(sizeof(SlabFreelist) <= sizeof(PageInfo::slab));
@@ -33,6 +37,12 @@ namespace Npk::Core
 
         Log("Wired slab added: base=0x%tx, size=%zu B, count=%zu", LogLevel::Verbose,
             paddr, elementSize, elementCount);
+    }
+
+    void InitWiredHeap()
+    {
+        wiredTrashBefore = Core::GetConfigNumber("kernel.heap.trash_before_use", false);
+        wiredTrashAfter = Core::GetConfigNumber("kernel.heap.trash_after_use", false);
     }
 
     void InitLocalHeapCache()
@@ -77,14 +87,14 @@ namespace Npk::Core
         void* allocatedAddr = freelist->PopFront();
         slabs[slabIndex].PushBack(pageInfo);
 
-        return allocatedAddr;
+        if (wiredTrashBefore)
+            PoisonMemory({ (uint8_t*)allocatedAddr, BaseSlabSize << slabIndex });
 
-        //TODO: trash before use
+        return allocatedAddr;
     } 
 
     void WiredFree(void* ptr, size_t size)
     {
-        //TODO: trash after use
         if (ptr == nullptr || size == 0 || size >= (BaseSlabSize << SlabCount))
             return;
 
@@ -98,6 +108,8 @@ namespace Npk::Core
 
         if (CoreLocalAvailable())
             VALIDATE_(CurrentRunLevel() == RunLevel::Normal, );
+        if (wiredTrashAfter)
+            PoisonMemory({ (uint8_t*)ptr, BaseSlabSize << slabIndex });
 
         const void* slabPage = SubHhdm(AlignDownPage(ptr));
         PageInfo* slabInfo = PmLookup(reinterpret_cast<uintptr_t>(slabPage));

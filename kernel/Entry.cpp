@@ -2,6 +2,7 @@
 #include <arch/Hat.h>
 #include <arch/Timers.h>
 #include <core/Config.h>
+#include <core/Clock.h>
 #include <core/Log.h>
 #include <core/Pmm.h>
 #include <core/Smp.h>
@@ -69,22 +70,24 @@ namespace Npk
     void ReclaimLoaderMemoryThread(void*)
     { ASSERT_UNREACHABLE(); }
 
-    void PerCoreEntry(size_t myId)
+    void PerCoreEntry(size_t myId, bool isBsp)
     {
         HatMakeActive(KernelMap(), true);
         ArchInitCore(myId);
 
         Core::InitLocalSmpMailbox();
+        InitLocalTimers();
         //Core::InitLocalHeapCache();
         //Core::Pmm::Global().InitLocalCache();
         //TODO: intr routing, scheduler, local logging
-        InitLocalTimers();
+        Core::InitLocalClockQueue(isBsp);
     }
 
     [[noreturn]]
     void ExitCoreInit()
     { 
         Log("core done", LogLevel::Debug);
+        EnableInterrupts();
         Halt(); 
     }
 
@@ -124,6 +127,7 @@ namespace Npk
         HatInit();
         HatMakeActive(KernelMap(), true);
         Core::Pmm::Global().Init();
+        Core::InitWiredHeap();
         EarlyVmControl(true);
 
         if (auto rsdp = GetRsdp(); rsdp.HasValue())
@@ -141,8 +145,6 @@ namespace Npk
             Services::AddMagicKey(npk_key_id_s, HandleMagicKeyShutdown);
 
         //driver subsystem, threading and vfs init
-        //startup APs
-        //system uptime clock
 
         StartupAps();
         ExitCoreInit();

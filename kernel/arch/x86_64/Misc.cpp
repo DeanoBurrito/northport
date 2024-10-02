@@ -1,6 +1,6 @@
 #include <arch/Misc.h>
-
 #include <core/Log.h>
+#include <Memory.h>
 
 namespace Npk
 {
@@ -56,5 +56,10 @@ namespace Npk
         }
 
         return count;
+    }
+
+    void PoisonMemory(sl::Span<uint8_t> range)
+    {
+        sl::memset(range.Begin(), 0xCC, range.Size());
     }
 }

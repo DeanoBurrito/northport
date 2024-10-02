@@ -27,7 +27,7 @@ namespace Npk::Core
     };
 
     sl::RwLock mailboxesLock;
-    sl::FwdList<MailboxControl, &MailboxControl::hook> mailboxes; //TODO: bucket list instead, wiredheap would support that?
+    sl::FwdList<MailboxControl, &MailboxControl::hook> mailboxes;
 
     void InitLocalSmpMailbox()
     {

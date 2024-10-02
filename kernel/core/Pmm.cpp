@@ -98,13 +98,17 @@ namespace Npk::Core
         }
         allocated->pm.count = 0;
 
-        //TODO: trash before use
+        if (trashBeforeUse)
+            PoisonMemory({ reinterpret_cast<uint8_t*>(retAddr + hhdmBase), PageSize() });
         return retAddr;
     }
 
     void Pmm::Free(uintptr_t paddr)
     {
         VALIDATE_(paddr != 0, );
+
+        if (trashAfterUse)
+            PoisonMemory({ reinterpret_cast<uint8_t*>(paddr + hhdmBase), PageSize() });
 
         PageInfo* pageInfo = Lookup(paddr);
         pageInfo->pm.count = 1;

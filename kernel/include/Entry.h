@@ -24,7 +24,7 @@ namespace Npk
     void InitThread(void*);
 
     //called by boot protocol AP entry code.
-    void PerCoreEntry(size_t myId);
+    void PerCoreEntry(size_t myId, bool isBsp);
 
     //called by boot protocol AP entry code after PerCoreEntry(), and by BSP later on.
     [[noreturn]]
