@@ -1,84 +1,64 @@
 #include <arch/x86_64/Apic.h>
 #include <arch/x86_64/Cpuid.h>
-#include <arch/Timers.h>
-#include <config/AcpiTables.h>
-#include <debug/Log.h>
-#include <memory/Vmm.h>
-#include <containers/Vector.h>
-#include <UnitConverter.h>
+#include <arch/x86_64/Timers.h>
+#include <core/Log.h>
+#include <core/WiredHeap.h>
+#include <core/Config.h>
+#include <services/AcpiTables.h>
+#include <Entry.h>
+#include <Locks.h>
 #include <Maths.h>
+#include <containers/List.h>
+#include <UnitConverter.h>
 
 namespace Npk
 {
-    extern void PolledSleep(size_t nanos); //see Timers.cpp
-
-    /*
-        This version of northport is actually a rewrite of the original. A big chunk of
-        the APIC code (especially the x2apic stuff) was written by Ivan (github.com/dreamos82).
-        The original commits aren't in this branch, but his contributions are still here.
-    */
-    constexpr inline uint32_t X2Reg(LApicReg reg)
-    { return ((uint32_t)reg >> 4) + 0x800; }
-
-    constexpr uint32_t TimerDivisor = 0;
-
-    uint32_t LocalApic::ReadReg(LApicReg reg) const
+    uint32_t LocalApic::ReadReg(LapicReg reg)
     {
-        if (inX2mode)
-            return ReadMsr(X2Reg(reg));
+        if (x2Mode)
+            return ReadMsr((static_cast<uint32_t>(reg) >> 4) + 0x800);
         else
-            return mmio.Offset((size_t)reg).Read<uint32_t>();
-    }
-    
-    void LocalApic::WriteReg(LApicReg reg, uint32_t value) const
-    {
-        if (inX2mode)
-            WriteMsr(X2Reg(reg), value); //Note: this breaks for ICR, as it's the exception to the rule here.
-        else
-            mmio.Offset((size_t)reg).Write(value);
+            return mmio.Offset(static_cast<uint32_t>(reg)).Read<uint32_t>();
     }
 
-    LocalApic& LocalApic::Local()
-    { return *reinterpret_cast<LocalApic*>(CoreLocal()[LocalPtr::IntrControl]); }
+    void LocalApic::WriteReg(LapicReg reg, uint32_t value)
+    {
+        if (x2Mode)
+            WriteMsr((static_cast<uint32_t>(reg) >> 4) + 0x800, value);
+        else
+            mmio.Offset(static_cast<uint32_t>(reg)).Write<uint32_t>(value);
+    }
 
     void LocalApic::Init()
     {
-        sl::ScopedLock scopeLock(lock);
-        ASSERT(CpuHasFeature(CpuFeature::Apic), "No local APIC detected.");
-        
-        const uint64_t msrBase = ReadMsr(MsrApicBase);
-        ASSERT((msrBase & (1 << 11)) != 0, "Local APIC globally disabled.");
+        ASSERT_(CpuHasFeature(CpuFeature::Apic));
+        ASSERT_(CpuHasFeature(CpuFeature::Tsc));
+
+        const uint64_t baseMsr = ReadMsr(MsrApicBase);
+        ASSERT(baseMsr & (1 << 11), "Local APIC globally disabled in MSR.");
 
         if (CpuHasFeature(CpuFeature::ApicX2))
         {
-            inX2mode = true;
-            bool kernelSetup = true;
-            if (msrBase & (1 << 10))
-                kernelSetup = false;
-            else
-                WriteMsr(MsrApicBase, msrBase | (1 << 10));
-            
-            Log("Local apic in x2 mode, setup by %s.", LogLevel::Verbose, kernelSetup ? "kernel" : "bootloader");
-            id = ReadReg(LApicReg::Id);
+            x2Mode = true;
+            WriteMsr(MsrApicBase, baseMsr | (1 << 10));
+            Log("Local apic setup, in x2 mode.", LogLevel::Verbose);
         }
         else
         {
-            inX2mode = false;
-            auto mmioRange = VMM::Kernel().Alloc(0x1000, msrBase & ~0xFFFul, VmFlag::Write | VmFlag::Mmio);
-            ASSERT(mmioRange.HasValue(), "Failed to allocate range for APIC mmio.");
-            mmio = *mmioRange;
-            
-            Log("Local apic setup by kernel, regs=0x%lx (0x%lx)", LogLevel::Verbose, mmio.raw, msrBase & ~0xFFFul);
-            id = ReadReg(LApicReg::Id) >> 24;
+            x2Mode = false;
+            mmio = EarlyVmAlloc(baseMsr & ~0xFFFul, 0x1000, true, true, "lapic");
+            ASSERT_(mmio.ptr != nullptr);
+
+            Log("Local apic setup, mmio=%p (phys=0x%tx)", LogLevel::Verbose, mmio.ptr,
+                baseMsr & ~0xFFFul);
         }
 
-        auto maybeMadt = Config::FindAcpiTable(Config::SigMadt);
-        const Config::Madt* madt = static_cast<const Config::Madt*>(*maybeMadt);
-        const bool picsPresent = maybeMadt.HasValue() ? true : (uint32_t)madt->flags & (uint32_t)Config::MadtFlags::PcAtCompat;
+        auto madt = static_cast<const Services::Madt*>(Services::FindAcpiTable(Services::SigMadt));
+        const bool picsPresent = madt == nullptr ? true : 
+            (uint32_t)madt->flags & (uint32_t)Services::MadtFlags::PcAtCompat;
         if (IsBsp() && picsPresent)
         {
-            Log("Disabling legacy 8259 PICs.", LogLevel::Info);
-
+            Log("BSP is disabling legacy 8259 PICs.", LogLevel::Info);
             constexpr uint16_t PortCmd0 = 0x20;
             constexpr uint16_t PortCmd1 = 0xA0;
             constexpr uint16_t PortData0 = 0x21;
@@ -100,260 +80,314 @@ namespace Npk
             Out8(PortData0, 0xFF);
             Out8(PortData1, 0xFF);
         }
-        
-        WriteReg(LApicReg::SpuriousVector, 0xFF | (1 << 8));
+
+        WriteReg(LapicReg::SpuriousConfig, IntrVectorSpurious | (1 << 8));
     }
 
-    size_t LocalApic::MaxTimerNanos()
+    static bool CoalesceTimerRuns(sl::Span<size_t> runs, size_t allowedFails, bool printInfo)
     {
-        if (ticksPerMs < 1'000'000)
-            return -1ul;
-        ASSERT_UNREACHABLE();
-    }
-
-    bool LocalApic::CalibrateTimer()
-    {
-        if (!CpuHasFeature(CpuFeature::AlwaysRunningApic))
-            Log("Always running apic timer not supported on this cpu.", LogLevel::Warning);
-
-        WriteReg(LApicReg::LvtTimer, 1 << 16); //mask and stop timer
-        WriteReg(LApicReg::TimerInitCount, 0);
-        WriteReg(LApicReg::TimerDivisor, TimerDivisor);
-
-        constexpr size_t CalibRuns = 8;
-        constexpr size_t CalibMillis = 10;
-        long calibTimes[CalibRuns];
-
-        for (size_t i = 0; i < CalibRuns; i++)
+        const size_t stdDev = sl::StandardDeviation(runs);
+        const size_t mean = [&]() -> size_t
         {
-            WriteReg(LApicReg::LvtTimer, 1 << 16);
-            WriteReg(LApicReg::TimerInitCount, (uint32_t)-1);
-            PolledSleep(CalibMillis * 1'000'000);
+            size_t accum = 0;
+            for (size_t i = 0; i < runs.Size(); i++)
+                accum += runs[i];
+            return accum / runs.Size();
+        }();
+        
+        size_t validRuns = 0;
+        size_t accumulator = 0;
+        for (size_t i = 0; i < runs.Size(); i++)
+        {
+            if (runs[i] < mean - stdDev || runs[i] > mean + stdDev)
+                continue;
 
-            const uint32_t passed = (uint32_t)-1 - ReadReg(LApicReg::TimerCount);
-            calibTimes[i] = (long)(passed / CalibMillis);
+            validRuns++;
+            accumulator += runs[i];
         }
 
-        WriteReg(LApicReg::LvtTimer, 1 << 16);
-        WriteReg(LApicReg::TimerInitCount, 0);
-
-        auto finalTime = CoalesceTimerRuns(calibTimes, CalibRuns, 3);
-        if (!finalTime)
+        if (validRuns < runs.Size() - allowedFails)
             return false;
-        
-        ticksPerMs = *finalTime;
 
-        sl::UnitConversion freqs = sl::ConvertUnits(ticksPerMs * 1000);
-        Log("Lapic timer calibrated: %lu ticks/ms, %lu.%lu%shz (divisor=%u).", LogLevel::Info, ticksPerMs,
-            freqs.major, freqs.minor, freqs.prefix, TimerDivisor);
+        runs[0] = accumulator / validRuns;
+        if (printInfo)
+            Log("%zu/%zu valid runs, %zu final ticks", LogLevel::Verbose, validRuns, runs.Size(), runs[0]);
         return true;
     }
 
-    void LocalApic::SetTimer(bool tsc, size_t nanos, size_t vector)
-    {
-        sl::ScopedLock scopeLock(lock);
+    void LocalApic::CalibrateTimer()
+    { 
+        constexpr size_t TotalRuns = 8;
+        constexpr size_t RequiredRuns = 5;
+        constexpr size_t SampleFrequency = 100;
 
-        if (tsc)
+        if (!CpuHasFeature(CpuFeature::AlwaysRunningApic) && IsBsp())
+            Log("Always-running-apic not supported on this CPU.", LogLevel::Warning);
+        if (!CpuHasFeature(CpuFeature::InvariantTsc) && IsBsp())
+            Log("Invariant TSC not supported.", LogLevel::Warning);
+
+        const bool dumpCalibData = Core::GetConfigNumber("kernel.timer.dump_calibration_data", false);
+        if (dumpCalibData)
         {
-            WriteReg(LApicReg::LvtTimer, vector | (1 << 18));
-            WriteMsr(MsrTscDeadline, ReadMsr(MsrTsc) + nanos); //nanos is pre-calculated here, its actually a tick count.
+            Log("Calibration config: runs=%zu, allowedOutliers=%zu, sampleRate=%zuHz", 
+                LogLevel::Info, TotalRuns, TotalRuns - RequiredRuns, SampleFrequency);
+        }
+        useTscDeadline = CpuHasFeature(CpuFeature::TscDeadline);
+
+        size_t calibData[TotalRuns];
+        const auto sleepTime = sl::ScaledTime::FromFrequency(SampleFrequency).ToNanos();
+        if (!useTscDeadline)
+        {
+            //we can't use the tsc as the interrupt timer source, so we'll
+            //need to calibrate the lapic timer frequency.
+            WriteReg(LapicReg::LvtTimer, 1 << 16); //mask and stop timer
+            WriteReg(LapicReg::TimerInitCount, 0);
+            WriteReg(LapicReg::TimerDivisor, 0);
+
+            for (size_t i = 0; i < TotalRuns; i++)
+            {
+                WriteReg(LapicReg::LvtTimer, 1 << 16);
+                WriteReg(LapicReg::TimerInitCount, 0xFFFF'FFFF);
+                const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
+
+                const size_t rawData = (uint32_t)-1 - ReadReg(LapicReg::TimerCount);
+                calibData[i] = (rawData * sleepTime) / realSleepTime;
+                if (dumpCalibData)
+                {
+                    Log("LAPIC calibration run %zu: rawTicks=%zu, sleepTime=%zu ns, fixedTicks=%zu",
+                        LogLevel::Verbose, i, rawData, realSleepTime, calibData[i]);
+                }
+            }
+            WriteReg(LapicReg::LvtTimer, 1 << 16);
+            WriteReg(LapicReg::TimerInitCount, 0);
+
+            ASSERT(CoalesceTimerRuns(calibData, TotalRuns - RequiredRuns, dumpCalibData), 
+                "LAPIC timer calibration failed");
+            timerFrequency = calibData[0] * SampleFrequency;
+            auto conv = sl::ConvertUnits(timerFrequency);
+            Log("LAPIC timer calibrated as: %zu.%zu %sHz", LogLevel::Info, conv.major, conv.minor, conv.prefix);
+        }
+
+        //TODO: if cpuid leaf is present for tsc details, use that and dont bother calibrating
+        for (size_t i = 0; i < TotalRuns; i++)
+        {
+            const size_t begin = ReadTsc();
+            const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
+            const size_t end = ReadTsc();
+
+            const size_t rawData = end - begin;
+            calibData[i] = (rawData * sleepTime) / realSleepTime; //oversleep correction
+            if (dumpCalibData)
+            {
+                Log("TSC calibration run %zu: rawTicks=%zu, sleepTime=%zu ns, fixedTicks=%zu",
+                    LogLevel::Verbose, i, rawData, realSleepTime, calibData[i]);
+            }
+        }
+
+        //TODO: account for time taken during measuring code. Sleep for 0time and compare results,
+        //subtract that from all future measurements?
+        ASSERT(CoalesceTimerRuns(calibData, TotalRuns - RequiredRuns, dumpCalibData), "TSC calibration failed");
+        tscFrequency = calibData[0] * SampleFrequency;
+        auto conv = sl::ConvertUnits(tscFrequency);
+        Log("TSC calibrated as: %zu.%zu %sHz", LogLevel::Info, conv.major, conv.minor, conv.prefix);
+    }
+
+    TimerTickNanos LocalApic::ReadTscNanos()
+    { ASSERT_UNREACHABLE(); }
+
+    TimerTickNanos LocalApic::TimerMaxNanos()
+    { 
+        if (useTscDeadline)
+            return sl::ScaledTime::FromFrequency(tscFrequency).ToNanos();
+        return sl::ScaledTime::FromFrequency(timerFrequency).ToNanos();
+    }
+
+    void LocalApic::ArmTimer(TimerTickNanos nanos, size_t vector)
+    {
+        if (useTscDeadline)
+        {
+            WriteReg(LapicReg::LvtTimer, vector | (1 << 18));
+            WriteMsr(MsrTscDeadline, ReadMsr(MsrTsc) + nanos);
         }
         else
         {
-            WriteReg(LApicReg::LvtTimer, vector);
-            WriteReg(LApicReg::TimerDivisor, TimerDivisor);
-            WriteReg(LApicReg::TimerInitCount, sl::Max((nanos / 1'000'000), 1ul) * ticksPerMs);
+            WriteReg(LapicReg::LvtTimer, vector);
+            const size_t ticksPerNano = 0;
+            WriteReg(LapicReg::TimerInitCount, nanos * ticksPerNano);
         }
     }
 
-    void LocalApic::SendEoi() const
+    void LocalApic::SendEoi()
     {
-        WriteReg(LApicReg::EOI, 0);
+        WriteReg(LapicReg::Eoi, 0);
     }
 
-    void LocalApic::SendIpi(size_t dest) const
+    void LocalApic::SendIpi(size_t destAddr)
     {
-        //ensure any previous IPIs have finished sending first (jic we pump this)
-        while (ReadReg(LApicReg::Icr0) & (1 << 12))
+        //AMD says we dont have to do this, intel dont specify
+        //so I'm taking the safe route and waiting until the
+        //'delivery pending' bit is cleared before attempting
+        //to send a new IPI.
+        while (ReadReg(LapicReg::IcrLow) & (1 << 12))
             sl::HintSpinloop();
 
-        if (inX2mode)
-            WriteMsr(0x830, (dest << 32) | IntVectorIpi);
+        //there's a special case for the x2 regs with ICR: it gets compressed
+        //into a single MSR, instead of two separate regs.
+        if (x2Mode)
+            WriteMsr(static_cast<uint32_t>(LapicReg::IcrLow), (destAddr << 32) | IntrVectorIpi);
         else
         {
-            WriteReg(LApicReg::Icr1, dest << 24);
-            WriteReg(LApicReg::Icr0, IntVectorIpi);
+            //the IPI is sent when writing to IcrLow, so set the high register first.
+            WriteReg(LapicReg::IcrHigh, destAddr << 24);
+            WriteReg(LapicReg::IcrLow, IntrVectorIpi);
         }
     }
 
-    struct ApicSourceOverride
+    bool SendIpi(size_t dest)
     {
-        size_t incoming;
-        size_t outgoing;
-        PinPolarity polarity;
-        TriggerMode mode;
+        static_cast<LocalApic*>(CoreLocal()[LocalPtr::IntrCtrl])->SendIpi(dest);
+
+        //IPIs are guarenteed to be delivered in both intel and amd specs
+        return true;
+    }
+
+
+    enum class IoApicReg
+    {
+        Id = 0x0,
+        Version = 0x1,
+        TableBase = 0x10,
     };
-    
-    sl::Vector<IoApic> ioapics;
-    sl::Vector<ApicSourceOverride> sourceOverrides;
 
-    uint32_t IoApic::ReadReg(IoApicReg reg) const
+    struct IoApic
     {
-        mmio.Write((uint32_t)reg);
-        return mmio.Offset(0x10).Read<uint32_t>();
-    }
-    
-    void IoApic::WriteReg(IoApicReg reg, uint32_t value) const
-    {
-        mmio.Write((uint32_t)reg);
-        mmio.Offset(0x10).Write(value);
-    }
+        sl::FwdListHook hook;
+        sl::SpinLock lock;
+        sl::NativePtr mmio;
+        uint32_t gsiBase;
+        uint32_t pinCount;
 
-    uint64_t IoApic::ReadRedirect(size_t index) const
-    {
-        uint64_t value = 0;
-        mmio.Write(index * 2 + (uint32_t)IoApicReg::TableBase);
-        value |= mmio.Offset(0x10).Read<uint32_t>();
-        mmio.Write(index * 2 + (uint32_t)IoApicReg::TableBase + 1);
-        value |= (uint64_t)mmio.Offset(0x10).Read<uint32_t>() << 32;
-        return value;
-    }
+        uint32_t ReadReg(IoApicReg reg)
+        {
+            sl::ScopedLock scopeLock(lock);
+            mmio.Write<uint32_t>(static_cast<uint32_t>(reg));
+            return mmio.Offset(0x10).Read<uint32_t>();
+        }
 
-    void IoApic::WriteRedirect(size_t index, uint64_t value) const
-    {
-        mmio.Write(index * 2 + (uint32_t)IoApicReg::TableBase);
-        mmio.Offset(0x10).Write<uint32_t>(value);
-        mmio.Write(index * 2 + (uint32_t)IoApicReg::TableBase + 1);
-        mmio.Offset(0x10).Write<uint32_t>(value >> 32);
-    }
+        void WriteReg(IoApicReg reg, uint32_t value)
+        {
+            sl::ScopedLock scopeLock(lock);
+            mmio.Write<uint32_t>(static_cast<uint32_t>(reg));
+            mmio.Offset(0x10).Write<uint32_t>(value);
+        }
+    };
 
-    void IoApic::InitAll()
+    struct SourceOverride
     {
-        auto maybeMadt = Config::FindAcpiTable(Config::SigMadt);
-        ASSERT(maybeMadt, "MADT not found: cannot initialize IO APIC.");
-        const Config::Madt* madt = static_cast<const Config::Madt*>(*maybeMadt);
+        sl::FwdListHook hook;
+        uint32_t incoming;
+        uint32_t outgoing;
+        sl::Opt<uint8_t> polarity;
+        sl::Opt<uint8_t> mode;
+    };
+
+    sl::FwdList<IoApic, &IoApic::hook> ioapics;
+    sl::FwdList<SourceOverride, &SourceOverride::hook> sourceOverrides;
+
+    void InitIoApics()
+    {
+        using namespace Services;
+
+        auto madt = static_cast<const Madt*>(FindAcpiTable(SigMadt));
+        VALIDATE(madt != nullptr, , "MADT not found, aborting io apic discovery.");
 
         sl::CNativePtr scan = madt->sources;
         while (scan.raw < (uintptr_t)madt + madt->length)
         {
-            const Config::MadtSource* sourceBase = scan.As<Config::MadtSource>();
-            using Config::MadtSourceType;
+            auto src = scan.As<const MadtSource>();
 
-            switch (sourceBase->type)
+            switch (src->type)
             {
             case MadtSourceType::IoApic:
             {
-                const Config::MadtSources::IoApic* source = scan.As<Config::MadtSources::IoApic>();
-                IoApic& apic = ioapics.EmplaceBack();
+                auto apicSrc = scan.As<const MadtSources::IoApic>();
+                IoApic* ioapic = NewWired<IoApic>();
+                VALIDATE_(ioapic != nullptr, );
 
-                auto mmioRange = VMM::Kernel().Alloc(PageSize, source->mmioAddr, VmFlag::Write | VmFlag::Mmio);
-                ASSERT(mmioRange.HasValue(), "Failed to allocate range for IOAPIC MMIO.")
-                apic.mmio = *mmioRange;
-                apic.gsiBase = source->gsibase;
+                ioapic->mmio = EarlyVmAlloc(apicSrc->mmioAddr, 0x1000, true, true, "ioapic");
+                VALIDATE_(ioapic->mmio.ptr != nullptr, );
+                ioapic->gsiBase = apicSrc->gsibase;
+                ioapic->pinCount = (ioapic->ReadReg(IoApicReg::Version) >> 16) & 0xFF;
+                ioapic->pinCount++;
 
-                //determine the number of inputs the ioapic has
-                apic.inputCount = (apic.ReadReg(IoApicReg::Version) >> 16) & 0xFF;
-                apic.inputCount++;
-
-                Log("Ioapic found: id=%u, gsiBase=%lu, inputs=%lu, regs=0x%lx (0x%x)", LogLevel::Info,
-                    source->apicId, apic.gsiBase, apic.inputCount, apic.mmio.raw, source->mmioAddr);
+                ioapics.PushBack(ioapic);
+                Log("IOAPIC discovered: gsiBase=%u, pins=%u", LogLevel::Info, ioapic->gsiBase, 
+                    ioapic->pinCount);
                 break;
             }
-
             case MadtSourceType::SourceOverride:
             {
-                using namespace Config::MadtSources;
-                const SourceOverride* source = scan.As<SourceOverride>();
-                const uint16_t polarity = source->polarityModeFlags & PolarityMask;
-                const uint16_t mode = source->polarityModeFlags & TriggerModeMask;
-                ApicSourceOverride& so = sourceOverrides.EmplaceBack();
-                
-                so.incoming = source->source;
-                so.outgoing = source->mappedGsi;
-                so.polarity = (polarity == PolarityLow ? PinPolarity::Low : PinPolarity::High);
-                so.mode = (mode == TriggerModeLevel ? TriggerMode::Level : TriggerMode::Edge);
+                auto soSrc = scan.As<const MadtSources::SourceOverride>();
+                SourceOverride* so = NewWired<SourceOverride>();
+                VALIDATE_(so != nullptr, );
 
-                Log("Madt source override: %lu -> %lu, polarity=%s, triggerMode=%s", LogLevel::Verbose,
-                    so.incoming, so.outgoing, so.polarity == PinPolarity::Low ? "low" : "high", so.mode == TriggerMode::Edge ? "edge" : "level");
+                so->incoming = soSrc->source;
+                so->outgoing = soSrc->mappedGsi;
+                const auto polarity = soSrc->polarityModeFlags & MadtSources::PolarityMask;
+                const auto triggerMode = soSrc->polarityModeFlags & MadtSources::TriggerModeMask;
+                if (polarity != MadtSources::PolarityDefault)
+                    so->polarity = polarity;
+                if (triggerMode != MadtSources::TriggerModeDefault)
+                    so->mode = triggerMode >> 2;
+
+                sourceOverrides.PushBack(so);
+
+                constexpr const char* PolarityStrs[] = { "default", "high", "", "low" };
+                constexpr const char* ModeStrs[] = { "default", "edge", "", "level" };
+                Log("Intr source override: %u -> %u, polarity=%s, mode=%s", LogLevel::Info,
+                    so->incoming, so->outgoing, PolarityStrs[polarity], ModeStrs[triggerMode >> 2]);
                 break;
             }
 
-            default: 
+            default:
                 break;
             }
 
-            scan.raw += sourceBase->length;
+            scan.raw += src->length;
         }
-
-        ASSERT(ioapics.Size() > 0, "No IOAPICS found.");
     }
 
-    bool IoApic::Route(uint8_t& irqNum, uint8_t destVector, size_t destCpu, TriggerMode mode, PinPolarity pol, bool masked)
+    bool RoutePinInterrupt(size_t pin, size_t core, size_t vector)
     {
-        const ApicSourceOverride* sourceOverride = nullptr;
-        for (auto it = sourceOverrides.Begin(); it != sourceOverrides.End(); ++it)
-        {
-            if (it->incoming == irqNum)
-            {
-                sourceOverride = it;
-                irqNum = sourceOverride->outgoing;
-                break;
-            }
-        }
-        
         for (auto it = ioapics.Begin(); it != ioapics.End(); ++it)
         {
-            if (irqNum < it->gsiBase || irqNum >= it->gsiBase + it->inputCount)
+            if (pin < it->gsiBase && pin >= it->gsiBase + it->pinCount)
                 continue;
-            
-            sl::ScopedLock scopeLock(it->lock);
 
-            uint64_t entry = destVector;
-            if (masked)
-                entry |= 1 << 16;
-            entry |= destCpu << 56;
-            entry |= (uint64_t)(sourceOverride == nullptr ? pol : sourceOverride->polarity) << 13;
-            entry |= (uint64_t)(sourceOverride == nullptr ? mode : sourceOverride->mode) << 15;
+            Log("Routing pin interupt %zu to %zu:%zu", LogLevel::Verbose, pin, core, vector);
+            SourceOverride* override = nullptr;
+            for (auto iso = sourceOverrides.Begin(); iso != sourceOverrides.End(); ++iso)
+            {
+                if (iso->incoming != pin)
+                    continue;
 
-            it->WriteRedirect(irqNum - it->gsiBase, entry);
-            ASSERT(entry == it->ReadRedirect(irqNum - it->gsiBase), "Failed to write IOAPIC redirect entry.");
+                Log("Pin interrupt has acpi override: %" PRIu32" -> %" PRIu32, LogLevel::Verbose, iso->incoming, iso->outgoing);
+                override = &*iso;
+                break;
+            }
+
+            using namespace Services::MadtSources;
+            const uint64_t polarity = override != nullptr && *override->polarity == PolarityLow ? 1 : 0;
+            const uint64_t mode = override != nullptr && *override->mode == TriggerModeLevel ? 1 : 0;
+            const uint64_t redirect = (vector & 0xFF) | (polarity << 13) | (mode << 15) | (core << 56);
+            pin -= it->gsiBase;
+
+            it->WriteReg((IoApicReg)((unsigned)IoApicReg::TableBase + pin * 2), redirect);
+            it->WriteReg((IoApicReg)((unsigned)IoApicReg::TableBase + pin * 2 + 1), redirect >> 32);
 
             return true;
         }
 
         return false;
-    }
-
-    bool IoApic::Masked(uint8_t irqNum)
-    {
-        for (auto it = ioapics.Begin(); it != ioapics.End(); ++it)
-        {
-            if (irqNum < it->gsiBase || irqNum >= it->gsiBase + it->inputCount)
-                continue;
-            
-            sl::ScopedLock scopeLock(it->lock);
-            return it->ReadRedirect(irqNum - it->gsiBase) & (1 << 16);
-        }
-
-        return true;
-    }
-
-    void IoApic::Mask(uint8_t irqNum, bool masked)
-    {
-        for (auto it = ioapics.Begin(); it != ioapics.End(); ++it)
-        {
-            if (irqNum < it->gsiBase || irqNum >= it->gsiBase + it->inputCount)
-                continue;
-            
-            sl::ScopedLock scopeLock(it->lock);
-            
-            uint64_t current = it->ReadRedirect(irqNum - it->gsiBase);
-            if (masked)
-                current |= 1 << 16;
-            else
-                current &= ~(1ul << 16);
-            it->WriteRedirect(irqNum - it->gsiBase, current);
-            return;
-        }
     }
 }

@@ -22,6 +22,7 @@ namespace Npk
         Tsc,
         TscDeadline,
         InvariantTsc,
+        Pat,
         Count
     };
 

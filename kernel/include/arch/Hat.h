@@ -4,14 +4,13 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <Optional.h>
+#include <Flags.h>
 
 /*
     The HAT (hardware address and translation) represents the MMU or whatever
     hardware is used to manage virtual memory. We're assuming paging on most accounts,
     but the interface is abstract enough that segmentation should also be a viable option,
     or some other esoteric method.
-
-    The HAT API is intended for use mainly by the VMM, and not by other kernel subsystems.
 */
 
 #ifdef NPK_ARCH_INCLUDE_HAT
@@ -20,20 +19,16 @@
 
 namespace Npk
 {
-    constexpr HatFlags operator|(const HatFlags& a, const HatFlags& b)
-    { return (HatFlags)((size_t)a | (size_t)b); }
+    enum class HatFlag
+    {
+        Write,
+        Execute,
+        User,
+        Global,
+        Mmio,
+    };
 
-    constexpr HatFlags operator|=(HatFlags& src, const HatFlags& other)
-    { return src = (HatFlags)((uintptr_t)src | (uintptr_t)other); }
-
-    constexpr HatFlags operator&(const HatFlags& a, const HatFlags& b)
-    { return (HatFlags)((size_t)a & (size_t)b); }
-
-    constexpr HatFlags operator&=(HatFlags& src, const HatFlags& other)
-    { return src = (HatFlags)((uintptr_t)src & (uintptr_t)other); }
-
-    constexpr HatFlags operator~(const HatFlags& src)
-    { return (HatFlags)(~(size_t)src); }
+    using HatFlags = sl::Flags<HatFlag>;
 
     constexpr size_t MaxHatModes = 8;
     //This struct is used to communicate the limits of the underlying MMU to the
@@ -55,7 +50,11 @@ namespace Npk
     */
     struct HatMap;
 
-    //hook to perform some init based on the MMU's capabilities if needed.
+    //a hook for the arch layer to perform some global mmu detection and setup. This function
+    //is also responsible for mapping the unchanging regions of the kernel map:
+    // - the kernel image
+    // - the HHDM
+    // - the virtually contiguous PageInfo database
     void HatInit();
 
     //returns the modes supported by the current MMU.
@@ -82,6 +81,9 @@ namespace Npk
 
     //attempts to update an existing mapping: either flags, physical address of both.
     bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
+
+    //attempts to flush a cached mapping from the local translation cache.
+    void HatFlushMap(uintptr_t vaddr);
 
     //replaces the currently active HAT address space with this one.
     void HatMakeActive(HatMap* map, bool supervisor);

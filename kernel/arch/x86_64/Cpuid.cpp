@@ -1,7 +1,6 @@
 #include <arch/x86_64/Cpuid.h>
-#include <debug/Log.h>
+#include <core/Log.h>
 #include <stdint.h>
-#include <stddef.h>
 
 namespace Npk
 {
@@ -37,6 +36,7 @@ namespace Npk
         { .leaf {1, 0}, .index = 'd', .shift = 4, .name = "tsc" },
         { .leaf {1, 0}, .index = 'c', .shift = 24, .name = "tsc-d" },
         { .leaf {0x8000'0007, 0}, .index = 'd', .shift = 8, .name = "inv-tsc" },
+        { .leaf {1, 0}, .index = 'd', .shift = 16, .name = "pat" },
     };
 
     struct CpuidLeaf
