@@ -1,4 +1,4 @@
-.global VectorStub0
+.global VectorStub0x00
 .global TrapEntry
 
 .extern TrapDispatch
@@ -38,45 +38,31 @@ TrapEntry:
     mov %rsp, %rdi
     mov 136(%rsp), %rax # create a stack frame, so it looks like the interrupt was called.
     push %rax
+    cld
     call TrapDispatch
 _EndOfTrapEntry:
 
-.altmacro
-.macro CreateStubs first, last, ec=1
+.macro StubMacro vector
+    .type VectorStub\vector,@function
+    .size VectorStub\vector,(_EndOfVectorStub\vector - VectorStub\vector)
     .align 0x10
-    VectorStub\first:
-    .if \ec
-        push $0x0
+
+    VectorStub\vector:
+    .if \vector < 32
+        .if ((1 << \vector) & 0x60227D00) == 0
+            sub $8, %rsp
+        .endif
+    .else
+        sub $8, %rsp
     .endif
-    push $\first
+    push $\vector
     jmp TrapEntry
-    .if \last-\first
-        CreateStubs %\first+1, \last, \ec
-    .endif
+    _EndOfVectorStub\vector:
 .endm
 
-# Unfortunately using a static table of interrupt stubs does add 4KiB to
-# our kernel binary size. 
-CreateStubs 0, 7
-CreateStubs 8, 8, 0
-CreateStubs 9, 9
-CreateStubs 10, 14, 0
-CreateStubs 15, 16
-CreateStubs 17, 17, 0
-CreateStubs 18, 20
-CreateStubs 21, 21, 0
-
-# The rest of these are just populating the stubs, we have to do it like this
-# because clang has a hard limit of 20 macro interations. GCC has a similar limit.
-CreateStubs 22, 41
-CreateStubs 42, 61
-CreateStubs 62, 81
-CreateStubs 82, 101
-CreateStubs 102, 121
-CreateStubs 122, 141
-CreateStubs 142, 161
-CreateStubs 162, 181
-CreateStubs 182, 201
-CreateStubs 202, 221
-CreateStubs 222, 241
-CreateStubs 242, 255
+# Thanks JW (J White?) for the idea of using irpc
+.irpc i, 0123456789abcdef
+.irpc j, 0123456789abcdef
+    StubMacro 0x\i\j
+.endr
+.endr

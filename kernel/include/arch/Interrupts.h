@@ -31,7 +31,7 @@ namespace Npk
     void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user);
     void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value);
     void* GetTrapFrameArg(TrapFrame* frame, size_t index);
-    void SwitchFrame(TrapFrame** prev, TrapFrame* next) asm("SwitchFrame");
+    void SwitchFrame(TrapFrame** prev, void (*callback)(TrapFrame* next, void* arg), TrapFrame* next, void* callbackArg) asm("SwitchFrame");
 
     size_t SyscallFrameArgCount();
     void SetSyscallArg(SyscallFrame* frame, size_t index, void* value);
