@@ -74,11 +74,6 @@ namespace Npk::Core
     void Pmm::ReclaimLoaderMemory()
     { ASSERT_UNREACHABLE(); }
 
-    PageInfo* Pmm::Lookup(uintptr_t paddr)
-    {
-        return infoDb + (paddr >> PfnShift());
-    }
-
     sl::Opt<uintptr_t> Pmm::Alloc()
     {
         //TODO: per-core caches

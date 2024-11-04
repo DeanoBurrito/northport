@@ -28,11 +28,6 @@ namespace Npk::Core
         return "";
     }
 
-    RunLevel CurrentRunLevel()
-    {
-        return CoreLocal().runLevel;
-    }
-
     RunLevel RaiseRunLevel(RunLevel newRl)
     {
         const bool restoreIntrs = InterruptsEnabled();
@@ -40,7 +35,7 @@ namespace Npk::Core
         ASSERT_(newRl > CurrentRunLevel());
 
         const RunLevel prevRl = CurrentRunLevel();
-        CoreLocal().runLevel = newRl;
+        SetRunLevel(newRl);
 
         if (restoreIntrs && CurrentRunLevel() < RunLevel::Clock)
             EnableInterrupts();
@@ -59,9 +54,12 @@ namespace Npk::Core
             {
             case RunLevel::Dpc:
                 {
-                    EnableInterrupts();
+                    auto dpcs = CoreLocalDpcs();
+                    if (restoreIntrs)
+                        EnableInterrupts();
+
                     DpcStore* dpc = nullptr;
-                    while ((dpc = CoreLocal().dpcs.Pop()) != nullptr)
+                    while ((dpc = dpcs->Pop()) != nullptr)
                     {
                         dpc->next = nullptr;
                         dpc->data.function(dpc->data.arg);
@@ -78,7 +76,7 @@ namespace Npk::Core
                 break;
             }
 
-            CoreLocal().runLevel--;
+            SetRunLevel(static_cast<RunLevel>(static_cast<unsigned>(CurrentRunLevel()) - 1));
         }
 
         if (restoreIntrs && CurrentRunLevel() < RunLevel::Clock)
@@ -94,7 +92,7 @@ namespace Npk::Core
          * worrying about the current core's runlevel. Later on we raise the runlevel to
          * execute any dpcs if we're below the DPC runlevel.
          */
-        CoreLocal().dpcs.Push(dpc);
+        CoreLocalDpcs()->Push(dpc);
 
         if (CurrentRunLevel() >= RunLevel::Dpc)
             return;
@@ -108,7 +106,7 @@ namespace Npk::Core
         VALIDATE_(apc != nullptr, );
         VALIDATE_(apc->next == nullptr, );
 
-        CoreLocal().apcs.Push(apc);
+        CoreLocalApcs()->Push(apc);
 
         if (CurrentRunLevel() >= RunLevel::Apc)
             return;

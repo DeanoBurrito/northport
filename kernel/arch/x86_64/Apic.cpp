@@ -204,8 +204,9 @@ namespace Npk
     TimerTickNanos LocalApic::TimerMaxNanos()
     { 
         if (useTscDeadline)
-            return sl::ScaledTime::FromFrequency(tscFrequency).ToNanos();
-        return sl::ScaledTime::FromFrequency(timerFrequency).ToNanos();
+            //return sl::ScaledTime::FromFrequency(tscFrequency).ToNanos() * static_cast<uint64_t>(~0);
+            return static_cast<uint64_t>(~0);
+        return sl::ScaledTime::FromFrequency(timerFrequency).ToNanos() * static_cast<uint32_t>(~0);
     }
 
     void LocalApic::ArmTimer(TimerTickNanos nanos, size_t vector)
@@ -218,8 +219,7 @@ namespace Npk
         else
         {
             WriteReg(LapicReg::LvtTimer, vector);
-            const size_t ticksPerNano = 0;
-            WriteReg(LapicReg::TimerInitCount, nanos * ticksPerNano);
+            WriteReg(LapicReg::TimerInitCount, nanos * sl::ScaledTime::FromFrequency(timerFrequency).ToNanos());
         }
     }
 

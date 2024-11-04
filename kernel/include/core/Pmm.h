@@ -29,6 +29,7 @@ namespace Npk::Core
             {
                 sl::FwdListHook objList; //linkage for VmObject page-list
                 uint16_t offset; //in pages (not bytes) of this page within the VmObject
+                uint16_t pinCount;
             } vm;
         };
     };
@@ -52,7 +53,11 @@ namespace Npk::Core
         void Init();
         void InitLocalCache();
         void ReclaimLoaderMemory();
-        PageInfo* Lookup(uintptr_t paddr);
+
+        inline PageInfo* Lookup(uintptr_t paddr)
+        {
+            return infoDb + (paddr >> PfnShift());
+        }
 
         sl::Opt<uintptr_t> Alloc();
         void Free(uintptr_t paddr);

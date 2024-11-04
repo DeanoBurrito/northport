@@ -1,5 +1,6 @@
 #include <core/Smp.h>
 #include <arch/Hat.h>
+#include <arch/Interrupts.h>
 #include <core/Pmm.h>
 #include <core/Log.h>
 #include <core/WiredHeap.h>
@@ -43,8 +44,8 @@ namespace Npk::Core
         for (size_t i = 0; i < control->entries.Size(); i++)
             control->entries[i].callback = nullptr;
 
-        control->id = CoreLocal().id;
-        CoreLocal()[LocalPtr::IpiMailbox] = control;
+        control->id = CoreLocalId();
+        SetLocalPtr(SubsysPtr::IpiMailbox, control);
 
         mailboxesLock.WriterLock();
         mailboxes.PushBack(control);
@@ -55,8 +56,8 @@ namespace Npk::Core
 
     void ProcessLocalMail()
     {
-        ASSERT_(CoreLocal().runLevel == RunLevel::Interrupt);
-        auto* mailbox = static_cast<MailboxControl*>(CoreLocal()[LocalPtr::IpiMailbox]);
+        ASSERT_(CurrentRunLevel() == RunLevel::Interrupt);
+        auto* mailbox = static_cast<MailboxControl*>(GetLocalPtr(SubsysPtr::IpiMailbox));
         if (mailbox->shouldPanic)
             Halt();
 
