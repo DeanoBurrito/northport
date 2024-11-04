@@ -463,7 +463,7 @@ namespace Npk
 
     static void ApEntry(limine_smp_info* info)
     {
-        PerCoreEntry(LBP_CPU_ID(info));
+        PerCoreEntry(LBP_CPU_ID(info), false);
         ExitCoreInit();
     }
 
@@ -471,7 +471,7 @@ namespace Npk
     {
         if (smpRequest.response == nullptr)
         {
-            PerCoreEntry(0);
+            PerCoreEntry(0, true);
             return 1;
         }
 
@@ -480,7 +480,7 @@ namespace Npk
         {
             auto cpu = smpRequest.response->cpus[i];
             if (LBP_CPU_IS_BSP(cpu))
-                PerCoreEntry(LBP_CPU_ID(cpu));
+                PerCoreEntry(LBP_CPU_ID(cpu), true);
             else if (!inhibitApStartup)
                 __atomic_store_n(&cpu->goto_address, &ApEntry, __ATOMIC_RELAXED);
         }

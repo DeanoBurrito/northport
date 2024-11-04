@@ -91,7 +91,7 @@ namespace Npk
 
     static inline LocalApic& LApic()
     {
-        return *static_cast<LocalApic*>(CoreLocal()[LocalPtr::IntrCtrl]);
+        return *static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl));
     }
 
     void InitLocalTimers()

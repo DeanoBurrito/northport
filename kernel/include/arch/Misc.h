@@ -9,35 +9,44 @@
 
 namespace Npk
 {
-    //each entry here is a place for the relevant subsystem to store core-local data
-    enum class LocalPtr : size_t
+    /* Core-local info block: the layout of this is left to the arch-layer implementation,
+     * instead we provide generic accessor functions that hopefully allow for an effiecient
+     * and race-free inplementation.
+     */
+    enum class SubsysPtr
     {
-        Logs,
-        Thread,
-        IpiMailbox,
-        IntrCtrl,
-        ClockQueue,
+        Logs = 0,
+        IpiMailbox = 1,
+        IntrCtrl = 2,
+        ClockQueue = 3,
+        Thread = 4,
 
         Count
     };
 
-    //top-level core-local structure, the bulk of the data is stored via indirect
-    //pointers in the subsystemPtrs[] array. Not ideal, but it prevents including
-    //a number of other headers here, and polluting unrelated files by including
-    //this one.
-    struct CoreLocalInfo
-    {
-        void* scratch;
-        void* nextStack;
-        size_t id;
-        RunLevel runLevel;
-        Core::DpcQueue dpcs;
-        Core::ApcQueue apcs;
-        void* subsystemPtrs[(size_t)LocalPtr::Count];
+    ALWAYS_INLINE
+    bool CoreLocalAvailable();
 
-        constexpr void*& operator[](LocalPtr index)
-        { return subsystemPtrs[(size_t)index]; }
-    };
+    ALWAYS_INLINE
+    size_t CoreLocalId();
+
+    ALWAYS_INLINE
+    RunLevel CurrentRunLevel();
+
+    ALWAYS_INLINE
+    void SetRunLevel(RunLevel rl);
+
+    ALWAYS_INLINE
+    Core::DpcQueue* CoreLocalDpcs();
+
+    ALWAYS_INLINE
+    Core::ApcQueue* CoreLocalApcs();
+
+    ALWAYS_INLINE
+    void* GetLocalPtr(SubsysPtr which);
+
+    ALWAYS_INLINE
+    void SetLocalPtr(SubsysPtr which, void* data);
 
     ALWAYS_INLINE
     size_t PfnShift();
@@ -85,9 +94,6 @@ namespace Npk
 
     size_t GetCallstack(sl::Span<uintptr_t> store, uintptr_t start, size_t offset = 0);
     void PoisonMemory(sl::Span<uint8_t> range);
-
-    CoreLocalInfo& CoreLocal();
-    bool CoreLocalAvailable();
 }
 
 #ifdef NPK_ARCH_INCLUDE_MISC

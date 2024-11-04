@@ -109,9 +109,9 @@ namespace Npk
             return;
         }
 
-        PanicPrint(outputs, CoreFormatStr, CoreLocal().id, (unsigned)CoreLocal().runLevel,
-            Core::RunLevelName(CoreLocal().runLevel), CoreLocal()[LocalPtr::Thread],
-            CoreLocal()[LocalPtr::Logs]);
+        PanicPrint(outputs, CoreFormatStr, CoreLocalId(), (unsigned)CurrentRunLevel(),
+            Core::RunLevelName(CurrentRunLevel()), GetLocalPtr(SubsysPtr::Thread),
+            GetLocalPtr(SubsysPtr::Logs));
     }
 
     static void PrintProgramInfo(PanicOutputs outputs)
@@ -121,6 +121,7 @@ namespace Npk
 
     static void EndPanic(PanicOutputs outputs, uintptr_t traceStart)
     {
+        //TODO: print driver load windows
         PrintCallstack(outputs, traceStart);
         PrintCoreInfo(outputs);
         PrintProgramInfo(outputs);

@@ -40,7 +40,7 @@ namespace Npk
     } gdtr;
 
     constexpr size_t IdtEntryCount = 256;
-    extern uint8_t VectorStub0[] asm("VectorStub0");
+    extern uint8_t VectorStub0[] asm("VectorStub0x00");
 
     struct IdtEntry
     {
@@ -119,10 +119,10 @@ namespace Npk
         LoadGdt();
         LoadIdt();
 
-        CoreLocalInfo* local = NewWired<CoreLocalInfo>();
-        WriteMsr(MsrGsBase, reinterpret_cast<uint64_t>(local));
-        local->id = myId;
-        local->runLevel = RunLevel::Normal;
+        CoreLocalBlock* clb = NewWired<CoreLocalBlock>();
+        WriteMsr(MsrGsBase, reinterpret_cast<uint64_t>(clb));
+        clb->id = myId;
+        clb->rl = RunLevel::Normal;
 
         uint64_t cr0 = ReadCr0();
         cr0 |= 1 << 16; //write-protect bit
@@ -153,7 +153,7 @@ namespace Npk
         //TODO: init fpu/sse state
         LocalApic* lapic = NewWired<LocalApic>();
         ASSERT_(lapic != nullptr);
-        CoreLocal()[LocalPtr::IntrCtrl] = lapic;
+        SetLocalPtr(SubsysPtr::IntrCtrl, lapic);
         lapic->Init();
     }
 

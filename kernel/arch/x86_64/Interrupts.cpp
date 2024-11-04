@@ -1,17 +1,17 @@
 #include <arch/Interrupts.h>
 #include <arch/Misc.h>
+#include <arch/x86_64/Apic.h>
+#include <core/Smp.h>
+#include <core/Log.h>
+#include <core/Clock.h>
+#include <services/Program.h>
+#include <Panic.h>
 #include <Memory.h>
 #include <Maths.h>
 
-#include <core/Log.h>
-
 namespace Npk
 {
-    bool SendIpi(size_t dest)
-    { ASSERT_UNREACHABLE(); }
-
-    bool RoutePinInterrupt(size_t pin, size_t core, size_t vector)
-    { ASSERT_UNREACHABLE(); }
+    //SendIpi() and RoutePinInterrupt() are implemented in Apic.cpp
 
     sl::Opt<MsiConfig> ConstructMsi(size_t core, size_t vector)
     {
@@ -128,6 +128,57 @@ namespace Npk
         return reinterpret_cast<void*>(value);
     }
 
+    static Services::ProgramException TranslateException(TrapFrame* frame)
+    {
+        using namespace Services;
+
+        ProgramException ex {};
+        ex.pc = frame->iret.rip;
+        ex.stack = frame->iret.rsp;
+        ex.special = frame->vector;
+        ex.flags = frame->ec;
+
+        switch (frame->vector)
+        {
+        case 0x1: ex.type = ExceptionType::Breakpoint; break; //debug exception
+        case 0x3: ex.type = ExceptionType::Breakpoint; break; //breakpoint instruction (int3)
+        case 0x6: ex.type = ExceptionType::BadOperation; break; //invalid opcode exception
+        case 0xE: //page fault
+            ex.type = ExceptionType::MemoryAccess; 
+            ex.special = ReadCr2();
+            break; 
+        default: ex.type = ExceptionType::BadOperation; break;
+        }
+
+        return ex;
+    }
+
     extern "C" void TrapDispatch(TrapFrame* frame)
-    {}
+    {
+        using namespace Core;
+        const RunLevel prevRl = RaiseRunLevel(RunLevel::Interrupt);
+        //TODO: if prevRl==Normal, stash interrupted register state
+
+        if (frame->vector < 0x20)
+        {
+            auto except = TranslateException(frame);
+            PanicWithException(except, frame->rbp);
+        }
+        else
+        {
+            static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl))->SendEoi();
+
+            if (frame->vector == IntrVectorIpi)
+                ProcessLocalMail();
+            else if (frame->vector == IntrVectorTimer)
+                ProcessLocalClock();
+            else
+            {} //TODO: notify IntrRouter
+        }
+
+        LowerRunLevel(prevRl);
+        DisableInterrupts();
+        SwitchFrame(nullptr, nullptr, frame, nullptr);
+        ASSERT_UNREACHABLE();
+    }
 }

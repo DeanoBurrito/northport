@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <interfaces/intra/Compiler.h>
+#include <core/RunLevels.h>
 
 namespace Npk
 {
@@ -26,6 +27,80 @@ namespace Npk
     constexpr uint8_t IntrVectorTimer = 0xFD;
     constexpr uint8_t IntrVectorIpi = 0xFE;
     constexpr uint8_t IntrVectorSpurious = 0xFF;
+
+    class LocalApic;
+
+    struct CoreLocalBlock
+    {
+        size_t id;
+        RunLevel rl;
+        Core::DpcQueue dpcs;
+        Core::ApcQueue apcs;
+        void* subsysPtrs[static_cast<size_t>(SubsysPtr::Count)];
+    };
+
+    ALWAYS_INLINE
+    uint64_t ReadMsr(uint32_t addr)
+    {
+        uint32_t high, low;
+        asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(addr) : "memory");
+        return ((uint64_t)high << 32) | low;
+    }
+
+    ALWAYS_INLINE
+    void WriteMsr(uint32_t addr, uint64_t data)
+    {
+        asm volatile("wrmsr" :: "a"(data & 0xFFFF'FFFF), "d"(data >> 32), "c"(addr));
+    }
+
+    ALWAYS_INLINE
+    size_t CoreLocalId()
+    {
+        auto clb = reinterpret_cast<const CoreLocalBlock*>(ReadMsr(MsrGsBase)); //TODO: this is shit, reading an MSR everything - use __seg_gs stuff instead, or manually do gs-relative loads
+        return clb->id;
+    }
+
+    ALWAYS_INLINE
+    RunLevel CurrentRunLevel()
+    {
+        auto clb = reinterpret_cast<const CoreLocalBlock*>(ReadMsr(MsrGsBase));
+        return clb->rl;
+    }
+
+    ALWAYS_INLINE
+    void SetRunLevel(RunLevel rl)
+    {
+        auto clb = reinterpret_cast<CoreLocalBlock*>(ReadMsr(MsrGsBase));
+        clb->rl = rl;
+    }
+
+    ALWAYS_INLINE
+    Core::DpcQueue* CoreLocalDpcs()
+    {
+        auto clb = reinterpret_cast<CoreLocalBlock*>(ReadMsr(MsrGsBase));
+        return &clb->dpcs;
+    }
+
+    ALWAYS_INLINE
+    Core::ApcQueue* CoreLocalApcs()
+    {
+        auto clb = reinterpret_cast<CoreLocalBlock*>(ReadMsr(MsrGsBase));
+        return &clb->apcs;
+    }
+
+    ALWAYS_INLINE
+    void* GetLocalPtr(SubsysPtr which)
+    {
+        auto clb = reinterpret_cast<const CoreLocalBlock*>(ReadMsr(MsrGsBase));
+        return clb->subsysPtrs[static_cast<unsigned>(which)];
+    }
+
+    ALWAYS_INLINE
+    void SetLocalPtr(SubsysPtr which, void* data)
+    {
+        auto clb = reinterpret_cast<CoreLocalBlock*>(ReadMsr(MsrGsBase));
+        clb->subsysPtrs[static_cast<unsigned>(which)] = data;
+    }
 
     ALWAYS_INLINE
     size_t PfnShift()
@@ -132,20 +207,6 @@ namespace Npk
     }
 
     ALWAYS_INLINE
-    uint64_t ReadMsr(uint32_t addr)
-    {
-        uint32_t high, low;
-        asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(addr) : "memory");
-        return ((uint64_t)high << 32) | low;
-    }
-
-    ALWAYS_INLINE
-    void WriteMsr(uint32_t addr, uint64_t data)
-    {
-        asm volatile("wrmsr" :: "a"(data & 0xFFFF'FFFF), "d"(data >> 32), "c"(addr));
-    }
-
-    ALWAYS_INLINE
     uint64_t ReadTsc()
     {
         uint64_t low;
@@ -158,12 +219,6 @@ namespace Npk
     bool IsBsp()
     {
         return (ReadMsr(MsrApicBase) >> 8) & 1;
-    }
-
-    ALWAYS_INLINE
-    CoreLocalInfo& CoreLocal()
-    {
-        return *reinterpret_cast<CoreLocalInfo*>(ReadMsr(MsrGsBase));
     }
 
     ALWAYS_INLINE

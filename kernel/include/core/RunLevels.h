@@ -17,13 +17,6 @@ namespace Npk::Core
     constexpr bool operator<(const RunLevel a, const RunLevel b)
     { return static_cast<unsigned>(a) < static_cast<unsigned>(b); }
 
-    constexpr RunLevel operator--(RunLevel& x, int)
-    { 
-        const unsigned asInt = static_cast<unsigned>(x);
-        x = static_cast<RunLevel>(asInt - 1);
-        return static_cast<RunLevel>(asInt);
-    }
-
     using DpcEntry = void (*)(void* arg);
 
     struct Dpc
@@ -46,7 +39,6 @@ namespace Npk::Core
     using ApcStore = ApcQueue::Item;
 
     const char* RunLevelName(RunLevel rl);
-    RunLevel CurrentRunLevel();
     RunLevel RaiseRunLevel(RunLevel newRl);
     void LowerRunLevel(RunLevel newRl);
 

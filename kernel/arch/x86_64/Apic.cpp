@@ -193,7 +193,13 @@ namespace Npk
     }
 
     TimerTickNanos LocalApic::ReadTscNanos()
-    { ASSERT_UNREACHABLE(); }
+    {
+        //TODO: we can calculate the period ahead of time and replace all these
+        //FromFrequency() calls
+        sl::ScaledTime tscPeriod = sl::ScaledTime::FromFrequency(tscFrequency);
+        tscPeriod.units *= ReadTsc();
+        return tscPeriod.ToNanos();
+    }
 
     TimerTickNanos LocalApic::TimerMaxNanos()
     { 
@@ -245,7 +251,7 @@ namespace Npk
 
     bool SendIpi(size_t dest)
     {
-        static_cast<LocalApic*>(CoreLocal()[LocalPtr::IntrCtrl])->SendIpi(dest);
+        static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl))->SendIpi(dest);
 
         //IPIs are guarenteed to be delivered in both intel and amd specs
         return true;
