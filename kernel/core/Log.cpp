@@ -1,11 +1,15 @@
 #include <core/Log.h>
 #include <core/Clock.h>
 #include <core/WiredHeap.h>
+#include <interfaces/loader/Generic.h>
 #include <Panic.h>
+#include <Hhdm.h>
 #include <Locks.h>
 #include <Maths.h>
 #include <NanoPrintf.h>
+#include <Terminal.h>
 #include <Memory.h>
+#include <PlacementNew.h>
 
 namespace Npk::Core
 {
@@ -71,8 +75,8 @@ namespace Npk::Core
     static LogMessageItem* AllocMessage(size_t length)
     {
         LogBuffer* buff = &earlyBuffer;
-        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Logs] != nullptr)
-            buff = static_cast<LogBuffer*>(CoreLocal()[LocalPtr::Logs]);
+        if (CoreLocalAvailable() && GetLocalPtr(SubsysPtr::Logs) != nullptr)
+            buff = static_cast<LogBuffer*>(GetLocalPtr(SubsysPtr::Logs));
 
         const size_t realLength = sl::AlignUp(length + sizeof(LogMessageItem), sizeof(LogMessageItem));
         size_t begin = 0;
@@ -215,11 +219,11 @@ namespace Npk::Core
         if (prevRl.HasValue())
             msg->data.runlevel = *prevRl;
         else if (CoreLocalAvailable())
-            msg->data.runlevel = CoreLocal().runLevel;
+            msg->data.runlevel = CurrentRunLevel();
         else
             msg->data.runlevel = RunLevel::Dpc;
-        msg->data.processorId = CoreLocalAvailable() ? CoreLocal().id : -1;
-        if (CoreLocalAvailable() && CoreLocal()[LocalPtr::Thread] != nullptr)
+        msg->data.processorId = CoreLocalAvailable() ? CoreLocalId() : -1;
+        if (CoreLocalAvailable() && GetLocalPtr(SubsysPtr::Thread) != nullptr)
             //msg->data.threadId = Tasking::Thread::Current().Id(); //TODO: threadId
             msg->data.threadId = 0;
 
@@ -241,7 +245,6 @@ namespace Npk::Core
 
     void InitGlobalLogging()
     {
-        //TODO: tiny early framebuffer init with fixed sized buffer? replicated to all present laoder FBs
     }
 
     void InitLocalLogging(sl::Span<char> buffer)
@@ -252,7 +255,7 @@ namespace Npk::Core
         localBuf->head = 0;
         localBuf->tail = 0;
 
-        CoreLocal()[LocalPtr::Logs] = localBuf;
+        SetLocalPtr(SubsysPtr::Logs, localBuf);
     }
 
     void AddLogOutput(const LogOutput* output)
