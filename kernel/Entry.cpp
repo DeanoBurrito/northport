@@ -1,6 +1,7 @@
 #include <arch/Init.h>
 #include <arch/Hat.h>
 #include <arch/Timers.h>
+#include <arch/Interrupts.h>
 #include <core/Config.h>
 #include <core/Clock.h>
 #include <core/Log.h>
@@ -88,7 +89,7 @@ namespace Npk
     { 
         Log("core done", LogLevel::Debug);
         EnableInterrupts();
-        Halt(); 
+        Halt(); //TODO: switch to initial thread
     }
 
     static void HandleMagicKeyPanic(npk_key_id key)
@@ -107,7 +108,6 @@ namespace Npk
     {
         earlyVmEnabled = false;
         ArchKernelEntry();
-        Core::InitGlobalLogging();
 
         Log("Northport kernel started: v%zu.%zu.%zu for %s, compiled by %s from commit %s",
             LogLevel::Info, versionMajor, versionMinor, versionRev, targetArchStr,
@@ -122,6 +122,7 @@ namespace Npk
         ValidateLoaderData();
 
         ASSERT(GetHhdmBounds(hhdmBase, hhdmLength), "HHDM not provided by loader?");
+        Core::InitGlobalLogging();
         Log("Hhdm: base=0x%tx, length=0x%zx", LogLevel::Info, hhdmBase, hhdmLength);
 
         HatInit();
@@ -141,7 +142,7 @@ namespace Npk
         const bool enableAllMagics = Core::GetConfigNumber("kernel.enable_all_magic_keys", false);
         if (enableAllMagics || Core::GetConfigNumber("kernel.enable_panic_magic_key", false))
             Services::AddMagicKey(npk_key_id_p, HandleMagicKeyPanic);
-        if (enableAllMagics || Core::GetConfigNumber("kerenl.enable_shutdown_magic_key", false))
+        if (enableAllMagics || Core::GetConfigNumber("kernel.enable_shutdown_magic_key", false))
             Services::AddMagicKey(npk_key_id_s, HandleMagicKeyShutdown);
 
         //driver subsystem, threading and vfs init
