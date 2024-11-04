@@ -1,4 +1,4 @@
-.global VectorStub0x00
+.global VectorStub0
 .global TrapEntry
 
 .extern TrapDispatch
@@ -23,7 +23,7 @@ TrapEntry:
     push %r14
     push %r15
 
-    # Swap gs/kernelgs if needed
+    ## Swap gs/kernelgs if needed
     mov %ds, %ax
     cmp $0x10, %ax
     je 1f
@@ -36,7 +36,7 @@ TrapEntry:
     mov %ax, %fs
 
     mov %rsp, %rdi
-    mov 136(%rsp), %rax # create a stack frame, so it looks like the interrupt was called.
+    mov 136(%rsp), %rax ## create a stack frame, so it looks like the interrupt was called.
     push %rax
     cld
     call TrapDispatch
@@ -60,9 +60,9 @@ _EndOfTrapEntry:
     _EndOfVectorStub\vector:
 .endm
 
-# Thanks JW (J White?) for the idea of using irpc
-.irpc i, 0123456789abcdef
-.irpc j, 0123456789abcdef
-    StubMacro 0x\i\j
-.endr
+.altmacro
+.set i, 0
+.rept 256
+StubMacro %i
+.set i, i + 1
 .endr

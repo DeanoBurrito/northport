@@ -53,7 +53,7 @@ jobs:
         make clean binaries
         CPU_ARCH=${{ matrix.arch }}
         TOOLCHAIN=${{ matrix.compiler }}
-        X_CXX_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/*-g++
-        X_AS_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/*-as
-        X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/*-ld
-        X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/*-ar
+        X_CXX_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/${{ matrix.arch }}-buildroot-linux-gnu-g++
+        X_AS_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/${{ matrix.arch }}-buildroot-linux-gnu-as
+        X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/${{ matrix.arch }}-buildroot-linux-gnu-ld
+        X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/${{ matrix.arch }}-buildroot-linux-gnu-ar

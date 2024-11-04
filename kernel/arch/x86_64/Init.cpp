@@ -40,7 +40,7 @@ namespace Npk
     } gdtr;
 
     constexpr size_t IdtEntryCount = 256;
-    extern uint8_t VectorStub0[] asm("VectorStub0x00");
+    extern uint8_t VectorStub0[] asm("VectorStub0");
 
     struct IdtEntry
     {
