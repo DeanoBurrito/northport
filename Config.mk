@@ -26,7 +26,7 @@ COUNT_TODOS = yes
 # ---- Compiler Options ----
 # ISA to compile for, valid options: `x86_64`, `riscv64`, `m68k`
 CPU_ARCH = x86_64
-KERNEL_CXX_FLAGS += -O2 -g
+KERNEL_CXX_FLAGS += -Og -g
 # Set to 'yes' to embed a nice terminal background into the kernel,
 # this does significantly increase kernel size and build times. 
 INCLUDE_TERMINAL_BG = no
