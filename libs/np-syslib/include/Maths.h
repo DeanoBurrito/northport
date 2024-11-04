@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <Span.h>
 
 constexpr inline size_t KiB = 1024;
 constexpr inline size_t MiB = KiB * KiB;
@@ -201,19 +202,17 @@ namespace sl
         return res;
     }
     
-    template<typename T> //mm yes, very safe.
-    constexpr inline T StandardDeviation(T* data, size_t dataCount)
+    template<typename T>
+    constexpr inline T StandardDeviation(sl::Span<T> data)
     {
         T mean = 0;
-        for (size_t i = 0; i < dataCount; i++)
+        for (size_t i = 0; i < data.Size(); i++)
             mean += data[i];
-        mean = mean / dataCount;
+        mean = mean / data.Size();
         
         T variance = 0;
-        for (size_t i = 0; i < dataCount; i++)
-        {
-            variance += ((data[i] - mean) * (data[i] - mean) / (dataCount - 1));
-        }
+        for (size_t i = 0; i < data.Size(); i++)
+            variance += ((data[i] - mean) * (data[i] - mean) / (data.Size() - 1));
 
         return SquareRoot(variance);
     }
@@ -222,6 +221,58 @@ namespace sl
     constexpr inline bool IsPowerOfTwo(T test)
     {
         return test && !(test & (test - 1));
+    }
+
+    template<typename T>
+    constexpr inline T MaxOf(sl::Span<T> data)
+    {
+        T temp = data[0];
+        for (size_t i = 1; i < data.Size(); i++)
+        {
+            if (data[i] > temp)
+                temp = data[i];
+        }
+
+        return temp;
+    }
+
+    template<typename T>
+    constexpr inline T MinOf(sl::Span<T> data)
+    {
+        T temp = data[0];
+        for (size_t i = 1; i < data.Size(); i++)
+        {
+            if (data[i] < temp)
+                temp = data[i];
+        }
+
+        return temp;
+    }
+
+    template<typename T>
+    constexpr inline void MapRange(sl::Span<T> data, T oldMin, T oldMax, T newMin, T newMax)
+    {
+        if (oldMin == oldMax)
+            return;
+        if (oldMin == newMin && oldMax == newMax)
+            return;
+
+        T oldScale = oldMax - oldMin;
+        T newScale = newMax - newMin;
+        for (size_t i = 0; i < data.Size(); i++)
+        {
+            T temp = data[i] - oldMin;
+            temp = (temp * newScale * 2 + oldScale) / oldScale / 2;
+            data[i] = temp + newMin;
+        }
+    }
+
+    template<typename T>
+    constexpr inline void Normalize(sl::Span<T> data, T newMin, T newMax)
+    {
+        T oldMin = MinOf(data);
+        T oldMax = MaxOf(data);
+        MapRange(data, oldMin, oldMax, newMin, newMax);
     }
 
     constexpr inline size_t PopCount(size_t test)

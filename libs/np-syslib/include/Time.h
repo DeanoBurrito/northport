@@ -6,9 +6,11 @@ namespace sl
 {
     enum class TimeScale : size_t
     {
-        Millis = 1'000,
-        Micros = 1'000'000,
-        Nanos = 1'000'000'000,
+        Millis = 1000,
+        Micros = 1000 * Millis,
+        Nanos = 1000 * Micros,
+        Picos = 1000 * Nanos,
+        Femtos = 1000 * Picos
     };
 
     struct ScaledTime
@@ -37,6 +39,14 @@ namespace sl
         [[gnu::always_inline]]
         inline size_t ToNanos() const
         { return ToScale(TimeScale::Nanos).units; }
+
+        [[gnu::always_inline]]
+        inline size_t ToPicos() const
+        { return ToScale(TimeScale::Picos).units; }
+
+        [[gnu::always_inline]]
+        inline size_t ToFemtos() const
+        { return ToScale(TimeScale::Femtos).units; }
     };
 
     struct TimePoint
@@ -57,3 +67,6 @@ constexpr sl::ScaledTime operator""_us(unsigned long long units)
 
 constexpr sl::ScaledTime operator""_ns(unsigned long long units)
 { return sl::ScaledTime(sl::TimeScale::Nanos, units); }
+
+constexpr sl::ScaledTime operator""_ps(unsigned long long units)
+{ return sl::ScaledTime(sl::TimeScale::Picos, units); }

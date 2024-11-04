@@ -138,7 +138,7 @@ namespace sl
 //The following header is also relative to the kernel source, and will only resolve for the kernel.
 //It will generate errors for other projects.
 #include <arch/Misc.h>
-#include <arch/Interrupts.h>
+#include <Optional.h>
 
 namespace sl
 {
@@ -155,7 +155,7 @@ namespace sl
 
         inline void Lock()
         {
-            if (Npk::CoreLocalAvailable())
+            if (Npk::CoreLocalAvailable() && Npk::CurrentRunLevel() < CriticalLevel)
                 prevLevel = Npk::Core::RaiseRunLevel(CriticalLevel);
             return lock.Lock();
         }
@@ -163,7 +163,7 @@ namespace sl
         inline void Unlock()
         {
             lock.Unlock();
-            if (Npk::CoreLocalAvailable() && prevLevel.HasValue())
+            if (prevLevel.HasValue())
                 Npk::Core::LowerRunLevel(*prevLevel);
             prevLevel = {};
         }
