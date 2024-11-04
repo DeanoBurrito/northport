@@ -1,0 +1,59 @@
+name: Test Build
+on:
+  push:
+    paths-ignore: [ 'docs/**' ]
+  pull_request:
+    paths-ignore: [ 'docs/**' ]
+
+jobs:
+  cache-gcc-binaries:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check cache
+      id: check-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          **/gcc-x86_64-cross
+          **/gcc-riscv64-cross
+          **/gcc-m68k-cross
+        key: gcc-bins-2024-07-06
+          
+    - name: Download GCC
+      if: steps.check-cache.outputs.cache-hit != 'true'
+      run: >
+        mkdir toolchains;
+        cd toolchains;
+        wget https://toolchains.bootlin.com/downloads/releases/toolchains/x86-64/tarballs/x86-64--glibc--stable-2024.02-1.tar.bz2 -O gcc-x86_64;
+        tar -vxf gcc-x86_64; mv x86-64--glibc--stable-2024.02-1 gcc-x86_64-cross;
+        wget https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--glibc--stable-2024.02-1.tar.bz2 -O gcc-riscv64;
+        tar -vxf gcc-riscv64; mv riscv64-lp64d--glibc--stable-2024.02-1 gcc-riscv64-cross;
+        wget https://toolchains.bootlin.com/downloads/releases/toolchains/m68k-68xxx/tarballs/m68k-68xxx--glibc--stable-2024.02-1.tar.bz2 -O gcc-m68k;
+        tar -vxf gcc-m68k; mv m68k-* gcc-m68k-cross
+
+  run-build-tests:
+    runs-on: ubuntu-latest
+    needs: [ cache-gcc-binaries ]
+    strategy:
+      matrix:
+        arch: [ x86_64, riscv64, m68k ]
+        compiler: [ gcc, clang ]
+
+    steps:
+    - name: Download clang
+      if: ${{ matrix.compiler == 'clang' }}
+      run: sudo apt install lld llvm
+    - name: Checkout repo
+      uses: actions/checkout@v4
+      with:
+        path: 'repo'
+    - name: Compile
+      run: >
+        cd repo;
+        make clean binaries
+        CPU_ARCH=${{ matrix.arch }}
+        TOOLCHAIN=${{ matrix.compiler }}
+        X_CXX_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/*-g++
+        X_AS_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/*-as
+        X_LD_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/*-ld
+        X_AR_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/*-ar

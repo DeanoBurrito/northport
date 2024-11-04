@@ -13,13 +13,13 @@ ifeq ($(TOOLCHAIN), gcc)
 	export X_AS_BIN = $(TOOLCHAIN_PREFIX)$(ARCH_TARGET)-as
 	export X_LD_BIN = $(TOOLCHAIN_PREFIX)$(ARCH_TARGET)-ld
 	export X_AR_BIN = $(TOOLCHAIN_PREFIX)$(ARCH_TARGET)-ar
-	export KERNEL_AS_FLAGS = 
+	export override KERNEL_AS_FLAGS = 
 else ifeq ($(TOOLCHAIN), clang)
-	export X_CXX_BIN = clang++ --target=$(ARCH_TARGET)
-	export X_AS_BIN = clang --target=$(ARCH_TARGET)
-	export X_LD_BIN = ld.lld
-	export X_AR_BIN = llvm-ar
-	export KERNEL_AS_FLAGS = -c
+	export override X_CXX_BIN = clang++ --target=$(ARCH_TARGET)
+	export override X_AS_BIN = clang --target=$(ARCH_TARGET)
+	export override X_LD_BIN = ld.lld
+	export override X_AR_BIN = llvm-ar
+	export override KERNEL_AS_FLAGS = -c
 else
 $(error "Unknown toolchain: $(TOOLCHAIN), build aborted.")
 endif
