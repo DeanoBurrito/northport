@@ -44,9 +44,10 @@ SwitchFrame:
     jz 1f
 
     mov %rdx, %rdi
+    xchg %rcx, %rsi
     mov %rcx, %rsi
     cld
-    jmp *%rsi
+    call %rcx
 1:
     ## load next context, starting with segment regs
     mov 0xA8(%rsp), %eax

@@ -21,13 +21,14 @@ namespace Npk::Core
 
             struct
             {
-                void* list[2]; //avoiding header pollution, see Heap.cpp for details
+                char list[sizeof(sl::ListHook)]; //see Heap.cpp for the definition of this field, this is done to avoid header pollution (Pmm.h is included in a lot of places)
                 uint16_t used;
             } slab;
 
+            sl::FwdListHook vmObjList; //linkage for VmObj page list
             struct
             {
-                sl::FwdListHook objList; //linkage for VmObject page-list
+                char placeholder[sizeof(sl::FwdListHook)];
                 uint16_t offset; //in pages (not bytes) of this page within the VmObject
                 uint16_t pinCount;
             } vm;

@@ -20,6 +20,7 @@ namespace Npk
         IntrCtrl = 2,
         ClockQueue = 3,
         Thread = 4,
+        Scheduler = 5,
 
         Count
     };
