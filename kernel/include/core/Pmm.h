@@ -38,15 +38,21 @@ namespace Npk::Core
     class Pmm
     {
     private:
-        sl::RunLevelLock<RunLevel::Dpc> listLock;
-        sl::FwdList<PageInfo, &PageInfo::mmList> list;
-        size_t listSize;
+        struct PmList
+        {
+            sl::RunLevelLock<RunLevel::Dpc> lock;
+            sl::FwdList<PageInfo, &PageInfo::mmList> list;
+            size_t size;
+        };
+
+        PmList globalList;
 
         bool trashAfterUse;
         bool trashBeforeUse;
         PageInfo* infoDb;
 
         void IngestMemory(sl::Span<MemmapEntry> entries);
+        sl::Opt<uintptr_t> AllocFromList(PmList& list);
 
     public:
         static Pmm& Global();
