@@ -150,6 +150,9 @@ namespace Npk
             CpuHasFeature(CpuFeature::GlobalPages) ? ", global pages" : "",
             CpuHasFeature(CpuFeature::NoExecute) ? ", nx" : "");
 
+        if (cr4 & (1 << 21))
+            asm volatile("clac"); //prevent accidental userspace accesses
+
         //TODO: init fpu/sse state
         LocalApic* lapic = NewWired<LocalApic>();
         ASSERT_(lapic != nullptr);

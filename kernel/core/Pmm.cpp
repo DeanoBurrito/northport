@@ -120,11 +120,15 @@ namespace Npk::Core
                 return ret;
 
             //refill local list from global
-            for (size_t i = 0; i < LocalListLimit - localList.size; i++)
+            while (localList.size < LocalListLimit)
             {
                 auto refill = AllocFromList(globalList);
                 if (!refill.HasValue())
                     break;
+
+                sl::ScopedLock scopelock(localList.lock);
+                localList.list.PushFront(Lookup(*refill));
+                localList.size++;
             }
 
             return AllocFromList(localList);

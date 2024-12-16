@@ -21,6 +21,7 @@ namespace Npk
         ClockQueue = 3,
         Thread = 4,
         Scheduler = 5,
+        PmmCache = 6,
 
         Count
     };

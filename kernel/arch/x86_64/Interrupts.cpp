@@ -62,8 +62,9 @@ namespace Npk
 
     static_assert(sizeof(TrapFrame) == 176, "x86_64 TrapFrame size changed, update assembly sources.");
 
-    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user)
+    TrapFrame* InitTrapFrame(uintptr_t stack, uintptr_t entry, bool user)
     {
+        TrapFrame* frame = reinterpret_cast<TrapFrame*>(stack) - 1;
         sl::memset(frame, 0, sizeof(TrapFrame));
 
         frame->iret.cs = user ? SelectorUserCode : SelectorKernelCode;
@@ -72,6 +73,8 @@ namespace Npk
         frame->iret.rip = entry;
         frame->iret.flags = 0x202;
         frame->rbp = 0;
+
+        return frame;
     }
 
     void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value)

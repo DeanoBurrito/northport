@@ -1,5 +1,6 @@
 #pragma once
 
+#include <core/RunLevels.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <Atomic.h>
@@ -9,6 +10,7 @@ namespace Npk::Core
 {
     struct ShootdownDetails
     {
+        DpcStore* onComplete;
         sl::Atomic<size_t> pending;
         uintptr_t base;
         size_t length;

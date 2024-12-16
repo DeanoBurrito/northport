@@ -39,8 +39,8 @@ SECTIONS
     .init_array :
     {
         INIT_ARRAY_BEGIN = .;
-        *(.init_array)
-        *(.init_array.*)
+        KEEP(*(.init_array))
+        KEEP(*(.init_array.*))
         INIT_ARRAY_END = .;
     } :rodata
 

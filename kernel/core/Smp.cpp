@@ -74,7 +74,9 @@ namespace Npk::Core
         {
             for (size_t i = 0; i < evict->data.length; i += PageSize())
                 HatFlushMap(evict->data.base + i);
-            evict->data.pending--; //TODO: switch to RefCount<T> and use lookaside list of shootdown objs
+
+            if (--evict->data.pending == 0 && evict->data.onComplete != nullptr)
+                QueueDpc(evict->data.onComplete);
         }
     }
 

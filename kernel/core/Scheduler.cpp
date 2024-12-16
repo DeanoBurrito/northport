@@ -3,6 +3,7 @@
 #include <core/Config.h>
 #include <core/WiredHeap.h>
 #include <core/Pmm.h>
+#include <core/Smp.h>
 #include <Entry.h>
 #include <arch/Misc.h>
 #include <Maths.h>
@@ -11,7 +12,12 @@ namespace Npk::Core
 {
     constexpr size_t DefaultPriorityCount = 16;
     constexpr size_t MaxPrioritiesCount = 128;
-    constexpr size_t IdleThreadStackPages = 8;
+    constexpr size_t IdleThreadStackSize = 0x8000;
+
+    static bool IsCurrentThread(SchedulerObj* obj)
+    {
+        return obj != nullptr && obj == GetLocalPtr(SubsysPtr::Thread);
+    }
 
     SchedulerObj* Scheduler::PopThread()
     {
@@ -44,7 +50,7 @@ namespace Npk::Core
         Halt();
     }
 
-    void Scheduler::Init(sl::Span<uint8_t> idleStack)
+    void Scheduler::Init()
     {
         size_t priorities = GetConfigNumber("kernel.scheduler.priorities", DefaultPriorityCount);
         priorities = sl::Clamp<size_t>(priorities, 1, MaxPrioritiesCount);
@@ -56,13 +62,18 @@ namespace Npk::Core
 
         liveThreads = { queues, priorities };
 
+        void* idleStack = EarlyVmAlloc((uintptr_t)-1, IdleThreadStackSize, true, false, "idle stack");
+        idleStack = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(idleStack) + IdleThreadStackSize);
+        ASSERT_(idleStack != nullptr);
+
         idleThread.active = false;
         idleThread.priority = priorities - 1;
         idleThread.extendedState = nullptr;
         idleThread.scheduler = this;
-        idleThread.frame = reinterpret_cast<TrapFrame*>(idleStack.Begin());
+        idleThread.frame = InitTrapFrame(reinterpret_cast<uintptr_t>(idleStack),
+            reinterpret_cast<uintptr_t>(IdleThreadMain), false);
 
-        InitTrapFrame(idleThread.frame, reinterpret_cast<uintptr_t>(idleStack.End()), reinterpret_cast<uintptr_t>(IdleThreadMain), false);
+        coreId = CoreLocalId();
         Log("Local scheduler init: %zu priorities, idleEntry=%p", LogLevel::Info, priorities, IdleThreadMain);
     }
 
@@ -85,36 +96,6 @@ namespace Npk::Core
         ASSERT_UNREACHABLE();
     }
 
-    size_t Scheduler::DefaultPriority() const
-    {
-        return liveThreads.Size() / 2;
-    }
-
-    void Scheduler::Enqueue(SchedulerObj* obj, size_t priority)
-    {
-        VALIDATE_(obj != nullptr, );
-        priority = sl::Min(priority, liveThreads.Size() - 1);
-
-        sl::ScopedLock objLock(obj->lock);
-        obj->scheduler = this;
-        obj->priority = priority;
-        obj->active = true;
-
-        PushThread(obj);
-    }
-
-    void Scheduler::Dequeue(SchedulerObj* obj)
-    {
-        VALIDATE_(obj != nullptr, );
-
-        sl::ScopedLock objLock(obj->lock);
-        obj->scheduler = nullptr;
-        obj->active = false;
-
-        sl::ScopedLock scopeLock(threadsLock);
-        liveThreads[obj->priority].Remove(obj);
-    }
-
     void Scheduler::Yield()
     {
         const auto prevRl = RaiseRunLevel(RunLevel::Dpc);
@@ -128,5 +109,53 @@ namespace Npk::Core
         SwitchFrame(&currThread->frame, nullptr, nextThread->frame, nullptr);
 
         LowerRunLevel(prevRl);
+    }
+
+    size_t Scheduler::DefaultPriority() const
+    {
+        return liveThreads.Size() / 2;
+    }
+
+    void Scheduler::Enqueue(SchedulerObj* obj, size_t priority)
+    {
+        VALIDATE_(obj != nullptr, );
+        priority = sl::Min(priority, liveThreads.Size() - 1);
+
+        sl::ScopedLock objLock(obj->lock);
+        VALIDATE_(obj->scheduler == nullptr, );
+        obj->scheduler = this;
+        obj->priority = priority;
+        obj->active = true;
+
+        PushThread(obj);
+    }
+
+    void Scheduler::Dequeue(SchedulerObj* obj)
+    {
+        VALIDATE_(obj != nullptr, );
+
+        sl::ScopedLock objLock(obj->lock);
+        if (obj->scheduler == nullptr)
+            return;
+        obj->scheduler = nullptr;
+        obj->active = false;
+
+        sl::ScopedLock scopeLock(threadsLock);
+        liveThreads[obj->priority].Remove(obj);
+    }
+
+    size_t Scheduler::GetPriority(SchedulerObj* obj)
+    {
+        ASSERT_UNREACHABLE();
+    }
+
+    void Scheduler::SetPriority(SchedulerObj* obj, size_t newPriority)
+    {
+        ASSERT_UNREACHABLE();
+    }
+
+    void Scheduler::AdjustPriority(SchedulerObj* obj, int adjustment)
+    {
+        ASSERT_UNREACHABLE();
     }
 }

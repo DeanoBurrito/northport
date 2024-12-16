@@ -6,6 +6,7 @@
 #include <core/Clock.h>
 #include <core/Log.h>
 #include <core/Pmm.h>
+#include <core/Scheduler.h>
 #include <core/Smp.h>
 #include <core/WiredHeap.h>
 #include <interfaces/intra/BakedConstants.h>
@@ -40,10 +41,30 @@ namespace Npk
             flags.Set(HatFlag::Mmio);
 
         const size_t granuleSize = HatGetLimits().modes[0].granularity;
+        if (paddr == (uintptr_t)-1)
+        {
+            for (size_t i = 0; i < length; i += granuleSize)
+            {
+                auto paddr = Core::PmAlloc();
+                if (!paddr.HasValue())
+                    return nullptr;
+                if (!HatDoMap(KernelMap(), earlyVmBase + i, *paddr, 0, flags, false))
+                    return nullptr;
+            }
+
+            const uintptr_t newBase = sl::AlignUp(earlyVmBase + length, granuleSize);
+            void* retAddr = reinterpret_cast<void*>(earlyVmBase);
+            earlyVmBase = newBase;
+            return retAddr;
+        }
+
         const uintptr_t pBase = sl::AlignDown(paddr, granuleSize);
         const size_t pTop = paddr + length;
         for (size_t i = pBase; i < pTop; i += granuleSize)
-            HatDoMap(KernelMap(), i - pBase + earlyVmBase, i, 0, flags, false);
+        {
+            if (!HatDoMap(KernelMap(), i - pBase + earlyVmBase, i, 0, flags, false))
+                return nullptr;
+        }
 
         const uintptr_t retAddr = earlyVmBase;
         earlyVmBase = sl::AlignUp(earlyVmBase + (pTop - pBase), granuleSize);
@@ -66,7 +87,10 @@ namespace Npk
     }
 
     void InitThread(void*)
-    { ASSERT_UNREACHABLE(); }
+    { 
+        Log("Init thread up", LogLevel::Debug);
+        Halt();
+    }
 
     void ReclaimLoaderMemoryThread(void*)
     { ASSERT_UNREACHABLE(); }
@@ -75,21 +99,24 @@ namespace Npk
     {
         HatMakeActive(KernelMap(), true);
         ArchInitCore(myId);
-
         Core::InitLocalSmpMailbox();
+        Core::Pmm::Global().InitLocalCache();
+
         InitLocalTimers();
-        //Core::InitLocalHeapCache();
-        //Core::Pmm::Global().InitLocalCache();
-        //TODO: intr routing, scheduler, local logging
         Core::InitLocalClockQueue(isBsp);
+        Core::Scheduler* localSched = NewWired<Core::Scheduler>();
+        ASSERT_(localSched != nullptr);
+
+        localSched->Init();
+        SetLocalPtr(SubsysPtr::Scheduler, localSched);
+
+        //TODO: init local intr routing, logging, heap caches
     }
 
     [[noreturn]]
     void ExitCoreInit()
     { 
-        Log("core done", LogLevel::Debug);
-        EnableInterrupts();
-        Halt(); //TODO: switch to initial thread
+        Core::Scheduler::Local()->Kickstart();
     }
 
     static void HandleMagicKeyPanic(npk_key_id key)

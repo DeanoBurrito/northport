@@ -28,7 +28,7 @@ namespace Npk
     bool DeconstructMsi(MsiConfig cfg, size_t& core, size_t& vector);
 
     size_t TrapFrameArgCount();
-    void InitTrapFrame(TrapFrame* frame, uintptr_t stack, uintptr_t entry, bool user);
+    TrapFrame* InitTrapFrame(uintptr_t stack, uintptr_t entry, bool user); //constructs a TrapFrame at the top of the stack
     void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value);
     void* GetTrapFrameArg(TrapFrame* frame, size_t index);
     void SwitchFrame(TrapFrame** prev, void (*callback)(TrapFrame* next, void* arg), TrapFrame* next, void* callbackArg) asm("SwitchFrame");
