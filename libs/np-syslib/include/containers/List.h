@@ -205,7 +205,32 @@ namespace sl
         private:
             T* ptr;
 
+            constexpr Iterator(T* entry) : ptr(entry) {}
+
         public:
+            constexpr bool operator==(const Iterator& other) const
+            { return ptr == other.ptr; }
+
+            constexpr bool operator!=(const Iterator& other) const
+            { return ptr != other.ptr; }
+
+            constexpr Iterator& operator++()
+            {
+                ptr = static_cast<T*>(Hk(ptr)->next);
+                return *this;
+            }
+
+            constexpr T& operator*()
+            { return *ptr; }
+
+            constexpr T* operator->()
+            { return ptr; }
+
+            constexpr const T& operator*() const
+            { return *ptr; }
+
+            constexpr const T* operator->() const
+            { return ptr; }
         };
 
         constexpr List() : head(nullptr), tail(nullptr) {}
@@ -234,7 +259,7 @@ namespace sl
         { return {}; }
 
         bool Empty() const
-        { return head != nullptr; }
+        { return head == nullptr; }
 
         void PushFront(T* value)
         {
@@ -270,7 +295,7 @@ namespace sl
             Hk(head)->prev = nullptr;
 
             if (head == nullptr)
-                tail == nullptr;
+                tail = nullptr;
             return temp;
         }
 
@@ -346,7 +371,7 @@ namespace sl
                 Hk(prev)->next = next;
 
             if (next == nullptr)
-                tail - prev;
+                tail = prev;
             else
                 Hk(next)->prev = prev;
 

@@ -1,6 +1,7 @@
 #include <core/Log.h>
 #include <core/Clock.h>
 #include <core/WiredHeap.h>
+#include <core/Config.h>
 #include <interfaces/loader/Generic.h>
 #include <Panic.h>
 #include <Hhdm.h>
@@ -30,6 +31,8 @@ namespace Npk::Core
 
     constexpr size_t MaxLogOutputs = 4;
     constexpr size_t MaxLogLength = 128;
+    constexpr size_t MaxUptimeLen = 16;
+    constexpr size_t MaxProcThreadLen = 16;
 
     const LogOutput* logOuts[MaxLogOutputs];
     size_t logOutCount = 0;
@@ -120,14 +123,14 @@ namespace Npk::Core
 
         const size_t uptimeMajor = sl::ScaledTime(logTimescale, msg.ticks).ToMillis() / 1000;
         const size_t uptimeMinor = sl::ScaledTime(logTimescale, msg.ticks).ToMillis() % 1000;
-        const size_t uptimeLen = npf_snprintf(nullptr, 0, UptimeStr.Begin(), uptimeMajor, uptimeMinor) + 1;
-        char uptimeBuff[uptimeLen];
+        const size_t uptimeLen = sl::Min<size_t>(npf_snprintf(nullptr, 0, UptimeStr.Begin(), uptimeMajor, uptimeMinor), MaxUptimeLen);
+        char uptimeBuff[MaxUptimeLen];
         npf_snprintf(uptimeBuff, uptimeLen, UptimeStr.Begin(), uptimeMajor, uptimeMinor);
 
         const size_t procId = msg.processorId == (size_t)-1 ? 0 : msg.processorId;
         const char* rlStr = RunLevelName(msg.runlevel);
-        const size_t procThreadLen = npf_snprintf(nullptr, 0, ProcThreadStr.Begin(), procId, rlStr, msg.threadId) + 1;
-        char procThreadBuff[procThreadLen];
+        const size_t procThreadLen = sl::Min<size_t>(npf_snprintf(nullptr, 0, ProcThreadStr.Begin(), procId, rlStr, msg.threadId) + 1, MaxProcThreadLen);
+        char procThreadBuff[MaxProcThreadLen];
         npf_snprintf(procThreadBuff, procThreadLen, ProcThreadStr.Begin(), procId, rlStr, msg.threadId);
         if (msg.processorId == (size_t)-1)
             procThreadBuff[0] = '?';
@@ -174,7 +177,7 @@ namespace Npk::Core
         const size_t formattedLen = sl::Min<size_t>(npf_vsnprintf(nullptr, 0, str, argsList) + 1, MaxLogLength);
         va_end(argsList);
         
-        char formatBuffer[formattedLen];
+        char formatBuffer[MaxLogLength];
         va_start(argsList, level);
         npf_vsnprintf(formatBuffer, formattedLen, str, argsList);
         va_end(argsList);
@@ -243,8 +246,80 @@ namespace Npk::Core
             LowerRunLevel(*prevRl);
     }
 
+    struct FramebufferLogger
+    {
+        sl::FwdListHook next;
+        sl::Terminal renderer;
+    };
+
+    sl::FwdList<FramebufferLogger, &FramebufferLogger::next> fbTerms;
+
+    static void* FramebufferLoggerAlloc(size_t count)
+    {
+        auto maybeAlloc = EarlyPmAlloc(count);
+        if (maybeAlloc.HasValue())
+            return reinterpret_cast<void*>(*maybeAlloc + hhdmBase);
+        return nullptr;
+    }
+
+    static void FramebufferLoggerWrite(sl::StringSpan message)
+    {
+        for (auto it = fbTerms.Begin(); it != fbTerms.End(); ++it)
+            it->renderer.Write(message, true);
+    }
+
+    static void FramebufferLoggerBeginPanic()
+    {}
+
+    LogOutput fbLoggerOutput
+    {
+        .Write = FramebufferLoggerWrite,
+        .BeginPanic = FramebufferLoggerBeginPanic,
+    };
+
     void InitGlobalLogging()
     {
+        const bool suppressFbTerms = GetConfigNumber("kernel.log.no_fb_output", false);
+        if (suppressFbTerms)
+            return;
+
+        /* The only built-in log sink is the terminal renderer, if
+         * we get any framebuffers from the bootloader we create a
+         * renderer instance for each of them so we can get log output
+         * asap - especially useful on real hardware.
+         * It is a little wasteful because we (currently) cant reclaim
+         * early physical allocations.
+         */
+        sl::TerminalConfig config 
+        {
+            .colours = { 0x00000000, 0x00AA0000, 0x0000AA00, 0x00AA5500, 0x000000AA, 0x00AA00AA, 0x0000AAAA, 0x00AAAAAA },
+            .brightColours = { 0x00555555, 0x00FF5555, 0x0055FF55, 0x00FFFF55, 0x005555FF, 0x00FF55FF, 0x0055FFFF, 0x00FFFFFF },
+            .background = 0x0,
+            .foreground = 0xFFFFFF,
+            .tabSize = 4,
+            .margin = 0,
+            .fontSpacing = 0,
+            .Alloc = FramebufferLoggerAlloc,
+        };
+
+        LoaderFramebuffer fbStore[MaxLogOutputs];
+        const size_t fbCount = GetFramebuffers(fbStore, 0);
+        for (size_t i = 0; i < fbCount; i++)
+        {
+            auto maybeFbTerm = EarlyPmAlloc(sizeof(FramebufferLogger));
+            if (!maybeFbTerm.HasValue())
+                return; //failed to allocate, stop here
+
+            config.fbBase = reinterpret_cast<void*>(fbStore[i].address);
+            config.fbStride = fbStore[i].stride;
+            config.fbSize = { fbStore[i].width, fbStore[i].height };
+            auto term = new(reinterpret_cast<void*>(*maybeFbTerm + hhdmBase)) FramebufferLogger();
+            if (term->renderer.Init(config))
+                fbTerms.PushBack(term);
+        }
+
+        if (!fbTerms.Empty())
+            AddLogOutput(&fbLoggerOutput);
     }
 
     void InitLocalLogging(sl::Span<char> buffer)
