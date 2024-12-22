@@ -224,6 +224,22 @@ namespace sl
     }
 
     template<typename T>
+    constexpr inline T AlignUpBinary(T x)
+    {
+        x--;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        if constexpr (sizeof(T) > 4)
+            x |= x >> 32;
+        if constexpr (sizeof(T) > 8)
+            x |= x >> 64;
+        return ++x;
+    }
+
+    template<typename T>
     constexpr inline T MaxOf(sl::Span<T> data)
     {
         T temp = data[0];
