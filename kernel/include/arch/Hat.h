@@ -36,6 +36,7 @@ namespace Npk
     struct HatLimits
     {
         bool flushOnPermsUpgrade;
+        bool hwTlbBroadcast;
         size_t modeCount;
         struct 
         {
@@ -81,6 +82,9 @@ namespace Npk
 
     //attempts to update an existing mapping: either flags, physical address of both.
     bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
+
+    //if supported (see modes.hwTlbBroadcast), performs a hardware-assisted flush of all TLBs for a particular vaddr.
+    bool HatFlushBroadcast(uintptr_t vaddr);
 
     //attempts to flush a cached mapping from the local translation cache.
     void HatFlushMap(uintptr_t vaddr);

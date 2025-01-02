@@ -14,6 +14,8 @@
 
 #define INVLPG(vaddr) do { asm volatile("invlpg (%0)" :: "r"(vaddr) : "memory"); } while (false)
 #define SET_PTE(pte_ptr, value) do { asm volatile("mov %0, (%1)" :: "r"(value), "r"(pte_ptr)); } while (false)
+#define INVLPGB(vaddr) do { asm volatile("invlpgb" :: "a"(vaddr | 1), "c"(0), "d"(0)); } while (false)
+#define TLBSYNC() asm("tlbsync")
 
 namespace Npk
 {
@@ -58,6 +60,7 @@ namespace Npk
     HatLimits limits 
     {
         .flushOnPermsUpgrade = false,
+        .hwTlbBroadcast = false,
         .modeCount = 3,
         .modes = 
         {
@@ -150,6 +153,7 @@ namespace Npk
         nxSupport = CpuHasFeature(CpuFeature::NoExecute);
         globalPageSupport = CpuHasFeature(CpuFeature::GlobalPages);
         patSupport = CpuHasFeature(CpuFeature::Pat);
+        limits.hwTlbBroadcast = CpuHasFeature(CpuFeature::BroadcastInvlpg);
         if (!patSupport)
             Log("PAT not supported on this cpu.", LogLevel::Warning);
 
@@ -366,6 +370,16 @@ namespace Npk
 
         if (flush)
             INVLPG(vaddr);
+        return true;
+    }
+
+    bool HatFlushBroadcast(uintptr_t vaddr)
+    {
+        if (!limits.hwTlbBroadcast)
+            return false;
+
+        INVLPGB(vaddr);
+        TLBSYNC();
         return true;
     }
 
