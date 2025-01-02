@@ -30,7 +30,9 @@ namespace Npk::Core
             {
                 char placeholder[sizeof(sl::FwdListHook)];
                 uint16_t offset; //in pages (not bytes) of this page within the VmObject
-                uint16_t pinCount;
+                uint16_t wireCount;
+                bool vmoIsOverlay;
+                void* vmo;
             } vm;
         };
     };
@@ -66,6 +68,11 @@ namespace Npk::Core
             return infoDb + (paddr >> PfnShift());
         }
 
+        inline uintptr_t ReverseLookup(PageInfo* info)
+        {
+            return (info - infoDb) << PfnShift();
+        }
+
         sl::Opt<uintptr_t> Alloc();
         void Free(uintptr_t paddr);
     };
@@ -73,6 +80,10 @@ namespace Npk::Core
     ALWAYS_INLINE
     PageInfo* PmLookup(uintptr_t paddr) 
     { return Pmm::Global().Lookup(paddr); }
+
+    ALWAYS_INLINE
+    uintptr_t PmRevLookup(PageInfo* info)
+    { return Pmm::Global().ReverseLookup(info); }
 
     ALWAYS_INLINE
     sl::Opt<uintptr_t> PmAlloc()

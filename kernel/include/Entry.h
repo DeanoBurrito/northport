@@ -15,10 +15,11 @@ namespace Npk
     void* EarlyVmAlloc(uintptr_t paddr, size_t length, bool writable, bool mmio, const char* tag);
 
     //Provides control over EarlyVmAlloc. By default this feature is disabled. It is also
-    //disabled once the VM subsystem is running. If `enable` is true, `newAllocBase` is used
-    //to determine where the allocator will start assigning addresses from.
+    //disabled once the VM subsystem is running. If `enable` is true, the allocator
+    //resets its internal state to begin allocating addresses immediately after the
+    //HHDM top.
     //It returns the previous value of the highest allocated address.
-    uintptr_t EarlyVmControl(bool enable, uintptr_t newAllocBase);
+    uintptr_t EarlyVmControl(bool enable);
 
     //started on the first core to finish its local init and begin scheduling.
     void InitThread(void*);

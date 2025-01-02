@@ -16,6 +16,8 @@ namespace Npk
     constexpr const char* ProgramFormatStr = "Thread %zu.%zu: name=%.*s, procName=%.*s driverShadow=%.*s\r\n";
     constexpr const char* TraceFrameFormatStr = "%3zu: 0x%016lx %.*s!%.*s+0x%lx\r\n";
     constexpr const char* ResetStr = "\r\nSystem has halted indefinitely, manual reset required.\r\n";
+
+    constexpr size_t MaxPanicLogLen = 128;
     constexpr size_t MaxTraceDepth = 16;
     constexpr int MaxProgramNameLen = 16;
     constexpr int MaxSymbolNameLen = 52;
@@ -32,9 +34,9 @@ namespace Npk
         const size_t length = npf_vsnprintf(nullptr, 0, format, args) + 1;
         va_end(args);
 
-        char buffer[length];
+        char buffer[MaxPanicLogLen];
         va_start(args, format);
-        npf_vsnprintf(buffer, length, format, args);
+        npf_vsnprintf(buffer, MaxPanicLogLen, format, args);
         va_end(args);
 
         for (size_t i = 0; i < outputs.Size(); i++)
@@ -116,6 +118,7 @@ namespace Npk
 
     static void PrintProgramInfo(PanicOutputs outputs)
     {
+        (void)outputs;
         //TODO: print program info
     }
 

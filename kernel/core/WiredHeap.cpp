@@ -51,15 +51,10 @@ namespace Npk::Core
     void* WiredAlloc(size_t size)
     {   
         VALIDATE_(size != 0, nullptr);
-        VALIDATE_(size < (BaseSlabSize << SlabCount), nullptr);
 
-        size /= BaseSlabSize;
-        size_t slabIndex = 0;
-        while (size != 0)
-        {
-            slabIndex++;
-            size >>= 1;
-        }
+        size = sl::AlignUpBinary(size) / BaseSlabSize;
+        const size_t slabIndex = size == 0 ? 0 : __builtin_ctzl(size);
+        VALIDATE_(slabIndex < SlabCount, nullptr);
 
         if (CoreLocalAvailable())
             VALIDATE_(CurrentRunLevel() == RunLevel::Normal, nullptr);
@@ -129,7 +124,7 @@ namespace Npk::Core
 }
 
 void* operator new(size_t size)
-{ ASSERT_UNREACHABLE(); } //TODO: move these to executive heap, for paged objects
+{ ASSERT_UNREACHABLE(); (void)size; } //TODO: move these to executive heap, for paged objects
 
 void* operator new[](size_t size)
-{ ASSERT_UNREACHABLE(); }
+{ ASSERT_UNREACHABLE(); (void)size; }

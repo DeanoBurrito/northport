@@ -123,7 +123,7 @@ namespace Npk::Core
 
         const size_t uptimeMajor = sl::ScaledTime(logTimescale, msg.ticks).ToMillis() / 1000;
         const size_t uptimeMinor = sl::ScaledTime(logTimescale, msg.ticks).ToMillis() % 1000;
-        const size_t uptimeLen = sl::Min<size_t>(npf_snprintf(nullptr, 0, UptimeStr.Begin(), uptimeMajor, uptimeMinor), MaxUptimeLen);
+        const size_t uptimeLen = sl::Min<size_t>(npf_snprintf(nullptr, 0, UptimeStr.Begin(), uptimeMajor, uptimeMinor) + 1, MaxUptimeLen);
         char uptimeBuff[MaxUptimeLen];
         npf_snprintf(uptimeBuff, uptimeLen, UptimeStr.Begin(), uptimeMajor, uptimeMinor);
 

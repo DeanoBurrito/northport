@@ -47,7 +47,7 @@ SwitchFrame:
     xchg %rcx, %rsi
     mov %rcx, %rsi
     cld
-    call %rcx
+    call *%rcx
 1:
     ## load next context, starting with segment regs
     mov 0xA8(%rsp), %eax

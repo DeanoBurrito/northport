@@ -10,6 +10,22 @@ namespace Npk::Core
 
     void* WiredAlloc(size_t size); //will return nullptr if allocation fails.
     void WiredFree(void* ptr, size_t size);
+
+    struct WiredHeapAllocator
+    {
+        constexpr WiredHeapAllocator() {}
+
+        [[nodiscard]]
+        inline void* Allocate(size_t length)
+        {
+            return WiredAlloc(length);
+        }
+
+        inline void Deallocate(void* ptr, size_t length)
+        {
+            WiredFree(ptr, length);
+        }
+    };
 }
 
 template<typename T>

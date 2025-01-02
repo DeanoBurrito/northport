@@ -64,8 +64,8 @@ namespace Npk
 
     TrapFrame* InitTrapFrame(uintptr_t stack, uintptr_t entry, bool user)
     {
-        TrapFrame* frame = reinterpret_cast<TrapFrame*>(stack) - 1;
-        sl::memset(frame, 0, sizeof(TrapFrame));
+        TrapFrame* frame = reinterpret_cast<TrapFrame*>(stack) - 2;
+        sl::memset(frame, 0, sizeof(TrapFrame) * 2);
 
         frame->iret.cs = user ? SelectorUserCode : SelectorKernelCode;
         frame->iret.ss = user ? SelectorUserData : SelectorKernelData;

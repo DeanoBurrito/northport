@@ -1,9 +1,7 @@
 #include <interfaces/loader/Generic.h>
 #include <interfaces/loader/Crow.h>
-#include <arch/Platform.h>
-#include <boot/CommonInit.h>
-#include <debug/Log.h>
-#include <Maths.h>
+#include <Entry.h>
+#include <core/Log.h>
 
 namespace Npk
 {
@@ -68,7 +66,7 @@ namespace Npk
                 continue;
             }
 
-            length = sl::AlignUp(entry.start_addr + entry.size, PageSize);
+            length = AlignUpPage(entry.start_addr + entry.size);
         }
 
         ASSERT_(length != 0);
