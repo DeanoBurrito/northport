@@ -1,10 +1,12 @@
 #pragma once
 
+#include <Compiler.h>
+
 namespace sl
 {
 #if defined(__riscv)
-    [[gnu::always_inline]]
-    inline void HintSpinloop()
+    SL_ALWAYS_INLINE
+    void HintSpinloop()
     {
         /*  So, all the brilliant minds behind riscv decided not to include a 'pause'
             hint in the base ISA, so it's an extension. This means not all compilers support
@@ -16,20 +18,35 @@ namespace sl
         */
         asm volatile(".int 0x0100000F");
     }
-#elif defined(__x86_64__)
-    [[gnu::always_inline]]
-    inline void HintSpinloop()
-    {
-        asm volatile("pause");
-    }
-#elif defined(__m68k__)
-    [[gnu::always_inline]]
-    inline void HintSpinloop()
-    { asm volatile(""); } //afaik there are no instructions for this on the 68k series chips, so do nothing
-#else
-    #warning "Compiling np-syslib for unknown target platform. Architecture hints aren't available."
 
-    inline void HintSpinloop()
-    {} //no-op
+    //TODO: Dma[Write|Read]Barrer()
+
+#elif defined(__x86_64__)
+    SL_ALWAYS_INLINE
+    void HintSpinloop()
+    {
+        asm("pause");
+    }
+
+    SL_ALWAYS_INLINE
+    void DmaWriteBarrier()
+    { 
+        asm("sfence"); 
+    }
+
+    SL_ALWAYS_INLINE
+    void DmaReadBarrier()
+    { 
+        asm("lfence"); 
+    }
+
+#elif defined(__m68k__)
+    SL_ALWAYS_INLINE
+    void HintSpinloop()
+    { } //afaik there are no instructions for this on the 68k series chips, so do nothing
+
+    //TODO: Dma[Write|Read]Barrer()
+#else
+    #error "Unknown target architecture, cannot provide arch-specific hints"
 #endif
 }

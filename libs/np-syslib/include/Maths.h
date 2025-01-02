@@ -1,7 +1,6 @@
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <Types.h>
 #include <Span.h>
 
 constexpr inline size_t KiB = 1024;

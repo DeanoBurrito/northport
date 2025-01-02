@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stddef.h>
+#include <Types.h>
 
 namespace sl
 {
@@ -47,6 +47,16 @@ namespace sl
         [[gnu::always_inline]]
         inline size_t ToFemtos() const
         { return ToScale(TimeScale::Femtos).units; }
+    };
+
+    struct TimeCount
+    {
+        size_t frequency;
+        size_t ticks;
+
+        static TimeCount FromScale(TimeScale scale, size_t ticks);
+        size_t ToScale(TimeScale scale) const;
+        TimeCount Rebase(size_t newFrequency) const;
     };
 
     struct TimePoint

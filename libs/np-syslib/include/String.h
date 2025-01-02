@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stddef.h>
 #include <Span.h>
 
 namespace sl

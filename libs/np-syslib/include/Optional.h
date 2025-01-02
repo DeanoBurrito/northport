@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdint.h>
+#include <Types.h>
 #include <CppUtils.h>
 #include <PlacementNew.h>
 

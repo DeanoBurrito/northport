@@ -39,7 +39,7 @@ namespace sl
         return true;
     }
 
-    ComputedReloc ComputeRelocation(Elf_Word type, uintptr_t a, uintptr_t b, uintptr_t s, uintptr_t p)
+    ComputedReloc ComputeRelocation(Elf_Word type, uintptr_t a, uintptr_t b, uintptr_t s)
     {
         switch (type)
         {

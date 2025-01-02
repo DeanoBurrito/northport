@@ -72,7 +72,7 @@ namespace sl
         bool usedSymbol;
     };
 
-    ComputedReloc ComputeRelocation(Elf_Word type, uintptr_t a, uintptr_t b, uintptr_t s, uintptr_t p);
+    ComputedReloc ComputeRelocation(Elf_Word type, uintptr_t a, uintptr_t b, uintptr_t s);
 
     sl::Vector<const Elf_Phdr*> FindPhdrs(const Elf_Ehdr* hdr, Elf_Word type); 
     const Elf_Shdr* FindShdr(const Elf_Ehdr* hdr, const char* name);

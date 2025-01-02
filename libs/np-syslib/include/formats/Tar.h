@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
 #include <Span.h>
 
 namespace sl

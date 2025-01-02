@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stdint.h>
 #include <PlacementNew.h>
 #include <CppUtils.h>
 
