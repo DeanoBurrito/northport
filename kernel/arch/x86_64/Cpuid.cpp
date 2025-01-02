@@ -1,6 +1,6 @@
 #include <arch/x86_64/Cpuid.h>
 #include <core/Log.h>
-#include <stdint.h>
+#include <NanoPrintf.h>
 
 namespace Npk
 {
@@ -37,7 +37,10 @@ namespace Npk
         { .leaf {1, 0}, .index = 'c', .shift = 24, .name = "tsc-d" },
         { .leaf {0x8000'0007, 0}, .index = 'd', .shift = 8, .name = "inv-tsc" },
         { .leaf {1, 0}, .index = 'd', .shift = 16, .name = "pat" },
+        { .leaf {0x8000'0008, 0}, .index = 'b', .shift = 21, .name = "invlpgb" },
     };
+
+    static_assert(sizeof(accessors) / sizeof(CpuFeatureAccessor) == static_cast<size_t>(CpuFeature::Count));
 
     struct CpuidLeaf
     {
@@ -81,5 +84,36 @@ namespace Npk
         DoCpuid(accessors[featIndex].leaf.main, accessors[featIndex].leaf.sub, leaf);
         const uint32_t data = leaf[accessors[featIndex].index];
         return data & (1ul << accessors[featIndex].shift);
+    }
+
+    void LogCpuFeatures()
+    {
+        constexpr size_t MsgBufferSize = 64;
+        char msgBuff[MsgBufferSize];
+        msgBuff[0] = '|';
+        msgBuff[1] = ' ';
+        size_t msgBuffLen = 2;
+        int increment = 1;
+
+        for (size_t i = 0; i < static_cast<size_t>(CpuFeature::Count); i += increment)
+        {
+            increment = 1;
+            const bool hasFeature = CpuHasFeature(static_cast<CpuFeature>(i));
+            const size_t idealLen = npf_snprintf(msgBuff + msgBuffLen, MsgBufferSize - msgBuffLen,
+                "%s%s=%s", msgBuffLen == 2 ? "" : ", ", accessors[i].name, 
+                hasFeature ? "yes" : "no");
+
+            if (idealLen + msgBuffLen >= MsgBufferSize - 1)
+            {
+                Log("%.*s", LogLevel::Verbose, (int)msgBuffLen, msgBuff);
+                msgBuffLen = 2;
+                increment = 0;
+            }
+            else
+                msgBuffLen += idealLen;
+        }
+
+        if (msgBuffLen != 0)
+            Log("%.*s", LogLevel::Verbose, (int)msgBuffLen, msgBuff);
     }
 }

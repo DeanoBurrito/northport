@@ -5,6 +5,7 @@
 #include <arch/x86_64/Timers.h>
 #include <core/Log.h>
 #include <core/WiredHeap.h>
+#include <core/Config.h>
 
 namespace Npk
 {
@@ -129,6 +130,12 @@ namespace Npk
         cr0 &= ~0x6000'0000; //ensure caches are enabled for this core
         WriteCr0(cr0);
 
+        if (Core::GetConfigNumber("kernel.boot.dump_cpu_features", true))
+        {
+            Log("Dumping cpuid values:", LogLevel::Verbose);
+            LogCpuFeatures();
+        }
+
         uint64_t cr4 = ReadCr4();
         if (CpuHasFeature(CpuFeature::Smap))
             cr4 |= 1 << 21;
@@ -142,13 +149,6 @@ namespace Npk
 
         if (CpuHasFeature(CpuFeature::NoExecute))
             WriteMsr(MsrEfer, ReadMsr(MsrEfer) | (1 << 11));
-
-        Log("Extensions enabled: wp%s%s%s%s%s", LogLevel::Info,
-            CpuHasFeature(CpuFeature::Smap) ? ", smap" : "",
-            CpuHasFeature(CpuFeature::Smep) ? ", smep" : "",
-            CpuHasFeature(CpuFeature::Umip) ? ", umip" : "",
-            CpuHasFeature(CpuFeature::GlobalPages) ? ", global pages" : "",
-            CpuHasFeature(CpuFeature::NoExecute) ? ", nx" : "");
 
         if (cr4 & (1 << 21))
             asm volatile("clac"); //prevent accidental userspace accesses

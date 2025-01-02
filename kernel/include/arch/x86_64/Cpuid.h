@@ -23,8 +23,10 @@ namespace Npk
         TscDeadline,
         InvariantTsc,
         Pat,
+        BroadcastInvlpg,
         Count
     };
 
     bool CpuHasFeature(CpuFeature feature);
+    void LogCpuFeatures();
 }
