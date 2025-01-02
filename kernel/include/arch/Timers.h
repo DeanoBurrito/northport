@@ -1,7 +1,6 @@
 #pragma once
 
 #include <arch/__Select.h>
-#include <stdint.h>
 #include <Time.h>
 
 namespace Npk

@@ -3,7 +3,6 @@
 #include <Locks.h>
 #include <containers/List.h>
 #include <Optional.h>
-#include <interfaces/intra/Compiler.h>
 
 namespace Npk { struct MemmapEntry; } //defined in interfaces/loader/Generic.h
 
@@ -77,19 +76,19 @@ namespace Npk::Core
         void Free(uintptr_t paddr);
     };
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     PageInfo* PmLookup(uintptr_t paddr) 
     { return Pmm::Global().Lookup(paddr); }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     uintptr_t PmRevLookup(PageInfo* info)
     { return Pmm::Global().ReverseLookup(info); }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     sl::Opt<uintptr_t> PmAlloc()
     { return Pmm::Global().Alloc(); }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     void PmFree(uintptr_t paddr)
     { Pmm::Global().Free(paddr); }
 }

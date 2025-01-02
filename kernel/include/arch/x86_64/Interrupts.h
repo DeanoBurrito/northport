@@ -1,30 +1,29 @@
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
-#include <interfaces/intra/Compiler.h>
+#include <Types.h>
+#include <Compiler.h>
 
 namespace Npk
 {
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     void Wfi()
     {
         asm("hlt");
     }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     size_t TrapFrameArgCount()
     {
         return 6;
     }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     size_t SyscallFrameArgCount()
     {
         return 6;
     }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     bool InterruptsEnabled()
     {
         uint64_t flags;
@@ -32,13 +31,13 @@ namespace Npk
         return flags & (1 << 9);
     }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     void EnableInterrupts()
     {
         asm("sti" ::: "cc");
     }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     void DisableInterrupts()
     {
         asm("cli" ::: "cc");

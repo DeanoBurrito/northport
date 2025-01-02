@@ -1,10 +1,9 @@
 #pragma once
 
 #include <core/RunLevels.h>
-#include <stdint.h>
-#include <stddef.h>
 #include <Atomic.h>
 #include <containers/Queue.h>
+#include <Types.h>
 
 namespace Npk::Core
 {

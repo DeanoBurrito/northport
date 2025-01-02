@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Span.h>
-#include <stdint.h>
 
 namespace Npk::Services
 {

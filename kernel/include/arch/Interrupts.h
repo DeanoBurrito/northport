@@ -2,7 +2,6 @@
 
 #include <arch/__Select.h>
 #include <core/RunLevels.h>
-#include <stdint.h>
 #include <Optional.h>
 
 namespace Npk

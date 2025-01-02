@@ -279,8 +279,7 @@ namespace Npk::Core
 
     void InitGlobalLogging()
     {
-        const bool suppressFbTerms = GetConfigNumber("kernel.log.no_fb_output", false);
-        if (suppressFbTerms)
+        if (GetConfigNumber("kernel.log.no_fb_output", false))
             return;
 
         /* The only built-in log sink is the terminal renderer, if

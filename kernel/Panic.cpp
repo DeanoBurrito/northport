@@ -3,11 +3,11 @@
 #include <arch/Interrupts.h>
 #include <core/Log.h>
 #include <core/Smp.h>
-#include <interfaces/intra/Compiler.h>
 #include <services/Program.h>
 #include <Atomic.h>
 #include <Maths.h>
 #include <NanoPrintf.h>
+#include <Compiler.h>
 
 namespace Npk
 {
@@ -26,7 +26,7 @@ namespace Npk
     sl::Atomic<size_t> panicFlag;
     using PanicOutputs = const sl::Span<const Core::LogOutput*>;
 
-    PRINTF_FUNCTION(2, 3)
+    SL_PRINTF_FUNC(2, 3)
     static void PanicPrint(PanicOutputs outputs, const char* format, ...)
     {
         va_list args;

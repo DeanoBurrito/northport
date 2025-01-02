@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stddef.h>
 #include <PlacementNew.h>
 
 namespace Npk::Core

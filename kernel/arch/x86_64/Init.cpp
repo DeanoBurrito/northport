@@ -34,11 +34,11 @@ namespace Npk
         0,                      //0x30: tss high
     };
 
-    static struct PACKED_STRUCT
+    static struct SL_PACKED(
     {
         uint16_t limit;
         uint64_t base;
-    } gdtr;
+    }) gdtr;
 
     constexpr size_t IdtEntryCount = 256;
     extern uint8_t VectorStub0[] asm("VectorStub0");
@@ -51,13 +51,13 @@ namespace Npk
 
     IdtEntry idtEntries[IdtEntryCount];
 
-    static struct PACKED_STRUCT
+    static struct SL_PACKED(
     {
         uint16_t limit;
         uint64_t base;
-    } idtr;
+    }) idtr;
 
-    NAKED_FUNCTION
+    SL_NAKED_FUNC
     void LoadGdt()
     {
         asm volatile("lgdt %0" :: "m"(gdtr));
@@ -75,7 +75,7 @@ namespace Npk
             : "rdi");
     }
 
-    NAKED_FUNCTION
+    SL_NAKED_FUNC
     void LoadIdt()
     {
         asm("lidt %0; ret" :: "m"(idtr));

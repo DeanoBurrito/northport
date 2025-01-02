@@ -5,6 +5,7 @@
 - Local APIC
 - TSC
 - HPET or PIT (one must be present)
+- Fxsave instruction
 
 ## Optional Hardware Features
 - IO APICs
@@ -15,3 +16,7 @@
 - Global pages
 - 1G pages
 - NX-bit support
+- X2 APIC mode
+- XSave
+- PAT
+- Invlpgb (broadcast tlb flush)

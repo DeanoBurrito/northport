@@ -1,11 +1,9 @@
 #pragma once
 
 #include <arch/__Select.h>
-#include <stdint.h>
-#include <stddef.h>
-#include <Span.h>
 #include <core/RunLevels.h>
-#include <interfaces/intra/Compiler.h>
+#include <Span.h>
+#include <Compiler.h>
 
 namespace Npk
 {
@@ -26,47 +24,47 @@ namespace Npk
         Count
     };
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     bool CoreLocalAvailable();
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     size_t CoreLocalId();
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     RunLevel CurrentRunLevel();
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     void SetRunLevel(RunLevel rl);
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     Core::DpcQueue* CoreLocalDpcs();
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     Core::ApcQueue* CoreLocalApcs();
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     void* GetLocalPtr(SubsysPtr which);
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     void SetLocalPtr(SubsysPtr which, void* data);
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     size_t PfnShift();
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     size_t PageSize()
     {
         return 1 << PfnShift();
     }
 
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     uintptr_t PageMask()
     {
         return (1 << PfnShift()) - 1;
     }
 
     template<typename T>
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     T AlignUpPage(T value)
     {
         const uintptr_t addr = reinterpret_cast<uintptr_t>(value);
@@ -74,7 +72,7 @@ namespace Npk
     }
 
     template<typename T>
-    ALWAYS_INLINE
+    SL_ALWAYS_INLINE
     T AlignDownPage(T value)
     {
         const uintptr_t addr = reinterpret_cast<uintptr_t>(value);
