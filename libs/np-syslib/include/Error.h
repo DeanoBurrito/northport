@@ -6,6 +6,11 @@
 
 namespace sl
 {
+    struct NoErrorType
+    {};
+
+    constexpr static inline NoErrorType NoError;
+
     template<typename T, typename E, bool TrivialDtor>
     struct DtorCrtp;
 
@@ -19,11 +24,23 @@ namespace sl
         alignas(T) uint8_t store[sizeof(T)];
         E err;
 
+        const T* Get() const
+        {
+            return sl::Launder(reinterpret_cast<const T*>(store));
+        }
+
         T* Get()
-        {}
+        {
+            return sl::Launder(reinterpret_cast<T*>(store));
+        }
 
     public:
         constexpr ErrorOr() : err {}
+        {
+            new (store) T{};
+        }
+
+        constexpr ErrorOr(NoErrorType) : err {}
         {
             new (store) T{};
         }
@@ -104,8 +121,6 @@ namespace sl
             return !HasValue();
         }
 
-        //operator bool(): I chose not to implement this to prevent some implicit conversion bugs that I've caused in the past.
-
         constexpr const T& operator*() const
         { 
             return *Get(); 
@@ -143,6 +158,35 @@ namespace sl
             auto store = static_cast<ErrorOr<T, E>*>(this);
             if (store->HasValue())
                 sl::Launder(reinterpret_cast<T*>(store->store))->~T();
+        }
+    };
+
+    template<typename E>
+    class ErrorOr<void, E>
+    {
+    private:
+        E err;
+
+    public:
+        constexpr ErrorOr() : err {}
+        {}
+
+        constexpr ErrorOr(NoErrorType) : err {}
+        {}
+
+        constexpr bool HasValue() const
+        { 
+            return err == E{};
+        }
+
+        constexpr bool HasError() const
+        {
+            return !HasValue();
+        }
+
+        E Error()
+        {
+            return err;
         }
     };
 }
