@@ -211,7 +211,7 @@ namespace Npk
         for (size_t i = 0; i < dbLength; i += 0x1000) //TODO: use memory map and only map regions of pidb that need backing
         {
             auto maybePage = EarlyPmAlloc(0x1000);
-            ASSERT_(maybePage);
+            ASSERT_(maybePage.HasValue());
             EarlyMap(dbBase + i, *maybePage, PageSizes::_4K, imageFlags);
         }
         Log("PageInfo database mapped: base=0x%tx length=0x%zx", LogLevel::Info, dbBase, dbLength);
@@ -253,10 +253,10 @@ namespace Npk
         return &kernelMap;
     }
 
-    bool HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
+    HatError HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
     {
-        VALIDATE_(map != nullptr, false);
-        VALIDATE_(mode < limits.modeCount, false);
+        VALIDATE_(map != nullptr, HatError::InvalidArg);
+        VALIDATE_(mode < limits.modeCount, HatError::InvalidArg);
 
         uintptr_t pmAllocs[MaxPtIndices]; //allows us to free intermediate page tables allocated if
         for (size_t i = 0; i < MaxPtIndices; i++) //the mapping fails later.
@@ -267,20 +267,19 @@ namespace Npk
         GetAddressIndices(vaddr, indices);
 
         WalkResult path = WalkTables(map->root, vaddr);
-        VALIDATE_(!path.complete, false);
+        VALIDATE_(!path.complete, HatError::MapAlreadyExists);
 
         while (path.level != (size_t)selectedSize)
         {
             auto newPt = Core::PmAlloc();
             if (!newPt.HasValue())
             {
-                Log("HatDoMap() failed, out of physical memory.", LogLevel::Error);
                 for (size_t i = 0; i < MaxPtIndices; i++)
                 {
                     if (pmAllocs[i] != 0)
                         Core::PmFree(pmAllocs[i]);
                 }
-                return false;
+                return HatError::PmAllocFailed;
             }
 
             const uint64_t pt = *newPt;
@@ -310,15 +309,16 @@ namespace Npk
             INVLPG(vaddr);
         if (map == &kernelMap) //TODO: optimize by only incrementing on new PML3 alloc (can check pmAllocs[3] != 0)
             kernelMap.generation++;
-        return true;
+
+        return HatError::Success;
     }
 
-    bool HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
+    HatError HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
     {
-        VALIDATE_(map != nullptr, false);
+        VALIDATE_(map != nullptr, HatError::InvalidArg);
 
         const WalkResult path = WalkTables(map->root, vaddr);
-        VALIDATE_(path.complete, false);
+        VALIDATE_(path.complete, HatError::NoExistingMap);
 
         paddr = *path.pte & addrMask;
         mode = path.level - 1;
@@ -328,27 +328,28 @@ namespace Npk
             INVLPG(vaddr);
         if (map == &kernelMap && path.level == pagingLevels)
             kernelMap.generation++;
-        return true;
+
+        return HatError::Success;
     }
 
-    sl::Opt<uintptr_t> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
+    sl::ErrorOr<uintptr_t, HatError> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode)
     {
-        VALIDATE_(map != nullptr, {});
+        VALIDATE_(map != nullptr, HatError::InvalidArg);
 
         const WalkResult path = WalkTables(map->root, vaddr);
-        VALIDATE_(path.complete, {});
+        VALIDATE_(path.complete, HatError::NoExistingMap);
 
         mode = path.level - 1;
         const uint64_t offsetMask = GetPageSize((PageSizes)path.level) - 1;
         return (*path.pte & addrMask) | (vaddr & offsetMask);
     }
 
-    bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
+    HatError HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)
     {
-        VALIDATE_(map != nullptr, false);
+        VALIDATE_(map != nullptr, HatError::InvalidArg);
 
         const WalkResult path = WalkTables(map->root, vaddr);
-        VALIDATE_(path.complete, false);
+        VALIDATE_(path.complete, HatError::NoExistingMap);
 
         if (paddr.HasValue())
             SET_PTE(path.pte, (*path.pte & ~addrMask) | (*paddr & addrMask));
@@ -370,7 +371,7 @@ namespace Npk
 
         if (flush)
             INVLPG(vaddr);
-        return true;
+        return HatError::Success;
     }
 
     bool HatFlushBroadcast(uintptr_t vaddr)

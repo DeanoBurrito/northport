@@ -3,6 +3,7 @@
 #include <arch/__Select.h>
 #include <Optional.h>
 #include <Flags.h>
+#include <Error.h>
 
 /*
     The HAT (hardware address and translation) represents the MMU or whatever
@@ -49,6 +50,15 @@ namespace Npk
     */
     struct HatMap;
 
+    enum class HatError
+    {
+        Success = 0,
+        InvalidArg,
+        PmAllocFailed,
+        MapAlreadyExists,
+        NoExistingMap,
+    };
+
     //a hook for the arch layer to perform some global mmu detection and setup. This function
     //is also responsible for mapping the unchanging regions of the kernel map:
     // - the kernel image
@@ -69,17 +79,17 @@ namespace Npk
     HatMap* KernelMap();
 
     //creates a virt <-> phys mapping in an address space.
-    bool HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush);
+    HatError HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush);
 
     //attempts to remove an existing mapping from an address space.
     //NOTE: paddr and mode are references and return the previously used values.
-    bool HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush);
+    HatError HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush);
 
     //attempts to return the physical address and size of a mapping
-    sl::Opt<uintptr_t> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode);
+    sl::ErrorOr<uintptr_t, HatError> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode);
 
     //attempts to update an existing mapping: either flags, physical address of both.
-    bool HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
+    HatError HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);
 
     //if supported (see modes.hwTlbBroadcast), performs a hardware-assisted flush of all TLBs for a particular vaddr.
     bool HatFlushBroadcast(uintptr_t vaddr);

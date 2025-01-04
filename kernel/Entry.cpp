@@ -14,6 +14,7 @@
 #include <interfaces/loader/Generic.h>
 #include <services/AcpiTables.h>
 #include <services/MagicKeys.h>
+#include <services/Vmm.h>
 #include <Exit.h>
 #include <Maths.h>
 
@@ -25,6 +26,40 @@ namespace Npk
     sl::SpinLock earlyVmLock;
     uintptr_t earlyVmBase;
     bool earlyVmEnabled;
+
+    Services::VmView kernelImage[] =
+    {
+        {
+            .vmmHook = {},
+            .vmoHook = {},
+            .vmoRef = {},
+            .overlay = {},
+            .offset = 0,
+            .base = reinterpret_cast<uintptr_t>(KERNEL_TEXT_BEGIN),
+            .length = reinterpret_cast<size_t>(KERNEL_TEXT_END) - reinterpret_cast<uintptr_t>(KERNEL_TEXT_BEGIN),
+            .flags = VmViewFlag::Exec,
+        },
+        {
+            .vmmHook = {},
+            .vmoHook = {},
+            .vmoRef = {},
+            .overlay = {},
+            .offset = 0,
+            .base = reinterpret_cast<uintptr_t>(KERNEL_RODATA_BEGIN),
+            .length = reinterpret_cast<size_t>(KERNEL_RODATA_END) - reinterpret_cast<uintptr_t>(KERNEL_RODATA_BEGIN),
+            .flags = {},
+        },
+        {
+            .vmmHook = {},
+            .vmoHook = {},
+            .vmoRef = {},
+            .overlay = {},
+            .offset = 0,
+            .base = reinterpret_cast<uintptr_t>(KERNEL_DATA_BEGIN),
+            .length = reinterpret_cast<size_t>(KERNEL_DATA_END) - reinterpret_cast<uintptr_t>(KERNEL_DATA_BEGIN),
+            .flags = VmViewFlag::Write,
+        },
+    };
 
     void* EarlyVmAlloc(uintptr_t paddr, size_t length, bool writable, bool mmio, const char* tag)
     {
@@ -48,7 +83,7 @@ namespace Npk
                 auto paddr = Core::PmAlloc();
                 if (!paddr.HasValue())
                     return nullptr;
-                if (!HatDoMap(KernelMap(), earlyVmBase + i, *paddr, 0, flags, false))
+                if (HatDoMap(KernelMap(), earlyVmBase + i, *paddr, 0, flags, false) != HatError::Success)
                     return nullptr;
             }
 
@@ -62,7 +97,7 @@ namespace Npk
         const size_t pTop = paddr + length;
         for (size_t i = pBase; i < pTop; i += granuleSize)
         {
-            if (!HatDoMap(KernelMap(), i - pBase + earlyVmBase, i, 0, flags, false))
+            if (HatDoMap(KernelMap(), i - pBase + earlyVmBase, i, 0, flags, false) != HatError::Success)
                 return nullptr;
         }
 
@@ -104,13 +139,17 @@ namespace Npk
 
         InitLocalTimers();
         Core::InitLocalClockQueue(isBsp);
-        Core::Scheduler* localSched = NewWired<Core::Scheduler>();
-        ASSERT_(localSched != nullptr);
 
-        localSched->Init();
+        Core::Scheduler* localSched = NewWired<Core::Scheduler>();
+        Core::SchedulerObj* localIdle = NewWired<Core::SchedulerObj>();
+        ASSERT_(localSched != nullptr && localIdle != nullptr);
+
+        //TODO: init localIdle thread, stack + setup frame
+
+        localSched->Init(localIdle);
         SetLocalPtr(SubsysPtr::Scheduler, localSched);
 
-        //TODO: init local intr routing, logging, heap caches
+        //TODO: init local intr routing, logging, heap caches, launch init thread + reclaim thread
     }
 
     [[noreturn]]
@@ -164,6 +203,8 @@ namespace Npk
             //Services::SetFdtPoitner(*fdt); TODO: import smoldtb and do dtb stuff
 
         ArchLateKernelEntry();
+
+        Services::Vmm::InitKernel(kernelImage); //TODO: move this earlier, make sure we update usage of EarlyVmAlloc
         //Core::LateInitConfigStore();
 
         const bool enableAllMagics = Core::GetConfigNumber("kernel.enable_all_magic_keys", false);

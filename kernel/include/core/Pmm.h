@@ -16,6 +16,7 @@ namespace Npk::Core
             struct
             {
                 uint16_t count; //number of contiguous pages in this chunk
+                bool zeroed; //whether page has been zeroed or not
             } pm;
 
             struct
@@ -30,7 +31,7 @@ namespace Npk::Core
                 char placeholder[sizeof(sl::FwdListHook)];
                 uint16_t offset; //in pages (not bytes) of this page within the VmObject
                 uint16_t wireCount;
-                bool vmoIsOverlay;
+                bool vmoIsOverlay; //TODO: move to flags, include lock bit!
                 void* vmo;
             } vm;
         };
