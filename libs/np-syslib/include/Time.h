@@ -54,8 +54,12 @@ namespace sl
         size_t frequency;
         size_t ticks;
 
-        static TimeCount FromScale(TimeScale scale, size_t ticks);
-        size_t ToScale(TimeScale scale) const;
+        TimeCount() : frequency(0), ticks(0)
+        {}
+
+        TimeCount(size_t freq, size_t count) : frequency(freq), ticks(count)
+        {}
+
         TimeCount Rebase(size_t newFrequency) const;
     };
 

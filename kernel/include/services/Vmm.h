@@ -36,8 +36,15 @@ namespace Npk::Services
         User,
     };
 
+    enum class VmPageFlag
+    {
+        Locked = 0,
+        IsOverlay = 1,
+    };
+
     using VmViewFlags = sl::Flags<VmViewFlag>;
     using VmFaultFlags = sl::Flags<VmFaultFlag>;
+    using VmPageFlags = sl::Flags<VmPageFlag, uint32_t>;
 
     struct VmObject;
 

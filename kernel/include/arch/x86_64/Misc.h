@@ -108,6 +108,12 @@ namespace Npk
     }
 
     SL_ALWAYS_INLINE
+    size_t KernelStackSize()
+    {
+        return 4 << PfnShift();
+    }
+
+    SL_ALWAYS_INLINE
     uint8_t In8(uint16_t port)
     { 
         uint8_t value;

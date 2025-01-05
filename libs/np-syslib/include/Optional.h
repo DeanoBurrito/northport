@@ -164,9 +164,6 @@ namespace sl
             return *this;
         }
 
-        constexpr operator bool() const
-        { return isValid; }
-
         constexpr bool HasValue() const
         { return isValid; }
 

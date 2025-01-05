@@ -29,9 +29,9 @@ namespace Npk::Core
             struct
             {
                 char placeholder[sizeof(sl::FwdListHook)];
+                uint32_t flags;
                 uint16_t offset; //in pages (not bytes) of this page within the VmObject
                 uint16_t wireCount;
-                bool vmoIsOverlay; //TODO: move to flags, include lock bit!
                 void* vmo;
             } vm;
         };

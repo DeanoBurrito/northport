@@ -70,7 +70,7 @@ namespace Npk::Services
 
                 info->vm.offset = offset >> PfnShift();
                 info->vm.wireCount = 1;
-                info->vm.vmoIsOverlay = true;
+                info->vm.flags = VmPageFlags(VmPageFlag::IsOverlay).Raw();
                 info->vm.vmo = &view;
                 view.overlay.InsertSorted(info, 
                     [](auto* a, auto* b) -> bool { return a->vm.offset < b->vm.offset; });
@@ -81,6 +81,7 @@ namespace Npk::Services
             }
             //else: dedicated page is already mapped, and will have proper permissions
 
+            Log("wired 0x%tx", LogLevel::Debug, view.base + offset);
             return sl::NoError;
 
         }
@@ -231,7 +232,7 @@ namespace Npk::Services
             { return a->length < b->length; });
         viewsLock.WriterUnlock();
 
-        if (wire && Wire(reinterpret_cast<void*>(view->base), view->length))
+        if (wire && !Wire(reinterpret_cast<void*>(view->base), view->length))
         {
             //TODO: remove view
             return {};
@@ -249,6 +250,7 @@ namespace Npk::Services
     {
         const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(base);
 
+        bool failure = false;
         size_t undoCount = 0;
         viewsLock.ReaderLock();
         for (size_t i = 0; i < length; i += PageSize())
@@ -258,9 +260,10 @@ namespace Npk::Services
                 continue;
 
             const uintptr_t offset = baseAddr + i - view->base;
-            if (WirePage(*view, true).HasError())
+            if (WirePage(*view, offset).HasError())
             {
                 undoCount = i;
+                failure = true;
                 break;
             }
         }
@@ -278,7 +281,7 @@ namespace Npk::Services
         }
         viewsLock.ReaderUnlock();
 
-        return true;
+        return !failure;
     }
 
     void Vmm::Unwire(void* base, size_t length)

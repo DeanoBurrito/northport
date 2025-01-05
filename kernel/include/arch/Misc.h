@@ -52,6 +52,9 @@ namespace Npk
     size_t PfnShift();
 
     SL_ALWAYS_INLINE
+    size_t KernelStackSize();
+
+    SL_ALWAYS_INLINE
     size_t PageSize()
     {
         return 1 << PfnShift();

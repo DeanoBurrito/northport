@@ -2,22 +2,12 @@
 #include <core/Log.h>
 #include <core/Config.h>
 #include <core/WiredHeap.h>
-#include <core/Pmm.h>
-#include <core/Smp.h>
-#include <Entry.h>
-#include <arch/Misc.h>
 #include <Maths.h>
 
 namespace Npk::Core
 {
     constexpr size_t DefaultPriorityCount = 16;
     constexpr size_t MaxPrioritiesCount = 128;
-    constexpr size_t IdleThreadStackSize = 0x8000;
-
-    static bool IsCurrentThread(SchedulerObj* obj)
-    {
-        return obj != nullptr && obj == GetLocalPtr(SubsysPtr::Thread);
-    }
 
     SchedulerObj* Scheduler::PopThread()
     {
@@ -30,7 +20,7 @@ namespace Npk::Core
             return queue.PopFront();
         }
 
-        return &idleThread;
+        return idleThread;
     }
 
     void Scheduler::PushThread(SchedulerObj* obj)
@@ -44,14 +34,12 @@ namespace Npk::Core
         return static_cast<Scheduler*>(GetLocalPtr(SubsysPtr::Scheduler));
     }
 
-    static void IdleThreadMain(void* arg)
+    void Scheduler::Init(SchedulerObj* idle)
     {
-        (void)arg;
-        Halt();
-    }
+        VALIDATE_(idle != nullptr, );
 
-    void Scheduler::Init()
-    {
+        coreId = CoreLocalId();
+        idleThread = idle;
         size_t priorities = GetConfigNumber("kernel.scheduler.priorities", DefaultPriorityCount);
         priorities = sl::Clamp<size_t>(priorities, 1, MaxPrioritiesCount);
 
@@ -61,20 +49,10 @@ namespace Npk::Core
             new(queues + i) SchedulerQueue{};
 
         liveThreads = { queues, priorities };
+        reschedClockEvent.dpc = &reschedDpc;
+        reschedClockEvent.expiry = 10_ms;
 
-        void* idleStack = EarlyVmAlloc((uintptr_t)-1, IdleThreadStackSize, true, false, "idle stack");
-        idleStack = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(idleStack) + IdleThreadStackSize);
-        ASSERT_(idleStack != nullptr);
-
-        idleThread.active = false;
-        idleThread.priority = priorities - 1;
-        idleThread.extendedState = nullptr;
-        idleThread.scheduler = this;
-        idleThread.frame = InitTrapFrame(reinterpret_cast<uintptr_t>(idleStack),
-            reinterpret_cast<uintptr_t>(IdleThreadMain), false);
-
-        coreId = CoreLocalId();
-        Log("Local scheduler init: %zu priorities, idleEntry=%p", LogLevel::Info, priorities, IdleThreadMain);
+        Log("Local scheduler init: %zu priorities.", LogLevel::Info, priorities);
     }
 
     static void PrepareInitialThread(TrapFrame* next, void* arg)
@@ -146,16 +124,20 @@ namespace Npk::Core
 
     size_t Scheduler::GetPriority(SchedulerObj* obj)
     {
-        ASSERT_UNREACHABLE();
+        if (obj != nullptr)
+            return obj->priority;
+        return liveThreads.Size() - 1;
     }
 
     void Scheduler::SetPriority(SchedulerObj* obj, size_t newPriority)
     {
+        (void)obj; (void)newPriority;
         ASSERT_UNREACHABLE();
     }
 
     void Scheduler::AdjustPriority(SchedulerObj* obj, int adjustment)
     {
+        (void)obj; (void)adjustment;
         ASSERT_UNREACHABLE();
     }
 }

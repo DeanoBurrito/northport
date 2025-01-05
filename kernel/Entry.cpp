@@ -7,6 +7,7 @@
 #include <core/Log.h>
 #include <core/Pmm.h>
 #include <core/Scheduler.h>
+#include <core/Event.h>
 #include <core/Smp.h>
 #include <core/WiredHeap.h>
 #include <interfaces/intra/BakedConstants.h>
@@ -16,7 +17,7 @@
 #include <services/MagicKeys.h>
 #include <services/Vmm.h>
 #include <Exit.h>
-#include <Maths.h>
+#include <KernelThread.h>
 
 namespace Npk
 {
@@ -121,9 +122,25 @@ namespace Npk
         return earlyVmBase;
     }
 
-    void InitThread(void*)
+    static void InitThreadEntry(void* arg)
     { 
+        (void)arg;
         Log("Init thread up", LogLevel::Debug);
+
+        while (true)
+        {
+            WaitEntry entry;
+            sl::ScaledTime timeout = 1000_ms;
+            Core::WaitManager::WaitMany({}, &entry, timeout, false);
+            Log("Tick!", LogLevel::Debug);
+        }
+
+        Halt();
+    }
+
+    static void IdleThreadEntry(void* arg)
+    {
+        (void)arg;
         Halt();
     }
 
@@ -141,12 +158,10 @@ namespace Npk
         Core::InitLocalClockQueue(isBsp);
 
         Core::Scheduler* localSched = NewWired<Core::Scheduler>();
-        Core::SchedulerObj* localIdle = NewWired<Core::SchedulerObj>();
-        ASSERT_(localSched != nullptr && localIdle != nullptr);
+        auto maybeIdle = CreateKernelThread(IdleThreadEntry, nullptr);
+        ASSERT_(localSched != nullptr && maybeIdle.HasValue());
 
-        //TODO: init localIdle thread, stack + setup frame
-
-        localSched->Init(localIdle);
+        localSched->Init(*maybeIdle);
         SetLocalPtr(SubsysPtr::Scheduler, localSched);
 
         //TODO: init local intr routing, logging, heap caches, launch init thread + reclaim thread
@@ -216,6 +231,9 @@ namespace Npk
         //driver subsystem, threading and vfs init
 
         StartupAps();
+
+        auto maybeInitThread = CreateKernelThread(InitThreadEntry, nullptr);
+        Core::SchedEnqueue(*maybeInitThread, 0);
         ExitCoreInit();
     }
 }

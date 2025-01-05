@@ -26,4 +26,12 @@ namespace sl
         else
             return { newScale, units * (newScaleDigits / prevScaleDigits) };
     }
+
+    TimeCount TimeCount::Rebase(size_t newFrequency) const
+    {
+        if (newFrequency == frequency)
+            return *this;
+
+        return TimeCount(newFrequency, ticks * newFrequency / frequency); //TODO: we should check for saturation here
+    }
 }

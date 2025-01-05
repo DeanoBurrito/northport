@@ -174,6 +174,9 @@ namespace sl
         constexpr ErrorOr(NoErrorType) : err {}
         {}
 
+        constexpr ErrorOr(E init) : err { init }
+        {}
+
         constexpr bool HasValue() const
         { 
             return err == E{};
