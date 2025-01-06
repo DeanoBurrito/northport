@@ -15,7 +15,7 @@ namespace Npk
     
     struct ExtendedRegs
     {
-        uint8_t buffer[]; //size of this buffer is stored in CoreLocalBlock().xsaveSize
+        uint8_t buffer[0]; //size of this buffer is stored in CoreLocalBlock().xsaveSize
     };
 
     void ExplodeKernelAndReset()
