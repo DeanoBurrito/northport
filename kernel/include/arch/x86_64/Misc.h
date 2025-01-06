@@ -35,6 +35,8 @@ namespace Npk
         RunLevel rl;
         Core::DpcQueue dpcs;
         Core::ApcQueue apcs;
+        uint64_t xsaveBitmap;
+        size_t xsaveSize;
         void* subsysPtrs[static_cast<size_t>(SubsysPtr::Count)];
     };
 

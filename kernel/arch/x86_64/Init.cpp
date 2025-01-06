@@ -124,8 +124,16 @@ namespace Npk
         WriteMsr(MsrGsBase, reinterpret_cast<uint64_t>(clb));
         clb->id = myId;
         clb->rl = RunLevel::Normal;
+        clb->xsaveBitmap = 0;
+        clb->xsaveSize = 0;
+
+        //NOTE: x86_64 mandates the fpu, sse and sse2, so no need to check for them.
+        ASSERT_(CpuHasFeature(CpuFeature::FxSave));
 
         uint64_t cr0 = ReadCr0();
+        cr0 |= 1 << 1; //MP: monitor co-processor
+        cr0 &= ~(3 << 2); //clear TS (task switched) and EM (emulate co processor)
+        cr0 |= 1 << 5; //enable cpu exceptions
         cr0 |= 1 << 16; //write-protect bit
         cr0 &= ~0x6000'0000; //ensure caches are enabled for this core
         WriteCr0(cr0);
@@ -137,6 +145,7 @@ namespace Npk
         }
 
         uint64_t cr4 = ReadCr4();
+        cr4 |= 3 << 9; //enable fxsave support and vector unit exceptions
         if (CpuHasFeature(CpuFeature::Smap))
             cr4 |= 1 << 21;
         if (CpuHasFeature(CpuFeature::Smep))
@@ -152,8 +161,21 @@ namespace Npk
 
         if (cr4 & (1 << 21))
             asm volatile("clac"); //prevent accidental userspace accesses
+        asm("finit");
 
-        //TODO: init fpu/sse state
+        if (CpuHasFeature(CpuFeature::XSave))
+        {
+            clb->xsaveBitmap = ~0ul;
+            CpuidLeaf leaf {};
+            DoCpuid(0xD, 0, leaf);
+            clb->xsaveSize = leaf.c;
+
+            cr4 |= 1 << 18; //enable xsave instruction
+            WriteCr4(cr4);
+            Log("Xsave enabled, bitmap=0x%lx, size=%lx B", LogLevel::Verbose,
+                clb->xsaveBitmap, clb->xsaveSize);
+        }
+
         LocalApic* lapic = NewWired<LocalApic>();
         ASSERT_(lapic != nullptr);
         SetLocalPtr(SubsysPtr::IntrCtrl, lapic);
