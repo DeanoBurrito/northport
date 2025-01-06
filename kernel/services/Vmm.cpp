@@ -1,4 +1,5 @@
 #include <services/Vmm.h>
+#include <services/VmPagers.h>
 #include <arch/Hat.h>
 #include <core/Log.h>
 #include <Entry.h>
@@ -51,7 +52,7 @@ namespace Npk::Services
                 //we'll map a fresh page, zeroing it if needed.
                 const auto maybePage = Core::PmAlloc();
                 if (!maybePage.HasValue())
-                    return VmError::PmAllocFailed;
+                    return VmError::TryAgain;
 
                 info = Core::PmLookup(*maybePage);
                 if (!info->pm.zeroed)
@@ -61,8 +62,8 @@ namespace Npk::Services
                 }
 
                 const HatFlags hatFlags = MakeHatFlags(view.flags, hatMap != KernelMap());
-                const auto hatSucc = HatDoMap(hatMap, view.base + offset, *maybePage, 0, hatFlags, false);
-                if (hatSucc != HatError::Success)
+                if (HatDoMap(hatMap, view.base + offset, *maybePage, 0, hatFlags, false) 
+                    != HatError::Success)
                 {
                     Core::PmFree(*maybePage);
                     return VmError::HatMapFailed;
@@ -81,14 +82,30 @@ namespace Npk::Services
             }
             //else: dedicated page is already mapped, and will have proper permissions
 
-            Log("wired 0x%tx", LogLevel::Debug, view.base + offset);
             return sl::NoError;
 
         }
 
-        //TODO: implement file mappings:
-        //private file view: page is not mapped, page is mapped readonly to source page, page is mapped rw to overlay page
-        //shared file view: page is not mapped, page is mapped to source page
+        VmObject* vmo = reinterpret_cast<VmObject*>(&*view.vmoRef);
+        if (vmo->isMmio)
+        {
+            //mmio objets are always mapped with their full permissions, so if we're here
+            //it's because the view is not mapped.
+            auto maybePaddr = GetMmioVmoPage(vmo, offset);
+            if (!maybePaddr.HasValue())
+                return VmError::BadVmoOffset;
+
+            HatFlags hatFlags = MakeHatFlags(view.flags, false);
+            hatFlags |= GetMmioVmoHatFlags(vmo, offset);
+            if (HatDoMap(hatMap, view.base + offset, *maybePaddr, 0, hatFlags, false) 
+                != HatError::Success)
+            {
+                return VmError::HatMapFailed;
+            }
+            return sl::NoError;
+        }
+
+        //TODO: implement file mappings
         ASSERT_UNREACHABLE();
     }
 
@@ -165,12 +182,11 @@ namespace Npk::Services
         zeroPage = *zeroPageAlloc;
         sl::memset(reinterpret_cast<void*>(zeroPage + hhdmBase), 0, PageSize());
 
-        const uintptr_t lowerBound = hhdmBase + hhdmLength;
+        const uintptr_t lowerBound = EarlyVmControl(false);
         const uintptr_t upperBound = -PageSize();
-        const uintptr_t earlyVmTop = EarlyVmControl(false);
 
         kvmm.freeSpaceLock.Lock();
-        new(&kvmm.freeSpace) VmmRangeAllocator(earlyVmTop, upperBound, PfnShift());
+        new(&kvmm.freeSpace) VmmRangeAllocator(lowerBound, upperBound, PfnShift());
 
         for (size_t i = 0; i < kernelImage.Size(); i++)
             kvmm.freeSpace.Claim(kernelImage[i].base, kernelImage[i].length);
@@ -181,14 +197,14 @@ namespace Npk::Services
         Log("Kernel VMM initialized: 0x%tx -> 0x%tx (0x%zx, %zu.%zu %sB)", LogLevel::Info, 
             lowerBound, upperBound, totalAddrSpace, conv.major, conv.minor, conv.prefix);
         
-        const auto earlyConv = sl::ConvertUnits(earlyVmTop - lowerBound);
-        Log("EarlyVm used %zu.%zu %sB (up to 0x%tu)", LogLevel::Verbose, earlyConv.major,
-            earlyConv.minor, earlyConv.prefix, earlyVmTop);
+        const auto earlyConv = sl::ConvertUnits(lowerBound - (hhdmBase + hhdmLength));
+        Log("EarlyVm used %zu.%zu %sB (up to 0x%tx)", LogLevel::Verbose, earlyConv.major,
+            earlyConv.minor, earlyConv.prefix, lowerBound);
     };
 
     bool Vmm::HandlePageFault(uintptr_t addr, VmFaultFlags flags, size_t lengthHint)
     {
-        ASSERT_UNREACHABLE();
+        ASSERT_UNREACHABLE(); (void)addr; (void)flags; (void)lengthHint;
     }
 
     sl::Opt<void*> Vmm::AddView(VmObject* obj, size_t length, size_t offset, VmViewFlags flags, bool wire)
@@ -243,7 +259,7 @@ namespace Npk::Services
     
     void Vmm::RemoveView(void* base)
     {
-        ASSERT_UNREACHABLE();
+        ASSERT_UNREACHABLE(); (void)base;
     }
 
     bool Vmm::Wire(void* base, size_t length)
@@ -286,7 +302,7 @@ namespace Npk::Services
 
     void Vmm::Unwire(void* base, size_t length)
     {
-        ASSERT_UNREACHABLE();
+        ASSERT_UNREACHABLE(); (void)base; (void)length;
     }
 
     Vmm kernelVmm;

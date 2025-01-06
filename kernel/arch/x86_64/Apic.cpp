@@ -5,7 +5,7 @@
 #include <core/WiredHeap.h>
 #include <core/Config.h>
 #include <services/AcpiTables.h>
-#include <Entry.h>
+#include <services/Vmm.h>
 #include <Locks.h>
 #include <Maths.h>
 #include <containers/List.h>
@@ -46,8 +46,12 @@ namespace Npk
         else
         {
             x2Mode = false;
-            mmio = EarlyVmAlloc(baseMsr & ~0xFFFul, 0x1000, true, true, "lapic");
-            ASSERT_(mmio.ptr != nullptr);
+            mmioVmo = Services::CreateMmioVmo(baseMsr & ~0xFFFul, 0x1000, HatFlag::Mmio);
+            ASSERT_(mmioVmo != nullptr);
+
+            auto maybeMmio = Services::VmAllocWired(mmioVmo, 0x1000, 0, VmViewFlag::Write);
+            ASSERT_(maybeMmio.HasValue());
+            mmio = *maybeMmio;
 
             Log("Local apic setup, mmio=%p (phys=0x%tx)", LogLevel::Verbose, mmio.ptr,
                 baseMsr & ~0xFFFul);
@@ -135,7 +139,7 @@ namespace Npk
         useTscDeadline = CpuHasFeature(CpuFeature::TscDeadline);
 
         size_t calibData[TotalRuns];
-        const auto sleepTime = sl::ScaledTime::FromFrequency(SampleFrequency).ToNanos();
+        const auto sleepTime = sl::TimeCount(SampleFrequency, 1).Rebase(sl::Nanos).ticks;
         if (!useTscDeadline)
         {
             //we can't use the tsc as the interrupt timer source, so we'll
@@ -196,9 +200,8 @@ namespace Npk
     {
         //TODO: we can calculate the period ahead of time and replace all these
         //FromFrequency() calls
-        sl::ScaledTime tscPeriod = sl::ScaledTime::FromFrequency(tscFrequency);
-        tscPeriod.units *= ReadTsc();
-        return tscPeriod.ToNanos();
+        
+        return sl::TimeCount(tscFrequency, ReadTsc()).Rebase(sl::Nanos).ticks;
     }
 
     TimerTickNanos LocalApic::TimerMaxNanos()
@@ -206,7 +209,7 @@ namespace Npk
         if (useTscDeadline)
             //return sl::ScaledTime::FromFrequency(tscFrequency).ToNanos() * static_cast<uint64_t>(~0);
             return static_cast<uint64_t>(~0);
-        return sl::ScaledTime::FromFrequency(timerFrequency).ToNanos() * static_cast<uint32_t>(~0);
+        return sl::TimeCount(timerFrequency, static_cast<uint32_t>(~0)).Rebase(sl::Nanos).ticks;
     }
 
     void LocalApic::ArmTimer(TimerTickNanos nanos, size_t vector)
@@ -219,7 +222,7 @@ namespace Npk
         else
         {
             WriteReg(LapicReg::LvtTimer, vector);
-            WriteReg(LapicReg::TimerInitCount, nanos * sl::ScaledTime::FromFrequency(timerFrequency).ToNanos());
+            WriteReg(LapicReg::TimerInitCount, nanos * sl::TimeCount(timerFrequency, 1).Rebase(sl::Nanos).ticks);
         }
     }
 
@@ -268,10 +271,11 @@ namespace Npk
     struct IoApic
     {
         sl::FwdListHook hook;
-        sl::SpinLock lock;
         sl::NativePtr mmio;
         uint32_t gsiBase;
         uint32_t pinCount;
+        Services::VmObject* mmioVmo;
+        sl::SpinLock lock;
 
         uint32_t ReadReg(IoApicReg reg)
         {
@@ -295,6 +299,7 @@ namespace Npk
         uint32_t outgoing;
         sl::Opt<uint8_t> polarity;
         sl::Opt<uint8_t> mode;
+        Services::VmObject* vmo;
     };
 
     sl::FwdList<IoApic, &IoApic::hook> ioapics;
@@ -320,8 +325,12 @@ namespace Npk
                 IoApic* ioapic = NewWired<IoApic>();
                 VALIDATE_(ioapic != nullptr, );
 
-                ioapic->mmio = EarlyVmAlloc(apicSrc->mmioAddr, 0x1000, true, true, "ioapic");
-                VALIDATE_(ioapic->mmio.ptr != nullptr, );
+                ioapic->mmioVmo = CreateMmioVmo(apicSrc->mmioAddr, 0x1000, HatFlag::Mmio);
+                VALIDATE_(ioapic->mmioVmo != nullptr, );
+                auto maybeMmio = VmAllocWired(ioapic->mmioVmo, 0x1000, 0, VmViewFlag::Write);
+                VALIDATE_(maybeMmio.HasValue(), );
+                ioapic->mmio = *maybeMmio;
+
                 ioapic->gsiBase = apicSrc->gsibase;
                 ioapic->pinCount = (ioapic->ReadReg(IoApicReg::Version) >> 16) & 0xFF;
                 ioapic->pinCount++;

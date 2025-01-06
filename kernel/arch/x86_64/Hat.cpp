@@ -34,7 +34,9 @@ namespace Npk
     constexpr uint64_t SizeFlag = 1 << 7;
     constexpr uint64_t GlobalFlag = 1 << 8;
     constexpr uint64_t NxFlag = 1ul << 63;
-    constexpr uint64_t PatUcFlag = (1 << 4) | (1 << 3); //(3) for mmio hint
+    constexpr uint64_t PatUcFlag = (1 << 4) | (1 << 3); //(3) for strong uncachable
+    constexpr uint64_t PatWcFlag4K = (1 << 7) | (1 << 3); //(5) for write-combining
+    constexpr uint64_t PatWcFlag2M1G = (1 << 12) | (1 << 3); //(5) for write-combining
 
     struct PageTable
     {
@@ -299,10 +301,16 @@ namespace Npk
             pte |= NxFlag;
         if (flags.Has(HatFlag::Global) && globalPageSupport)
             pte |= GlobalFlag;
-        if (flags.Has(HatFlag::Mmio) && patSupport)
-            pte |= PatUcFlag;
         if (selectedSize > PageSizes::_4K)
             pte |= SizeFlag;
+        if (patSupport)
+        {
+            if (flags.Has(HatFlag::Framebuffer))
+                pte |= path.level > 1 ? PatWcFlag2M1G : PatWcFlag4K;
+            else
+                pte |= flags.Has(HatFlag::Mmio) ? PatUcFlag : 0;
+        }
+
         SET_PTE(path.pte, pte);
 
         if (flush)

@@ -2,6 +2,7 @@
 
 #include <NativePtr.h>
 #include <arch/Timers.h>
+#include <services/VmPagers.h>
 
 namespace Npk
 {
@@ -25,6 +26,7 @@ namespace Npk
     class LocalApic
     {
     private:
+        Services::VmObject* mmioVmo;
         sl::NativePtr mmio;
         size_t tscFrequency;
         size_t timerFrequency;

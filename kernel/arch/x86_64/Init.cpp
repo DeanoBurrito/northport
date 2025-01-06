@@ -138,7 +138,7 @@ namespace Npk
         cr0 &= ~0x6000'0000; //ensure caches are enabled for this core
         WriteCr0(cr0);
 
-        if (Core::GetConfigNumber("kernel.boot.dump_cpu_features", true))
+        if (Core::GetConfigNumber("kernel.boot.dump_cpu_features", false))
         {
             Log("Dumping cpuid values:", LogLevel::Verbose);
             LogCpuFeatures();
@@ -165,14 +165,20 @@ namespace Npk
 
         if (CpuHasFeature(CpuFeature::XSave))
         {
-            clb->xsaveBitmap = ~0ul;
+            cr4 |= 1 << 18; //enable xsave suite of instructions
+            WriteCr4(cr4);
+
             CpuidLeaf leaf {};
             DoCpuid(0xD, 0, leaf);
-            clb->xsaveSize = leaf.c;
+            //NOTE: higher bits of xsave are for features we dont currently support
+            //(tileconfig and memory protection keys)
+            clb->xsaveBitmap = leaf.a & 0xFF;
 
-            cr4 |= 1 << 18; //enable xsave instruction
-            WriteCr4(cr4);
-            Log("Xsave enabled, bitmap=0x%lx, size=%lx B", LogLevel::Verbose,
+            asm("xsetbv" :: "a"(clb->xsaveBitmap), "d"(clb->xsaveBitmap >> 32), "c"(0));
+            DoCpuid(0xD, 0, leaf);
+            clb->xsaveSize = leaf.b; //ebx = save area size of xcr0, ecx = max save area size
+
+            Log("Xsave enabled, bitmap=0x%lx, size=%lu B", LogLevel::Verbose,
                 clb->xsaveBitmap, clb->xsaveSize);
         }
 

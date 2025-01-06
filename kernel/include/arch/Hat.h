@@ -25,6 +25,7 @@ namespace Npk
         User,
         Global,
         Mmio,
+        Framebuffer,
     };
 
     using HatFlags = sl::Flags<HatFlag>;

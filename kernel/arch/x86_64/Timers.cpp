@@ -4,9 +4,9 @@
 #include <arch/x86_64/Apic.h>
 #include <core/Log.h>
 #include <services/AcpiTables.h>
+#include <services/Vmm.h>
 #include <ArchHints.h>
 #include <NativePtr.h>
-#include <Entry.h>
 #include <Maths.h>
 #include <Locks.h>
 
@@ -21,6 +21,7 @@ namespace Npk
 
     sl::SpinLock pitLock;
 
+    Services::VmObject* hpetVmo;
     sl::NativePtr hpetRegs;
     size_t hpetPeriod;
 
@@ -29,12 +30,16 @@ namespace Npk
         //TODO: would be nice to investigate the acpi timer as well
 
         using namespace Services;
+        hpetRegs = nullptr;
         auto hpet = static_cast<const Hpet*>(FindAcpiTable(Services::SigHpet));
         if (hpet == nullptr)
             return;
 
-        hpetRegs = EarlyVmAlloc(hpet->baseAddress.address, 0x1000, true, true, "hpet");
-        VALIDATE_(hpetRegs.ptr != nullptr, );
+        hpetVmo = Services::CreateMmioVmo(hpet->baseAddress.address, 0x1000, HatFlag::Mmio);
+        VALIDATE_(hpetVmo != nullptr, );
+        auto maybeHpetRegs = Services::VmAllocWired(hpetVmo, 0x1000, 0, VmViewFlag::Write);
+        VALIDATE_(maybeHpetRegs.HasValue(), );
+        hpetRegs = *maybeHpetRegs;
 
         //reset main counter and leave it enabled
         hpetRegs.Offset(HpetRegConfig).Write<uint64_t>(0);

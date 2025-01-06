@@ -121,7 +121,7 @@ namespace sl
             Hk(value)->next = Hk(it.ptr)->next;
             Hk(it.ptr)->next = value;
             
-            if (it == tail)
+            if (it.ptr == tail)
                 tail = value;
         }
 
@@ -140,31 +140,6 @@ namespace sl
             return temp;
         }
 
-        Iterator Remove(T* value)
-        {
-            if (value == nullptr || head == nullptr)
-                return nullptr;
-
-            if (head == value)
-            {
-                PopFront();
-                return head;
-            }
-                
-            T* scan = head;
-            while (Hk(scan)->next != nullptr)
-            {
-                if (Hk(scan)->next == value)
-                    return EraseAfter(scan);
-                scan = static_cast<T*>(Hk(scan)->next);
-            }
-
-            return nullptr;
-        }
-
-        Iterator Remove(Iterator it)
-        { return Remove(it.ptr); }
-
         template<typename Comparison>
         void Sort(Comparison comp)
         {
@@ -178,6 +153,23 @@ namespace sl
                         sl::Swap(Hk(i)->next, Hk(j)->next);
                     }
                 }
+            }
+        }
+
+        void InsertSorted(T* value, bool (*LessThan)(T* a, T* b))
+        {
+            if (Empty())
+                return PushFront(value);
+
+            for (auto it = Begin(); it != End(); ++it)
+            {
+                auto next = it;
+                ++next;
+                if (next == End())
+                    return PushBack(value);
+
+                if (LessThan(value, &*next))
+                    return InsertAfter(it, value);
             }
         }
     };
@@ -250,13 +242,13 @@ namespace sl
         { return head; }
 
         Iterator End()
-        { return {}; }
+        { return nullptr; }
 
         const Iterator Begin() const
         { return head; }
 
         const Iterator End() const
-        { return {}; }
+        { return nullptr; }
 
         bool Empty() const
         { return head == nullptr; }
@@ -292,10 +284,11 @@ namespace sl
 
             T* temp = head;
             head = static_cast<T*>(Hk(head)->next);
-            Hk(head)->prev = nullptr;
 
             if (head == nullptr)
                 tail = nullptr;
+            else
+                Hk(head)->prev = nullptr;
             return temp;
         }
 
@@ -306,10 +299,12 @@ namespace sl
 
             T* temp = tail;
             tail = static_cast<T*>(Hk(tail)->prev);
-            Hk(tail)->next = nullptr;
+            
 
             if (tail == nullptr)
                 head = nullptr;
+            else
+                Hk(tail)->next = nullptr;
             return temp;
         }
 
@@ -340,8 +335,8 @@ namespace sl
 
             if (it.ptr == nullptr)
             {
-                Hk(value).prev = nullptr;
-                Hk(value).next = head;
+                Hk(value)->prev = nullptr;
+                Hk(value)->next = head;
                 if (head == nullptr)
                     tail = value;
                 else
@@ -350,14 +345,28 @@ namespace sl
             }
             else
             {
-                Hk(value)->prev = Hk(it.ptr).prev;
-                Hk(it.ptr).prev = value;
+                Hk(value)->prev = Hk(it.ptr)->prev;
+                Hk(it.ptr)->prev = value;
 
                 if (Hk(value)->prev == nullptr)
                     head = value;
                 else
                     Hk(static_cast<T*>(Hk(value)->prev))->next = value;
             }
+        }
+
+        void InsertSorted(T* value, bool (*LessThan)(T* a, T* b))
+        {
+            if (Empty())
+                return PushFront(value);
+                
+            for (auto it = Begin(); it != End(); ++it)
+            {
+                if (LessThan(value, &*it))
+                    return InsertBefore(it, value);
+            }
+
+            PushBack(value);
         }
 
         Iterator Remove(T* value)

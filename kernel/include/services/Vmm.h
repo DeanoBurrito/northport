@@ -17,8 +17,9 @@ namespace Npk::Services
     enum class VmError
     {
         Success = 0,
-        PmAllocFailed,
+        TryAgain,
         HatMapFailed,
+        BadVmoOffset,
     };
 
     enum class VmViewFlag
@@ -44,7 +45,7 @@ namespace Npk::Services
 
     using VmViewFlags = sl::Flags<VmViewFlag>;
     using VmFaultFlags = sl::Flags<VmFaultFlag>;
-    using VmPageFlags = sl::Flags<VmPageFlag, uint32_t>;
+    using VmPageFlags = sl::Flags<VmPageFlag, uint32_t>; //occupies PageInfo::vm::flags
 
     struct VmObject;
 
@@ -71,6 +72,7 @@ namespace Npk::Services
         VmoRefCount refCount;
 
         sl::SpinLock lock;
+        bool isMmio;
         sl::FwdList<Core::PageInfo, &Core::PageInfo::vmObjList> content;
         sl::List<VmView, &VmView::vmoHook> views;
         size_t length;
@@ -81,6 +83,7 @@ namespace Npk::Services
     class Vmm
     {
     private:
+        sl::SpinLock hatLock;
         HatMap* hatMap;
         sl::RwLock viewsLock;
         sl::List<VmView, &VmView::vmmHook> views;
