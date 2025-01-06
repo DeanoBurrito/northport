@@ -128,13 +128,12 @@ namespace Npk::Core
         VALIDATE_(event != nullptr, );
         VALIDATE_(event->dpc != nullptr, );
 
-        ASSERT_(CurrentRunLevel() < RunLevel::Clock);
         const auto prevRl = RaiseRunLevel(RunLevel::Clock);
 
         ClockQueue* q = static_cast<ClockQueue*>(GetLocalPtr(SubsysPtr::ClockQueue));
         ASSERT_(q != nullptr);
-        RefreshClockQueue(q);
         event->expiry = event->expiry.ToScale(sl::TimeScale::Nanos);
+        RefreshClockQueue(q);
 
         if (q->events.Empty() || q->events.Front().expiry.units > event->expiry.units)
         {
@@ -153,14 +152,14 @@ namespace Npk::Core
         for (auto it = q->events.Begin(); it != q->events.End(); ++it)
         {
             event->expiry.units -= it->expiry.units;
+            auto next = it;
+            ++next;
 
-            auto next = static_cast<ClockEvent*>(it->listHook.next);
-            if (next != nullptr && next->expiry.units < event->expiry.units)
+            if (next != q->events.End() && next->expiry.units < event->expiry.units)
                 continue;
 
             q->events.InsertAfter(it, event);
-            if (next != nullptr)
-                next->expiry.units -= event->expiry.units;
+            break;
         }
 
         LowerRunLevel(prevRl);

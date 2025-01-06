@@ -55,14 +55,6 @@ namespace Npk::Core
         Log("Local scheduler init: %zu priorities.", LogLevel::Info, priorities);
     }
 
-    static void PrepareInitialThread(TrapFrame* next, void* arg)
-    {
-        (void)next;
-
-        SchedulerObj* obj = static_cast<SchedulerObj*>(arg);
-        SetLocalPtr(SubsysPtr::Thread, obj);
-    }
-
     [[noreturn]]
     void Scheduler::Kickstart()
     {
@@ -70,7 +62,8 @@ namespace Npk::Core
 
         auto next = PopThread();
         ASSERT_(next != nullptr);
-        SwitchFrame(nullptr, PrepareInitialThread, next->frame, next);
+        SetLocalPtr(SubsysPtr::Thread, next);
+        SwitchFrame(nullptr, nullptr, next->frame, nullptr);
         ASSERT_UNREACHABLE();
     }
 
