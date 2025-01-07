@@ -5,6 +5,7 @@
 #include <core/Log.h>
 #include <core/Clock.h>
 #include <services/Program.h>
+#include <services/Vmm.h>
 #include <Panic.h>
 #include <Memory.h>
 #include <Maths.h>
@@ -164,8 +165,21 @@ namespace Npk
 
         if (frame->vector < 0x20)
         {
+            using namespace Services;
+
             auto except = TranslateException(frame);
-            PanicWithException(except, frame->rbp);
+            bool handled = false;
+            if (except.type == ExceptionType::MemoryAccess)
+            {
+                VmFaultFlags flags {};
+                flags |= (frame->ec & (1 << 1)) ? VmFaultFlag::Write : VmFaultFlag::Read;
+                flags |= (frame->ec & (1 << 2)) ? VmFaultFlag::User : VmFaultFlags {};
+                flags |= (frame->ec & (1 << 4)) ? VmFaultFlag::Fetch : VmFaultFlags {};
+                handled = KernelVmm().HandlePageFault(except.special, flags);
+            }
+
+            if (!handled)
+                PanicWithException(except, frame->rbp);
         }
         else
         {

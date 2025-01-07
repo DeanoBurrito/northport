@@ -105,7 +105,7 @@ namespace Npk::Services
     public:
         static void InitKernel(sl::Span<VmView> kernelImage);
 
-        bool HandlePageFault(uintptr_t addr, VmFaultFlags flags, size_t lengthHint);
+        bool HandlePageFault(uintptr_t addr, VmFaultFlags flags);
 
         sl::Opt<void*> AddView(VmObject* obj, size_t length, size_t offset, VmViewFlags flags, bool wire);
         void RemoveView(void* base);

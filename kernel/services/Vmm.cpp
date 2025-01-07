@@ -202,9 +202,42 @@ namespace Npk::Services
             earlyConv.minor, earlyConv.prefix, lowerBound);
     };
 
-    bool Vmm::HandlePageFault(uintptr_t addr, VmFaultFlags flags, size_t lengthHint)
+    bool Vmm::HandlePageFault(uintptr_t addr, VmFaultFlags flags)
     {
-        ASSERT_UNREACHABLE(); (void)addr; (void)flags; (void)lengthHint;
+        viewsLock.ReaderLock();
+        VmView* view = FindView(addr);
+        if (view == nullptr)
+        {
+            viewsLock.ReaderUnlock();
+            return false;
+        }
+
+        VALIDATE_(!flags.Has(VmFaultFlag::Fetch), false);
+        VALIDATE_(!flags.Has(VmFaultFlag::User), false);
+
+        const size_t offset = AlignDownPage(addr - view->base);
+        if (!view->vmoRef.Valid() && flags.Has(VmFaultFlag::Read))
+        {
+            //read access on anon vmo, map the zero page as readonly
+            const auto hatFlags = MakeHatFlags({}, hatMap != KernelMap());
+            auto result = HatDoMap(hatMap, view->base + offset, zeroPage, 0, hatFlags, false);
+            viewsLock.ReaderUnlock();
+            return result == HatError::Success;
+        }
+
+        auto result = WirePage(*view, offset);
+        if (result.HasError())
+        {
+            viewsLock.ReaderUnlock();
+            return false;
+        }
+
+        //WirePage() should probably be refactored, but for now the newly mapped page is wired,
+        //so we want to decrement its wireCount so that it can be swapped as needed.
+        Core::PageInfo* info = FindPageOfView(*view, offset);
+        info->vm.wireCount -= 2;
+        viewsLock.ReaderUnlock();
+        return true;
     }
 
     sl::Opt<void*> Vmm::AddView(VmObject* obj, size_t length, size_t offset, VmViewFlags flags, bool wire)
