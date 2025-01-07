@@ -9,13 +9,13 @@ namespace Npk::Services
 {
     struct MagicHandler
     {
-        sl::FwdListHook listHook;
+        sl::ListHook listHook;
         npk_key_id key;
         MagicKeyCallback callback;
     };
 
     sl::RunLevelLock<RunLevel::Interrupt> handlersLock;
-    sl::FwdList<MagicHandler, &MagicHandler::listHook> handlers;
+    sl::List<MagicHandler, &MagicHandler::listHook> handlers;
 
     void HandleMagicKey(npk_key_id key)
     {

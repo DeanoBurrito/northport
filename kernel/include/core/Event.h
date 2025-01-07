@@ -52,7 +52,7 @@ namespace Npk::Core
 
     public:
         static WaitResult WaitOne();
-        static WaitResult WaitMany(sl::Span<Waitable*> events, WaitEntry* entries, sl::ScaledTime timeout, bool waitAll);
+        static WaitResult WaitMany(sl::Span<Waitable*> events, WaitEntry* entries, sl::TimeCount timeout, bool waitAll);
         static void CancelWait(SchedulerObj* thread);
     };
 }

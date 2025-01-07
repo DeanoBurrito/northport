@@ -243,7 +243,7 @@ namespace Npk
         //there's a special case for the x2 regs with ICR: it gets compressed
         //into a single MSR, instead of two separate regs.
         if (x2Mode)
-            WriteMsr(static_cast<uint32_t>(LapicReg::IcrLow), (destAddr << 32) | IntrVectorIpi);
+            WriteMsr((static_cast<uint32_t>(LapicReg::IcrLow) >> 4) + 0x800, (destAddr << 32) | IntrVectorIpi);
         else
         {
             //the IPI is sent when writing to IcrLow, so set the high register first.

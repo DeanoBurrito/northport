@@ -123,7 +123,7 @@ namespace Npk::Core
         VALIDATE_(shootdown != nullptr, );
         MailboxControl* dest = FindMailbox(destCore);
         VALIDATE_(dest != nullptr, );
-
+        
         dest->tlbEvictions.Push(shootdown);
     }
 
@@ -131,6 +131,10 @@ namespace Npk::Core
     {
         mailboxesLock.ReaderLock();
         for (auto it = mailboxes.Begin(); it != mailboxes.End(); ++it)
+        {
             it->shouldPanic = true;
+            SendIpi(it->id);
+        }
+        mailboxesLock.ReaderUnlock();
     }
 }

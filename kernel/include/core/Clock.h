@@ -14,7 +14,7 @@ namespace Npk::Core
         ClockQueue* queue;
 
         DpcStore* dpc;
-        sl::ScaledTime expiry;
+        sl::TimeCount expiry;
 
         ClockEvent() : dpc(nullptr)
         {}
@@ -29,7 +29,7 @@ namespace Npk::Core
     void ProcessLocalClock();
     
     //returns the uptime, using the configured resolution.
-    sl::ScaledTime GetUptime();
+    sl::TimeCount GetUptime();
 
     //queues a clock event to fire a dpc on this core, at some point in the future.
     void QueueClockEvent(ClockEvent* event);

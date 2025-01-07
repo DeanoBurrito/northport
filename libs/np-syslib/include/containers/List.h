@@ -158,18 +158,18 @@ namespace sl
 
         void InsertSorted(T* value, bool (*LessThan)(T* a, T* b))
         {
-            if (Empty())
+            if (Empty() || LessThan(value, head))
                 return PushFront(value);
+            if (LessThan(tail, value))
+                return PushBack(value);
 
-            for (auto it = Begin(); it != End(); ++it)
+            auto it = Begin();
+            while (it != End())
             {
-                auto next = it;
-                ++next;
-                if (next == End())
-                    return PushBack(value);
-
-                if (LessThan(value, &*next))
-                    return InsertAfter(it, value);
+                auto prev = it;
+                ++it;
+                if (LessThan(value, &*it))
+                    return InsertAfter(prev, value);
             }
         }
     };

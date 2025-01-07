@@ -121,8 +121,9 @@ namespace Npk::Core
             length -= runover;
         }
 
-        const size_t uptimeMajor = sl::ScaledTime(logTimescale, msg.ticks).ToMillis() / 1000;
-        const size_t uptimeMinor = sl::ScaledTime(logTimescale, msg.ticks).ToMillis() % 1000;
+        const size_t timestampMillis = sl::TimeCount(logTimescale, msg.ticks).Rebase(sl::Millis).ticks;
+        const size_t uptimeMajor = timestampMillis / 1000;
+        const size_t uptimeMinor = timestampMillis % 1000;
         const size_t uptimeLen = sl::Min<size_t>(npf_snprintf(nullptr, 0, UptimeStr.Begin(), uptimeMajor, uptimeMinor) + 1, MaxUptimeLen);
         char uptimeBuff[MaxUptimeLen];
         npf_snprintf(uptimeBuff, uptimeLen, UptimeStr.Begin(), uptimeMajor, uptimeMinor);
@@ -217,7 +218,7 @@ namespace Npk::Core
         }
         
         //we've got a place to store this message, field out the fields
-        msg->data.ticks = GetUptime().ToScale(logTimescale).units;
+        msg->data.ticks = GetUptime().Rebase(logTimescale).ticks;
         msg->data.loglevel = level;
         if (prevRl.HasValue())
             msg->data.runlevel = *prevRl;
@@ -298,6 +299,9 @@ namespace Npk::Core
             .tabSize = 4,
             .margin = 0,
             .fontSpacing = 0,
+            .fbBase = {},
+            .fbSize = {},
+            .fbStride = {},
             .Alloc = FramebufferLoggerAlloc,
         };
 

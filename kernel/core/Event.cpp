@@ -82,7 +82,7 @@ namespace Npk::Core
         SchedEnqueue(ctrl->thread, ctrl->threadPriority);
     }
 
-    WaitResult WaitManager::WaitMany(sl::Span<Waitable*> events, WaitEntry* entries, sl::ScaledTime timeout, bool waitAll)
+    WaitResult WaitManager::WaitMany(sl::Span<Waitable*> events, WaitEntry* entries, sl::TimeCount timeout, bool waitAll)
     {
         //control block for wait operation
         WaitControl control {};
@@ -106,7 +106,7 @@ namespace Npk::Core
         }
 
         //if there is a timeout (0 == poll once, -1 == wait indefinitely) queue the clock event
-        if (timeout.units != 0 && timeout.units != -1ull)
+        if (timeout.ticks != 0 && timeout.ticks != -1ull)
             QueueClockEvent(&control.timeoutEvent);
 
         while (true)
@@ -114,7 +114,7 @@ namespace Npk::Core
             ASSERT_(LockAll(events)); //TODO: handle by sleeping instead of asserting lol
 
             //try satisfy the wait immediately
-            if (auto result = TryFinish(control, waitAll); result.HasValue() || timeout.units == 0)
+            if (auto result = TryFinish(control, waitAll); result.HasValue() || timeout.ticks == 0)
             {
                 UnlockAll(events); //TODO: sync with timeout event here, since its memory is freed when we return
                 return result.HasValue() ? *result : WaitResult::Timeout;
