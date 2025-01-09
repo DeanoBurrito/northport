@@ -15,6 +15,7 @@
 #include <interfaces/loader/Generic.h>
 #include <services/AcpiTables.h>
 #include <services/MagicKeys.h>
+#include <services/SymbolStore.h>
 #include <services/Vmm.h>
 #include <Exit.h>
 #include <KernelThread.h>
@@ -126,13 +127,14 @@ namespace Npk
     { 
         (void)arg;
         Log("Init thread up", LogLevel::Debug);
+        Services::LoadKernelSymbols();
 
         while (true)
         {
             WaitEntry entry;
-            sl::ScaledTime timeout = 1000_ms;
+            sl::TimeCount timeout = 1000_ms;
             Core::WaitManager::WaitMany({}, &entry, timeout, false);
-            Log("Tick!", LogLevel::Debug);
+            Log("doing work!", LogLevel::Debug);
         }
 
         Halt();
@@ -217,10 +219,9 @@ namespace Npk
         //if (auto fdt = GetDtb(); fdt.HasValue())
             //Services::SetFdtPoitner(*fdt); TODO: import smoldtb and do dtb stuff
 
-        ArchLateKernelEntry();
-
         Services::Vmm::InitKernel(kernelImage); //TODO: move this earlier, make sure we update usage of EarlyVmAlloc
         //Core::LateInitConfigStore();
+        ArchLateKernelEntry();
 
         const bool enableAllMagics = Core::GetConfigNumber("kernel.enable_all_magic_keys", false);
         if (enableAllMagics || Core::GetConfigNumber("kernel.enable_panic_magic_key", false))
@@ -228,9 +229,8 @@ namespace Npk
         if (enableAllMagics || Core::GetConfigNumber("kernel.enable_shutdown_magic_key", false))
             Services::AddMagicKey(npk_key_id_s, HandleMagicKeyShutdown);
 
-        //driver subsystem, threading and vfs init
-
         StartupAps();
+        //TODO: vfs init, driver subsystem
 
         auto maybeInitThread = CreateKernelThread(InitThreadEntry, nullptr);
         Core::SchedEnqueue(*maybeInitThread, 0);
