@@ -3,8 +3,8 @@ CXX_SRCS = Entry.cpp Exit.cpp KernelThread.cpp Panic.cpp \
 	core/Log.cpp core/Pmm.cpp core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp \
 	cpp/Stubs.cpp \
 	interfaces/intra/BakedConstants.cpp \
-	services/AcpiTables.cpp services/MagicKeys.cpp services/Program.cpp services/Vmm.cpp \
-	services/VmPagers.cpp
+	services/AcpiTables.cpp services/MagicKeys.cpp services/Program.cpp services/SymbolStore.cpp \
+	services/Vmm.cpp services/VmPagers.cpp
 
 ARCH_DIR = arch/$(CPU_ARCH)
 include $(ARCH_DIR)/Arch.mk

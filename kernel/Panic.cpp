@@ -4,6 +4,7 @@
 #include <core/Log.h>
 #include <core/Smp.h>
 #include <services/Program.h>
+#include <services/SymbolStore.h>
 #include <Atomic.h>
 #include <Maths.h>
 #include <NanoPrintf.h>
@@ -14,7 +15,7 @@ namespace Npk
     constexpr const char* ExceptFormatStr = "Unhandled exception: %s, stack=0x%tx, flags=0x%x, s=0x%tx\r\n";
     constexpr const char* CoreFormatStr = "Core %tu: runLevel %u (%s), thread=%p, logs=%p\r\n";
     constexpr const char* ProgramFormatStr = "Thread %zu.%zu: name=%.*s, procName=%.*s driverShadow=%.*s\r\n";
-    constexpr const char* TraceFrameFormatStr = "%3zu: 0x%016lx %.*s!%.*s+0x%lx\r\n";
+    constexpr const char* TraceFrameFormatStr = "%3zu: 0x%016tx %.*s!%.*s +0x%lx\r\n";
     constexpr const char* ResetStr = "\r\nSystem has halted indefinitely, manual reset required.\r\n";
 
     constexpr size_t MaxPanicLogLen = 128;
@@ -91,10 +92,10 @@ namespace Npk
             if (callstack[i] == 0)
                 break;
 
-            //TODO: symbol lookup
-            sl::StringSpan repoName = "unknown";
-            sl::StringSpan symbolName = "unknown";
-            size_t offset = 0;
+            auto symbolInfo = Services::FindSymbol(callstack[i]);
+            sl::StringSpan symbolName = symbolInfo.HasValue() ? symbolInfo->info->name : "????";
+            sl::StringSpan repoName = symbolInfo.HasValue() ? symbolInfo->repo->name : "?";
+            size_t offset = symbolInfo.HasValue() ? callstack[i] - symbolInfo->info->base : 0;
 
             const int repoNameLen = sl::Min(MaxProgramNameLen, (int)repoName.Size());
             const int symNameLen = sl::Min(MaxSymbolNameLen, (int)symbolName.Size());

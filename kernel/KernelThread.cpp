@@ -22,7 +22,7 @@ namespace Npk
         stackTop = sl::AlignDown(stackTop - sizeof(KernelThread), alignof(KernelThread));
         KernelThread* meta = new(reinterpret_cast<void*>(stackTop)) KernelThread();
 
-        meta->stackBase = stackTop - KernelStackSize();
+        meta->stackBase = reinterpret_cast<uintptr_t>(*stack);
         meta->schedObj.frame = InitTrapFrame(stackTop, reinterpret_cast<uintptr_t>(entry), false);
         SetTrapFrameArg(meta->schedObj.frame, 0, arg);
 

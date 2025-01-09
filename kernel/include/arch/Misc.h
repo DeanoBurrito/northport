@@ -71,7 +71,7 @@ namespace Npk
     T AlignUpPage(T value)
     {
         const uintptr_t addr = reinterpret_cast<uintptr_t>(value);
-        return reinterpret_cast<T>((addr + PageSize()) & ~PageMask());
+        return reinterpret_cast<T>((addr + PageMask()) & ~PageMask());
     }
 
     template<typename T>

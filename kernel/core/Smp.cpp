@@ -132,6 +132,9 @@ namespace Npk::Core
         mailboxesLock.ReaderLock();
         for (auto it = mailboxes.Begin(); it != mailboxes.End(); ++it)
         {
+            if (it->id == CoreLocalId())
+                continue;
+
             it->shouldPanic = true;
             SendIpi(it->id);
         }

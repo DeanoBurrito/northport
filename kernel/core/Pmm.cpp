@@ -21,11 +21,11 @@ namespace Npk::Core
     {
         for (size_t i = 0; i < entries.Size(); i++)
         {
-            const size_t entryPages = entries[i].length / PageSize();
-            const size_t dbBase = entries[i].base / PageSize();
+            if (entries[i].length == 0)
+                continue;
 
-            for (size_t i = 0; i < entryPages; i++)
-                new(infoDb + dbBase + i) PageInfo();
+            const size_t entryPages = entries[i].length >> PfnShift();
+            const size_t dbBase = entries[i].base >> PfnShift();
 
             PageInfo* entry = &infoDb[dbBase];
             entry->pm.count = entryPages;
@@ -48,17 +48,16 @@ namespace Npk::Core
 
         PageInfo* allocated = list.list.PopFront();
         list.size--;
-        const uintptr_t retAddr = (allocated - infoDb) << PfnShift();
 
-        if (allocated->pm.count != 1)
+        if (allocated->pm.count > 1)
         {
             PageInfo* heir = allocated + 1;
             heir->pm.count = allocated->pm.count - 1;
             heir->pm.zeroed = allocated->pm.zeroed;
-            list.list.PushBack(heir);
+            list.list.PushFront(heir);
         }
-        allocated->pm.count = 0;
 
+        const uintptr_t retAddr = ReverseLookup(allocated);
         if (trashBeforeUse)
             PoisonMemory({ reinterpret_cast<uint8_t*>(retAddr + hhdmBase), PageSize() });
         return retAddr;
