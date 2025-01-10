@@ -96,7 +96,7 @@ namespace sl
             if (Empty())
                 head = value;
             else
-                (tail->*Hook).next = value;
+                Hk(tail)->next = value;
             tail = value;
         }
 
@@ -357,16 +357,16 @@ namespace sl
 
         void InsertSorted(T* value, bool (*LessThan)(T* a, T* b))
         {
-            if (Empty())
+            if (Empty() || LessThan(value, head))
                 return PushFront(value);
+            if (LessThan(tail, value))
+                return PushBack(value);
                 
             for (auto it = Begin(); it != End(); ++it)
             {
                 if (LessThan(value, &*it))
                     return InsertBefore(it, value);
             }
-
-            PushBack(value);
         }
 
         Iterator Remove(T* value)

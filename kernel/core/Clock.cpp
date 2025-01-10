@@ -14,7 +14,7 @@ namespace Npk::Core
     constexpr size_t MinUptimeFrequency = 1;
     constexpr size_t MaxAcceptableEventCount = 256;
 
-    sl::ScaledTime uptimePeriod;
+    sl::TimeCount uptimePeriod;
     sl::Atomic<size_t> uptimeTicks;
     ClockEvent uptimeEvent;
     DpcStore uptimeDpcStore;
@@ -26,6 +26,10 @@ namespace Npk::Core
         TimerTickNanos lastModified;
     };
 
+    static void DumpState()
+    {
+    }
+
     static void RefreshClockQueue(ClockQueue* q)
     {
         ASSERT_(CurrentRunLevel() >= RunLevel::Clock);
@@ -36,17 +40,17 @@ namespace Npk::Core
 
         for (auto it = q->events.Begin(); it != q->events.End(); ++it)
         {
-            if (it->expiry.units == 0)
+            if (it->expiry.ticks == 0)
                 continue;
 
-            if (listDelta < it->expiry.units)
+            if (listDelta < it->expiry.ticks)
             {
-                it->expiry.units -= listDelta;
+                it->expiry.ticks -= listDelta;
                 break;
             }
 
-            listDelta -= it->expiry.units;
-            it->expiry.units = 0;
+            listDelta -= it->expiry.ticks;
+            it->expiry.ticks = 0;
         }
     }
 
@@ -72,11 +76,11 @@ namespace Npk::Core
 
         if (startUptime)
         {
-            VALIDATE_(uptimePeriod.units == 0, );
+            VALIDATE_(uptimePeriod.ticks == 0, );
 
             size_t uptimeFreq = GetConfigNumber("kernel.clock.uptime_freq", DefaultUptimeFrequency);
             uptimeFreq = sl::Clamp(uptimeFreq, MinUptimeFrequency, MaxUptimeFrequency);
-            uptimePeriod = sl::ScaledTime::FromFrequency(uptimeFreq);
+            uptimePeriod = sl::TimeCount(uptimeFreq, 1);
             Log("Uptime count frequency: %zuHz", LogLevel::Info, uptimeFreq);
 
             uptimeTicks = 0;
@@ -97,7 +101,7 @@ namespace Npk::Core
         size_t processedEvents = 0;
 
         RefreshClockQueue(q);
-        while (!q->events.Empty() && q->events.Front().expiry.units == 0)
+        while (!q->events.Empty() && q->events.Front().expiry.ticks == 0)
         {
             if (processedEvents == MaxAcceptableEventCount)
             {
@@ -112,15 +116,15 @@ namespace Npk::Core
 
         if (!q->events.Empty())
         {
-            const TimerTickNanos armTime = sl::Min(MaxIntrTimerExpiry(), q->events.Front().expiry.units);
+            const TimerTickNanos armTime = sl::Min(MaxIntrTimerExpiry(), q->events.Front().expiry.ticks);
             ASSERT_(ArmIntrTimer(armTime));
         }
     }
 
-    sl::ScaledTime GetUptime()
+    sl::TimeCount GetUptime()
     { 
         const auto ticks = uptimeTicks.Load(sl::Relaxed);
-        return sl::ScaledTime(uptimePeriod.scale, uptimePeriod.units * ticks);
+        return sl::TimeCount(uptimePeriod.frequency, uptimePeriod.ticks * ticks);
     }
 
     void QueueClockEvent(ClockEvent* event)
@@ -132,17 +136,17 @@ namespace Npk::Core
 
         ClockQueue* q = static_cast<ClockQueue*>(GetLocalPtr(SubsysPtr::ClockQueue));
         ASSERT_(q != nullptr);
-        event->expiry = event->expiry.ToScale(sl::TimeScale::Nanos);
+        event->expiry = event->expiry.Rebase(sl::Nanos);
         RefreshClockQueue(q);
 
-        if (q->events.Empty() || q->events.Front().expiry.units > event->expiry.units)
+        if (q->events.Empty() || q->events.Front().expiry.ticks > event->expiry.ticks)
         {
             //inserting at front of list, re-arm interrupt timer
             if (!q->events.Empty())
-                q->events.Front().expiry.units -= event->expiry.units;
+                q->events.Front().expiry.ticks -= event->expiry.ticks;
             q->events.PushFront(event);
 
-            const TimerTickNanos armTime = sl::Min(MaxIntrTimerExpiry(), event->expiry.units);
+            const TimerTickNanos armTime = sl::Min(MaxIntrTimerExpiry(), event->expiry.ticks);
             ASSERT_(ArmIntrTimer(armTime));
 
             LowerRunLevel(prevRl);
@@ -151,17 +155,18 @@ namespace Npk::Core
 
         for (auto it = q->events.Begin(); it != q->events.End(); ++it)
         {
-            event->expiry.units -= it->expiry.units;
+            event->expiry.ticks -= it->expiry.ticks;
             auto next = it;
             ++next;
 
-            if (next != q->events.End() && next->expiry.units < event->expiry.units)
+            if (next != q->events.End() && next->expiry.ticks < event->expiry.ticks)
                 continue;
 
             q->events.InsertAfter(it, event);
             break;
         }
 
+        DumpState();
         LowerRunLevel(prevRl);
     }
 

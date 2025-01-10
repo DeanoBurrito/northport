@@ -121,7 +121,7 @@ namespace Npk
             return;
         }
 
-        for (size_t i = 0; i < copied; i++)
+        for (size_t i = 0; i < copied; i += 2)
         {
             PanicPrint(outputs, ExceptStackStr, addr + (i * sizeof(uintptr_t)), 
                 buffer[i], buffer[i + 1]);
