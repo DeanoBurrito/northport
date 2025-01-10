@@ -20,6 +20,7 @@ namespace Npk
         Thread = 4,
         Scheduler = 5,
         PmmCache = 6,
+        UnsafeOpAbort = 7,
 
         Count
     };
@@ -83,6 +84,7 @@ namespace Npk
     }
 
     void ExplodeKernelAndReset();
+    size_t UnsafeCopy(void* dest, const void* source, size_t count) asm("UnsafeCopy");
 
     //this struct represents any per-thread state not included in the TrapFrame.
     //This is generally things the kernel doesnt use, and is only saved/restored 

@@ -13,6 +13,9 @@
 namespace Npk
 {
     constexpr const char* ExceptFormatStr = "Unhandled exception: %s, stack=0x%tx, flags=0x%x, s=0x%tx\r\n";
+    constexpr const char* ExceptPcStr = "PC=0x%tx %.*s!%.*s +0x%lx\r\n";
+    constexpr const char* ExceptMemoryStr = "   0x%0tx: %02x %02x %02x %02x   %02x %02x %02x %02x   %02x %02x %02x %02x   %02x %02x %02x %02x\r\n";
+    constexpr const char* ExceptStackStr = "   0x%0tx: 0x%016tx 0x%016tx\r\n";
     constexpr const char* CoreFormatStr = "Core %tu: runLevel %u (%s), thread=%p, logs=%p\r\n";
     constexpr const char* ProgramFormatStr = "Thread %zu.%zu: name=%.*s, procName=%.*s driverShadow=%.*s\r\n";
     constexpr const char* TraceFrameFormatStr = "%3zu: 0x%016tx %.*s!%.*s +0x%lx\r\n";
@@ -22,7 +25,12 @@ namespace Npk
     constexpr size_t MaxTraceDepth = 16;
     constexpr int MaxProgramNameLen = 16;
     constexpr int MaxSymbolNameLen = 52;
+    constexpr size_t PrintBytesCount = 64;
+    constexpr size_t PrintWordsCount = 8;
     constexpr size_t AcquireOutputLockAttempts = 4321'0000;
+
+    static_assert(PrintBytesCount % 16 == 0);
+    static_assert(PrintWordsCount % 2 == 0);
 
     sl::Atomic<size_t> panicFlag;
     using PanicOutputs = const sl::Span<const Core::LogOutput*>;
@@ -80,6 +88,46 @@ namespace Npk
         return outputs;
     }
 
+    static void PrintBytesAt(PanicOutputs outputs, uintptr_t addr)
+    {
+        uint8_t buffer[PrintBytesCount];
+        const size_t copied = UnsafeCopy(buffer, reinterpret_cast<void*>(addr), PrintBytesCount);
+
+        if (copied == 0)
+        {
+            PanicPrint(outputs, "   <cannot safely access memory>\r\n");
+            return;
+        }
+
+        for (size_t i = 0; i < copied; i += 16)
+        {
+            PanicPrint(outputs, ExceptMemoryStr, addr + i,
+                buffer[i + 0], buffer[i + 1], buffer[i + 2], buffer[i + 3],
+                buffer[i + 4], buffer[i + 5], buffer[i + 6], buffer[i + 7],
+                buffer[i + 8], buffer[i + 9], buffer[i + 10], buffer[i + 11],
+                buffer[i + 12], buffer[i + 13], buffer[i + 14], buffer[i + 15]);
+        }
+    }
+
+    static void PrintWordsAt(PanicOutputs outputs, uintptr_t addr)
+    {
+        uintptr_t buffer[PrintWordsCount];
+        const size_t copied = UnsafeCopy(buffer, reinterpret_cast<void*>(addr), 
+            PrintWordsCount * sizeof(uintptr_t)) / sizeof(uintptr_t);
+
+        if (copied == 0)
+        {
+            PanicPrint(outputs, "   <cannot safely access memory>\r\n");
+            return;
+        }
+
+        for (size_t i = 0; i < copied; i++)
+        {
+            PanicPrint(outputs, ExceptStackStr, addr + (i * sizeof(uintptr_t)), 
+                buffer[i], buffer[i + 1]);
+        }
+    }
+
     static void PrintCallstack(PanicOutputs outputs, uintptr_t start)
     {
         PanicPrint(outputs, "Call stack (latest first):\r\n");
@@ -95,7 +143,7 @@ namespace Npk
             auto symbolInfo = Services::FindSymbol(callstack[i]);
             sl::StringSpan symbolName = symbolInfo.HasValue() ? symbolInfo->info->name : "????";
             sl::StringSpan repoName = symbolInfo.HasValue() ? symbolInfo->repo->name : "?";
-            size_t offset = symbolInfo.HasValue() ? callstack[i] - symbolInfo->info->base : 0;
+            const size_t offset = symbolInfo.HasValue() ? callstack[i] - symbolInfo->info->base : 0;
 
             const int repoNameLen = sl::Min(MaxProgramNameLen, (int)repoName.Size());
             const int symNameLen = sl::Min(MaxSymbolNameLen, (int)symbolName.Size());
@@ -142,7 +190,24 @@ namespace Npk
         PanicPrint(outputs, ExceptFormatStr, Services::ExceptionName(ex.type),
             ex.stack, ex.flags, ex.special);
 
-        //TODO: PC symbol lookup
+        auto pcSymbol = Services::FindSymbol(ex.pc);
+        sl::StringSpan repoName = pcSymbol.HasValue() ? pcSymbol->repo->name : "?";
+        sl::StringSpan symName = pcSymbol.HasValue() ? pcSymbol->info->name : "????";
+        const size_t offset = pcSymbol.HasValue() ? ex.pc - pcSymbol->info->base : 0;
+        PanicPrint(outputs, ExceptPcStr, ex.pc, (int)repoName.Size(), repoName.Begin(),
+            (int)symName.Size(), symName.Begin(), offset);
+
+        PrintBytesAt(outputs, ex.pc);
+        PanicPrint(outputs, "Stack:\r\n");
+        PrintWordsAt(outputs, ex.stack);
+
+        if (ex.type == Services::ExceptionType::MemoryAccess 
+            && ex.special != ex.stack && ex.special != ex.pc)
+        {
+            PanicPrint(outputs, "Target:\r\n");
+            PrintBytesAt(outputs, ex.special);
+        }
+
         EndPanic(outputs, traceStart);
     }
 
