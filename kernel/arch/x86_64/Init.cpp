@@ -127,6 +127,9 @@ namespace Npk
         clb->xsaveBitmap = 0;
         clb->xsaveSize = 0;
 
+        for (size_t i = 0; i < static_cast<size_t>(SubsysPtr::Count); i++)
+            clb->subsysPtrs[i] = nullptr;
+
         //NOTE: x86_64 mandates the fpu, sse and sse2, so no need to check for them.
         ASSERT_(CpuHasFeature(CpuFeature::FxSave));
 

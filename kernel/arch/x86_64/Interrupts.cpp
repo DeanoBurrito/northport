@@ -159,6 +159,13 @@ namespace Npk
 
     extern "C" void TrapDispatch(TrapFrame* frame)
     {
+        if (CoreLocalAvailable() && GetLocalPtr(SubsysPtr::UnsafeOpAbort) != nullptr)
+        {
+            frame->iret.rip = reinterpret_cast<uint64_t>(GetLocalPtr(SubsysPtr::UnsafeOpAbort));
+            SetLocalPtr(SubsysPtr::UnsafeOpAbort, nullptr);
+            SwitchFrame(nullptr, nullptr, frame, nullptr);
+        }
+
         using namespace Core;
         const RunLevel prevRl = RaiseRunLevel(RunLevel::Interrupt);
         //TODO: if prevRl==Normal, stash interrupted register state

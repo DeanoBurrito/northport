@@ -93,7 +93,6 @@ namespace Npk
     //returns the PTE where translation ended and at what level.
     static inline WalkResult WalkTables(PageTable* root, uintptr_t vaddr)
     {
-        //TODO: use fractal paging to accelerate walks in the same address space
         size_t indices[MaxPtIndices];
         GetAddressIndices(vaddr, indices);
 
@@ -208,15 +207,39 @@ namespace Npk
             virtBase, physBase, imageSize);
         
         //and the page info database
-        const size_t dbLength = (hhdmLength / PageSize()) * sizeof(Core::PageInfo);
         const uintptr_t dbBase = hhdmBase + hhdmLength;
-        for (size_t i = 0; i < dbLength; i += 0x1000) //TODO: use memory map and only map regions of pidb that need backing
+        const size_t structsPerPage = PageSize() / sizeof(Core::PageInfo);
+        constexpr size_t _2MiB = 2 * MiB;
+        constexpr size_t _2MiBMask = _2MiB - 1;
+
+        MemmapEntry currEntry {};
+        size_t currEntryIndex = 0;
+        uintptr_t lastMapped = dbBase;
+        while (true)
         {
-            auto maybePage = EarlyPmAlloc(0x1000);
-            ASSERT_(maybePage.HasValue());
-            EarlyMap(dbBase + i, *maybePage, PageSizes::_4K, imageFlags);
+            if (GetUsableMemmap({ &currEntry, 1 }, currEntryIndex++) == 0)
+                break;
+
+            const uintptr_t base = dbBase + currEntry.base / structsPerPage;
+            const uintptr_t length = currEntry.length / structsPerPage;
+            const uintptr_t top = AlignUpPage(base + length);
+
+            lastMapped = sl::Max(lastMapped, AlignDownPage(base));
+            PageSizes mapSize = PageSizes::_4K;
+            sl::Opt<uintptr_t> maybePage {};
+            if ((lastMapped & _2MiBMask) == 0 && (lastMapped + _2MiB) <= top)
+            {
+                if ((maybePage = EarlyPmAlloc(_2MiB)).HasValue())
+                    mapSize = PageSizes::_2M;
+            }
+            if (!maybePage.HasValue())
+                maybePage = EarlyPmAlloc(4 * KiB);
+
+            for (; lastMapped < top; lastMapped += (mapSize == PageSizes::_2M) ? _2MiB : (4 * KiB))
+                EarlyMap(lastMapped, *EarlyPmAlloc(0x1000), PageSizes::_4K, imageFlags);
         }
-        Log("PageInfo database mapped: base=0x%tx length=0x%zx", LogLevel::Info, dbBase, dbLength);
+
+        Log("PageInfo database mapped: base=0x%tx length=0x%zx", LogLevel::Info, dbBase, lastMapped - dbBase);
     }
 
     const HatLimits& HatGetLimits()
