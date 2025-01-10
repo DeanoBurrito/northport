@@ -91,8 +91,6 @@ namespace Npk::Services
         reposLock.WriterLock();
         symbolRepos.InsertSorted(kernelRepo, [](auto* a, auto* b) { return a->base < b->base; });
         reposLock.WriterUnlock();
-
-        ASSERT_UNREACHABLE();
     }
 
     sl::Opt<SymbolView> FindSymbol(uintptr_t addr)

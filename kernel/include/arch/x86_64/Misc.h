@@ -3,6 +3,12 @@
 #include <core/RunLevels.h>
 #include <Types.h>
 #include <Compiler.h>
+#include <arch/Misc.h>
+
+#define GS_RELATIVE_READ(offset, value) do { asm("mov %%gs:" #offset ", %0" : "=r"(value) :: "memory"); } while(false)
+#define GS_RELATIVE_READ_(offset, value) do { asm("mov %%gs:%c1, %0" : "=r"(value) : "i"(offset): "memory"); } while(false)
+#define GS_RELATIVE_WRITE(offset, value) do { asm("mov %0, %%gs:" #offset :: "r"(value) : "memory"); } while(false)
+#define GS_RELATIVE_WRITE_(offset, value) do { asm("mov %0, %%gs:%c1" :: "r"(value), "i"(offset) : "memory"); } while(false)
 
 namespace Npk
 {
@@ -57,22 +63,23 @@ namespace Npk
     SL_ALWAYS_INLINE
     size_t CoreLocalId()
     {
-        auto clb = reinterpret_cast<const CoreLocalBlock*>(ReadMsr(MsrGsBase)); //TODO: this is shit, reading an MSR everything - use __seg_gs stuff instead, or manually do gs-relative loads
-        return clb->id;
+        size_t id;
+        GS_RELATIVE_READ(0x0, id);
+        return id;
     }
 
     SL_ALWAYS_INLINE
     RunLevel CurrentRunLevel()
     {
-        auto clb = reinterpret_cast<const CoreLocalBlock*>(ReadMsr(MsrGsBase));
-        return clb->rl;
+        unsigned rl;
+        GS_RELATIVE_READ(0x8, rl);
+        return static_cast<RunLevel>(rl);
     }
 
     SL_ALWAYS_INLINE
     void SetRunLevel(RunLevel rl)
     {
-        auto clb = reinterpret_cast<CoreLocalBlock*>(ReadMsr(MsrGsBase));
-        clb->rl = rl;
+        GS_RELATIVE_WRITE(0x8, rl);
     }
 
     SL_ALWAYS_INLINE
@@ -92,15 +99,17 @@ namespace Npk
     SL_ALWAYS_INLINE
     void* GetLocalPtr(SubsysPtr which)
     {
-        auto clb = reinterpret_cast<const CoreLocalBlock*>(ReadMsr(MsrGsBase));
-        return clb->subsysPtrs[static_cast<unsigned>(which)];
+        const size_t offset = static_cast<size_t>(which) * sizeof(void*) + offsetof(CoreLocalBlock, subsysPtrs);
+        void* ptr;
+        GS_RELATIVE_READ_(offset, ptr);
+        return ptr;
     }
 
     SL_ALWAYS_INLINE
     void SetLocalPtr(SubsysPtr which, void* data)
     {
-        auto clb = reinterpret_cast<CoreLocalBlock*>(ReadMsr(MsrGsBase));
-        clb->subsysPtrs[static_cast<unsigned>(which)] = data;
+        const size_t offset = static_cast<size_t>(which) * sizeof(void*) + offsetof(CoreLocalBlock, subsysPtrs);
+        GS_RELATIVE_WRITE_(offset, data);
     }
 
     SL_ALWAYS_INLINE

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stdint.h>
 #include <Optional.h>
 #include <Span.h>
 #include <services/AcpiSpecDefs.h>

@@ -198,13 +198,25 @@ namespace Npk
                 "bootloader reclaimable", "kernel/modules", "framebuffer"
             };
 
+            size_t entryTypeCounts[sizeof(EntryTypeStrs) / sizeof(const char*)];
+            for (size_t i = 0; i < sizeof(entryTypeCounts) / sizeof(size_t); i++)
+                entryTypeCounts[i] = 0;
+
             auto resp = memmapRequest.response;
             for (size_t i = 0; i < resp->entry_count; i++)
             {
                 auto entry = resp->entries[i];
+                entryTypeCounts[entry->type] += entry->length;
                 auto conv = sl::ConvertUnits(entry->length, sl::UnitBase::Binary);
                 Log("  %zu: base=0x%" PRIx64", length=0x%" PRIx64" (%zu.%zu %sB), type=%s", LogLevel::Verbose, i, 
                     entry->base, entry->length, conv.major, conv.minor, conv.prefix, EntryTypeStrs[entry->type]);
+            }
+
+            for (size_t i = 0; i < sizeof(entryTypeCounts) / sizeof(size_t); i++)
+            {
+                auto conv = sl::ConvertUnits(entryTypeCounts[i], sl::UnitBase::Binary);
+                Log("  %s: 0x%zx (%zu.%zu %sB)", LogLevel::Verbose, EntryTypeStrs[i], 
+                    entryTypeCounts[i], conv.major, conv.minor, conv.prefix);
             }
         },
         [] ()
@@ -345,8 +357,6 @@ namespace Npk
             const uintptr_t base = entry->base;
             entry->base += length;
             entry->length -= length;
-            if (entry->length == 0)
-                entry->type = LIMINE_MEMMAP_RESERVED;
 
             return base;
         }
@@ -365,8 +375,11 @@ namespace Npk
             auto entry = memmapRequest.response->entries[i];
             if (entry->type != type)
                 continue;
-            if (i < offset)
+            if (offset > 0)
+            {
+                offset--;
                 continue;
+            }
 
             if (entryHead == entries.Size())
                 break;

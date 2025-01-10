@@ -135,6 +135,21 @@ namespace Npk::Services
 
     const RhctNode* FindRhctNode(const Rhct* rhct, RhctNodeType type, const RhctNode* begin)
     {
-        ASSERT_UNREACHABLE();
+        VALIDATE_(rhct != nullptr, nullptr);
+
+        sl::CNativePtr scan = rhct;
+        const uintptr_t rhctEnd = scan.raw + rhct->length;
+        scan = scan.Offset(rhct->nodesOffset);
+
+        while (scan.raw < rhctEnd)
+        {
+            auto node = scan.As<const RhctNode>();
+            if (node->type == type && node > begin)
+                return node;
+
+            scan.raw += node->length;
+        }
+
+        return nullptr;
     }
 }

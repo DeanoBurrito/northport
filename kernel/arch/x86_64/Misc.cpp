@@ -1,15 +1,38 @@
 #include <arch/Misc.h>
+#include <arch/x86_64/Misc.h>
 #include <core/Log.h>
 #include <Memory.h>
 #include <Maths.h>
 
 #define FXSAVE(regs) do { asm("fxsave %0" :: "m"(regs) : "memory"); } while (false)
 #define FXRSTOR(regs) do { asm("fxrstor %0" :: "m"(regs)); } while (false)
-#define XSAVE(regs, bitmap) do { asm("xsave %0" :: "m"(regs), "a"(bitmap & 0xFFFF'FFFF), "d"(bitmap >> 32) : "memory"); } while (false)
-#define XRSTOR(regs, bitmap) do { asm("xrstor %0" :: "m"(regs), "a"(bitmap & 0xFFFF'FFFF), "d"(bitmap >> 32)); } while (false)
+#define XSAVE(regs, bitmap) do { asm("xsave %0" :: "m"(regs), \
+    "a"(bitmap & 0xFFFF'FFFF), "d"(bitmap >> 32) : "memory"); } while (false)
+#define XRSTOR(regs, bitmap) do { asm("xrstor %0" :: "m"(regs), \
+    "a"(bitmap & 0xFFFF'FFFF), "d"(bitmap >> 32)); } while (false)
 
 namespace Npk
 {
+    //core-local variables can be accessed by assembly and via gs-relative
+    //accesses (see x86_64/Misc.h). These asserts should catch any funny
+    //business.
+    static_assert(offsetof(CoreLocalBlock, id) == 0x0);
+    static_assert(offsetof(CoreLocalBlock, rl) == 0x8);
+    static_assert(offsetof(CoreLocalBlock, dpcs) == 0x10);
+    static_assert(offsetof(CoreLocalBlock, apcs) == 0x38);
+    static_assert(offsetof(CoreLocalBlock, xsaveBitmap) == 0x68);
+    static_assert(offsetof(CoreLocalBlock, xsaveSize) == 0x70);
+    static_assert(offsetof(CoreLocalBlock, subsysPtrs) == 0x78);
+
+    static_assert(static_cast<size_t>(SubsysPtr::Logs) == 0);
+    static_assert(static_cast<size_t>(SubsysPtr::IpiMailbox) == 1);
+    static_assert(static_cast<size_t>(SubsysPtr::IntrCtrl) == 2);
+    static_assert(static_cast<size_t>(SubsysPtr::ClockQueue) == 3);
+    static_assert(static_cast<size_t>(SubsysPtr::Thread) == 4);
+    static_assert(static_cast<size_t>(SubsysPtr::Scheduler) == 5);
+    static_assert(static_cast<size_t>(SubsysPtr::PmmCache) == 6);
+    static_assert(static_cast<size_t>(SubsysPtr::UnsafeOpAbort) == 7);
+
     constexpr uint64_t Cr0TsFlag = 1 << 3;
     constexpr size_t FxsaveSize = 512;
     
