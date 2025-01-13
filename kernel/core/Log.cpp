@@ -328,6 +328,8 @@ namespace Npk::Core
     void InitLocalLogging(sl::Span<char> buffer)
     {
         auto localBuf = NewWired<LogBuffer>();
+        VALIDATE_(localBuf != nullptr, );
+
         localBuf->buffer = buffer.Begin();
         localBuf->size = buffer.Size();
         localBuf->head = 0;

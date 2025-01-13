@@ -121,6 +121,7 @@ namespace Npk
         LoadIdt();
 
         CoreLocalBlock* clb = NewWired<CoreLocalBlock>();
+        ASSERT_(clb != nullptr);
         WriteMsr(MsrGsBase, reinterpret_cast<uint64_t>(clb));
         clb->id = myId;
         clb->rl = RunLevel::Normal;
@@ -187,8 +188,8 @@ namespace Npk
 
         LocalApic* lapic = NewWired<LocalApic>();
         ASSERT_(lapic != nullptr);
+        ASSERT_(lapic->Init()); //TODO: support PIC?
         SetLocalPtr(SubsysPtr::IntrCtrl, lapic);
-        lapic->Init();
     }
 
     void ArchThreadedInit()

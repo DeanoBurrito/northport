@@ -9,15 +9,12 @@ extern "C"
         ASSERT_UNREACHABLE();
     }
 
-    void __cxa_atexit()
+    int __cxa_atexit()
     {
-        ASSERT_UNREACHABLE();
+        return 0;
     }
 
-    void __dso_handle()
-    {
-        ASSERT_UNREACHABLE();
-    }
+    void* __dso_handle;
 
     void __cxa_pure_virtual()
     {

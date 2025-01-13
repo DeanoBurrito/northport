@@ -93,8 +93,8 @@ namespace Npk::Core
         }
 
         const auto conv = sl::ConvertUnits(usableMemory);
-        Log("Initial usable physical memory: %zu.%zu %sB, over %zu regions", LogLevel::Info,
-            conv.major, conv.minor, conv.prefix, entriesAccum);
+        Log("Initial usable physical memory: 0x%zx (%zu.%zu %sB), over %zu regions", LogLevel::Info,
+            usableMemory, conv.major, conv.minor, conv.prefix, entriesAccum);
     }
 
     void Pmm::InitLocalCache()

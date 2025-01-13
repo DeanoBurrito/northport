@@ -29,13 +29,13 @@ namespace Npk
             mmio.Offset(static_cast<uint32_t>(reg)).Write<uint32_t>(value);
     }
 
-    void LocalApic::Init()
+    bool LocalApic::Init()
     {
-        ASSERT_(CpuHasFeature(CpuFeature::Apic));
-        ASSERT_(CpuHasFeature(CpuFeature::Tsc));
+        VALIDATE_(CpuHasFeature(CpuFeature::Apic), false);
+        VALIDATE_(CpuHasFeature(CpuFeature::Tsc), false);
 
         const uint64_t baseMsr = ReadMsr(MsrApicBase);
-        ASSERT(baseMsr & (1 << 11), "Local APIC globally disabled in MSR.");
+        VALIDATE(baseMsr & (1 << 11), false, "Local APIC globally disabled in MSR.");
 
         if (CpuHasFeature(CpuFeature::ApicX2))
         {
@@ -47,10 +47,10 @@ namespace Npk
         {
             x2Mode = false;
             mmioVmo = Services::CreateMmioVmo(baseMsr & ~0xFFFul, 0x1000, HatFlag::Mmio);
-            ASSERT_(mmioVmo != nullptr);
+            VALIDATE_(mmioVmo != nullptr, false);
 
             auto maybeMmio = Services::VmAllocWired(mmioVmo, 0x1000, 0, VmViewFlag::Write);
-            ASSERT_(maybeMmio.HasValue());
+            VALIDATE_(maybeMmio.HasValue(), false);
             mmio = *maybeMmio;
 
             Log("Local apic setup, mmio=%p (phys=0x%tx)", LogLevel::Verbose, mmio.ptr,
@@ -86,6 +86,7 @@ namespace Npk
         }
 
         WriteReg(LapicReg::SpuriousConfig, IntrVectorSpurious | (1 << 8));
+        return true;
     }
 
     static bool CoalesceTimerRuns(sl::Span<size_t> runs, size_t allowedFails, bool printInfo)
@@ -254,7 +255,9 @@ namespace Npk
 
     bool SendIpi(size_t dest)
     {
-        static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl))->SendIpi(dest);
+        auto lapic = static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl));
+        VALIDATE_(lapic != nullptr, false);
+        lapic->SendIpi(dest);
 
         //IPIs are guarenteed to be delivered in both intel and amd specs
         return true;

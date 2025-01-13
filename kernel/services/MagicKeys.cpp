@@ -43,6 +43,7 @@ namespace Npk::Services
         }
 
         MagicHandler* store = NewWired<MagicHandler>();
+        VALIDATE_(store != nullptr, false);
         store->key = key;
         store->callback = callback;
         handlers.PushBack(store);

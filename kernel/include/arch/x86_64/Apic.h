@@ -37,7 +37,7 @@ namespace Npk
         void WriteReg(LapicReg reg, uint32_t value);
 
     public:
-        void Init();
+        bool Init();
         void CalibrateTimer();
         TimerTickNanos ReadTscNanos();
         TimerTickNanos TimerMaxNanos();

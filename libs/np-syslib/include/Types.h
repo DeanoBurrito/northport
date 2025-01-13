@@ -18,7 +18,9 @@
     typedef __PTRDIFF_TYPE__ ptrdiff_t;
     typedef ptrdiff_t ssize_t;
 
-    #define offsetof(s, m) __builtin_offsetof(s, m)
+    #ifndef offsetof
+        #define offsetof(s, m) __builtin_offsetof(s, m)
+    #endif
 
     #if __SIZEOF_POINTER__ == 8
         #define NPK_P64 "l"
@@ -30,7 +32,9 @@
 #endif
 
 typedef decltype(nullptr) nullptr_t;
-#define NULL ((void*)0)
+#ifndef NULL
+    #define NULL ((void*)0)
+#endif
 
 #define PRIi8 "i"
 #define PRIi16 "i"
