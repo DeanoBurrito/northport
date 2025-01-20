@@ -130,7 +130,7 @@ namespace sl
         }
     };
 
-#ifdef NP_KERNEL
+#ifdef NPK_HAS_KERNEL
 } //close the namespace to prevent contamination
 
 //These locks require the use of privileged functions only available in the northport kernel.

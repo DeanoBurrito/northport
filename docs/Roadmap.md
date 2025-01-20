@@ -1,106 +1,57 @@
-- Kernel:
-    - [x] Arch Layer:
+- Kernel (iteration 2):
+    - [x] Arch layer:
         - [x] Abstractions:
-            - [x] MMU.
-            - [x] Timers.
-            - [x] Interrupts.
-            - [x] Extended CPU state (fpu, vector regs).
-        - [x] x86_64:
-            - [x] MMU (paging).
-            - [x] Timers (LAPIC, TSC, HPET, PIT).
-            - [x] Interrupts.
-            - [ ] Extended state.
-        - [x] riscv64:
-            - [x] MMU.
-            - [x] Timers (SBI, sstc).
-            - [ ] Interrupts (AIA).
-            - [ ] Extended state.
-        - [x] m68k:
-            - [x] Limine protocol loader!
-            - [x] MMU.
-            - [x] Timers (goldfish RTC).
-            - [x] Interrupts.
-            - [ ] Extended state (fpu).
-    - [x] Core Layer:
-        - [x] Logging Infrastructure:
-            - [x] Fully lockless.
-            - [x] Per-core buffers.
-            - [x] Panic sequence.
-            - [x] Stack frame walker.
-            - [x] Symbol lookup.
-            - [x] Short traces for recent errors.
-        - [x] Memory Management:
-            - [x] PMM with multiple zones.
-                - [x] Reclaim bootloader memory.
-                - [x] Hybrid freelist/bitmap.
-                - [ ] Hotplug support.
-                - [ ] NUMA-aware allocations.
-            - [x] VMM, driver based.
-                - [x] Anonymous memory backend.
-                - [x] VFS backend.
-                - [x] MMIO/kernel backend.
-                - [ ] Copy-on-write capabilities.
-                - [ ] Page-to-disk.
-                - [ ] Usage of super-pages.
-            - [x] Hybrid slab/freelist heap.
-                - [x] Per-core slab caches.
-                - [ ] Page heap (canary + fault versions).
-                - [ ] Tracable allocations.
-        - [x] Software clock:
-            - [x] Hardware-derived limitations (resolution, accuracy).
-            - [x] Tickless.
-            - [x] Infinite expiry.
-            - [ ] Continuous calibration.
-            - [ ] Per-core timer support.
-            - [ ] Stopwatches.
-        - [x] IPI mailboxes.
-            - [ ] Lockless.
+            - [x] Initialization
+            - [x] MMU
+            - [x] Timers
+            - [x] Interrupts
+            - [x] Extra regs (non GPR)
+        - [x] x86_64 support.
+        - [ ] m68k support.
+        - [ ] riscv64 support.
+        - [ ] aarch64 support.
+        - [ ] userspace (testing harness).
+    - [x] Core layer:
+        - [x] Config store.
+        - [x] Wired heap.
+        - [ ] Interrupt router.
+        - [x] Log formatting and sinks.
+        - [x] Physical memory manager.
+        - [x] Software clocks.
         - [x] Scheduler.
-            - [x] SMP-aware.
-                - [ ] Topology-aware.
-                - [ ] Heterogeneous processor support.
-            - [x] DPCs/run level system.
-            - [x] Work-stealing.
-            - [x] Waitable objects.
-            - [ ] Hotpluggable CPU support.
-                - [ ] Power-state steering.
-        - [x] Virtual filesystem.
-            - [x] TempFS, backed only by ram.
-            - [x] Initdisk (stored in a TempFS).
-            - [x] Tree-data cache.
-            - [x] Page-cache.
-    - [ ] Support Layer:
-        - [ ] IPC.
-            - [ ] Shared memory.
-            - [ ] Pipes.
-        - [ ] Sanitizers:
-            - [x] Undefined behaviour.
-            - [ ] Address.
-        - [x] Peripheral discovery.
-            - [x] ACPI table parser.
-            - [x] DTB parser (smoldtb).
-        - [x] IO Manager.
-        - [x] Driver management:
-            - [x] Scanning and loading ELF-based drivers.
-            - [x] ABI and C-level API.
-            - [ ] Operation queues.
-            - [ ] Example drivers in other languages.
-        - [ ] Media stacks:
-            - [ ] Graphics.
-            - [ ] Audio.
-            - [ ] Networking.
-    - [ ] Interface Layer:
-        - [x] Bootloader interface.
-            - [ ] EFI shim.
-        - [x] Driver api and kernel-side bindings.
-        - [ ] System calls and userspace vDSO.
-
+        - [x] Waitable events.
+        - [x] SMP infrastructure.
+    - [ ] Services layer:
+        - [ ] VMM.
+        - [x] Magic Keys.
+        - [ ] Program manager.
+        - [ ] Driver manager.
+        - [ ] Security monitor.
+        - [ ] IO manager.
+        - [ ] VFS.
+        - [ ] ELF loader.
+        - [x] Symbol store.
+    - [ ] Executive:
+        - [ ] Interprocess comms.
+        - [ ] Media stacks.
+        - [ ] TempFs builtin driver.
+        - [ ] FbTerm builtin driver.
+        - [ ] Swap drivers: compressed ramdisk and io stack.
+    - [ ] Interfaces layer:
+        - [ ] Driver.
+        - [ ] Userspace.
+    - [x] Entry
+    - [ ] Exit
+        - [ ] Shutdown
+        - [ ] Reset
+        - [ ] ExitToSuccessor (kexec)
+       
 - Drivers:
     - [x] PCI.
         - [ ] PCIe and error reporting support.
         - [ ] Power management.
         - [x] Pci.ids file support.
-    - [ ] x86 jank: ps2 peripherals.
+    - [ ] Ps2 keyboard + mouse.
     - [x] Bochs/qemu VGA.
     - [ ] AHCI.
     - [x] NVMe.
@@ -131,23 +82,23 @@
         - [x] Vector.
         - [ ] Deque.
         - [x] Queue (+ lockfree variants).
-        - [x] Linked list.
+        - [x] Linked list (single, double).
         - [ ] Map.
         - [x] Custom allocator support.
-        - [x] Binary tree.
+        - [x] Red-black tree.
     - [ ] File format helpers:
-        - [x] ELF64.
+        - [x] ELF.
         - [x] Tar.
-        - [ ] Qoi.
+        - [x] Qoi.
     - [x] Optional.
         - [x] Handle: ref-counted version of Optional.
-        - [ ] ErrorOr, which can also carry an error code.
+        - [x] ErrorOr, which can also carry an error code.
     - [ ] Strings:
         - [x] Basic string.
         - [ ] String builder.
         - [x] String formatter.
         - [ ] Integer <-> string conversions.
-    - [ ] Transaction framework.
+    - [x] Terminal renderer.
     - [x] Basic locks.
     - [x] Psuedo-RNG.
     - [x] 2D primitives (vectors, rects).

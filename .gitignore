@@ -1,10 +1,5 @@
-.devel-cache
-.upstream
-build/
-kbuild/
-iso/
-initdisk/drivers/
-initdisk/LICENSE
+.cache
+.build/
 initdisk/pci.ids
 BakedConstants.cpp
 compile_flags.txt
