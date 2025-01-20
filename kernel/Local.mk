@@ -15,6 +15,11 @@ ifeq ($(ENABLE_KASAN), yes)
 	endif
 endif
 
+ifeq ($(KERNEL_KUBSAN), yes)
+	KERNEL_CXX_SRCS += cpp/UBSan.cpp
+	KERNEL_CXX_FLAGS += -fsanitize=undefined
+endif
+
 ifeq ($(KERNEL_BOOT_PROTOCOL), limine)
 	KERNEL_CXX_SRCS += interfaces/loader/Limine.cpp
 else ifeq ($(KERNEL_BOOT_PROTOCOL), crow)

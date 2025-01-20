@@ -22,6 +22,8 @@ QUIET_BUILD = yes
 # maybe shame me into fixing them oneday. Note this adds to compile times
 # slightly, and can be worth disabling on less powerful machines.
 COUNT_TODOS = yes
+ENABLE_KASAN = no
+ENABLE_KUBSAN = no
 
 # ---- Compiler Options ----
 # ISA to compile for, valid options: `x86_64`, `riscv64`, `m68k`
