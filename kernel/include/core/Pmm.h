@@ -1,5 +1,6 @@
 #pragma once
 
+#include <core/Event.h>
 #include <Locks.h>
 #include <containers/List.h>
 #include <Optional.h>
@@ -51,7 +52,15 @@ namespace Npk::Core
 
         bool trashAfterUse;
         bool trashBeforeUse;
+        size_t totalPages;
         PageInfo* infoDb;
+
+        Core::Waitable* wakeVmDaemon;
+        struct
+        {
+            size_t freePages;
+            size_t freePercent;
+        } vmdWakeParams;
 
         void IngestMemory(sl::Span<MemmapEntry> entries);
         sl::Opt<uintptr_t> AllocFromList(PmList& list);
@@ -62,6 +71,7 @@ namespace Npk::Core
         void Init();
         void InitLocalCache();
         void ReclaimLoaderMemory();
+        void AttachVmDaemon(Core::Waitable& event);
 
         inline PageInfo* Lookup(uintptr_t paddr)
         {

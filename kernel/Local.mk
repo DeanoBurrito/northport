@@ -4,7 +4,7 @@ KERNEL_CXX_SRCS += Entry.cpp Exit.cpp KernelThread.cpp Panic.cpp \
 	cpp/Stubs.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix syslib/, $(LIB_SYSLIB_CXX_SRCS)) \
 	services/AcpiTables.cpp services/MagicKeys.cpp services/Program.cpp services/SymbolStore.cpp \
-	services/Vmm.cpp services/VmPagers.cpp
+	services/Vmm.cpp services/VmPagers.cpp services/VmDaemon.cpp services/BadSwap.cpp
 
 ifeq ($(ENABLE_KASAN), yes)
 	KERNEL_CXX_SRCS += cpp/Asan.cpp

@@ -72,7 +72,7 @@ debug: $(ARCH_DEFAULT_TARGET) $(QEMU_FW_FILE)
 
 .PHONY: attach
 attach:
-	$(LOUD)gdb $(KERNEL_FULL_FILEPATH) -ex "target remote :1234"
+	$(LOUD)gdb $(KERNEL_TARGET) -ex "target remote :1234"
 
 binaries: options $(BUILD_TARGETS)
 

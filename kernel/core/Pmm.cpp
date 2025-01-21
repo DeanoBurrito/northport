@@ -5,6 +5,7 @@
 #include <interfaces/loader/Generic.h>
 #include <Hhdm.h>
 #include <UnitConverter.h>
+#include <Maths.h>
 
 namespace Npk::Core
 {
@@ -16,6 +17,8 @@ namespace Npk::Core
 
     constexpr size_t MemmapChunkSize = 32;
     constexpr size_t LocalListLimit = 64;
+    constexpr size_t DefaultVmdWakeFreePages = 512;
+    constexpr size_t DefaultVmdWakeFreePercentage = 10;
 
     void Pmm::IngestMemory(sl::Span<MemmapEntry> entries)
     {
@@ -26,6 +29,7 @@ namespace Npk::Core
 
             const size_t entryPages = entries[i].length >> PfnShift();
             const size_t dbBase = entries[i].base >> PfnShift();
+            totalPages += entryPages;
 
             PageInfo* entry = &infoDb[dbBase];
             entry->pm.count = entryPages;
@@ -48,6 +52,17 @@ namespace Npk::Core
 
         PageInfo* allocated = list.list.PopFront();
         list.size--;
+
+        if (wakeVmDaemon != nullptr)
+        {
+            const bool pageCriteriaMet = list.size < vmdWakeParams.freePages || list.size < vmdWakeParams.freePercent;
+            const bool hasSched = GetLocalPtr(SubsysPtr::Scheduler) != nullptr;
+            const bool isGlobalList = &list == &globalList;
+
+            if (pageCriteriaMet && hasSched && isGlobalList)
+                wakeVmDaemon->Signal(1);
+
+        }
 
         if (allocated->pm.count > 1)
         {
@@ -72,6 +87,7 @@ namespace Npk::Core
     void Pmm::Init()
     { 
         globalList.size = 0;
+        totalPages = 0;
 
         trashBeforeUse = GetConfigNumber("kernel.pmm.trash_before_use", false);
         trashAfterUse = GetConfigNumber("kernel.pmm.trash_after_use", false);
@@ -108,6 +124,21 @@ namespace Npk::Core
 
     void Pmm::ReclaimLoaderMemory()
     { ASSERT_UNREACHABLE(); }
+
+    void Pmm::AttachVmDaemon(Core::Waitable& event)
+    {
+        ASSERT_(wakeVmDaemon == nullptr);
+        wakeVmDaemon = &event;
+
+        const size_t cfgFreePages = GetConfigNumber("kernel.vmd.wake_page_count", DefaultVmdWakeFreePages);
+        const size_t cfgFreePercent = GetConfigNumber("kernel.vmd.wake_page_percent", DefaultVmdWakeFreePercentage);
+
+        vmdWakeParams.freePages = cfgFreePages;
+        vmdWakeParams.freePercent = totalPages / 100 * sl::Clamp<size_t>(cfgFreePercent, 1, 100);
+
+        Log("Vmd wake params: freePages=0x%zx, percent=%zu%% (%zu pages)", LogLevel::Info, vmdWakeParams.freePages,
+            cfgFreePercent, vmdWakeParams.freePercent);
+    }
 
     sl::Opt<uintptr_t> Pmm::Alloc()
     {

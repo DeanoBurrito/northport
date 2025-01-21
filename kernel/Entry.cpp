@@ -10,6 +10,7 @@
 #include <core/Event.h>
 #include <core/Smp.h>
 #include <core/WiredHeap.h>
+#include <cpp/Asan.h>
 #include <interfaces/intra/BakedConstants.h>
 #include <interfaces/intra/LinkerSymbols.h>
 #include <interfaces/loader/Generic.h>
@@ -17,11 +18,17 @@
 #include <services/MagicKeys.h>
 #include <services/SymbolStore.h>
 #include <services/Vmm.h>
+#include <services/VmPagers.h>
+#include <services/VmDaemon.h>
 #include <Exit.h>
 #include <KernelThread.h>
 
 namespace Npk
 {
+    //TODO: remove these hacks!
+    uintptr_t reservedSwapMemoryBase;
+    size_t reservedSwapMemoryLength;
+    
     uintptr_t hhdmBase;
     size_t hhdmLength;
 
@@ -77,10 +84,9 @@ namespace Npk
         if (mmio)
             flags.Set(HatFlag::Mmio);
 
-        const size_t granuleSize = HatGetLimits().modes[0].granularity;
         if (paddr == (uintptr_t)-1)
         {
-            for (size_t i = 0; i < length; i += granuleSize)
+            for (size_t i = 0; i < length; i += PageSize())
             {
                 auto paddr = Core::PmAlloc();
                 if (!paddr.HasValue())
@@ -89,22 +95,22 @@ namespace Npk
                     return nullptr;
             }
 
-            const uintptr_t newBase = sl::AlignUp(earlyVmBase + length, granuleSize);
+            const uintptr_t newBase = sl::AlignUp(earlyVmBase + length, PageSize());
             void* retAddr = reinterpret_cast<void*>(earlyVmBase);
             earlyVmBase = newBase;
             return retAddr;
         }
 
-        const uintptr_t pBase = sl::AlignDown(paddr, granuleSize);
+        const uintptr_t pBase = sl::AlignDown(paddr, PageSize());
         const size_t pTop = paddr + length;
-        for (size_t i = pBase; i < pTop; i += granuleSize)
+        for (size_t i = pBase; i < pTop; i += PageSize())
         {
             if (HatDoMap(KernelMap(), i - pBase + earlyVmBase, i, 0, flags, false) != HatError::Success)
                 return nullptr;
         }
 
         const uintptr_t retAddr = earlyVmBase;
-        earlyVmBase = sl::AlignUp(earlyVmBase + (pTop - pBase), granuleSize);
+        earlyVmBase = sl::AlignUp(earlyVmBase + (pTop - pBase), PageSize());
         return reinterpret_cast<void*>(retAddr + (paddr - pBase));
     }
 
@@ -127,14 +133,14 @@ namespace Npk
     { 
         (void)arg;
         Log("Init thread up", LogLevel::Debug);
-        Services::LoadKernelSymbols();
+        if (CoreLocalId() == 0)
+            Services::LoadKernelSymbols();
 
         while (true)
         {
-            WaitEntry entry;
+            Log("init is doing work, then sleeping for 1000ms", LogLevel::Debug);
             sl::TimeCount timeout = 1000_ms;
-            Core::WaitManager::WaitMany({}, &entry, timeout, false);
-            Log("doing work!", LogLevel::Debug);
+            Core::WaitManager::WaitMany({}, nullptr, timeout, false);
         }
 
         Halt();
@@ -143,7 +149,12 @@ namespace Npk
     static void IdleThreadEntry(void* arg)
     {
         (void)arg;
-        Halt();
+
+        while (true)
+        {
+            Wfi();
+            Core::SchedYield();
+        }
     }
 
     void ReclaimLoaderMemoryThread(void*)
@@ -166,6 +177,8 @@ namespace Npk
         localSched->Init(*maybeIdle);
         SetLocalPtr(SubsysPtr::Scheduler, localSched);
 
+        auto maybeInitThread = CreateKernelThread(InitThreadEntry, nullptr);
+        Core::SchedEnqueue(*maybeInitThread, 0);
         //TODO: init local intr routing, logging, heap caches, launch init thread + reclaim thread
     }
 
@@ -191,18 +204,32 @@ namespace Npk
     {
         earlyVmEnabled = false;
         ArchKernelEntry();
+#if NPK_HAS_KASAN
+        InitAsan();
+#endif
 
-        Log("Northport kernel started: v%zu.%zu.%zu for %s, compiled by %s from commit %s",
-            LogLevel::Info, versionMajor, versionMinor, versionRev, targetArchStr,
-            toolchainUsed, gitCommitShortHash);
+        Log("Northport kernel started: v%zu.%zu.%zu for %s, compiled by %s from commit %s%s",
+            LogLevel::Info, versionMajor, versionMinor, versionRev, targetArchStr, 
+            toolchainUsed, gitCommitShortHash, gitCommitDirty ? "-dirty" : "");
 
-        const size_t globalCtorCount = ((uintptr_t)INIT_ARRAY_END - (uintptr_t)INIT_ARRAY_BEGIN) / sizeof(void*);
+        const size_t globalCtorCount = ((uintptr_t)&INIT_ARRAY_END - (uintptr_t)&INIT_ARRAY_BEGIN) / sizeof(void*);
         for (size_t i = 0; i < globalCtorCount; i++)
             INIT_ARRAY_BEGIN[i]();
         Log("Ran %zu global constructors.", LogLevel::Verbose, globalCtorCount);
 
         Core::InitConfigStore();
         ValidateLoaderData();
+
+        auto maybeSwap = EarlyPmAlloc(16 * MiB);
+        if (maybeSwap.HasValue())
+        {
+            reservedSwapMemoryBase = *maybeSwap;
+            reservedSwapMemoryLength = 16 * MiB;
+            Log("Bad swap will use 0x%tx->0x%tx", LogLevel::Debug, 
+                reservedSwapMemoryBase, reservedSwapMemoryBase + reservedSwapMemoryLength);
+        }
+        else
+            reservedSwapMemoryLength = 0;
 
         ASSERT(GetHhdmBounds(hhdmBase, hhdmLength), "HHDM not provided by loader?");
         Core::InitGlobalLogging();
@@ -220,6 +247,7 @@ namespace Npk
             //Services::SetFdtPoitner(*fdt); TODO: import smoldtb and do dtb stuff
 
         Services::Vmm::InitKernel(kernelImage); //TODO: move this earlier, make sure we update usage of EarlyVmAlloc
+        Services::InitSwap();
         //Core::LateInitConfigStore();
         ArchLateKernelEntry();
 
@@ -230,10 +258,9 @@ namespace Npk
             Services::AddMagicKey(npk_key_id_s, HandleMagicKeyShutdown);
 
         StartupAps();
+        Services::StartVmDaemon();
         //TODO: vfs init, driver subsystem
 
-        auto maybeInitThread = CreateKernelThread(InitThreadEntry, nullptr);
-        Core::SchedEnqueue(*maybeInitThread, 0);
         ExitCoreInit();
     }
 }

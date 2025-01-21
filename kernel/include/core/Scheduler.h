@@ -53,12 +53,21 @@ namespace Npk::Core
         void Yield();
 
         size_t DefaultPriority() const;
+        size_t MaxPriority() const;
         void Enqueue(SchedulerObj* obj, size_t priority);
         void Dequeue(SchedulerObj* obj);
         size_t GetPriority(SchedulerObj* obj);
         void SetPriority(SchedulerObj* obj, size_t newPriority);
         void AdjustPriority(SchedulerObj* obj, int adjustment);
     };
+
+    SL_ALWAYS_INLINE
+    size_t SchedPriorityMax()
+    { return Scheduler::Local()->MaxPriority(); }
+
+    SL_ALWAYS_INLINE
+    size_t SchedPriorityDefault()
+    { return Scheduler::Local()->DefaultPriority(); }
 
     SL_ALWAYS_INLINE
     void SchedYield()

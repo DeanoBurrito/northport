@@ -6,8 +6,8 @@
 
 namespace Npk::Core
 {
-    constexpr size_t DefaultPriorityCount = 16;
-    constexpr size_t MaxPrioritiesCount = 128;
+    constexpr size_t DefaultPriorityCount = 8;
+    constexpr size_t MaxPrioritiesCount = 16;
 
     SchedulerObj* Scheduler::PopThread()
     {
@@ -69,22 +69,26 @@ namespace Npk::Core
 
     void Scheduler::Yield()
     {
-        const auto prevRl = RaiseRunLevel(RunLevel::Dpc);
-
         auto currThread = static_cast<SchedulerObj*>(GetLocalPtr(SubsysPtr::Thread));
         if (currThread->active)
             PushThread(currThread);
 
         auto nextThread = PopThread();
+        if (nextThread == currThread)
+            return;
+
         SetLocalPtr(SubsysPtr::Thread, nextThread);
         SwitchFrame(&currThread->frame, nullptr, nextThread->frame, nullptr);
-
-        LowerRunLevel(prevRl);
     }
 
     size_t Scheduler::DefaultPriority() const
     {
         return liveThreads.Size() / 2;
+    }
+
+    size_t Scheduler::MaxPriority() const
+    {
+        return liveThreads.Size();
     }
 
     void Scheduler::Enqueue(SchedulerObj* obj, size_t priority)
@@ -110,6 +114,9 @@ namespace Npk::Core
             return;
         obj->scheduler = nullptr;
         obj->active = false;
+
+        if (obj == GetLocalPtr(SubsysPtr::Thread))
+            return;
 
         sl::ScopedLock scopeLock(threadsLock);
         liveThreads[obj->priority].Remove(obj);

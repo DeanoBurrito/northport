@@ -38,6 +38,7 @@ namespace Npk::Core
     //Calling this function is a *request*, it does not guarentee the
     //dpc isnt fired, if you need to prevent an action occuring another
     //mechanism should be used.
-    void DequeueClockEvent(ClockEvent* event);
+    //Returns whether the event was successfully removed or not
+    bool DequeueClockEvent(ClockEvent* event);
 
 }

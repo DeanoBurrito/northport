@@ -299,7 +299,6 @@ namespace sl
 
             T* temp = tail;
             tail = static_cast<T*>(Hk(tail)->prev);
-            
 
             if (tail == nullptr)
                 head = nullptr;
@@ -371,18 +370,24 @@ namespace sl
 
         Iterator Remove(T* value)
         {
-            T* prev = static_cast<T*>(Hk(value)->prev);
-            T* next = static_cast<T*>(Hk(value)->next);
+            if (value == head)
+            {
+                PopFront();
+                return Begin();
+            }
+            else if (value == tail)
+            {
+                PopBack();
+                return End();
+            }
 
-            if (prev == nullptr)
-                head = next;
-            else
-                Hk(prev)->next = next;
+            auto prev = static_cast<T*>(Hk(value)->prev);
+            auto next = static_cast<T*>(Hk(value)->next);
 
-            if (next == nullptr)
-                tail = prev;
-            else
-                Hk(next)->prev = prev;
+            Hk(prev)->next = next;
+            Hk(next)->prev = prev;
+            Hk(value)->prev = nullptr;
+            Hk(value)->next = nullptr;
 
             return next;
         }

@@ -2,6 +2,7 @@
 #include <core/Scheduler.h>
 #include <core/Log.h>
 #include <core/Clock.h>
+#include <Maths.h>
 
 namespace Npk::Core
 {
@@ -17,6 +18,32 @@ namespace Npk::Core
         sl::Atomic<bool> timedOut;
         sl::Atomic<bool> cancelled;
     };
+
+    void Waitable::Signal(size_t amount)
+    {
+        sl::ScopedLock scopeLock(lock);
+        count = sl::Clamp(count + amount, (size_t)0, maxCount);
+
+        if (waiters.Empty())
+            return;
+
+        auto control = waiters.Front().control;
+        SchedEnqueue(control->thread, control->threadPriority); //TODO: apply temporary priority boost here
+    }
+
+    void Waitable::Reset(size_t initialCount, size_t newMaxCount)
+    {
+        sl::ScopedLock scopeLock(lock);
+
+        count = initialCount;
+        maxCount = newMaxCount;
+
+        if (count == 0)
+            return;
+
+        scopeLock.Release();
+        Signal(0); //signal any already waiting threads
+    }
 
     bool WaitManager::LockAll(sl::Span<Waitable*> events)
     {
@@ -67,16 +94,16 @@ namespace Npk::Core
         return WaitResult::Success;
     }
 
-    WaitResult WaitManager::WaitOne()
+    WaitResult WaitManager::WaitOne(Waitable* event, WaitEntry* entry, sl::TimeCount timeout)
     {
-        ASSERT_UNREACHABLE();
+        const size_t eventCount = event == nullptr ? 0 : 1;
+        return WaitMany({ &event, eventCount }, entry, timeout, false);
     }
 
     static void HandleWaitTimeout(void* arg)
     {
         WaitControl* ctrl = static_cast<WaitControl*>(arg);
         VALIDATE_(ctrl != nullptr, );
-        Log("Wait timed out", LogLevel::Debug);
 
         ctrl->timedOut = true;
         SchedEnqueue(ctrl->thread, ctrl->threadPriority);
@@ -97,32 +124,59 @@ namespace Npk::Core
         control.timeoutEvent.dpc = &control.timeoutDpc;
         control.timeoutEvent.expiry = timeout;
 
+        control.thread->waitControl = &control;
+
         //init wait entries
         for (size_t i = 0; i < events.Size(); i++)
         {
             entries[i].control = &control;
-            entries[i].entryIndex = i;
             entries[i].satisfied = false;
         }
 
-        //if there is a timeout (0 == poll once, -1 == wait indefinitely) queue the clock event
-        if (timeout.ticks != 0 && timeout.ticks != -1ull)
+        //only queue the clock event if there's a timeout and we're not polling (timeout.ticks == 0)
+        bool hasTimeout = false;
+        if (timeout.ticks != 0 && timeout != NoTimeout)
+        {
+            hasTimeout = true;
             QueueClockEvent(&control.timeoutEvent);
+        }
 
+        bool inQueues = false;
         while (true)
         {
             ASSERT_(LockAll(events)); //TODO: handle by sleeping instead of asserting lol
+            
+            if (inQueues)
+            {
+                for (size_t i = 0; i < events.Size(); i++)
+                    events[i]->waiters.Remove(&entries[i]);
+                inQueues = false;
+            }
 
             //try satisfy the wait immediately
             if (auto result = TryFinish(control, waitAll); result.HasValue() || timeout.ticks == 0)
             {
-                UnlockAll(events); //TODO: sync with timeout event here, since its memory is freed when we return
+                UnlockAll(events);
+
+                //sycnhronize with timeout event
+                if (hasTimeout && !control.timedOut)
+                {
+                    if (!DequeueClockEvent(&control.timeoutEvent))
+                    {
+                        while (!control.timedOut)
+                            sl::HintSpinloop();
+                    }
+                }
+
+                control.thread->waitControl = nullptr;
                 return result.HasValue() ? *result : WaitResult::Timeout;
             }
 
             //add a wait entry into the queue for each event we're waiting on
             for (size_t i = 0; i < events.Size(); i++)
                 events[i]->waiters.PushBack(&entries[i]);
+            inQueues = true;
+
             SchedDequeue(control.thread);
             UnlockAll(events);
             SchedYield();
