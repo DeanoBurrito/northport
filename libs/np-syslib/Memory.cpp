@@ -1,13 +1,17 @@
 #include <Memory.h>
+#include <Compiler.h>
 
 extern "C"
 {
+    SL_NO_KASAN
     void* memcpy(void* dest, const void* src, size_t len)
     { return sl::memcopy(src, dest, len); }
 
+    SL_NO_KASAN
     void* memset(void* dest, int value, size_t len)
     { return sl::memset(dest, value, len); }
 
+    SL_NO_KASAN
     void* memmove(void* dest, const void* src, size_t len)
     {
         uint8_t* di = static_cast<uint8_t*>(dest);
@@ -22,6 +26,7 @@ extern "C"
 
 namespace sl
 {
+    SL_NO_KASAN
     void* memset(void* const start, uint8_t value, size_t count)
     {
         uint8_t* const si = static_cast<uint8_t*>(start);
@@ -31,6 +36,7 @@ namespace sl
         return start;
     }
 
+    SL_NO_KASAN
     void* memcopy(const void* const source, void* const dest, size_t count)
     {
         const uint8_t* const si = static_cast<const uint8_t*>(source);
@@ -41,6 +47,7 @@ namespace sl
         return dest;
     }
 
+    SL_NO_KASAN
     void* memcopy(const void* const source, size_t sourceOffset, void* const dest, size_t destOffset, size_t count)
     {
         const uint8_t* const si = static_cast<const uint8_t*>(source);
@@ -51,6 +58,7 @@ namespace sl
         return dest;
     }
 
+    SL_NO_KASAN
     int memcmp(const void* const a, const void* const b, size_t count)
     {
         const uint8_t* const ai = static_cast<const uint8_t*>(a);
@@ -66,6 +74,7 @@ namespace sl
         return 0;
     }
 
+    SL_NO_KASAN
     int memcmp(const void* const a, size_t offsetA, const void* const b, size_t offsetB, size_t count)
     {
         const uint8_t* ai = static_cast<const uint8_t*>(a);
@@ -83,11 +92,13 @@ namespace sl
         return 0;
     }
 
+    SL_NO_KASAN
     size_t memfirst(const void* const buff, uint8_t target, size_t upperLimit)
     {
         return memfirst(buff, 0, target, upperLimit);
     }
 
+    SL_NO_KASAN
     size_t memfirst(const void* const buff, size_t offset, uint8_t target, size_t upperLimit)
     {
         const uint8_t* const start = static_cast<const uint8_t*>(buff);

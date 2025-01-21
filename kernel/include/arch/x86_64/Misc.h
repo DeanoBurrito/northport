@@ -96,21 +96,19 @@ namespace Npk
         return &clb->apcs;
     }
 
-    SL_ALWAYS_INLINE
-    void* GetLocalPtr(SubsysPtr which)
-    {
-        const size_t offset = static_cast<size_t>(which) * sizeof(void*) + offsetof(CoreLocalBlock, subsysPtrs);
-        void* ptr;
-        GS_RELATIVE_READ_(offset, ptr);
-        return ptr;
-    }
+#define GetLocalPtr(which) \
+    ({ \
+        constexpr size_t offset = static_cast<size_t>(which) * sizeof(void*) + offsetof(CoreLocalBlock, subsysPtrs); \
+        void* ptr; \
+        GS_RELATIVE_READ_(offset, ptr); \
+        ptr; \
+     })
 
-    SL_ALWAYS_INLINE
-    void SetLocalPtr(SubsysPtr which, void* data)
-    {
-        const size_t offset = static_cast<size_t>(which) * sizeof(void*) + offsetof(CoreLocalBlock, subsysPtrs);
-        GS_RELATIVE_WRITE_(offset, data);
-    }
+#define SetLocalPtr(which, data) \
+    ({ \
+        constexpr size_t offset = static_cast<size_t>(which) * sizeof(void*) + offsetof(CoreLocalBlock, subsysPtrs); \
+        GS_RELATIVE_WRITE_(offset, data); \
+     })
 
     SL_ALWAYS_INLINE
     size_t PfnShift()

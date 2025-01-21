@@ -24,7 +24,16 @@ namespace sl
         constexpr TimeCount(size_t freq, size_t count) : frequency(freq), ticks(count)
         {}
 
+        constexpr TimeCount(TimeScale freq, size_t count) : frequency(freq), ticks(count)
+        {}
+
         TimeCount Rebase(size_t newFrequency) const;
+
+        bool operator==(const TimeCount& other) const
+        { return other.frequency == frequency && other.ticks == ticks; }
+
+        bool operator!=(const TimeCount& other) const
+        { return other.frequency != frequency || other.ticks != ticks; }
     };
 
     struct TimePoint

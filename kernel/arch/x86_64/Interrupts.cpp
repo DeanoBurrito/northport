@@ -184,6 +184,13 @@ namespace Npk
                 flags |= (frame->ec & (1 << 4)) ? VmFaultFlag::Fetch : VmFaultFlags {};
                 handled = KernelVmm().HandlePageFault(except.special, flags);
             }
+            else if (frame->vector == 0x2)
+            {
+                //an NMI could be a ping to look at any number of things, say its been handled and try all of them
+                handled = true;
+
+                ProcessLocalMail();
+            }
 
             if (!handled)
                 PanicWithException(except, frame->rbp);

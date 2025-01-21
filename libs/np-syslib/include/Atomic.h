@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef __GNUC__
+#error "sl::Atomic<T> is built with gcc intrinstics, I am curious what compiler you're using for this."
+#endif
+
 namespace sl
 {
     enum class MemoryOrder
@@ -16,6 +20,12 @@ namespace sl
     constexpr inline MemoryOrder Release = MemoryOrder::Release;
     constexpr inline MemoryOrder AcqRel = MemoryOrder::AcqRel;
     constexpr inline MemoryOrder Relaxed = MemoryOrder::Relaxed;
+
+    inline void AtomicThreadFence(MemoryOrder order)
+    { __atomic_thread_fence((int)order); }
+
+    inline void AtomicSignalFence(MemoryOrder order)
+    { __atomic_signal_fence((int)order); }
     
     template<typename T>
     class Atomic

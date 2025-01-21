@@ -2,7 +2,6 @@
 #include <core/Log.h>
 #include <core/Pmm.h>
 #include <core/Config.h>
-#include <arch/Misc.h>
 #include <Hhdm.h>
 #include <containers/List.h>
 #include <Maths.h>
@@ -63,7 +62,7 @@ namespace Npk::Core
         sl::ScopedLock listLock(slabLocks[slabIndex]);
         for (auto it = slabs[slabIndex].Begin(); it != slabs[slabIndex].End(); ++it)
         {
-            SlabFreelist* freelist = reinterpret_cast<SlabFreelist*>(&it->slab.list);
+            SlabFreelist* freelist = reinterpret_cast<SlabFreelist*>(it->slab.list);
             if (freelist->Empty()) //TODO: separate list for full slablists so we dont search them?
                 continue;
 
@@ -80,7 +79,7 @@ namespace Npk::Core
 
         pageInfo->slab.used++;
         void* allocatedAddr = freelist->PopFront();
-        slabs[slabIndex].PushBack(pageInfo);
+        slabs[slabIndex].PushFront(pageInfo);
 
         if (wiredTrashBefore)
             PoisonMemory({ (uint8_t*)allocatedAddr, BaseSlabSize << slabIndex });
@@ -93,13 +92,9 @@ namespace Npk::Core
         if (ptr == nullptr || size == 0 || size >= (BaseSlabSize << SlabCount))
             return;
 
-        size /= BaseSlabSize;
-        size_t slabIndex = 0;
-        while (size != 0)
-        {
-            slabIndex++;
-            size >>= 1;
-        }
+        size = sl::AlignUpBinary(size) / BaseSlabSize;
+        const size_t slabIndex = size == 0 ? 0 : __builtin_ctzl(size);
+        VALIDATE_(slabIndex < SlabCount, );
 
         if (CoreLocalAvailable())
             VALIDATE_(CurrentRunLevel() == RunLevel::Normal, );
@@ -108,7 +103,7 @@ namespace Npk::Core
 
         const void* slabPage = SubHhdm(AlignDownPage(ptr));
         PageInfo* slabInfo = PmLookup(reinterpret_cast<uintptr_t>(slabPage));
-        SlabFreelist* freelist = reinterpret_cast<SlabFreelist*>(&slabInfo->slab.list);
+        SlabFreelist* freelist = reinterpret_cast<SlabFreelist*>(slabInfo->slab.list);
 
         sl::ScopedLock listLock(slabLocks[slabIndex]);
 

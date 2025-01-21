@@ -16,7 +16,7 @@ namespace Npk
     constexpr const char* ExceptPcStr = "PC=0x%tx %.*s!%.*s +0x%lx\r\n";
     constexpr const char* ExceptMemoryStr = "   0x%0tx: %02x %02x %02x %02x   %02x %02x %02x %02x   %02x %02x %02x %02x   %02x %02x %02x %02x\r\n";
     constexpr const char* ExceptStackStr = "   0x%0tx: 0x%016tx 0x%016tx\r\n";
-    constexpr const char* CoreFormatStr = "Core %tu: runLevel %u (%s), thread=%p, logs=%p\r\n";
+    constexpr const char* CoreFormatStr = "Core %tu: rl=%u (%s), thread=%p, logs=%p\r\n";
     constexpr const char* ProgramFormatStr = "Thread %zu.%zu: name=%.*s, procName=%.*s driverShadow=%.*s\r\n";
     constexpr const char* TraceFrameFormatStr = "%3zu: 0x%016tx %.*s!%.*s +0x%lx\r\n";
     constexpr const char* ResetStr = "\r\nSystem has halted indefinitely, manual reset required.\r\n";
@@ -72,9 +72,13 @@ namespace Npk
     static PanicOutputs BeginPanic()
     {
         DisableInterrupts();
-        const size_t continuePanic = panicFlag.FetchAdd(1);
-        if (continuePanic != 0)
-            Halt(); //TODO: would be nice to signal a recursive panic somehow
+        const size_t desired = CoreLocalAvailable() ? -(CoreLocalId() + 1) : 1;
+        size_t expected = 0;
+        if (!panicFlag.CompareExchange(expected, desired))
+        {
+            //TODO: would be nice to signal a recursive panic, we can detect that via `expected == -CoreLocalId()`
+            Halt();
+        }
 
         Core::PanicAllCores();
         PanicOutputs outputs = Core::AcquirePanicOutputs(AcquireOutputLockAttempts);

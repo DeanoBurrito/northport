@@ -19,7 +19,7 @@ namespace Npk
     void EnableInterrupts();
     void DisableInterrupts();
 
-    bool SendIpi(size_t dest);
+    bool SendIpi(size_t dest, bool urgent);
     bool RoutePinInterrupt(size_t pin, size_t core, size_t vector);
 
     void Wfi();

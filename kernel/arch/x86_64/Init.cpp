@@ -81,6 +81,7 @@ namespace Npk
         asm("lidt %0; ret" :: "m"(idtr));
     }
 
+    SL_NO_KASAN
     void ArchKernelEntry()
     {
 #ifdef NPK_X86_DEBUGCON_ENABLED

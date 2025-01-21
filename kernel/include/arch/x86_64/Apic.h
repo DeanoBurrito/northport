@@ -43,7 +43,7 @@ namespace Npk
         TimerTickNanos TimerMaxNanos();
         void ArmTimer(TimerTickNanos nanos, size_t vector);
         void SendEoi();
-        void SendIpi(size_t destAddr);
+        void SendIpi(size_t destAddr, bool urgent);
     };
 
     void InitIoApics();

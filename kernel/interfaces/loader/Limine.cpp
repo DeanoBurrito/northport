@@ -22,7 +22,7 @@
 
 namespace Npk
 {
-    constexpr const char InitdiskMagicStr[] = "northport-initdisk";
+    constexpr const char InitdiskMagicStr[] = "npk-initdisk";
 
     alignas(8) 
     limine_bootloader_info_request loaderInfoRequest
@@ -354,11 +354,8 @@ namespace Npk
             if (entry->length < length)
                 continue;
 
-            const uintptr_t base = entry->base;
-            entry->base += length;
             entry->length -= length;
-
-            return base;
+            return entry->base + entry->length;
         }
 
         return {};

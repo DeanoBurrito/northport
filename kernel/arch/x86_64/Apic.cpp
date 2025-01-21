@@ -232,8 +232,10 @@ namespace Npk
         WriteReg(LapicReg::Eoi, 0);
     }
 
-    void LocalApic::SendIpi(size_t destAddr)
+    void LocalApic::SendIpi(size_t destAddr, bool urgent)
     {
+        const uint32_t low = IntrVectorIpi | (urgent ? 0b100 << 8 : 0);
+
         //AMD says we dont have to do this, intel dont specify
         //so I'm taking the safe route and waiting until the
         //'delivery pending' bit is cleared before attempting
@@ -244,20 +246,23 @@ namespace Npk
         //there's a special case for the x2 regs with ICR: it gets compressed
         //into a single MSR, instead of two separate regs.
         if (x2Mode)
-            WriteMsr((static_cast<uint32_t>(LapicReg::IcrLow) >> 4) + 0x800, (destAddr << 32) | IntrVectorIpi);
+        {
+            WriteMsr((static_cast<uint32_t>(LapicReg::IcrLow) >> 4) + 0x800, 
+                (destAddr << 32) | low);
+        }
         else
         {
             //the IPI is sent when writing to IcrLow, so set the high register first.
             WriteReg(LapicReg::IcrHigh, destAddr << 24);
-            WriteReg(LapicReg::IcrLow, IntrVectorIpi);
+            WriteReg(LapicReg::IcrLow, low);
         }
     }
 
-    bool SendIpi(size_t dest)
+    bool SendIpi(size_t dest, bool urgent)
     {
         auto lapic = static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl));
         VALIDATE_(lapic != nullptr, false);
-        lapic->SendIpi(dest);
+        lapic->SendIpi(dest, urgent);
 
         //IPIs are guarenteed to be delivered in both intel and amd specs
         return true;

@@ -57,7 +57,7 @@ namespace Npk::Core
         {
             char digit = input[i];
             if (digit >= '0' && digit <= '9')
-                digit -= 10;
+                digit -= '0';
             else if (digit >= 'A' && digit <= 'Z')
                 digit -= 'A' - 10;
             else if (digit >= 'a' && digit <= 'z')

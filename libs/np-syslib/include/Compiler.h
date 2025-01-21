@@ -10,6 +10,8 @@
     #define SL_PRINTF_FUNC(fmt, args) [[gnu::format(printf, fmt, args)]]
     #define SL_NAKED_FUNC [[gnu::naked]]
     #define SL_UNREACHABLE()  __builtin_unreachable()
+    #define SL_NO_PROFILE [[gnu::no_instrument_function]]
+    #define SL_NO_KASAN [[gnu::no_sanitize_address]]
     
     #define SL_LIKELY(x) __builtin_expect(!!(x), 1)
     #define SL_UNLIKELY(x) __builtin_expect(!!(x), 0)

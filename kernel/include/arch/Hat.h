@@ -30,18 +30,9 @@ namespace Npk
 
     using HatFlags = sl::Flags<HatFlag>;
 
-    constexpr size_t MaxHatModes = 8;
-    //This struct is used to communicate the limits of the underlying MMU to the
-    //rest of the kernel.
-    struct HatLimits
+    struct HatCapabilities
     {
-        bool flushOnPermsUpgrade;
-        bool hwTlbBroadcast;
-        size_t modeCount;
-        struct 
-        {
-            size_t granularity;
-        } modes[MaxHatModes];
+        bool tlbFlushBroadcast;
     };
 
     /*
@@ -67,11 +58,10 @@ namespace Npk
     // - the virtually contiguous PageInfo database
     void HatInit();
 
-    //returns the modes supported by the current MMU.
-    const HatLimits& HatGetLimits();
-
     //creates a new address space (without loading it).
     HatMap* HatCreateMap();
+
+    void HatGetCapabilities(HatCapabilities& caps);
 
     //destroys (and frees) structures for an existing address space.
     void HatDestroyMap(HatMap* map);

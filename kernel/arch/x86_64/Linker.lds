@@ -69,15 +69,13 @@ SECTIONS
     .bss :
     {
         *(COMMON)
-        *(.bss)
-        *(.lbss)
-        *(.lbss.*)
+        *(.bss .bss.*)
+        *(.lbss .lbss.*)
     } :data
 
     /DISCARD/ :
     {
-        *(.note)
-        *(.note.*)
+        *(.note .note.*)
         *(.comment)
         *(.interp)
     }

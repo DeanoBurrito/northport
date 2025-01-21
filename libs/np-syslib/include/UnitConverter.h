@@ -17,5 +17,5 @@ namespace sl
         Decimal = 1000,
     };
 
-    UnitConversion ConvertUnits(size_t input, UnitBase base = UnitBase::Decimal);
+    UnitConversion ConvertUnits(size_t input, UnitBase base = UnitBase::Binary);
 }

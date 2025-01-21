@@ -22,13 +22,14 @@ namespace Npk::Core
 
         size_t id;
         ShootdownQueue tlbEvictions;
-        volatile bool shouldPanic;
+        sl::Atomic<bool> shouldPanic;
         sl::SpinLock entriesLock; //TODO: switch to lockfree ringbuffer
         sl::Span<MailboxEntry> entries;
     };
 
     sl::RwLock mailboxesLock;
     sl::FwdList<MailboxControl, &MailboxControl::hook> mailboxes;
+    sl::Atomic<size_t> smpPendingPanics = 0;
 
     void InitLocalSmpMailbox()
     {
@@ -49,6 +50,7 @@ namespace Npk::Core
 
         mailboxesLock.WriterLock();
         mailboxes.PushBack(control);
+        smpPendingPanics++;
         mailboxesLock.WriterUnlock();
 
         Log("Smp mailbox created: %p, entries=%zu", LogLevel::Verbose, control, entryCount);
@@ -59,7 +61,10 @@ namespace Npk::Core
         ASSERT_(CurrentRunLevel() == RunLevel::Interrupt);
         auto* mailbox = static_cast<MailboxControl*>(GetLocalPtr(SubsysPtr::IpiMailbox));
         if (mailbox->shouldPanic)
+        {
+            smpPendingPanics--;
             Halt();
+        }
 
         mailbox->entriesLock.Lock();
         for (size_t i = 0; i < mailbox->entries.Size(); i++)
@@ -111,7 +116,7 @@ namespace Npk::Core
 
             dest->entries[i].callback = callback;
             dest->entries[i].arg = arg;
-            SendIpi(destCore);
+            SendIpi(destCore, false);
             return;
         }
 
@@ -136,8 +141,11 @@ namespace Npk::Core
                 continue;
 
             it->shouldPanic = true;
-            SendIpi(it->id);
+            SendIpi(it->id, true);
         }
         mailboxesLock.ReaderUnlock();
+
+        while (smpPendingPanics != 1)
+            sl::HintSpinloop();
     }
 }

@@ -53,24 +53,13 @@ namespace Npk
     { return 1ul << (12 + 9 * ((size_t)size - 1)); }
 
     size_t pagingLevels;
+    size_t highestLeafLevel;
     uintptr_t addrMask;
     HatMap kernelMap;
     bool nxSupport;
     bool globalPageSupport;
     bool patSupport;
-
-    HatLimits limits 
-    {
-        .flushOnPermsUpgrade = false,
-        .hwTlbBroadcast = false,
-        .modeCount = 3,
-        .modes = 
-        {
-            { .granularity = GetPageSize(PageSizes::_4K) },
-            { .granularity = GetPageSize(PageSizes::_2M) },
-            { .granularity = GetPageSize(PageSizes::_1G) },
-        }
-    };
+    bool invlpgbSupport;
 
     struct WalkResult
     {
@@ -107,7 +96,7 @@ namespace Npk
                 result.complete = false;
                 return result;
             }
-            if (result.level <= limits.modeCount && (*result.pte & SizeFlag) != 0)
+            if (result.level <= highestLeafLevel && (*result.pte & SizeFlag) != 0)
             {
                 result.complete = true;
                 return result;
@@ -149,12 +138,11 @@ namespace Npk
         pagingLevels = (cr4 & (1 << 12)) ? 5 : 4; //bit 12 is LA57 (5-level paging).
 
         const size_t maxTranslationLevel = CpuHasFeature(CpuFeature::Pml3Translation) ? 3 : 2;
-        if (!CpuHasFeature(CpuFeature::Pml3Translation))
-            limits.modeCount = 2; //if the cpu doesn't support gigabyte pages, don't advertise it.
+        highestLeafLevel = CpuHasFeature(CpuFeature::Pml3Translation) ? 3 : 2;
         nxSupport = CpuHasFeature(CpuFeature::NoExecute);
         globalPageSupport = CpuHasFeature(CpuFeature::GlobalPages);
         patSupport = CpuHasFeature(CpuFeature::Pat);
-        limits.hwTlbBroadcast = CpuHasFeature(CpuFeature::BroadcastInvlpg);
+        invlpgbSupport = CpuHasFeature(CpuFeature::BroadcastInvlpg);
         if (!patSupport)
             Log("PAT not supported on this cpu.", LogLevel::Warning);
 
@@ -242,8 +230,10 @@ namespace Npk
         Log("PageInfo database mapped: base=0x%tx length=0x%zx", LogLevel::Info, dbBase, lastMapped - dbBase);
     }
 
-    const HatLimits& HatGetLimits()
-    { return limits; }
+    void HatGetCapabilities(HatCapabilities& caps)
+    {
+        caps.tlbFlushBroadcast = invlpgbSupport;
+    }
 
     HatMap* HatCreateMap()
     {
@@ -281,7 +271,7 @@ namespace Npk
     HatError HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
     {
         VALIDATE_(map != nullptr, HatError::InvalidArg);
-        VALIDATE_(mode < limits.modeCount, HatError::InvalidArg);
+        VALIDATE_(mode < highestLeafLevel, HatError::InvalidArg);
 
         uintptr_t pmAllocs[MaxPtIndices]; //allows us to free intermediate page tables allocated if
         for (size_t i = 0; i < MaxPtIndices; i++) //the mapping fails later.
@@ -407,7 +397,7 @@ namespace Npk
 
     bool HatFlushBroadcast(uintptr_t vaddr)
     {
-        if (!limits.hwTlbBroadcast)
+        if (!invlpgbSupport)
             return false;
 
         INVLPGB(vaddr);
