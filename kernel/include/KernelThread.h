@@ -10,4 +10,7 @@ namespace Npk
     //cleans up resources used by a kernel thread, thread must be dequeued and its
     //stack not in-use.
     void DestroyKernelThread(Core::SchedulerObj* thread);
+
+    //helper function, called when a kernel thread is done executing
+    void ExitKernelThread(size_t code);
 }

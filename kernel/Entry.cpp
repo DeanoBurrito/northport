@@ -19,7 +19,6 @@
 #include <services/SymbolStore.h>
 #include <services/Vmm.h>
 #include <services/VmPagers.h>
-#include <services/VmDaemon.h>
 #include <Exit.h>
 #include <KernelThread.h>
 
@@ -43,9 +42,12 @@ namespace Npk
             .vmoHook = {},
             .vmoRef = {},
             .overlay = {},
-            .offset = 0,
+            .vmm = {},
+            .key = {},
             .base = reinterpret_cast<uintptr_t>(KERNEL_TEXT_BEGIN),
             .length = reinterpret_cast<size_t>(KERNEL_TEXT_END) - reinterpret_cast<uintptr_t>(KERNEL_TEXT_BEGIN),
+            .offset = 0,
+            .lock = {},
             .flags = VmViewFlag::Exec,
         },
         {
@@ -53,9 +55,12 @@ namespace Npk
             .vmoHook = {},
             .vmoRef = {},
             .overlay = {},
-            .offset = 0,
+            .vmm = {},
+            .key = {},
             .base = reinterpret_cast<uintptr_t>(KERNEL_RODATA_BEGIN),
             .length = reinterpret_cast<size_t>(KERNEL_RODATA_END) - reinterpret_cast<uintptr_t>(KERNEL_RODATA_BEGIN),
+            .offset = 0,
+            .lock = {},
             .flags = {},
         },
         {
@@ -63,9 +68,12 @@ namespace Npk
             .vmoHook = {},
             .vmoRef = {},
             .overlay = {},
-            .offset = 0,
+            .vmm = {},
+            .key = {},
             .base = reinterpret_cast<uintptr_t>(KERNEL_DATA_BEGIN),
             .length = reinterpret_cast<size_t>(KERNEL_DATA_END) - reinterpret_cast<uintptr_t>(KERNEL_DATA_BEGIN),
+            .offset = 0,
+            .lock = {},
             .flags = VmViewFlag::Write,
         },
     };
@@ -160,7 +168,7 @@ namespace Npk
     void ReclaimLoaderMemoryThread(void*)
     { ASSERT_UNREACHABLE(); }
 
-    void PerCoreEntry(size_t myId, bool isBsp)
+    void PerCoreEntry(size_t myId)
     {
         HatMakeActive(KernelMap(), true);
         ArchInitCore(myId);
@@ -168,7 +176,7 @@ namespace Npk
         Core::Pmm::Global().InitLocalCache();
 
         InitLocalTimers();
-        Core::InitLocalClockQueue(isBsp);
+        Core::InitLocalClockQueue();
 
         Core::Scheduler* localSched = NewWired<Core::Scheduler>();
         auto maybeIdle = CreateKernelThread(IdleThreadEntry, nullptr);
@@ -258,7 +266,11 @@ namespace Npk
             Services::AddMagicKey(npk_key_id_s, HandleMagicKeyShutdown);
 
         StartupAps();
-        Services::StartVmDaemon();
+        auto vmDaemonThread = CreateKernelThread(
+                Services::Vmm().DaemonThreadEntry, &Services::KernelVmm().GetDomain());
+        if (vmDaemonThread.HasValue())
+            Core::SchedEnqueue(*vmDaemonThread, Core::SchedPriorityDefault());
+
         //TODO: vfs init, driver subsystem
 
         ExitCoreInit();

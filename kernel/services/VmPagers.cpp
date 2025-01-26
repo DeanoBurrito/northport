@@ -1,11 +1,94 @@
 #include <services/VmPagers.h>
 #include <services/Vmm.h>
+#include <services/BadSwap.h>
 #include <core/WiredHeap.h>
 #include <core/Log.h>
 #include <String.h>
 
+namespace Npk
+{
+    //TODO: remove these hacks!
+    extern uintptr_t reservedSwapMemoryBase;
+    extern size_t reservedSwapMemoryLength;
+}
+
 namespace Npk::Services
 {
+    sl::RwLock swapBackendsLock;
+    size_t backendsCount = 0;
+    SwapBackend* backends[1 << SwapKeyBackendBits];
+
+    void InitSwap()
+    {
+        if (reservedSwapMemoryLength == 0)
+            return;
+
+        swapBackendsLock.WriterLock();
+        backends[backendsCount++] = InitBadSwap(reservedSwapMemoryBase, reservedSwapMemoryLength);
+        swapBackendsLock.WriterUnlock();
+    }
+
+    sl::Opt<SwapKey> ReserveSwap(size_t length)
+    {
+        swapBackendsLock.ReaderLock();
+        for (size_t i = 0; i < backendsCount; i++)
+        {
+            SwapKey key;
+            if (!backends[i]->Reserve(length, &key))
+                continue;
+
+            swapBackendsLock.ReaderUnlock();
+            key.backend = i;
+            return key;
+        }
+        swapBackendsLock.ReaderUnlock();
+
+        return {};
+    }
+
+    void UnreserveSwap(SwapKey key, size_t length)
+    {
+        swapBackendsLock.ReaderLock();
+        if (key.backend >= backendsCount)
+        {
+            swapBackendsLock.ReaderUnlock();
+            Log("Invalid swap backend id: %u", LogLevel::Error, key.backend);
+            return;
+        }
+
+        backends[key.backend]->Unreserve(key, length);
+        swapBackendsLock.ReaderUnlock();
+    }
+
+    bool SwapOut(SwapKey key, size_t offset, uintptr_t paddr)
+    {
+        swapBackendsLock.ReaderLock();
+        if (key.backend == NoSwap || key.backend >= backendsCount)
+        {
+            swapBackendsLock.ReaderUnlock();
+            return false;
+        }
+
+        const bool success = backends[key.backend]->Write(key, offset, paddr);
+        swapBackendsLock.ReaderUnlock();
+
+        return success;
+    }
+
+    bool SwapIn(SwapKey key, size_t offset, uintptr_t paddr)
+    {
+        swapBackendsLock.ReaderLock();
+        if (key.backend == NoSwap || key.backend >= backendsCount)
+        {
+            swapBackendsLock.ReaderUnlock();
+            return false;
+        }
+
+        const bool success = backends[key.backend]->Read(key, offset, paddr);
+        swapBackendsLock.ReaderUnlock();
+        return success;
+    }
+
     struct MmioVmo
     {
         VmObject vmo;
@@ -16,8 +99,7 @@ namespace Npk::Services
     VmObject* CreateMmioVmo(uintptr_t paddr, size_t length, HatFlags hatFlags)
     {
         MmioVmo* vmo = NewWired<MmioVmo>();
-        if (vmo == nullptr)
-            return nullptr;
+        VALIDATE_(vmo != nullptr, nullptr);
 
         vmo->physBase = paddr;
         vmo->hatFlags = hatFlags;

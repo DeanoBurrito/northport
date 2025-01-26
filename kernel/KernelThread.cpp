@@ -37,4 +37,9 @@ namespace Npk
         Services::VmUnwire(reinterpret_cast<void*>(meta->stackBase), KernelStackSize());
         Services::VmFree(reinterpret_cast<void*>(meta->stackBase));
     }
+
+    void ExitKernelThread(size_t code)
+    {
+        ASSERT_UNREACHABLE();
+    }
 }

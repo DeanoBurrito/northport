@@ -1,5 +1,5 @@
 .cache
-.build/
+.build
 initdisk/pci.ids
 BakedConstants.cpp
 compile_flags.txt

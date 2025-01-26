@@ -199,9 +199,6 @@ namespace Npk
 
     TimerTickNanos LocalApic::ReadTscNanos()
     {
-        //TODO: we can calculate the period ahead of time and replace all these
-        //FromFrequency() calls
-        
         return sl::TimeCount(tscFrequency, ReadTsc()).Rebase(sl::Nanos).ticks;
     }
 

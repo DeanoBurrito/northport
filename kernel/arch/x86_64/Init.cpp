@@ -143,7 +143,7 @@ namespace Npk
         cr0 &= ~0x6000'0000; //ensure caches are enabled for this core
         WriteCr0(cr0);
 
-        if (Core::GetConfigNumber("kernel.boot.dump_cpu_features", false))
+        if (Core::GetConfigNumber("kernel.boot.print_cpu_features", false))
         {
             Log("Dumping cpuid values:", LogLevel::Verbose);
             LogCpuFeatures();

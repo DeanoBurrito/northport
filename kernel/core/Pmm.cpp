@@ -61,7 +61,6 @@ namespace Npk::Core
 
             if (pageCriteriaMet && hasSched && isGlobalList)
                 wakeVmDaemon->Signal(1);
-
         }
 
         if (allocated->pm.count > 1)
