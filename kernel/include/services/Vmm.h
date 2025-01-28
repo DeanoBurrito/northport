@@ -20,6 +20,7 @@ namespace Npk::Services
         TryAgain,
         HatMapFailed,
         BadVmoOffset,
+        InvalidArg,
     };
 
     enum class VmViewFlag
@@ -29,12 +30,11 @@ namespace Npk::Services
         Private,
     };
 
-    enum class VmFaultFlag
+    enum class VmFaultType
     {
         Read,
         Write,
-        Fetch,
-        User,
+        Wire,
     };
 
     enum class VmPageFlag
@@ -45,7 +45,6 @@ namespace Npk::Services
     };
 
     using VmViewFlags = sl::Flags<VmViewFlag>;
-    using VmFaultFlags = sl::Flags<VmFaultFlag>;
     using VmPageFlags = sl::Flags<VmPageFlag, uint32_t>; //occupies PageInfo::vm::flags
 
     struct VmObject;
@@ -93,6 +92,14 @@ namespace Npk::Services
         size_t length;
     };
 
+    struct npk_mdl //TODO: move to driver api headers
+    {
+        size_t length;
+        size_t offset;
+        uintptr_t* entries;
+        size_t entry_count;
+    };
+
     using VmmRangeAllocator = sl::RangeAllocator<uintptr_t, size_t, Core::WiredHeapAllocator>;
 
     class Vmm
@@ -108,14 +115,8 @@ namespace Npk::Services
         sl::SpinLock freeSpaceLock;
         VmmRangeAllocator freeSpace;
 
-        //expects view.lock to be held
-        sl::ErrorOr<void, VmError> WirePage(VmView& view, size_t offset);
-        //expects view.lock to be held
-        void UnwirePage(VmView& view, size_t offset);
-        //expects view.lock to be held, if it finds a page (either in the overlay or the backing obj),
-        //the page's wireCount is incremented before returning. The caller is reponsible for decrementing
-        //it when finished. TODO: could we automate the refcount with sl::Ref<T>?
-        Core::PageInfo* FindPageOfView(VmView& view, size_t offset);
+        //expects exclusive access to list (vmo/overlay lock tobe held), adds +1 to page's wireCount if found
+        Core::PageInfo* FindPageInList(sl::FwdList<Core::PageInfo, &Core::PageInfo::vmObjList>& list, size_t offsetPfn);
         //expects viewsLock to be held, attempts to find a view for a particular virtual address.
         VmView* FindView(uintptr_t vaddr);
 
@@ -131,12 +132,25 @@ namespace Npk::Services
         { return *domain; }
 
         void Activate();
-        bool HandlePageFault(uintptr_t addr, VmFaultFlags flags);
+        //notifies the VMM of an attempt to access a particular address. This can happen
+        //because of MMU mechanisms (improper permissions), or be called by the kernel
+        //directly: see usage of VmFaultType::Wire.
+        //The `addr` arg is absolute (i.e. not relative to the base of the address space),
+        //the `type` arg indicates whether the access is a read, write or 'wire'.
+        //Read and write should be self explanatory, 'wire' accesses count as a write for most
+        //purposes but bias the wireCount of the backing by +1 before returning, so it cant be
+        //paged out until the caller has decremented the wireCount.
+        sl::ErrorOr<void, VmError> HandleFault(uintptr_t addr, VmFaultType type);
 
         sl::Opt<void*> AddView(VmObject* obj, size_t length, size_t offset, VmViewFlags flags, bool wire);
         void RemoveView(void* base);
-        bool Wire(void* base, size_t length);
-        void Unwire(void* base, size_t length);
+        sl::Opt<void*> SplitView(void* addr);
+        VmError ChangeViewFlags(void* addr, VmViewFlags newFlags);
+
+        bool WireRange(void* base, size_t length);
+        void UnwireRange(void* base, size_t length);
+        bool AcquireMdl(void* base, size_t length, npk_mdl* mdl);
+        void ReleaseMdl(npk_mdl** mdl);
     };
 
     struct VmDomain
@@ -169,11 +183,11 @@ namespace Npk::Services
 
     SL_ALWAYS_INLINE
     bool VmWire(void* base, size_t length)
-    { return KernelVmm().Wire(base, length); }
+    { return KernelVmm().WireRange(base, length); }
 
     SL_ALWAYS_INLINE
     void VmUnwire(void* base, size_t length)
-    { return KernelVmm().Unwire(base, length); }
+    { return KernelVmm().UnwireRange(base, length); }
 }
 
 using Npk::Services::VmViewFlag;

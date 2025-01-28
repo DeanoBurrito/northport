@@ -33,6 +33,8 @@ namespace Npk
     struct HatCapabilities
     {
         bool tlbFlushBroadcast;
+        bool hwDirtyBit;
+        bool hwAccessBit;
     };
 
     /*
@@ -74,10 +76,17 @@ namespace Npk
 
     //attempts to remove an existing mapping from an address space.
     //NOTE: paddr and mode are references and return the previously used values.
-    HatError HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush);
+    HatError HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode);
 
     //attempts to return the physical address and size of a mapping
     sl::ErrorOr<uintptr_t, HatError> HatGetMap(HatMap* map, uintptr_t vaddr, size_t& mode);
+
+    //if HatGetCapabilities().hwDirtyBit == true, this function returns the status of the dirty bit for a mapping.
+    //If `clear` is set, this function clears the dirty bit before returning.
+    sl::ErrorOr<bool, HatError> HatGetDirty(HatMap* map, uintptr_t vaddr, bool clear);
+
+    //similar to HatGetDirty(), but for the accessed bit (assuming HatGetCapabilities().hwAccessBit == true)
+    sl::ErrorOr<bool, HatError> HatGetAccessed(HatMap* map, uintptr_t vaddr, bool clear);
 
     //attempts to update an existing mapping: either flags, physical address of both.
     HatError HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush);

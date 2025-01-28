@@ -31,6 +31,8 @@ namespace Npk
     constexpr uint64_t PresentFlag = 1 << 0;
     constexpr uint64_t WriteFlag = 1 << 1;
     constexpr uint64_t UserFlag = 1 << 2;
+    constexpr uint64_t DirtyFlag = 1 << 5;
+    constexpr uint64_t AccessedFlag = 1 << 6;
     constexpr uint64_t SizeFlag = 1 << 7;
     constexpr uint64_t GlobalFlag = 1 << 8;
     constexpr uint64_t NxFlag = 1ul << 63;
@@ -233,6 +235,8 @@ namespace Npk
     void HatGetCapabilities(HatCapabilities& caps)
     {
         caps.tlbFlushBroadcast = invlpgbSupport;
+        caps.hwDirtyBit = true;
+        caps.hwAccessBit = true;
     }
 
     HatMap* HatCreateMap()
@@ -334,7 +338,7 @@ namespace Npk
         return HatError::Success;
     }
 
-    HatError HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode, bool flush)
+    HatError HatDoUnmap(HatMap* map, uintptr_t vaddr, uintptr_t& paddr, size_t& mode)
     {
         VALIDATE_(map != nullptr, HatError::InvalidArg);
 
@@ -345,8 +349,7 @@ namespace Npk
         mode = path.level - 1;
         SET_PTE(path.pte, 0);
 
-        if (flush)
-            INVLPG(vaddr);
+        INVLPG(vaddr);
         if (map == &kernelMap && path.level == pagingLevels)
             kernelMap.generation++;
 
@@ -363,6 +366,42 @@ namespace Npk
         mode = path.level - 1;
         const uint64_t offsetMask = GetPageSize((PageSizes)path.level) - 1;
         return (*path.pte & addrMask) | (vaddr & offsetMask);
+    }
+
+    sl::ErrorOr<bool, HatError> HatGetDirty(HatMap* map, uintptr_t vaddr, bool clear)
+    {
+        VALIDATE_(map != nullptr, HatError::InvalidArg);
+
+        const WalkResult path = WalkTables(map->root, vaddr);
+        VALIDATE_(path.complete, HatError::NoExistingMap);
+
+        const bool set = *path.pte & DirtyFlag;
+        if (clear)
+        {
+            const uint64_t pte = *path.pte & ~DirtyFlag;
+            SET_PTE(path.pte, pte);
+            INVLPG(vaddr);
+        }
+
+        return set;
+    }
+
+    sl::ErrorOr<bool, HatError> HatGetAccessed(HatMap* map, uintptr_t vaddr, bool clear)
+    {
+        VALIDATE_(map != nullptr, HatError::InvalidArg);
+
+        const WalkResult path = WalkTables(map->root, vaddr);
+        VALIDATE_(path.complete, HatError::NoExistingMap);
+
+        const bool set = *path.pte & AccessedFlag;
+        if (clear)
+        {
+            const uint64_t pte = *path.pte & ~AccessedFlag;
+            SET_PTE(*path.pte, pte);
+            INVLPG(vaddr);
+        }
+
+        return set;
     }
 
     HatError HatSyncMap(HatMap* map, uintptr_t vaddr, sl::Opt<uintptr_t> paddr, sl::Opt<HatFlags> flags, bool flush)

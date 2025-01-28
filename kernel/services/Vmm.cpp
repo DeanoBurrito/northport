@@ -28,128 +28,53 @@ namespace Npk::Services
         return ret;
     }
 
-    sl::ErrorOr<void, VmError> Vmm::WirePage(VmView& view, size_t offset)
+    constexpr VmError MakeVmError(HatError err)
     {
-        Core::PageInfo* info = FindPageOfView(view, offset);
-
-        if (!view.vmoRef.Valid())
+        switch (err)
         {
-            //there's no backing vm object, so its an anon (private) mapping
-            if (info == Core::PmLookup(domain->zeroPage))
-            {
-                //view[offset] is mapped to the zero page, with a readonly mapping.
-                //we'll unmap it and set `info` to null so it gets allocated a fresh page
-                //later on.
-                uintptr_t paddr;
-                size_t mode;
-                HatDoUnmap(hatMap, view.base + offset, paddr, mode, true);
-                info = nullptr;
-            }
-
-            if (info == nullptr)
-            {
-                //view[offset] was either mapped to the zero page or not mapped at all,
-                //we'll map a fresh page, zeroing it if needed.
-                const auto maybePage = Core::PmAlloc();
-                if (!maybePage.HasValue())
-                    return VmError::TryAgain;
-
-                info = Core::PmLookup(*maybePage);
-                if (!info->pm.zeroed)
-                {
-                    sl::memset(reinterpret_cast<void*>(AddHhdm(*maybePage)), 0, PageSize());
-                    info->pm.zeroed = true;
-                }
-
-                const HatFlags hatFlags = MakeHatFlags(view.flags, hatMap != KernelMap());
-                if (HatDoMap(hatMap, view.base + offset, *maybePage, 0, hatFlags, false) 
-                    != HatError::Success)
-                {
-                    Core::PmFree(*maybePage);
-                    return VmError::HatMapFailed;
-                }
-
-                info->vm.offset = offset >> PfnShift();
-                info->vm.wireCount = 1;
-                info->vm.flags = VmPageFlags(VmPageFlag::IsOverlay).Raw();
-                info->vm.vmo = &view;
-                view.overlay.InsertSorted(info, 
-                    [](auto* a, auto* b) -> bool { return a->vm.offset < b->vm.offset; });
-
-                domain->listsLock.Lock();
-                domain->activeList.PushBack(info);
-                domain->listsLock.Unlock();
-            }
-            //else: dedicated page is already mapped, and will have proper permissions
-
-            return sl::NoError;
-
+        case HatError::Success:
+            return VmError::Success;
+        case HatError::PmAllocFailed:
+            return VmError::TryAgain;
+        default:
+            return VmError::HatMapFailed;
         }
-
-        VmObject* vmo = reinterpret_cast<VmObject*>(&*view.vmoRef);
-        if (vmo->isMmio)
-        {
-            //mmio objets are always mapped with their full permissions, so if we're here
-            //it's because the view is not mapped.
-            auto maybePaddr = GetMmioVmoPage(vmo, offset);
-            if (!maybePaddr.HasValue())
-                return VmError::BadVmoOffset;
-
-            HatFlags hatFlags = MakeHatFlags(view.flags, false);
-            hatFlags |= GetMmioVmoHatFlags(vmo, offset);
-            if (HatDoMap(hatMap, view.base + offset, *maybePaddr, 0, hatFlags, false) 
-                != HatError::Success)
-            {
-                return VmError::HatMapFailed;
-            }
-            return sl::NoError;
-        }
-
-        //TODO: implement file mappings
-        ASSERT_UNREACHABLE();
     }
 
-    void Vmm::UnwirePage(VmView& view, size_t offset)
+    Core::PageInfo* Vmm::FindPageInList(sl::FwdList<Core::PageInfo, &Core::PageInfo::vmObjList>& list, size_t offsetPfn)
     {
-        offset >>= PfnShift();
-        ASSERT_UNREACHABLE();
-    }
-
-    Core::PageInfo* Vmm::FindPageOfView(VmView& view, size_t offset)
-    {
-        offset >>= PfnShift();
-
-        //check view's overlay for a page at this particular offset
-        for (auto it = view.overlay.Begin(); it != view.overlay.End(); ++it)
+        for (auto it = list.Begin(); it != list.End(); ++it)
         {
-            if (offset < it->vm.offset)
-                break;
-            if (offset != it->vm.offset)
+            if (offsetPfn < it->vm.offset)
+                return nullptr;
+            if (offsetPfn != it->vm.offset)
                 continue;
 
             it->vm.wireCount++;
-            return &*it;
-        }
 
-        //nothing in the overlay, check the backing obj itself
-        if (!view.vmoRef.Valid())
-            return nullptr;
+            domain->listsLock.Lock();
+            if (VmPageFlags(it->vm.flags).Has(VmPageFlag::Standby))
+            {
+                auto& list = VmPageFlags(it->vm.flags).Has(VmPageFlag::Dirty) 
+                    ? domain->dirtyList : domain->standbyList;
+                
+                auto prev = list.Begin();
+                for (auto curr = list.Begin(); curr != list.End(); prev = curr, ++curr)
+                {
+                    if (&*curr != &*it)
+                        continue;
 
-        VmObject& vmo = *reinterpret_cast<VmObject*>(&*view.vmoRef);
-        sl::ScopedLock vmoLock(vmo.lock);
+                    if (prev == list.Begin())
+                        list.PopFront();
+                    else
+                        list.EraseAfter(prev);
+                    break;
+                }
 
-        //trying to access beyong the end of the backing object
-        if (offset >= vmo.length)
-            return nullptr;
+                domain->activeList.PushBack(&*it);
+            }
+            domain->listsLock.Unlock();
 
-        for (auto it = vmo.content.Begin(); it != vmo.content.End(); ++it)
-        {
-            if (offset < it->vm.offset)
-                break;
-            if (offset != it->vm.offset)
-                continue;
-
-            it->vm.wireCount++;
             return &*it;
         }
 
@@ -177,11 +102,23 @@ namespace Npk::Services
         {
             VmView& view = *static_cast<VmView*>(page->vm.vmo);
             const uintptr_t vaddr = view.base + (page->vm.offset << PfnShift());
-            
+
+            HatCapabilities hatCaps {};
+            HatGetCapabilities(hatCaps);
+
             view.vmm->hatLock.Lock();
+            //if we have hardware-managed dirty bits, propogate that to the PageInfo struct
+            if (hatCaps.hwDirtyBit)
+            {
+                auto result = HatGetDirty(view.vmm->hatMap, vaddr, true);
+                ASSERT_(result.HasValue());
+                if (result.Value())
+                    page->vm.flags = VmPageFlags(page->vm.flags).SetThen(VmPageFlag::Dirty).Raw();
+            }
+            
             uintptr_t ignored0;
             size_t ignored1;
-            HatDoUnmap(view.vmm->hatMap, vaddr, ignored0, ignored1, true);
+            HatDoUnmap(view.vmm->hatMap, vaddr, ignored0, ignored1);
             view.vmm->hatLock.Unlock();
         }
         else
@@ -251,7 +188,7 @@ namespace Npk::Services
             while (scan != dom.activeList.End())
             {
                 PageInfo* page = &*scan;
-                const bool evict = true; //TODO: logic here (aging?)
+                const bool evict = page->vm.wireCount == 0; //TODO: logic here (aging?)
                 if (!evict)
                 {
                     prev = scan;
@@ -274,7 +211,6 @@ namespace Npk::Services
                 else
                 {
                     dom.activeList.EraseAfter(prev);
-                    prev = scan;
                     ++scan;
                 }
 
@@ -282,7 +218,7 @@ namespace Npk::Services
                     dom.dirtyList.PushBack(page); //TODO: queue dirty list pages for write-back
                 else
                     dom.standbyList.PushBack(page);
-                page->vm.flags = VmPageFlags(page->vm.flags).Set(VmPageFlag::Standby);
+                page->vm.flags = VmPageFlags(page->vm.flags).SetThen(VmPageFlag::Standby).Raw();
 
                 const bool dirty = VmPageFlags(page->vm.flags).Has(VmPageFlag::Dirty);
                 Log("VMD: 0x%tx unmapped, moved to %s list", LogLevel::Debug, PmRevLookup(page), dirty ? "dirty" : "standby");
@@ -337,40 +273,150 @@ namespace Npk::Services
         ExitKernelThread(0);
     }
 
-    bool Vmm::HandlePageFault(uintptr_t addr, VmFaultFlags flags)
+    sl::ErrorOr<void, VmError> Vmm::HandleFault(uintptr_t addr, VmFaultType type)
     {
         viewsLock.ReaderLock();
         VmView* view = FindView(addr);
         if (view == nullptr)
         {
             viewsLock.ReaderUnlock();
-            return false;
+            return VmError::InvalidArg;
         }
 
         sl::ScopedLock viewLock(view->lock);
         viewsLock.ReaderUnlock();
 
-        VALIDATE_(!flags.Has(VmFaultFlag::Fetch), false);
-        VALIDATE_(!flags.Has(VmFaultFlag::User), false);
-
+        Core::PageInfo* page = nullptr;
         const size_t offset = AlignDownPage(addr - view->base);
-        if (!view->vmoRef.Valid() && flags.Has(VmFaultFlag::Read))
+        const size_t offsetPfn = offset >> PfnShift();
+
+        //check 1: does the overlay list contain an entry for the page we're interested in
+        page = FindPageInList(view->overlay, offsetPfn);
+        if (page != nullptr)
         {
-            //read access on anon vmo, map the zero page as readonly
-            const auto hatFlags = MakeHatFlags({}, hatMap != KernelMap());
-            auto result = HatDoMap(hatMap, view->base + offset, domain->zeroPage, 0, hatFlags, false);
-            return result == HatError::Success;
+            Log("VM: found 0x%tx in overlay list, mapping.", LogLevel::Debug, Core::PmRevLookup(page));
+            const auto hatFlags = MakeHatFlags(view->flags, this != &KernelVmm());
+            hatLock.Lock();
+            const auto mapResult = HatDoMap(hatMap, view->base + offset, Core::PmRevLookup(page), 
+                0, hatFlags, false);
+            hatLock.Unlock();
+            
+            if (type != VmFaultType::Wire)
+                page->vm.wireCount--;
+            return MakeVmError(mapResult);
         }
 
-        auto result = WirePage(*view, offset);
-        if (result.HasError())
-            return false;
+        //check 2: does the view have a swap store associated with it, and can we get the page from there
+        if (view->key.backend != NoSwap)
+        {
+            ASSERT_UNREACHABLE(); //TODO: we'll want to communicate a possible sleep here (caller passes event?)
+        }
 
-        //WirePage() should probably be refactored, but for now the newly mapped page is wired,
-        //so we want to decrement its wireCount so that it can be swapped as needed.
-        Core::PageInfo* info = FindPageOfView(*view, offset);
-        info->vm.wireCount -= 2;
-        return true;
+        //check 3: can the backing store get us the page
+        if (view->vmoRef.Valid())
+        {
+            VmObject* vmo = reinterpret_cast<VmObject*>(&view->vmoRef->count);
+            sl::ScopedLock vmoScopeLock(vmo->lock);
+
+            //3.1: is the page in the vmo's content list
+            page = FindPageInList(vmo->content, offsetPfn);
+            if (page != nullptr)
+            {
+                const auto hatFlags = MakeHatFlags(view->flags, this != &KernelVmm());
+                hatLock.Lock();
+                const auto mapResult = HatDoMap(hatMap, view->base + offset, Core::PmRevLookup(page), 
+                    0, hatFlags, false);
+                hatLock.Unlock();
+                
+                if (type != VmFaultType::Wire)
+                    page->vm.wireCount--;
+                return MakeVmError(mapResult);
+            }
+
+            //3.2: try get the page from the vmo pager
+            if (vmo->isMmio)
+            {
+                const auto hatFlags = GetMmioVmoHatFlags(vmo, offset) 
+                    | MakeHatFlags(view->flags, this != &KernelVmm());
+
+                auto maybePaddr = GetMmioVmoPage(vmo, offset);
+                if (!maybePaddr.HasValue())
+                    return VmError::BadVmoOffset;
+
+                hatLock.Lock();
+                const auto mapResult = HatDoMap(hatMap, view->base + offset, *maybePaddr, 0,
+                    hatFlags, false);
+                hatLock.Unlock();
+
+                return MakeVmError(mapResult);
+            }
+            else
+                ASSERT_UNREACHABLE(); //TODO: implement the VFS and vnode pager!
+        }
+        //4: no vmo (meaning its anon memory), with no overlay or swap entries.
+        else
+        {
+            if (type == VmFaultType::Read)
+            {
+                //for a read we can map the zero-page as readonly
+                const auto hatFlags = MakeHatFlags({}, this != &KernelVmm());
+
+                sl::ScopedLock scopeHatLock(hatLock);
+                const auto result = HatDoMap(hatMap, view->base + offset, domain->zeroPage,
+                    0, hatFlags, false);
+                return MakeVmError(result);
+            }
+            else
+            {
+                //write or wire fault, unmap zero page if needed, map a zeroed page
+                const auto hatFlags = MakeHatFlags(view->flags, this != &KernelVmm());
+
+                sl::ScopedLock scopeLockHat(hatLock);
+                size_t ignored0;
+                if (auto mapped = HatGetMap(hatMap, view->base + offset, ignored0); mapped.HasValue())
+                {
+                    //unmap zero page
+                    uintptr_t ignored1;
+                    HatDoUnmap(hatMap, view->base + offset, ignored1, ignored0);
+                }
+
+                auto pmAlloc = Core::PmAlloc();
+                if (!pmAlloc.HasValue())
+                    return VmError::TryAgain;
+
+                page = Core::PmLookup(*pmAlloc);
+                if (!page->pm.zeroed)
+                {
+                    sl::memset(reinterpret_cast<void*>(AddHhdm(*pmAlloc)), 0, PageSize());
+                    page->pm.zeroed = true;
+                }
+
+                const auto result = HatDoMap(hatMap, view->base + offset, *pmAlloc, 0, 
+                    hatFlags, false);
+                scopeLockHat.Release();
+
+                if (result != HatError::Success)
+                {
+                    Core::PmFree(*pmAlloc);
+                    return MakeVmError(result);
+                }
+
+                page->vm.offset = offsetPfn;
+                page->vm.flags = VmPageFlags(VmPageFlag::IsOverlay).Raw();
+                page->vm.wireCount = type == VmFaultType::Wire ? 1 : 0;
+                page->vm.vmo = view;
+
+                view->overlay.InsertSorted(page, [](auto* a, auto* b) { return a->vm.offset < b->vm.offset; });
+
+                domain->listsLock.Lock();
+                domain->activeList.PushBack(page);
+                domain->listsLock.Unlock();
+
+                return VmError::Success;
+            }
+        }
+
+        return VmError::InvalidArg;
     }
 
     void Vmm::Activate()
@@ -426,10 +472,24 @@ namespace Npk::Services
             { return a->base < b->base; });
         viewsLock.WriterUnlock();
 
-        if (wire && !Wire(reinterpret_cast<void*>(view->base), view->length))
+        if (wire)
         {
-            //TODO: remove view
-            return {};
+            size_t wiredLength = 0;
+            for (size_t i = 0; i < view->length; i += PageSize())
+            {
+                const auto result = HandleFault(view->base + i, VmFaultType::Wire);
+                if (result.HasError())
+                    break;
+                wiredLength += PageSize();
+            }
+
+            if (wiredLength < view->length)
+            {
+                //unable to wire entire view, undo previous ops and return failure.
+                UnwireRange(reinterpret_cast<void*>(view->base), wiredLength);
+                RemoveView(reinterpret_cast<void*>(view->base));
+                return {};
+            }
         }
 
         return reinterpret_cast<void*>(view->base);
@@ -440,47 +500,18 @@ namespace Npk::Services
         ASSERT_UNREACHABLE(); (void)base;
     }
 
-    bool Vmm::Wire(void* base, size_t length)
+    sl::Opt<void*> Vmm::SplitView(void* addr)
+    { ASSERT_UNREACHABLE(); (void)addr; }
+
+    VmError Vmm::ChangeViewFlags(void* addr, VmViewFlags newFlags)
+    { ASSERT_UNREACHABLE(); (void)addr; (void)newFlags; }
+
+    bool Vmm::WireRange(void* base, size_t length)
     {
-        const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(base);
-
-        bool failure = false;
-        size_t undoCount = 0;
-        viewsLock.ReaderLock();
-        for (size_t i = 0; i < length; i += PageSize())
-        {
-            VmView* view = FindView(baseAddr + i);
-            if (view == nullptr)
-                continue;
-
-            sl::ScopedLock viewLock(view->lock);
-            const uintptr_t offset = baseAddr + i - view->base;
-            if (WirePage(*view, offset).HasError())
-            {
-                undoCount = i;
-                failure = true;
-                break;
-            }
-        }
-
-        //Wiring memory should be an atomic operation, if we hit an error earlier
-        //partway through the process we need to undo the PageIn() ops already done.
-        for (size_t i = 0; i < undoCount; i += PageSize())
-        {
-            VmView* view = FindView(baseAddr + i);
-            if (view == nullptr)
-                continue;
-
-            sl::ScopedLock viewLock(view->lock);
-            const uintptr_t offset = baseAddr + i - view->base;
-            UnwirePage(*view, offset);
-        }
-        viewsLock.ReaderUnlock();
-
-        return !failure;
+        ASSERT_UNREACHABLE(); (void)base; (void)length;
     }
 
-    void Vmm::Unwire(void* base, size_t length)
+    void Vmm::UnwireRange(void* base, size_t length)
     {
         ASSERT_UNREACHABLE(); (void)base; (void)length;
     }
