@@ -215,7 +215,7 @@ namespace Npk::Services
                 }
 
                 if (VmPageFlags(page->vm.flags).Has(VmPageFlag::Dirty))
-                    dom.dirtyList.PushBack(page); //TODO: queue dirty list pages for write-back
+                    dom.dirtyList.PushBack(page);
                 else
                     dom.standbyList.PushBack(page);
                 page->vm.flags = VmPageFlags(page->vm.flags).SetThen(VmPageFlag::Standby).Raw();
@@ -223,11 +223,12 @@ namespace Npk::Services
                 const bool dirty = VmPageFlags(page->vm.flags).Has(VmPageFlag::Dirty);
                 Log("VMD: 0x%tx unmapped, moved to %s list", LogLevel::Debug, PmRevLookup(page), dirty ? "dirty" : "standby");
             }
-            dom.listsLock.Unlock();
-
             //TODO: send shootdowns in UnmapViewsOfPage() and then wait for a fence here (before the loop continues or wraps)
 
-            if (result == WaitResult::Timeout)
+            //queue writeback ops for pages in the dirty list, when possible TODO:
+
+            dom.listsLock.Unlock();
+            if (result == WaitResult::Timeout && false)
                 continue;
 
             //second stage: we woke because the event was signalled, indicating high memory pressure - free some.
@@ -298,7 +299,7 @@ namespace Npk::Services
             const auto hatFlags = MakeHatFlags(view->flags, this != &KernelVmm());
             hatLock.Lock();
             const auto mapResult = HatDoMap(hatMap, view->base + offset, Core::PmRevLookup(page), 
-                0, hatFlags, false);
+                0, hatFlags);
             hatLock.Unlock();
             
             if (type != VmFaultType::Wire)
@@ -309,7 +310,8 @@ namespace Npk::Services
         //check 2: does the view have a swap store associated with it, and can we get the page from there
         if (view->key.backend != NoSwap)
         {
-            ASSERT_UNREACHABLE(); //TODO: we'll want to communicate a possible sleep here (caller passes event?)
+            ASSERT_UNREACHABLE();
+            //TODO: once the io manager is complete, use that to (async) interact with the swap backend
         }
 
         //check 3: can the backing store get us the page
@@ -325,7 +327,7 @@ namespace Npk::Services
                 const auto hatFlags = MakeHatFlags(view->flags, this != &KernelVmm());
                 hatLock.Lock();
                 const auto mapResult = HatDoMap(hatMap, view->base + offset, Core::PmRevLookup(page), 
-                    0, hatFlags, false);
+                    0, hatFlags);
                 hatLock.Unlock();
                 
                 if (type != VmFaultType::Wire)
@@ -345,7 +347,7 @@ namespace Npk::Services
 
                 hatLock.Lock();
                 const auto mapResult = HatDoMap(hatMap, view->base + offset, *maybePaddr, 0,
-                    hatFlags, false);
+                    hatFlags);
                 hatLock.Unlock();
 
                 return MakeVmError(mapResult);
@@ -363,7 +365,7 @@ namespace Npk::Services
 
                 sl::ScopedLock scopeHatLock(hatLock);
                 const auto result = HatDoMap(hatMap, view->base + offset, domain->zeroPage,
-                    0, hatFlags, false);
+                    0, hatFlags);
                 return MakeVmError(result);
             }
             else
@@ -385,14 +387,10 @@ namespace Npk::Services
                     return VmError::TryAgain;
 
                 page = Core::PmLookup(*pmAlloc);
-                if (!page->pm.zeroed)
-                {
-                    sl::memset(reinterpret_cast<void*>(AddHhdm(*pmAlloc)), 0, PageSize());
-                    page->pm.zeroed = true;
-                }
+                sl::memset(reinterpret_cast<void*>(AddHhdm(*pmAlloc)), 0, PageSize());
 
                 const auto result = HatDoMap(hatMap, view->base + offset, *pmAlloc, 0, 
-                    hatFlags, false);
+                    hatFlags);
                 scopeLockHat.Release();
 
                 if (result != HatError::Success)
@@ -474,20 +472,10 @@ namespace Npk::Services
 
         if (wire)
         {
-            size_t wiredLength = 0;
-            for (size_t i = 0; i < view->length; i += PageSize())
+            void* basePtr = reinterpret_cast<void*>(view->base);
+            if (!WireRange(basePtr, view->length))
             {
-                const auto result = HandleFault(view->base + i, VmFaultType::Wire);
-                if (result.HasError())
-                    break;
-                wiredLength += PageSize();
-            }
-
-            if (wiredLength < view->length)
-            {
-                //unable to wire entire view, undo previous ops and return failure.
-                UnwireRange(reinterpret_cast<void*>(view->base), wiredLength);
-                RemoveView(reinterpret_cast<void*>(view->base));
+                RemoveView(basePtr);
                 return {};
             }
         }
@@ -497,23 +485,128 @@ namespace Npk::Services
     
     void Vmm::RemoveView(void* base)
     {
+        viewsLock.WriterLock();
+        VmView* view = FindView(reinterpret_cast<uintptr_t>(base));
+        if (view == nullptr)
+        {
+            viewsLock.WriterUnlock();
+            return;
+        }
+
+        views.Remove(view);
+        viewsLock.WriterUnlock();
+
+        //TODO:
+        // - ensure no one else is waiting to lock this view (how?)
+        // - remove view from vmo's list, unref vmo
+        // - unreserve swap space
+        // - free overlay pages
+        // - free vmview struct
+
         ASSERT_UNREACHABLE(); (void)base;
     }
 
     sl::Opt<void*> Vmm::SplitView(void* addr)
-    { ASSERT_UNREACHABLE(); (void)addr; }
+    { 
+        const uintptr_t vaddr = reinterpret_cast<uintptr_t>(addr);
+
+        viewsLock.ReaderLock();
+        VmView* view = FindView(vaddr);
+        if (view == nullptr)
+        {
+            viewsLock.ReaderUnlock();
+            return {};
+        }
+        viewsLock.ReaderUnlock();
+
+        sl::ScopedLock scopeLockView(view->lock);
+        const size_t offset = vaddr - view->base;
+        ASSERT_UNREACHABLE();
+    }
 
     VmError Vmm::ChangeViewFlags(void* addr, VmViewFlags newFlags)
     { ASSERT_UNREACHABLE(); (void)addr; (void)newFlags; }
 
     bool Vmm::WireRange(void* base, size_t length)
     {
-        ASSERT_UNREACHABLE(); (void)base; (void)length;
+        const uintptr_t vaddr = reinterpret_cast<uintptr_t>(base);
+
+        size_t wiredLength = 0;
+        for (; wiredLength < length; wiredLength += PageSize())
+        {
+            const auto result = HandleFault(vaddr + wiredLength, VmFaultType::Wire);
+            if (result.HasError())
+                break;
+        }
+
+        if (wiredLength < length) //couldnt wire the entire range, undo what we did earlier
+            UnwireRange(base, wiredLength);
+
+        return wiredLength >= length;
     }
 
     void Vmm::UnwireRange(void* base, size_t length)
     {
-        ASSERT_UNREACHABLE(); (void)base; (void)length;
+        const uintptr_t vaddr = reinterpret_cast<uintptr_t>(base);
+
+        for (size_t i = 0; i < length; i += PageSize())
+        {
+            size_t ignored0;
+            auto result = HatGetMap(hatMap, vaddr + i, ignored0);
+            if (result.HasValue())
+                Core::PmLookup(*result)->vm.wireCount--;
+        }
+    }
+
+    bool Vmm::AcquireMdl(void* base, size_t length, npk_mdl* mdl)
+    {
+        if (!WireRange(base, length))
+            return false;
+
+        const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(base);
+        const size_t baseOffset = baseAddr & PageMask();
+        const uintptr_t alignedBaseAddr = AlignDownPage(baseAddr);
+        const size_t entryCount = (AlignUpPage(length - (PageSize() - baseOffset)) >> PfnShift()) + 1;
+
+        uintptr_t* entries = static_cast<uintptr_t*>(Core::WiredAlloc(entryCount * sizeof(uintptr_t)));
+        if (entries == nullptr)
+        {
+            UnwireRange(base, length);
+            return false;
+        }
+
+        for (size_t i = 0; i < entryCount; i++)
+        {
+            size_t ignored0;
+            auto maybeMap = HatGetMap(hatMap, alignedBaseAddr + (i << PfnShift()), ignored0);
+            if (!maybeMap.HasValue())
+            {
+                UnwireRange(base, length);
+                Core::WiredFree(entries, entryCount * sizeof(uintptr_t));
+                return false;
+            }
+
+            entries[i] = *maybeMap;
+        }
+
+        mdl->virt_base = base;
+        mdl->length = length;
+        mdl->entries = entries;
+        mdl->entry0_offset = baseOffset;
+
+        return true;
+    }
+
+    void Vmm::ReleaseMdl(npk_mdl* mdl)
+    {
+        VALIDATE_(mdl != nullptr, );
+        VALIDATE_(mdl->entries != nullptr, );
+
+        UnwireRange(mdl->virt_base, mdl->length);
+
+        const size_t entryCount = (AlignUpPage(mdl->length - (PageSize() - mdl->entry0_offset)) >> PfnShift()) + 1;
+        Core::WiredFree(mdl->entries, entryCount * sizeof(uintptr_t));
+        mdl->entries = nullptr;
     }
 
     Vmm kernelVmm;

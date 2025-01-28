@@ -94,10 +94,10 @@ namespace Npk::Services
 
     struct npk_mdl //TODO: move to driver api headers
     {
+        void* virt_base;
         size_t length;
-        size_t offset;
+        size_t entry0_offset;
         uintptr_t* entries;
-        size_t entry_count;
     };
 
     using VmmRangeAllocator = sl::RangeAllocator<uintptr_t, size_t, Core::WiredHeapAllocator>;
@@ -150,7 +150,7 @@ namespace Npk::Services
         bool WireRange(void* base, size_t length);
         void UnwireRange(void* base, size_t length);
         bool AcquireMdl(void* base, size_t length, npk_mdl* mdl);
-        void ReleaseMdl(npk_mdl** mdl);
+        void ReleaseMdl(npk_mdl* mdl);
     };
 
     struct VmDomain

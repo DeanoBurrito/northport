@@ -33,7 +33,6 @@ namespace Npk::Core
 
             PageInfo* entry = &infoDb[dbBase];
             entry->pm.count = entryPages;
-            entry->pm.zeroed = false;
 
             sl::ScopedLock scopeLock(globalList.lock);
             globalList.list.PushBack(entry);
@@ -67,7 +66,6 @@ namespace Npk::Core
         {
             PageInfo* heir = allocated + 1;
             heir->pm.count = allocated->pm.count - 1;
-            heir->pm.zeroed = allocated->pm.zeroed;
             list.list.PushFront(heir);
         }
 
@@ -177,7 +175,6 @@ namespace Npk::Core
 
         PageInfo* pageInfo = Lookup(paddr);
         pageInfo->pm.count = 1;
-        pageInfo->pm.zeroed = false;
 
         if (CoreLocalAvailable() && GetLocalPtr(SubsysPtr::PmmCache) != nullptr)
         {

@@ -272,7 +272,7 @@ namespace Npk
         return &kernelMap;
     }
 
-    HatError HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush)
+    HatError HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags)
     {
         VALIDATE_(map != nullptr, HatError::InvalidArg);
         VALIDATE_(mode < highestLeafLevel, HatError::InvalidArg);
@@ -330,8 +330,6 @@ namespace Npk
 
         SET_PTE(path.pte, pte);
 
-        if (flush)
-            INVLPG(vaddr);
         if (map == &kernelMap) //TODO: optimize by only incrementing on new PML3 alloc (can check pmAllocs[3] != 0)
             kernelMap.generation++;
 
@@ -361,7 +359,8 @@ namespace Npk
         VALIDATE_(map != nullptr, HatError::InvalidArg);
 
         const WalkResult path = WalkTables(map->root, vaddr);
-        VALIDATE_(path.complete, HatError::NoExistingMap);
+        if (!path.complete)
+            return HatError::NoExistingMap;
 
         mode = path.level - 1;
         const uint64_t offsetMask = GetPageSize((PageSizes)path.level) - 1;

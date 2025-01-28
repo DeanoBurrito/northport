@@ -72,7 +72,7 @@ namespace Npk
     HatMap* KernelMap();
 
     //creates a virt <-> phys mapping in an address space.
-    HatError HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags, bool flush);
+    HatError HatDoMap(HatMap* map, uintptr_t vaddr, uintptr_t paddr, size_t mode, HatFlags flags);
 
     //attempts to remove an existing mapping from an address space.
     //NOTE: paddr and mode are references and return the previously used values.

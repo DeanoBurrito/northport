@@ -17,7 +17,6 @@ namespace Npk::Core
             struct
             {
                 uint16_t count; //number of contiguous pages in this chunk
-                bool zeroed; //whether page has been zeroed or not
             } pm;
 
             struct

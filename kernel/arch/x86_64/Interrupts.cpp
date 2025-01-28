@@ -178,11 +178,9 @@ namespace Npk
             bool handled = false;
             if (except.type == ExceptionType::MemoryAccess)
             {
-                VmFaultFlags flags {};
-                flags |= (frame->ec & (1 << 1)) ? VmFaultFlag::Write : VmFaultFlag::Read;
-                flags |= (frame->ec & (1 << 2)) ? VmFaultFlag::User : VmFaultFlags {};
-                flags |= (frame->ec & (1 << 4)) ? VmFaultFlag::Fetch : VmFaultFlags {};
-                handled = KernelVmm().HandlePageFault(except.special, flags);
+                const VmFaultType type = (frame->ec & (1 << 1)) ? VmFaultType::Write : VmFaultType::Read;
+                //const bool isUser = frame->ec & (1 << 2);
+                handled = KernelVmm().HandleFault(except.special, type).HasValue();
             }
             else if (frame->vector == 0x2)
             {
