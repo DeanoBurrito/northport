@@ -53,7 +53,7 @@ namespace sl
             return {};
 
         auto header = reinterpret_cast<const QoiHeader*>(qoi.Begin());
-        if (sl::memcmp(header->magic, QoiMagic, sizeof(QoiMagic)) != 0)
+        if (sl::MemCompare(header->magic, QoiMagic, sizeof(QoiMagic)))
             return {};
 
         //the header fields are big endian, use local variables so we dont pay

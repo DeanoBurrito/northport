@@ -41,7 +41,7 @@ namespace Npk::Services
                 continue; //we only care about functions
 
             (IsPublicSymbol(sym) ? publicSymbols : privateSymbols)++;
-            stringsLength += sl::memfirst(strTable.Begin() + sym.st_name, 0, 0);
+            stringsLength += sl::MemFind(strTable.Begin() + sym.st_name, 0, sl::NoLimit);
         }
 
         const size_t allocSize = (privateSymbols + publicSymbols) *
@@ -73,8 +73,8 @@ namespace Npk::Services
             kernelRepo->base = sl::Min(sym.st_value, kernelRepo->base);
             kernelRepo->length = sl::Max(sym.st_value + sym.st_size, kernelRepo->length);
 
-            const size_t nameLength = sl::memfirst(&strTable[sym.st_name], 0, strTable.Size() - sym.st_name);
-            sl::memcopy(&strTable[sym.st_name], &stringsStore[stringsLength], nameLength);
+            const size_t nameLength = sl::MemFind(&strTable[sym.st_name], 0, strTable.Size() - sym.st_name);
+            sl::MemCopy(&stringsStore[stringsLength], &strTable[sym.st_name], nameLength);
             symStore->name = sl::StringSpan(&stringsStore[stringsLength], nameLength);
             stringsLength += nameLength;
         }

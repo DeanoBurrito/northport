@@ -25,24 +25,25 @@ namespace sl
         String(String&& from);
         String& operator=(String&& from);
 
-        const char* C_Str() const;
-        bool IsEmpty() const;
-        size_t Size() const;
+        inline bool IsEmpty() const
+        { 
+            return length == 0; 
+        }
+
+        inline size_t Size() const
+        {
+            return length;
+        }
+
+        inline const char* C_Str() const
+        {
+            return buffer;
+        }
+
         [[nodiscard]]
         char* DetachBuffer();
 
-        String SubString(size_t start, size_t length) const;
-        String Concat(const String& other) const;
-        String operator+(const String& other) const;
-        String& operator+=(const String& other);
         sl::StringSpan Span() const;
-
-        size_t Find(const char token, size_t offset = 0) const;
-        size_t FindLast(const char token) const;
-        bool BeginsWith(const String& comp) const;
-        bool EndsWith(const String& comp) const;
-        void TrimStart(size_t amount);
-        void TrimEnd(size_t amount);
 
         char& At(const size_t index);
         const char& At(const size_t index) const;

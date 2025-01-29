@@ -32,7 +32,7 @@ namespace sl
         auto* buffer = input.Begin();
         auto LengthUntil = [=](size_t start, char target) -> size_t
         {
-            const size_t foundAt = sl::memfirst(buffer + start, target, input.Size() - start);
+            const size_t foundAt = sl::MemFind(buffer + start, target, input.Size() - start);
             if (foundAt == input.Size() - start)
                 return 0;
             return foundAt;

@@ -81,7 +81,7 @@ namespace Npk::Core
     void LateInitConfigStore()
     {
         ownedCmdline = new char[cmdline.Size()];
-        sl::memcopy(cmdline.Begin(), ownedCmdline, cmdline.Size());
+        sl::MemCopy(ownedCmdline, cmdline.Begin(), cmdline.Size());
         cmdline = sl::StringSpan(ownedCmdline, cmdline.Size());
     }
 
@@ -98,7 +98,7 @@ namespace Npk::Core
             const sl::StringSpan compare = source.Subspan(0, key.Size());
             if (compare != key || *compare.End() != '=')
             {
-                const size_t nextSpace = sl::memfirst(source.Begin(), ' ', source.Size());
+                const size_t nextSpace = sl::MemFind(source.Begin(), ' ', source.Size());
                 if (nextSpace == source.Size())
                     break;
                 source = source.Subspan(nextSpace + 1, -1ul);
@@ -107,7 +107,7 @@ namespace Npk::Core
 
             //found a match, return the data portion
             const size_t begin = compare.Size() + 1;
-            const size_t length = sl::memfirst(source.Begin() + begin, ' ', source.Size() - begin);
+            const size_t length = sl::MemFind(source.Begin() + begin, ' ', source.Size() - begin);
             return source.Subspan(begin, length);
         }
 

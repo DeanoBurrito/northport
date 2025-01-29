@@ -419,7 +419,7 @@ namespace Npk
         for (size_t i = 0; i < modulesRequest.response->module_count; i++)
         {
             auto mod = modulesRequest.response->modules[i];
-            if (sl::memcmp(mod->cmdline, InitdiskMagicStr, sizeof(InitdiskMagicStr)) != 0)
+            if (!sl::MemCompare(mod->cmdline, InitdiskMagicStr, sizeof(InitdiskMagicStr)))
                 continue;
 
             return sl::Span(reinterpret_cast<uint8_t*>(mod->address), mod->size);
@@ -514,7 +514,7 @@ namespace Npk
             return {};
 
         const char* str = kernelFileRequest.response->kernel_file->cmdline;
-        return { str, sl::memfirst(str, 0, 0) };
+        return { str, sl::MemFind(str, 0, sl::NoLimit) };
     }
 
     size_t GetFramebuffers(sl::Span<LoaderFramebuffer> fbs, size_t offset)

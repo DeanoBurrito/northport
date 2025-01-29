@@ -40,8 +40,8 @@ namespace Npk::Services
         for (size_t i = 0; i < SimulatedDelaySpins; i++)
             sl::HintSpinloop();
 
-        sl::memcopy(reinterpret_cast<const void*>(base + offset),
-            reinterpret_cast<void*>(hhdmBase + paddr), PageSize());
+        sl::MemCopy(reinterpret_cast<void*>(hhdmBase + paddr),
+                reinterpret_cast<const void*>(base + offset), PageSize());
         return true;
     }
 
@@ -54,8 +54,8 @@ namespace Npk::Services
         for (size_t i = 0; i < SimulatedDelaySpins; i++)
             sl::HintSpinloop();
 
-        sl::memcopy(reinterpret_cast<const void*>(hhdmBase + paddr),
-            reinterpret_cast<void*>(base + offset), PageSize());
+        sl::MemCopy(reinterpret_cast<void*>(base + offset),
+            reinterpret_cast<const void*>(hhdmBase + paddr), PageSize());
         return true;
     }
 

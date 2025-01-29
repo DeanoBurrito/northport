@@ -123,7 +123,7 @@ namespace Npk
             auto maybePt = EarlyPmAlloc(sizeof(PageTable));
             ASSERT_(maybePt.HasValue());
 
-            sl::memset(reinterpret_cast<void*>(AddHhdm(*maybePt)), 0, sizeof(PageTable));
+            sl::MemSet(reinterpret_cast<void*>(AddHhdm(*maybePt)), 0, sizeof(PageTable));
             SET_PTE(path.pte, (addrMask & *maybePt) | PresentFlag | WriteFlag);
 
             path.level--;
@@ -161,7 +161,7 @@ namespace Npk
         auto maybePage = EarlyPmAlloc(PageSize());
         ASSERT_(maybePage.HasValue());
         kernelMap.root = reinterpret_cast<PageTable*>(*maybePage);
-        sl::memset(AddHhdm(kernelMap.root), 0, sizeof(PageTable));
+        sl::MemSet(AddHhdm(kernelMap.root), 0, sizeof(PageTable));
 
         //first we map the hhdm
         size_t hhdmPageSize = maxTranslationLevel;
@@ -303,7 +303,7 @@ namespace Npk
 
             const uint64_t pt = *newPt;
             pmAllocs[path.level] = pt;
-            sl::memset(reinterpret_cast<void*>(AddHhdm(pt)), 0, sizeof(PageTable));
+            sl::MemSet(reinterpret_cast<void*>(AddHhdm(pt)), 0, sizeof(PageTable));
             SET_PTE(path.pte, pt | PresentFlag | WriteFlag);
 
             path.level--;

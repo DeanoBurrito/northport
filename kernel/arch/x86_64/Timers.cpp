@@ -117,6 +117,10 @@ namespace Npk
 
     TimerTickNanos ReadPollTimer()
     {
+        if (GetLocalPtr(SubsysPtr::IntrCtrl) == nullptr)
+            return {};
+
+        //TODO: we could optimize this to an rdstc + gs-relative (local tsc freq) load surely?
         return LApic().ReadTscNanos();
     }
 }

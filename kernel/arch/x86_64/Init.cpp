@@ -189,7 +189,7 @@ namespace Npk
 
         LocalApic* lapic = NewWired<LocalApic>();
         ASSERT_(lapic != nullptr);
-        ASSERT_(lapic->Init()); //TODO: support PIC?
+        ASSERT_(lapic->Init());
         SetLocalPtr(SubsysPtr::IntrCtrl, lapic);
     }
 

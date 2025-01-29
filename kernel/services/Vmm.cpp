@@ -141,7 +141,7 @@ namespace Npk::Services
         const auto zeroPageAlloc = Core::PmAlloc();
         ASSERT_(zeroPageAlloc.HasValue());
         kvmm.domain->zeroPage = *zeroPageAlloc;
-        sl::memset(reinterpret_cast<void*>(kvmm.domain->zeroPage + hhdmBase), 0, PageSize());
+        sl::MemSet(reinterpret_cast<void*>(kvmm.domain->zeroPage + hhdmBase), 0, PageSize());
 
         const uintptr_t lowerBound = EarlyVmControl(false);
         const uintptr_t upperBound = -PageSize();
@@ -387,7 +387,7 @@ namespace Npk::Services
                     return VmError::TryAgain;
 
                 page = Core::PmLookup(*pmAlloc);
-                sl::memset(reinterpret_cast<void*>(AddHhdm(*pmAlloc)), 0, PageSize());
+                sl::MemSet(reinterpret_cast<void*>(AddHhdm(*pmAlloc)), 0, PageSize());
 
                 const auto result = HatDoMap(hatMap, view->base + offset, *pmAlloc, 0, 
                     hatFlags);

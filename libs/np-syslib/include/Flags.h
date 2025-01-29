@@ -32,12 +32,24 @@ namespace sl
             return !prev;
         }
 
+        inline constexpr Flags& SetThen(T index)
+        {
+            Set(index);
+            return *this;
+        }
+
         inline constexpr bool Clear(T index)
         {
             const BackingInt mask = (BackingInt)1 << (BackingInt)index;
             const bool prev = value & mask;
             value &= ~mask;
             return prev;
+        }
+
+        inline constexpr Flags& ClearThen(T index)
+        {
+            Clear(index);
+            return *this;
         }
 
         inline constexpr void Reset()

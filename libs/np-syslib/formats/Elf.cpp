@@ -1,5 +1,6 @@
 #include <formats/Elf.h>
 #include <NativePtr.h>
+#include <PlacementNew.h>
 
 namespace sl
 {
@@ -22,7 +23,7 @@ namespace sl
 #endif
 
         auto hdr = reinterpret_cast<const Elf_Ehdr*>(file);
-        if (memcmp(hdr->e_ident, ExpectedMagic, 4) != 0)
+        if (MemCompare(hdr->e_ident, ExpectedMagic, 4) != 0)
             return false;
 
         if(hdr->e_ident[EI_CLASS] != elfClass)
@@ -96,7 +97,7 @@ namespace sl
             return nullptr;
 
         auto file = reinterpret_cast<const uint8_t*>(hdr);
-        const size_t nameLen = sl::memfirst(name, 0, 0);
+        const size_t nameLen = sl::MemFind(name, 0, NoLimit);
 
         uintptr_t strtabOffset = hdr->e_shoff + (hdr->e_shstrndx * hdr->e_shentsize);
         auto stringTable = reinterpret_cast<const Elf_Shdr*>(file + strtabOffset);
@@ -106,8 +107,8 @@ namespace sl
         for (size_t i = 0; i < hdr->e_shnum; i++)
         {
             const char* scanName = strings + scan->sh_name;
-            const size_t scanLen = sl::memfirst(scanName, 0, 0);
-            if (scanLen != nameLen || sl::memcmp(scanName, name, scanLen) != 0)
+            const size_t scanLen = MemFind(scanName, 0, NoLimit);
+            if (scanLen != nameLen || MemCompare(scanName, name, scanLen) != 0)
             {
                 scan = reinterpret_cast<const Elf_Shdr*>((uintptr_t)scan + hdr->e_shentsize);
                 continue;

@@ -102,13 +102,13 @@ namespace Npk::Services
         {
             char oem[sizeof(Sdt::oem) + 1];
             char oemTable[sizeof(Sdt::oemTable) + 1];
-            sl::memset(oem, 0, sizeof(oem));
-            sl::memset(oemTable, 0, sizeof(oemTable));
+            sl::MemSet(oem, 0, sizeof(oem));
+            sl::MemSet(oemTable, 0, sizeof(oemTable));
 
-            sl::memcopy(it->table->oem, oem, 
-                sl::memfirst(it->table->oem, ' ', sizeof(Sdt::oem)));
-            sl::memcopy(it->table->oemTable, oemTable, 
-                sl::memfirst(it->table->oemTable, ' ', sizeof(Sdt::oemTable)));
+            sl::MemCopy(oem, it->table->oem,
+                sl::MemFind(it->table->oem, ' ', sizeof(Sdt::oem)));
+            sl::MemCopy(oemTable, it->table->oemTable,
+                sl::MemFind(it->table->oemTable, ' ', sizeof(Sdt::oemTable)));
 
             Log("ACPI table: %.4s, rev=%u, length=0x%" PRIu32 ", oem=%s %s", LogLevel::Info,
                 it->table->signature, it->table->revision, it->table->length, oem, oemTable);
@@ -126,7 +126,7 @@ namespace Npk::Services
     {
         for (auto it = tables.Begin(); it != tables.End(); ++it)
         {
-            if (sl::memcmp(it->table->signature, signature.Begin(), 4) == 0)
+            if (!sl::MemCompare(it->table->signature, signature.Begin(), 4))
                 return it->table;
         }
 

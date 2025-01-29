@@ -59,7 +59,7 @@ namespace Npk
         const size_t bufferSize = sl::Max(CoreLocalBlock().xsaveSize, FxsaveSize);
         *regs = reinterpret_cast<ExtendedRegs*>(new uint8_t[bufferSize]);
         if (*regs != nullptr)
-            sl::memset(*regs, 0, bufferSize);
+            sl::MemSet(*regs, 0, bufferSize);
     }
 
     void SaveExtendedRegs(ExtendedRegs* regs)
@@ -124,6 +124,6 @@ namespace Npk
     void PoisonMemory(sl::Span<uint8_t> range)
     {
         //0xCC is `int3` instruction, it generates a breakpoint exception.
-        sl::memset(range.Begin(), 0xCC, range.Size());
+        sl::MemSet(range.Begin(), 0xCC, range.Size());
     }
 }

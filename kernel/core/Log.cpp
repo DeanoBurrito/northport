@@ -234,11 +234,11 @@ namespace Npk::Core
         if (msg->data.textBuffer->size < msg->data.begin + formattedLen) //handle wraparound
         {
             const size_t runover = (msg->data.begin + formattedLen) - msg->data.textBuffer->size;
-            sl::memcopy(formatBuffer, 0, msg->data.textBuffer->buffer, msg->data.begin, formattedLen - runover);
-            sl::memcopy(formatBuffer, formattedLen - runover, msg->data.textBuffer->buffer, 0, runover);
+            sl::MemCopy(&msg->data.textBuffer->buffer[msg->data.begin], &formatBuffer[0], formattedLen - runover);
+            sl::MemCopy(&msg->data.textBuffer->buffer[0], &formatBuffer[formattedLen - runover], runover);
         }
         else
-            sl::memcopy(formatBuffer, msg->data.textBuffer->buffer + msg->data.begin, formattedLen);
+            sl::MemCopy(&msg->data.textBuffer->buffer[msg->data.begin], formatBuffer, formattedLen);
 
         msgQueue.Push(msg);
         TryWriteLogs();
