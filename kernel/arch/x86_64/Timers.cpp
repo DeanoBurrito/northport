@@ -2,6 +2,7 @@
 #include <arch/Misc.h>
 #include <arch/x86_64/Timers.h>
 #include <arch/x86_64/Apic.h>
+#include <arch/x86_64/Cpuid.h>
 #include <core/Log.h>
 #include <services/AcpiTables.h>
 #include <services/Vmm.h>
@@ -97,6 +98,11 @@ namespace Npk
     static inline LocalApic& LApic()
     {
         return *static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl));
+    }
+
+    void GetTimerCapabilities(TimerCapabilities& caps)
+    {
+        caps.pollSuitableForUptime = CpuHasFeature(CpuFeature::Tsc) && CpuHasFeature(CpuFeature::InvariantTsc);
     }
 
     void InitLocalTimers()

@@ -14,6 +14,7 @@
 - `kenrel.vmd.wake_timeout_ms`: VM daemon will run unconditionally after a number of milliseconds (500ms by default), this allows the value to be overriden.
 - `kernel.timer.dump_calibration_data`: dumps raw timer calibration data, not useful on all platforms, but can be helpful for diagnosing time-related issues.
 - `kernel.clock.uptime_freq`: overrides the default frequency of the global uptime counter. This only affects the timestamps of logs and not clock event expiry times.
+- `kernel.clock.force_sw_uptime`: if set to true, the kernel will always use the software based uptime clock, as opposed to using hardware. This is intended mainly for testing purposes, hardware timers should always be preferrable.
 - `kernel.enable_magic_panic_key`: allows using the magic key combo followed by the `p` key to panic the kernel, useful for testing.
 - `kernel.enable_magic_shutdown_key`: similar to above, pressing the magic key combo followed by the `s` key will cause the kernel to exit, and attempt to shutdown the system.
 - `kernel.enable_all_magic_keys`: enables all the above magic key actions, useful for debugging or in trusted environments.

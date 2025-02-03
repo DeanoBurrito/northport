@@ -9,16 +9,19 @@
 
 namespace Npk::Core
 {
-    constexpr size_t DefaultUptimeFrequency = 100;
-    constexpr size_t MaxUptimeFrequency = 10000;
-    constexpr size_t MinUptimeFrequency = 1;
+    constexpr size_t DefaultSoftClockFreq = 100;
+    constexpr size_t MinSoftClockFreq = 10;
+    constexpr size_t MaxSoftClockFreq = 10000;
     constexpr size_t MaxAcceptableEventCount = 256;
 
-    sl::TimeCount uptimePeriod;
-    sl::Atomic<size_t> uptimeTicks;
-    ClockEvent uptimeEvent;
-    DpcStore uptimeDpcStore;
-    
+    sl::Atomic<TimerTickNanos> uptimeOffset = 0;
+
+    ClockEvent softClockEvent;
+    DpcStore softClockDpc;
+    sl::Atomic<size_t> softClockTicks;
+    size_t softClockFreq;
+    bool useSoftClock;
+
     struct ClockQueue
     {
         size_t coreId;
@@ -26,8 +29,11 @@ namespace Npk::Core
         TimerTickNanos lastModified;
     };
 
-    static void DumpState()
+    static void SoftClockTick(void* arg)
     {
+        softClockTicks++;
+
+        QueueClockEvent(&softClockEvent);
     }
 
     static void RefreshClockQueue(ClockQueue* q)
@@ -54,19 +60,7 @@ namespace Npk::Core
         }
     }
 
-    static void UptimeTick(void* ignored)
-    {
-        (void)ignored;
-        uptimeTicks.Add(1, sl::Relaxed);
-
-        if (uptimeTicks.Load() % DefaultUptimeFrequency == 0)
-            Log("Tick!", LogLevel::Debug);
-
-        uptimeEvent.expiry = uptimePeriod;
-        QueueClockEvent(&uptimeEvent);
-    }
-
-    void InitLocalClockQueue(bool startUptime)
+    void InitLocalClockQueue()
     {
         ClockQueue* q = NewWired<ClockQueue>();
         ASSERT_(q != nullptr);
@@ -74,21 +68,36 @@ namespace Npk::Core
         q->coreId = CoreLocalId();
         SetLocalPtr(SubsysPtr::ClockQueue, q);
 
-        if (startUptime)
+        const TimerTickNanos uptimeBegin = ReadPollTimer();
+        TimerTickNanos expectedOffset = 0;
+        if (uptimeOffset.CompareExchange(expectedOffset, uptimeBegin))
         {
-            VALIDATE_(uptimePeriod.ticks == 0, );
+            //we're the first core, do some initial setup:
+            //- set the base count for hardware uptime (done in the CompareExchange)
+            //- setup software based timekeeping if we must.
+            Log("Set system uptime offset to %" PRIu64, LogLevel::Info, uptimeBegin);
 
-            size_t uptimeFreq = GetConfigNumber("kernel.clock.uptime_freq", DefaultUptimeFrequency);
-            uptimeFreq = sl::Clamp(uptimeFreq, MinUptimeFrequency, MaxUptimeFrequency);
-            uptimePeriod = sl::TimeCount(uptimeFreq, 1);
-            Log("Uptime count frequency: %zuHz", LogLevel::Info, uptimeFreq);
+            TimerCapabilities timerCaps {};
+            GetTimerCapabilities(timerCaps);
 
-            uptimeTicks = 0;
-            uptimeEvent.expiry = uptimePeriod;
-            uptimeEvent.dpc = &uptimeDpcStore;
-            uptimeDpcStore.data.function = UptimeTick;
+            useSoftClock = !timerCaps.pollSuitableForUptime || GetConfigNumber("kernel.clock.force_sw_uptime", false);
 
-            QueueClockEvent(&uptimeEvent);
+            //if the hardware cant provide a suitable timer for all cores to use,
+            //we'll do it in software (although this is far from ideal).
+            if (useSoftClock)
+            {
+                softClockFreq = sl::Clamp(GetConfigNumber("kernel.clock.uptime_freq", DefaultSoftClockFreq), 
+                    MinSoftClockFreq, MaxSoftClockFreq);
+
+                softClockDpc.data.function = SoftClockTick;
+                softClockEvent.dpc = &softClockDpc;
+                softClockEvent.expiry  = sl::TimeCount(softClockFreq, 1);
+                QueueClockEvent(&softClockEvent);
+
+                Log("Hardware unable to provide suitable timers for uptime, using softclock at %zuHz.", LogLevel::Info, softClockFreq);
+            }
+            else
+                Log("System will use hardware clock for uptime", LogLevel::Info);
         }
     }
 
@@ -123,8 +132,15 @@ namespace Npk::Core
 
     sl::TimeCount GetUptime()
     { 
-        const auto ticks = uptimeTicks.Load(sl::Relaxed);
-        return sl::TimeCount(uptimePeriod.frequency, uptimePeriod.ticks * ticks);
+        if (useSoftClock)
+            return sl::TimeCount(softClockFreq, softClockTicks.Load());
+
+        if (!CoreLocalAvailable() || GetLocalPtr(SubsysPtr::ClockQueue) == nullptr)
+            return {};
+
+        const auto nanos = ReadPollTimer() - uptimeOffset;
+        ASSERT_(ReadPollTimer() > uptimeOffset);
+        return sl::TimeCount(sl::TimeScale::Nanos, nanos);
     }
 
     void QueueClockEvent(ClockEvent* event)
@@ -166,11 +182,10 @@ namespace Npk::Core
             break;
         }
 
-        DumpState();
         LowerRunLevel(prevRl);
     }
 
-    void DequeueClockEvent(ClockEvent* event)
+    bool DequeueClockEvent(ClockEvent* event)
     {
         ASSERT_UNREACHABLE();
     }

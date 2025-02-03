@@ -7,6 +7,12 @@ namespace Npk
 {
     using TimerTickNanos = uint64_t;
 
+    struct TimerCapabilities
+    {
+        bool pollSuitableForUptime;
+    };
+
+    void GetTimerCapabilities(TimerCapabilities& caps);
     void InitLocalTimers();
 
     bool ArmIntrTimer(TimerTickNanos nanos);

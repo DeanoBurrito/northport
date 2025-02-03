@@ -22,7 +22,7 @@ namespace Npk::Core
 
     //setups the per-core clock queue, optionally starts counting system uptime
     //using the current core.
-    void InitLocalClockQueue(bool startUptime);
+    void InitLocalClockQueue();
 
     //called within the interrupt handler for the local interrupt clock,
     //by the arch layer.
