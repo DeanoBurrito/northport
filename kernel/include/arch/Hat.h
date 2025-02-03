@@ -53,12 +53,14 @@ namespace Npk
         NoExistingMap,
     };
 
-    //a hook for the arch layer to perform some global mmu detection and setup. This function
-    //is also responsible for mapping the unchanging regions of the kernel map:
+    //a hook for the arch layer to do per-cpu mmu detection and setup.
+    //`firstCall` being set indicates the HAT should also do some global setup (this
+    //only happens once, on the boot processor). The first call should also set up the
+    //following in the kernel map:
     // - the kernel image
     // - the HHDM
     // - the virtually contiguous PageInfo database
-    void HatInit();
+    void HatInit(bool firstCall);
 
     //creates a new address space (without loading it).
     HatMap* HatCreateMap();

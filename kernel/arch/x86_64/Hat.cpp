@@ -134,19 +134,29 @@ namespace Npk
         SET_PTE(path.pte, PresentFlag | flags | (paddr & addrMask) | (size != PageSizes::_4K ? SizeFlag : 0));
     }
 
-    void HatInit()
+    void HatInit(bool firstCall)
     {
-        const uint64_t cr4 = ReadCr4();
-        pagingLevels = (cr4 & (1 << 12)) ? 5 : 4; //bit 12 is LA57 (5-level paging).
+        if (firstCall)
+        {
+            const uint64_t cr4 = ReadCr4();
+            pagingLevels = (cr4 & (1 << 12)) ? 5 : 4; //bit 12 is LA57 (5-level paging).
 
-        const size_t maxTranslationLevel = CpuHasFeature(CpuFeature::Pml3Translation) ? 3 : 2;
-        highestLeafLevel = CpuHasFeature(CpuFeature::Pml3Translation) ? 3 : 2;
-        nxSupport = CpuHasFeature(CpuFeature::NoExecute);
-        globalPageSupport = CpuHasFeature(CpuFeature::GlobalPages);
-        patSupport = CpuHasFeature(CpuFeature::Pat);
-        invlpgbSupport = CpuHasFeature(CpuFeature::BroadcastInvlpg);
+            highestLeafLevel = CpuHasFeature(CpuFeature::Pml3Translation) ? 3 : 2;
+            nxSupport = CpuHasFeature(CpuFeature::NoExecute);
+            globalPageSupport = CpuHasFeature(CpuFeature::GlobalPages);
+            patSupport = CpuHasFeature(CpuFeature::Pat);
+            invlpgbSupport = CpuHasFeature(CpuFeature::BroadcastInvlpg);
+        }
+
         if (!patSupport)
             Log("PAT not supported on this cpu.", LogLevel::Warning);
+        if (nxSupport)
+            WriteMsr(MsrEfer, ReadMsr(MsrEfer) | (1 << 11));
+        if (globalPageSupport)
+            WriteCr4(ReadCr4() | (1 << 7)); //tell the cpu we want to use global pages
+
+        if (!firstCall)
+            return;
 
         //determine the mask needed to separate the physical address from the flags
         addrMask = 1ul << (9 * pagingLevels + 12);
@@ -164,6 +174,7 @@ namespace Npk
         sl::MemSet(AddHhdm(kernelMap.root), 0, sizeof(PageTable));
 
         //first we map the hhdm
+        const size_t maxTranslationLevel = CpuHasFeature(CpuFeature::Pml3Translation) ? 3 : 2;
         size_t hhdmPageSize = maxTranslationLevel;
         while (GetPageSize((PageSizes)hhdmPageSize) > hhdmLength)
             hhdmPageSize--;

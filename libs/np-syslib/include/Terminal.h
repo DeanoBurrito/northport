@@ -5,6 +5,7 @@
 namespace sl
 {
     constexpr size_t TerminalColourCount = 8;
+    constexpr size_t EscapeArgsCount = 8;
 
     struct TerminalConfig
     {
@@ -56,12 +57,13 @@ namespace sl
         Char* currChars;
 
         Span<bool> fontStore;
-        uint32_t* bgCanvas;
         uint32_t* fbBase;
         size_t fbStride;
 
         uint32_t colours[TerminalColourCount];
         uint32_t brightColours[TerminalColourCount];
+        uint32_t defaultBg;
+        uint32_t defaultFg;
 
         Vector2u cursorPos;
         Vector2u prevCursorPos;
@@ -72,9 +74,12 @@ namespace sl
         uint32_t currBg;
         bool cursorVisible;
         bool initialized = false;
+        size_t tabSize;
 
         struct
         {
+            char escArgs[EscapeArgsCount];
+            size_t escArgIndex;
             bool inEscape;
         } parseState;
 
@@ -84,6 +89,8 @@ namespace sl
 
         void QueueScroll();
         void QueueChar(uint32_t character);
+        void ParseEscape(const char c);
+        void HandleSgr();
         void ProcessString(StringSpan str);
 
     public:

@@ -133,7 +133,7 @@ namespace sl
             }
         }
 
-        Char blankChar { ' ', currFg, currBg };
+        Char blankChar { currFg, currBg, ' ' };
         for (size_t x = 0; x < size.x; x++)
             QueueOp(blankChar, { x, size.y - 1 });
     }
@@ -157,10 +157,71 @@ namespace sl
         }
     }
 
+    void Terminal::ParseEscape(const char c)
+    {
+        switch (c)
+        {
+        case '[':
+            break;
+        }
+    }
+
+    void Terminal::HandleSgr()
+    {
+        if (parseState.escArgIndex == 0)
+        {
+            currFg = defaultFg;
+            currBg = defaultBg;
+            return;
+        }
+
+        for (size_t i = 0; i < parseState.escArgIndex; i++)
+        {
+            const char arg = parseState.escArgs[i];
+
+            switch (arg)
+            {
+            case 0:
+                currFg = defaultFg;
+                currBg = defaultBg;
+                continue;
+            case 7:
+                {
+                    const uint32_t temp = currFg;
+                    currFg = currBg;
+                    currBg = temp;
+                    continue;
+                }
+            case 39:
+                currFg = defaultFg;
+                continue;
+            case 49:
+                currBg = defaultBg;
+                continue;
+            default:
+                if (arg >= 30 && arg <= 37)
+                    currFg = colours[arg - 30];
+                else if (arg >= 40 && arg <= 47)
+                    currBg = colours[arg - 40];
+                else if (arg >= 90 && arg <= 97)
+                    currFg = brightColours[arg - 90];
+                else if (arg >= 100 && arg <= 107)
+                    currFg = brightColours[arg - 100];
+                continue;
+            }
+        }
+    }
+
     void Terminal::ProcessString(StringSpan str)
     {
         for (size_t i = 0; i < str.Size(); i++)
         {
+            if (parseState.inEscape)
+            {
+                ParseEscape(str[i]);
+                continue;
+            }
+
             switch (str[i])
             {
             case '\e':
@@ -174,7 +235,13 @@ namespace sl
                     QueueScroll();
                 else
                     SetCursorPos({ 0, cursorPos.y + 1 });
-                break;
+                continue;
+            case '\t':
+                SetCursorPos({ sl::Min(size.x - 1, (cursorPos.x / tabSize + 1) * tabSize), cursorPos.y });
+                continue;
+            case '\b':
+                SetCursorPos({ cursorPos.x - 1, cursorPos.y });
+                continue;
             default:
                 QueueChar(str[i]);
                 continue;
@@ -193,7 +260,7 @@ namespace sl
         if (config.Alloc == nullptr)
             return false;
 
-        const size_t validTabSize = sl::Max<size_t>(config.tabSize, 1);
+        tabSize = sl::Max<size_t>(config.tabSize, 1);
         const size_t validMargin = sl::Min<size_t>(config.margin, config.fbSize.x / 2);
         const size_t validFontSpacing = sl::Clamp(config.fontSpacing, 0ul, FontSize.x);
 
@@ -212,6 +279,8 @@ namespace sl
         }
         currBg = config.background;
         currFg = config.foreground;
+        defaultBg = config.background;
+        defaultFg = config.foreground;
 
         fontSize.x += validFontSpacing;
         const size_t fontStoreSize = FontGlyphCount * fontSize.x * fontSize.y * sizeof(bool);
@@ -273,7 +342,18 @@ namespace sl
     }
 
     void Terminal::Deinit(void (*Free)(void* ptr, size_t size))
-    {}
+    {
+        if (!initialized)
+            return;
+        if (Free == nullptr)
+            return;
+
+        Free(fontStore.Begin(), FontGlyphCount * fontSize.x * fontSize.y * sizeof(bool));
+        Free(currChars, size.x * size.y * sizeof(Char));
+        Free(queuedOpStore, size.x * size.y * sizeof(QueuedOp));
+        Free(queuedOpsMap, size.x * size.y * sizeof(void*));
+        //TODO: background canvas
+    }
 
     void Terminal::Write(StringSpan span, bool flush)
     {

@@ -13,7 +13,7 @@ namespace Npk
     static void DebugconWrite(sl::StringSpan text)
     {
         for (size_t i = 0; i < text.Size(); i++)
-            Out8(Npk::PortDebugcon, text[i]);
+            Out8(PortDebugcon, text[i]);
     }
 
     Core::LogOutput debugconOutput
@@ -157,12 +157,7 @@ namespace Npk
             cr4 |= 1 << 20;
         if (CpuHasFeature(CpuFeature::Umip))
             cr4 |= 1 << 11;
-        if (CpuHasFeature(CpuFeature::GlobalPages))
-            cr4 |= 1 << 7;
         WriteCr4(cr4);
-
-        if (CpuHasFeature(CpuFeature::NoExecute))
-            WriteMsr(MsrEfer, ReadMsr(MsrEfer) | (1 << 11));
 
         if (cr4 & (1 << 21))
             asm volatile("clac"); //prevent accidental userspace accesses

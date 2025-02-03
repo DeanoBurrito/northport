@@ -99,7 +99,7 @@ namespace Npk
                 auto paddr = Core::PmAlloc();
                 if (!paddr.HasValue())
                     return nullptr;
-                if (HatDoMap(KernelMap(), earlyVmBase + i, *paddr, 0, flags, false) != HatError::Success)
+                if (HatDoMap(KernelMap(), earlyVmBase + i, *paddr, 0, flags) != HatError::Success)
                     return nullptr;
             }
 
@@ -113,7 +113,7 @@ namespace Npk
         const size_t pTop = paddr + length;
         for (size_t i = pBase; i < pTop; i += PageSize())
         {
-            if (HatDoMap(KernelMap(), i - pBase + earlyVmBase, i, 0, flags, false) != HatError::Success)
+            if (HatDoMap(KernelMap(), i - pBase + earlyVmBase, i, 0, flags) != HatError::Success)
                 return nullptr;
         }
 
@@ -147,6 +147,11 @@ namespace Npk
         while (true)
         {
             Log("init is doing work, then sleeping for 1000ms", LogLevel::Debug);
+
+            auto found = Services::FindSymbol(reinterpret_cast<uintptr_t>(&EarlyVmControl));
+            if (found.HasValue())
+                Log("init work: found %.*s", LogLevel::Debug, (int)found->info->name.Size(), found->info->name.Begin());
+
             sl::TimeCount timeout = 1000_ms;
             Core::WaitManager::WaitMany({}, nullptr, timeout, false);
         }
@@ -171,9 +176,11 @@ namespace Npk
     void PerCoreEntry(size_t myId)
     {
         HatMakeActive(KernelMap(), true);
+        HatInit(false);
+
         ArchInitCore(myId);
         Core::InitLocalSmpMailbox();
-        Core::Pmm::Global().InitLocalCache();
+        //Core::Pmm::Global().InitLocalCache();
 
         InitLocalTimers();
         Core::InitLocalClockQueue();
@@ -243,7 +250,7 @@ namespace Npk
         Core::InitGlobalLogging();
         Log("Hhdm: base=0x%tx, length=0x%zx", LogLevel::Info, hhdmBase, hhdmLength);
 
-        HatInit();
+        HatInit(true);
         HatMakeActive(KernelMap(), true);
         Core::Pmm::Global().Init();
         Core::InitWiredHeap();
