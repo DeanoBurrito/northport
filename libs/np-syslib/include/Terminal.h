@@ -78,9 +78,11 @@ namespace sl
 
         struct
         {
-            char escArgs[EscapeArgsCount];
+            unsigned escArgs[EscapeArgsCount];
             size_t escArgIndex;
             bool inEscape;
+            bool inControlSeq;
+            bool inEscArg;
         } parseState;
 
         void QueueOp(Char c, Vector2u pos);
@@ -89,8 +91,9 @@ namespace sl
 
         void QueueScroll();
         void QueueChar(uint32_t character);
-        void ParseEscape(const char c);
         void HandleSgr();
+        void HandleEraseScreen();
+        void ParseControlSequence(const char c);
         void ProcessString(StringSpan str);
 
     public:

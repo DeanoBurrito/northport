@@ -57,6 +57,24 @@ namespace sl
         return value;
     }
 
+    template<typename T>
+    constexpr inline void MinInPlace(T& a, T b)
+    {
+        a = Min(a, b);
+    }
+
+    template<typename T>
+    constexpr inline void MaxInPlace(T& a, T b)
+    {
+        a = Max(a, b);
+    }
+
+    template<typename T>
+    constexpr inline void ClampInPlace(T& value, T low, T high)
+    {
+        value = Clamp(value, low, high);
+    }
+
     constexpr inline uint8_t ByteSwap(uint8_t value)
     { return value; }
 

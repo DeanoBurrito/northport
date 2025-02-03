@@ -157,15 +157,6 @@ namespace sl
         }
     }
 
-    void Terminal::ParseEscape(const char c)
-    {
-        switch (c)
-        {
-        case '[':
-            break;
-        }
-    }
-
     void Terminal::HandleSgr()
     {
         if (parseState.escArgIndex == 0)
@@ -207,9 +198,116 @@ namespace sl
                     currFg = brightColours[arg - 90];
                 else if (arg >= 100 && arg <= 107)
                     currFg = brightColours[arg - 100];
-                continue;
+                continue; //TODO: truecolour support?
             }
         }
+    }
+
+    void Terminal::HandleEraseScreen()
+    {
+    }
+
+    void Terminal::ParseControlSequence(const char c)
+    {
+        if (c >= '0' && c <= '9')
+        {
+            if (parseState.escArgIndex == EscapeArgsCount)
+                return;
+
+            parseState.inEscArg = true;
+            auto& store = parseState.escArgs[parseState.escArgIndex];
+            store = store * 10 + (c - '0');
+            return;
+        }
+
+        if (parseState.inEscArg)
+        {
+            parseState.escArgIndex++;
+            parseState.inEscArg = false;
+            if (c == ';')
+                return;
+        }
+        else if (c == ';')
+        {
+            if (parseState.escArgIndex == EscapeArgsCount)
+                return;
+            parseState.escArgs[parseState.escArgIndex++] = 0;
+            return;
+        }
+
+        for (size_t i = parseState.escArgIndex; i < EscapeArgsCount; i++)
+        {
+            const size_t defaultValue = (c == 'J' || c == 'K' || c == 'q') ? 0 : 1;
+            parseState.escArgs[i] = defaultValue;
+        }
+
+        switch (c)
+        {
+        case 'F': //move cursorPos up, start of line
+            cursorPos.x = 0;
+        case 'A': //move cursorPos up
+            sl::MinInPlace<unsigned>(parseState.escArgs[0], cursorPos.y);
+            SetCursorPos({ cursorPos.x, cursorPos.y - parseState.escArgs[0] });
+            break;
+
+        case 'E': //move cursorPos down, start of line
+            cursorPos.x = 0;
+        case 'e':
+        case 'B': //move cursorPos down
+            sl::MinInPlace<unsigned>(parseState.escArgs[0], (size.y - 1) - cursorPos.y);
+            SetCursorPos({ cursorPos.x, cursorPos.y + parseState.escArgs[0] });
+            break;
+
+        case 'a':
+        case 'C': //move cursorPos right
+            sl::MinInPlace<unsigned>(parseState.escArgs[0], (size.x - 1) - cursorPos.x);
+            SetCursorPos({ cursorPos.x + parseState.escArgs[0], cursorPos.y });
+            break;
+
+        case 'D': //move cursor left
+            sl::MinInPlace<unsigned>(parseState.escArgs[0], cursorPos.x);
+            SetCursorPos({ cursorPos.x - parseState.escArgs[0], cursorPos.y });
+            break;
+
+        case 'G': //set cursor column
+            parseState.escArgs[0] -= 1;
+            sl::MinInPlace<unsigned>(parseState.escArgs[0], size.y - 1);
+            SetCursorPos({ parseState.escArgs[0], cursorPos.y });
+            break;
+
+        case 'H': //set cursor position
+        case 'f':
+            parseState.escArgs[0] -= 1;
+            parseState.escArgs[1] -= 1;
+            sl::MinInPlace<unsigned>(parseState.escArgs[0], size.y - 1);
+            sl::MinInPlace<unsigned>(parseState.escArgs[1], size.x - 1);
+            SetCursorPos({ parseState.escArgs[1], parseState.escArgs[0] });
+            break;
+
+        case 'J': //erase screen
+            HandleEraseScreen();
+            break;
+            
+        case 'm': //manipulate colours
+            HandleSgr();
+            break;
+
+        case 'K': //erase line
+        {
+            const auto oldCursor = cursorPos;
+            const size_t begin = (parseState.escArgs[0] == 0) ? cursorPos.x : 0;
+            const size_t end = (parseState.escArgs[0] == 2) ? size.x : cursorPos.x;
+
+            cursorPos.x = begin;
+            for (size_t i = begin; i < end; i++)
+                QueueChar(' ');
+            cursorPos = oldCursor;
+        }
+
+        }
+
+        parseState.inControlSeq = false;
+        parseState.inEscape = false;
     }
 
     void Terminal::ProcessString(StringSpan str)
@@ -218,7 +316,23 @@ namespace sl
         {
             if (parseState.inEscape)
             {
-                ParseEscape(str[i]);
+                if (parseState.inControlSeq)
+                {
+                    ParseControlSequence(str[i]);
+                    continue;
+                }
+
+                if (str[i] == '[')
+                {
+                    parseState.escArgIndex = 0;
+                    parseState.inControlSeq = true;
+                    parseState.inEscArg = false;
+
+                    for (size_t i = 0; i < EscapeArgsCount; i++)
+                        parseState.escArgs[i] = 0;
+                }
+                else
+                    parseState.inEscape = false;
                 continue;
             }
 
@@ -335,6 +449,8 @@ namespace sl
         }
 
         parseState.inEscape = false;
+        parseState.inControlSeq = false;
+        parseState.inEscArg = false;
 
         //TODO: background canvas
         initialized = true;
