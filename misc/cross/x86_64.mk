@@ -22,11 +22,12 @@ DRIVER_C_FLAGS += $(X86_64_FLAGS)
 ARCH_DEFAULT_TARGET = limine-iso-hybrid
 KERNEL_BOOT_PROTOCOL = limine
 UEFI_BOOT_NAME = BOOTX64.EFI
+RUN_WITH_BIOS = no
 
 QEMU_BASE = qemu-system-x86_64 -machine q35 \
 	-smp 2 -m 128M -cdrom $(ISO_TARGET) \
 	-debugcon /dev/stdout -monitor stdio -device virtio-gpu
-ifneq ($(X86_64_RUN_WITH_BIOS), yes)
+ifneq ($(RUN_WITH_BIOS), yes)
 	QEMU_BASE += -drive if=pflash,format=raw,file=$(QEMU_FW_FILE),readonly=on
 endif
 

@@ -1,6 +1,6 @@
-KERNEL_CXX_FLAGS += -mcmodel=medlow -mno-relax
-DRIVER_CXX_FLAGS += -mcmodel=medany -mno-relax
-SYSLIB_CXX_FLAGS += -mcmodel=medany -mno-relax
+KERNEL_CXX_FLAGS += -mcmodel=medlow -mno-relax -DNPK_ARCH_RISCV64
+DRIVER_CXX_FLAGS += -mcmodel=medany -mno-relax -DNPK_ARCH_RISCV64
+SYSLIB_CXX_FLAGS += -mcmodel=medany -mno-relax -DNPK_ARCH_RISCV64
 
 KERNEL_LD_FLAGS += --no-relax
 

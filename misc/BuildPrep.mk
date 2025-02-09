@@ -27,3 +27,7 @@ ifeq ($(CPU_ARCH), m68k)
 		KERNEL_CXX_FLAGS += -DNPK_M68K_ASSUME_TTY=$(M68K_ASSUME_UART)
 	endif
 endif
+
+ifeq ($(ENABLE_KERNEL_ASLR), yes)
+	KERNEL_CXX_FLAGS += -DNPK_HAS_ASLR
+endif

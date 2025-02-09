@@ -6,13 +6,14 @@ include misc/HelpText.mk
 KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fPIE -ffreestanding \
 	-fno-omit-frame-pointer -fvisibility=hidden -fno-asynchronous-unwind-tables \
 	-std=c++17 -fno-rtti -fno-exceptions -fsized-deallocation -fno-unwind-tables \
-	-Ikernel/include -DNPK_HAS_KERNEL -Ilibs/np-syslib/include -ffunction-sections -fdata-sections
+	-Ikernel/include -DNPK_HAS_KERNEL -Ilibs/np-syslib/include -ffunction-sections \
+	-fdata-sections
 KERNEL_LD_FLAGS += -zmax-page-size=0x1000 -static -pie -nostdlib --gc-sections
 
 BUILD_DIR = .build
 VENDOR_CACHE_DIR = .cache
 ARCH_DIR = arch/$(CPU_ARCH)
-KERNEL_TARGET = $(BUILD_DIR)/npk-$(CPU_ARCH)
+KERNEL_TARGET = $(BUILD_DIR)/npk.elf
 BUILD_TARGETS = $(KERNEL_TARGET) $(INITDISK_TARGET)
 ISO_BUILD_DIR = $(BUILD_DIR)/iso
 ISO_TARGET = $(BUILD_DIR)/northport-live-$(CPU_ARCH).iso
@@ -25,7 +26,7 @@ KERNEL_CXX_FLAGS_HASH = $(strip $(shell echo $(KERNEL_CXX_FLAGS) | sha256sum | c
 
 LIMINE_BINARIES = $(VENDOR_CACHE_DIR)/limine
 
-include misc/cross/$(CPU_ARCH)/CrossConfig.mk
+include misc/cross/$(CPU_ARCH).mk
 include kernel/arch/$(CPU_ARCH)/Arch.mk
 include libs/np-syslib/Local.mk
 include kernel/Local.mk
@@ -76,9 +77,12 @@ attach:
 
 binaries: options $(BUILD_TARGETS)
 
-limine-iso-prep: binaries $(LIMINE_BINARIES)
+$(BUILD_DIR)/limine.conf: Config.mk
+	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -xc++ -E -P misc/loader-config/limine.conf -o $@
+
+limine-iso-prep: binaries $(LIMINE_BINARIES) $(BUILD_DIR)/limine.conf
 	$(LOUD)mkdir -p $(BUILD_DIR)/iso
-	$(LOUD)cp misc/cross/$(CPU_ARCH)/limine.conf $(ISO_BUILD_DIR)
+	$(LOUD)cp $(BUILD_DIR)/limine.conf $(ISO_BUILD_DIR)
 	$(LOUD)cp $(LIMINE_BINARIES)/limine-uefi-cd.bin $(ISO_BUILD_DIR)
 	$(LOUD)mkdir -p $(ISO_BUILD_DIR)/EFI/BOOT
 	$(LOUD)cp $(LIMINE_BINARIES)/$(UEFI_BOOT_NAME) $(ISO_BUILD_DIR)/EFI/BOOT/

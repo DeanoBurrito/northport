@@ -3,10 +3,10 @@ KERNEL_CXX_SRCS += Entry.cpp Exit.cpp KernelThread.cpp Panic.cpp \
 	core/Log.cpp core/Pmm.cpp core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp \
 	cpp/Stubs.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix syslib/, $(LIB_SYSLIB_CXX_SRCS)) \
-	services/AcpiTables.cpp services/MagicKeys.cpp services/Program.cpp services/SymbolStore.cpp \
-	services/Vmm.cpp services/VmPagers.cpp services/BadSwap.cpp
+	services/AcpiTables.cpp services/BadSwap.cpp services/MagicKeys.cpp \
+	services/Program.cpp services/SymbolStore.cpp services/Vmm.cpp services/VmPagers.cpp
 
-ifeq ($(ENABLE_KASAN), yes)
+ifeq ($(ENABLE_KERNEL_ASAN), yes)
 	KERNEL_CXX_SRCS += cpp/Asan.cpp
 
 	KERNEL_CXX_FLAGS += -fsanitize=kernel-address -DNPK_HAS_KASAN
@@ -15,7 +15,7 @@ ifeq ($(ENABLE_KASAN), yes)
 	endif
 endif
 
-ifeq ($(KERNEL_KUBSAN), yes)
+ifeq ($(ENABLE_KERNEL_UBSAN), yes)
 	KERNEL_CXX_SRCS += cpp/UBSan.cpp
 	KERNEL_CXX_FLAGS += -fsanitize=undefined
 endif

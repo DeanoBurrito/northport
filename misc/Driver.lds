@@ -1,5 +1,3 @@
-OUTPUT_FORMAT(elf32-m68k)
-
 PHDRS
 {
     text        PT_LOAD     FLAGS((1 << 0) | (1 << 2));
@@ -44,6 +42,7 @@ SECTIONS
         *(.dynamic)
     } :data :dynamic
 
+
     .bss :
     {
         *(COMMON)
@@ -56,4 +55,3 @@ SECTIONS
         *(.note.*)
     }
 }
-
