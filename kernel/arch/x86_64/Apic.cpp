@@ -122,7 +122,8 @@ namespace Npk
 
     void LocalApic::CalibrateTimer()
     { 
-        constexpr size_t TotalRuns = 8;
+        constexpr size_t CalibrationRuns = 8;
+        constexpr size_t ControlRuns = 5;
         constexpr size_t RequiredRuns = 5;
         constexpr size_t SampleFrequency = 100;
 
@@ -135,21 +136,23 @@ namespace Npk
         if (dumpCalibData)
         {
             Log("Calibration config: runs=%zu, allowedOutliers=%zu, sampleRate=%zuHz", 
-                LogLevel::Info, TotalRuns, TotalRuns - RequiredRuns, SampleFrequency);
+                LogLevel::Info, CalibrationRuns, CalibrationRuns - RequiredRuns, SampleFrequency);
         }
         useTscDeadline = CpuHasFeature(CpuFeature::TscDeadline);
 
-        size_t calibData[TotalRuns];
+        size_t calibData[CalibrationRuns];
         const auto sleepTime = sl::TimeCount(SampleFrequency, 1).Rebase(sl::Nanos).ticks;
         if (!useTscDeadline)
         {
+            //TODO: controlOffset for LAPIC timer calibration
+
             //we can't use the tsc as the interrupt timer source, so we'll
             //need to calibrate the lapic timer frequency.
             WriteReg(LapicReg::LvtTimer, 1 << 16); //mask and stop timer
             WriteReg(LapicReg::TimerInitCount, 0);
             WriteReg(LapicReg::TimerDivisor, 0);
 
-            for (size_t i = 0; i < TotalRuns; i++)
+            for (size_t i = 0; i < CalibrationRuns; i++)
             {
                 WriteReg(LapicReg::LvtTimer, 1 << 16);
                 WriteReg(LapicReg::TimerInitCount, 0xFFFF'FFFF);
@@ -166,21 +169,39 @@ namespace Npk
             WriteReg(LapicReg::LvtTimer, 1 << 16);
             WriteReg(LapicReg::TimerInitCount, 0);
 
-            ASSERT(CoalesceTimerRuns(calibData, TotalRuns - RequiredRuns, dumpCalibData), 
+            ASSERT(CoalesceTimerRuns(calibData, CalibrationRuns - RequiredRuns, dumpCalibData), 
                 "LAPIC timer calibration failed");
             timerFrequency = calibData[0] * SampleFrequency;
             auto conv = sl::ConvertUnits(timerFrequency);
             Log("LAPIC timer calibrated as: %zu.%zu %sHz", LogLevel::Info, conv.major, conv.minor, conv.prefix);
         }
 
+        const size_t controlOffset = [=]() -> size_t
+        {
+            size_t accum = 0;
+            for (size_t i = 0; i < ControlRuns; i++)
+            {
+                const size_t begin = ReadTsc();
+                CalibrationSleep(0);
+                const size_t end = ReadTsc();
+
+                accum += end - begin;
+                Log("TSC control run %zu: %zu", LogLevel::Verbose, i, end - begin);
+            }
+            accum /= ControlRuns;
+            if (dumpCalibData)
+                Log("TSC control offset: %zu ticks", LogLevel::Verbose, accum);
+            return accum;
+        }();
+
         //TODO: if cpuid leaf is present for tsc details, use that and dont bother calibrating
-        for (size_t i = 0; i < TotalRuns; i++)
+        for (size_t i = 0; i < CalibrationRuns; i++)
         {
             const size_t begin = ReadTsc();
             const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
             const size_t end = ReadTsc();
 
-            const size_t rawData = end - begin;
+            const size_t rawData = (end - begin) - controlOffset;
             calibData[i] = (rawData * sleepTime) / realSleepTime; //oversleep correction
             if (dumpCalibData)
             {
@@ -189,9 +210,7 @@ namespace Npk
             }
         }
 
-        //TODO: account for time taken during measuring code. Sleep for 0time and compare results,
-        //subtract that from all future measurements?
-        ASSERT(CoalesceTimerRuns(calibData, TotalRuns - RequiredRuns, dumpCalibData), "TSC calibration failed");
+        ASSERT(CoalesceTimerRuns(calibData, CalibrationRuns - RequiredRuns, dumpCalibData), "TSC calibration failed");
         tscFrequency = calibData[0] * SampleFrequency;
         auto conv = sl::ConvertUnits(tscFrequency);
         Log("TSC calibrated as: %zu.%zu %sHz", LogLevel::Info, conv.major, conv.minor, conv.prefix);
@@ -205,8 +224,7 @@ namespace Npk
     TimerTickNanos LocalApic::TimerMaxNanos()
     { 
         if (useTscDeadline)
-            //return sl::ScaledTime::FromFrequency(tscFrequency).ToNanos() * static_cast<uint64_t>(~0);
-            return static_cast<uint64_t>(~0);
+            return sl::TimeCount(tscFrequency, static_cast<uint64_t>(~0)).Rebase(sl::Nanos).ticks;
         return sl::TimeCount(timerFrequency, static_cast<uint32_t>(~0)).Rebase(sl::Nanos).ticks;
     }
 

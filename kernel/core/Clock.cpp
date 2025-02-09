@@ -32,6 +32,7 @@ namespace Npk::Core
     static void SoftClockTick(void* arg)
     {
         softClockTicks++;
+        softClockEvent.expiry = sl::TimeCount(softClockFreq, 1);
 
         QueueClockEvent(&softClockEvent);
     }
@@ -126,6 +127,7 @@ namespace Npk::Core
         if (!q->events.Empty())
         {
             const TimerTickNanos armTime = sl::Min(MaxIntrTimerExpiry(), q->events.Front().expiry.ticks);
+            ASSERT_(armTime > 0);
             ASSERT_(ArmIntrTimer(armTime));
         }
     }
@@ -153,7 +155,7 @@ namespace Npk::Core
         ClockQueue* q = static_cast<ClockQueue*>(GetLocalPtr(SubsysPtr::ClockQueue));
         ASSERT_(q != nullptr);
         event->expiry = event->expiry.Rebase(sl::Nanos);
-        RefreshClockQueue(q);
+        ProcessLocalClock();
 
         if (q->events.Empty() || q->events.Front().expiry.ticks > event->expiry.ticks)
         {
@@ -163,6 +165,7 @@ namespace Npk::Core
             q->events.PushFront(event);
 
             const TimerTickNanos armTime = sl::Min(MaxIntrTimerExpiry(), event->expiry.ticks);
+            ASSERT_(armTime > 0);
             ASSERT_(ArmIntrTimer(armTime));
 
             LowerRunLevel(prevRl);

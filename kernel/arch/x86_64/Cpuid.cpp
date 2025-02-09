@@ -58,9 +58,11 @@ namespace Npk
         if (featIndex >= (unsigned)CpuFeature::Count)
             return false;
 
-        //fallback path: try to return correct info even if cache isnt available.
-        //`cpuid` is a serializing instruction though, so this can slow things down.
         CpuidLeaf leaf {};
+        const uint32_t index = accessors[featIndex].leaf.main;
+        if (DoCpuid(index & 0xF000'0000, 0, leaf).a < index)
+            return false;
+
         DoCpuid(accessors[featIndex].leaf.main, accessors[featIndex].leaf.sub, leaf);
         const uint32_t data = leaf[accessors[featIndex].index];
         return data & (1ul << accessors[featIndex].shift);
