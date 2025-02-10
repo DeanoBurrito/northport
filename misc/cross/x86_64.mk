@@ -51,5 +51,6 @@ limine-iso-hybrid: limine-iso-prep
 
 $(QEMU_FW_FILE):
 	$(LOUD)-rm $(QEMU_FW_FILE)
+	$(LOUD)mkdir -p $(VENDOR_CACHE_DIR)
 	$(LOUD)curl -o $(QEMU_FW_FILE) $(OVMF_DOWNLOAD_URL)
 	@printf "$(C_YELLOW)[Cache]$(C_RST)Downloaded OVMF for x86_64 from $(OVMF_DOWNLOAD_URL)\n"
