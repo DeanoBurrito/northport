@@ -65,6 +65,12 @@ namespace sl
                 it->length -= length;
                 return base << scaleShift;
             }
+
+            return {};
+        }
+
+        bool Claim(IdType base, SizeType length)
+        {
         }
 
         void Free(IdType base, SizeType length)
@@ -74,7 +80,7 @@ namespace sl
 
             for (auto it = freeRanges.Begin(); it != freeRanges.End(); ++it)
             {
-                Range* range = *it;
+                Range* range = &*it;
                 if (base == range->base + range->length)
                 {
                     range->length += length;

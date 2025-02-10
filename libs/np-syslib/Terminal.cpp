@@ -205,6 +205,7 @@ namespace sl
 
     void Terminal::HandleEraseScreen()
     {
+        //TODO: implement me
     }
 
     void Terminal::ParseControlSequence(const char c)
@@ -245,6 +246,7 @@ namespace sl
         {
         case 'F': //move cursorPos up, start of line
             cursorPos.x = 0;
+            [[fallthrough]];
         case 'A': //move cursorPos up
             sl::MinInPlace<unsigned>(parseState.escArgs[0], cursorPos.y);
             SetCursorPos({ cursorPos.x, cursorPos.y - parseState.escArgs[0] });
@@ -252,13 +254,14 @@ namespace sl
 
         case 'E': //move cursorPos down, start of line
             cursorPos.x = 0;
-        case 'e':
+            [[fallthrough]];
+        case 'e': [[fallthrough]];
         case 'B': //move cursorPos down
             sl::MinInPlace<unsigned>(parseState.escArgs[0], (size.y - 1) - cursorPos.y);
             SetCursorPos({ cursorPos.x, cursorPos.y + parseState.escArgs[0] });
             break;
 
-        case 'a':
+        case 'a': [[fallthrough]];
         case 'C': //move cursorPos right
             sl::MinInPlace<unsigned>(parseState.escArgs[0], (size.x - 1) - cursorPos.x);
             SetCursorPos({ cursorPos.x + parseState.escArgs[0], cursorPos.y });
@@ -275,7 +278,7 @@ namespace sl
             SetCursorPos({ parseState.escArgs[0], cursorPos.y });
             break;
 
-        case 'H': //set cursor position
+        case 'H': [[fallthrough]]; //set cursor position
         case 'f':
             parseState.escArgs[0] -= 1;
             parseState.escArgs[1] -= 1;
