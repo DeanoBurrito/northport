@@ -2,8 +2,8 @@ KERNEL_CXX_SRCS += Entry.cpp Exit.cpp KernelThread.cpp Panic.cpp \
 	core/Clock.cpp core/Config.cpp core/Event.cpp core/WiredHeap.cpp core/IntrRouter.cpp \
 	core/Log.cpp core/Pmm.cpp core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp \
 	cpp/Stubs.cpp \
-	$(BAKED_CONSTANTS_FILE) $(addprefix syslib/, $(LIB_SYSLIB_CXX_SRCS)) \
-	services/AcpiTables.cpp services/BadSwap.cpp services/MagicKeys.cpp \
+	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS)) \
+	services/AcpiTables.cpp services/BadSwap.cpp services/Io.cpp services/MagicKeys.cpp \
 	services/Program.cpp services/SymbolStore.cpp services/Vmm.cpp services/VmPagers.cpp
 
 ifeq ($(ENABLE_KERNEL_ASAN), yes)
@@ -29,14 +29,31 @@ $(error "Unknown boot protocol: $(KERNEL_BOOT_PROTOCOL), build aborted.")
 endif
 
 BAKED_CONSTANTS_FILE = interfaces/intra/BakedConstants.cpp
+UNITY_SOURCE_FILE = $(BUILD_DIR)/kernel/GeneratedUnitySource.cpp
 KERNEL_LD_SCRIPT = kernel/$(ARCH_DIR)/Linker.lds
-KERNEL_OBJS = $(patsubst %.S, $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_AS_SRCS)) \
-	$(patsubst %.cpp, $(BUILD_DIR)/kernel/%.cpp.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_CXX_SRCS))
+KERNEL_OBJS = $(patsubst %.S, $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_AS_SRCS)) 
+ifeq ($(KERNEL_UNITY_BUILD), yes)
+	KERNEL_OBJS += $(patsubst %.cpp, $(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o, $(UNITY_SOURCE_FILE))
+	KERNEL_CXX_FLAGS += -Ikernel -Ilibs
+else
+	KERNEL_OBJS += $(patsubst %.cpp, $(BUILD_DIR)/kernel/%.cpp.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_CXX_SRCS))
+endif
 
 $(KERNEL_TARGET): $(KERNEL_OBJS) $(KERNEL_LD_SCRIPT)
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Linking ...\n"
 	$(LOUD)$(X_LD_BIN) $(KERNEL_OBJS) $(KERNEL_LD_FLAGS) -T $(KERNEL_LD_SCRIPT) -o $(KERNEL_TARGET)
 	@printf "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)\n"
+
+.PHONY: $(UNITY_SOURCE_FILE)
+$(UNITY_SOURCE_FILE):
+	@mkdir -p $(@D)
+	$(file > $(UNITY_SOURCE_FILE))
+	$(foreach S, $(KERNEL_CXX_SRCS), $(shell printf "#include <$S>\n" >> $(UNITY_SOURCE_FILE)))
+
+$(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o: $(UNITY_SOURCE_FILE)
+	@printf "$(C_BLUE)[Kernel]$(C_RST) Compiling unity build source file: $<\n"
+	@mkdir -p $(@D)
+	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@
 
 .PHONY: kernel/$(BAKED_CONSTANTS_FILE)
 kernel/$(BAKED_CONSTANTS_FILE):
@@ -60,7 +77,7 @@ $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o: kernel/%.S
 	@mkdir -p $(@D)
 	$(LOUD)$(X_AS_BIN) $(KERNEL_AS_FLAGS) $< -o $@
 
-$(BUILD_DIR)/kernel/syslib/%.cpp.$(KERNEL_CXX_FLAGS_HASH).o: libs/np-syslib/%.cpp
+$(BUILD_DIR)/kernel/np-syslib/%.cpp.$(KERNEL_CXX_FLAGS_HASH).o: libs/np-syslib/%.cpp
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Compiling: $<\n"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@

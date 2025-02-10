@@ -138,14 +138,17 @@ namespace Npk::Core
         for (auto it = mailboxes.Begin(); it != mailboxes.End(); ++it)
         {
             if (it->id == CoreLocalId())
+            {
+                smpPendingPanics--;
                 continue;
+            }
 
             it->shouldPanic = true;
             SendIpi(it->id, true);
         }
         mailboxesLock.ReaderUnlock();
 
-        while (smpPendingPanics != 1)
+        while (smpPendingPanics != 0)
             sl::HintSpinloop();
     }
 }

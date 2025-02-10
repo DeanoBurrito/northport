@@ -7,12 +7,34 @@
 #include <services/AcpiTables.h>
 #include <services/Vmm.h>
 #include <Locks.h>
+#include <Hhdm.h>
 #include <Maths.h>
+#include <Memory.h>
 #include <containers/List.h>
 #include <UnitConverter.h>
 
 namespace Npk
 {
+    constexpr size_t CalibrationRuns = 8;
+    constexpr size_t ControlRuns = 5;
+    constexpr size_t RequiredRuns = 5;
+    constexpr size_t SampleFrequency = 100;
+
+    //https://docs.kernel.org/virt/kvm/x86/msr.html
+    struct SL_PACKED(PvSystemTime
+    {
+        uint32_t version;
+        uint32_t reserved0;
+        uint64_t tscReference;
+        uint64_t systemTime;
+        uint32_t tscToSystemMul;
+        int8_t tscShift;
+        uint8_t flags;
+        uint8_t reserved1[2];
+    });
+
+    PvSystemTime* pvClock = nullptr;
+
     uint32_t LocalApic::ReadReg(LapicReg reg)
     {
         if (x2Mode)
@@ -27,6 +49,229 @@ namespace Npk
             WriteMsr((static_cast<uint32_t>(reg) >> 4) + 0x800, value);
         else
             mmio.Offset(static_cast<uint32_t>(reg)).Write<uint32_t>(value);
+    }
+
+    static bool CoalesceTimerRuns(sl::Span<size_t> runs, size_t allowedFails, bool printInfo)
+    {
+        const size_t stdDev = sl::StandardDeviation(runs);
+        const size_t mean = [&]() -> size_t
+        {
+            size_t accum = 0;
+            for (size_t i = 0; i < runs.Size(); i++)
+                accum += runs[i];
+            return accum / runs.Size();
+        }();
+        
+        size_t validRuns = 0;
+        size_t accumulator = 0;
+        for (size_t i = 0; i < runs.Size(); i++)
+        {
+            if (runs[i] < mean - stdDev || runs[i] > mean + stdDev)
+                continue;
+
+            validRuns++;
+            accumulator += runs[i];
+        }
+
+        if (validRuns < runs.Size() - allowedFails)
+            return false;
+
+        runs[0] = accumulator / validRuns;
+        if (printInfo)
+            Log("%zu/%zu valid runs, %zu final ticks", LogLevel::Verbose, validRuns, runs.Size(), runs[0]);
+        return true;
+    }
+
+    void LocalApic::CalibrateLocalTimer(bool dumpCalibData, size_t maxBaseCpuidLeaf, size_t maxHyperCpuidLeaf)
+    {
+        //we cant use the TSC for the interrupt timer source, so we'll need the frequency
+        //of the lapic timer. First we try cpuid leaves 0x15 and 0x16, and then the
+        //hypervisor leaf (if present), and then otherwise fallback to calibating it
+        //against another timer in the system.
+
+        timerFrequency = 0;
+        size_t calibData[CalibrationRuns];
+        const auto sleepTime = sl::TimeCount(SampleFrequency, 1).Rebase(sl::Nanos).ticks;
+
+        CpuidLeaf cpuidData {};
+        if (maxBaseCpuidLeaf >= 0x15 && DoCpuid(0x15, 0, cpuidData).c != 0)
+        {
+            timerFrequency = cpuidData.c / 2; //divide by 2 because we use divisor=0 (which, actually divides the incoming clock tickrate by 2)
+
+            const auto conv = sl::ConvertUnits(tscFrequency, sl::UnitBase::Decimal);
+            Log("LAPIC timer frequency from cpuid leaf 0x15: %zu.%zu %sHz", LogLevel::Info, 
+                conv.major, conv.minor, conv.prefix);
+            return;
+        }
+        else if (maxBaseCpuidLeaf >= 0x16 && DoCpuid(0x16, 0, cpuidData).c != 0)
+        {
+            timerFrequency = cpuidData.c / 2;
+
+            const auto conv = sl::ConvertUnits(tscFrequency, sl::UnitBase::Decimal);
+            Log("LAPIC timer frequency from cpuid leaf 0x16: %zu.%zu %sHz", LogLevel::Info, 
+                conv.major, conv.minor, conv.prefix);
+            return;
+        }
+        else if (maxHyperCpuidLeaf && DoCpuid(0x4000'0010, 0, cpuidData).b != 0)
+        {
+            tscFrequency = cpuidData.b * 1000; //value is in KHz
+
+            const auto conv = sl::ConvertUnits(tscFrequency, sl::UnitBase::Decimal);
+            Log("LAPIC timer frequency from cpuid leaf 0x4000'0010: %zu.%zu %sHz", LogLevel::Info, 
+                conv.major, conv.minor, conv.prefix);
+            return;
+        }
+
+        WriteReg(LapicReg::LvtTimer, 1 << 16); //mask and stop timer
+        WriteReg(LapicReg::TimerInitCount, 0);
+        WriteReg(LapicReg::TimerDivisor, 0);
+
+        const size_t controlOffset = [=]() -> size_t
+        {
+            size_t accum = 0;
+            for (size_t i = 0; i < ControlRuns; i++)
+            {
+                WriteReg(LapicReg::LvtTimer, 1 << 16);
+                WriteReg(LapicReg::TimerInitCount, 0xFFFF'FFFF);
+                CalibrationSleep(0);
+                const size_t end = ReadReg(LapicReg::TimerCount);
+
+                accum += (0xFFFF'FFFF - end);
+                if (dumpCalibData)
+                    Log("TSC control run %zu: %zu", LogLevel::Verbose, i, 0xFFFF'FFFF - end);
+            }
+            accum /= ControlRuns;
+            if (dumpCalibData)
+                Log("TSC control offset: %zu ticks", LogLevel::Verbose, accum);
+            return accum;
+        }();
+
+        //calibration time
+        for (size_t i = 0; i < CalibrationRuns; i++)
+        {
+            WriteReg(LapicReg::LvtTimer, 1 << 16);
+            WriteReg(LapicReg::TimerInitCount, 0xFFFF'FFFF);
+            const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
+
+            const size_t rawData = (0xFFFF'FFFF - ReadReg(LapicReg::TimerCount)) - controlOffset;
+            calibData[i] = (rawData * sleepTime) / realSleepTime;
+            if (dumpCalibData)
+            {
+                Log("LAPIC calibration run %zu: rawTicks=%zu, sleepTime=%zu ns, fixedTicks=%zu",
+                    LogLevel::Verbose, i, rawData, realSleepTime, calibData[i]);
+            }
+        }
+        WriteReg(LapicReg::LvtTimer, 1 << 16);
+        WriteReg(LapicReg::TimerInitCount, 0);
+
+        ASSERT(CoalesceTimerRuns(calibData, CalibrationRuns - RequiredRuns, dumpCalibData), 
+            "LAPIC timer calibration failed");
+        timerFrequency = calibData[0] * SampleFrequency;
+        auto conv = sl::ConvertUnits(timerFrequency, sl::UnitBase::Decimal);
+        Log("LAPIC timer calibrated as: %zu.%zu %sHz", LogLevel::Info, conv.major, conv.minor, conv.prefix);
+    }
+
+    void LocalApic::CalibrateTsc(bool dumpCalibData, size_t maxBaseCpuidLeaf, size_t maxHyperCpuidLeaf)
+    {
+        //for TSC calibration, its similar to the lapic timer - first check if we can get it from cpuid,
+        //then the hypervisor cpuid leaves, and then calibrate it if we have no other choices.
+
+        tscFrequency = 0;
+        size_t calibData[CalibrationRuns];
+        const auto sleepTime = sl::TimeCount(SampleFrequency, 1).Rebase(sl::Nanos).ticks;
+
+        CpuidLeaf cpuidData {};
+        if (maxBaseCpuidLeaf >= 0x15 && DoCpuid(0x15, 0, cpuidData).b != 0 && cpuidData.a != 0)
+        {
+            tscFrequency = (cpuidData.c * cpuidData.b) / cpuidData.a;
+
+            const auto conv = sl::ConvertUnits(tscFrequency, sl::UnitBase::Decimal);
+            Log("TSC frequency from cpuid leaf 0x15: %zu.%zu %sHz", LogLevel::Info, 
+                conv.major, conv.minor, conv.prefix);
+            return;
+        }
+        else if (maxBaseCpuidLeaf >= 0x16 && DoCpuid(0x16, 0, cpuidData).a != 0)
+        {
+            tscFrequency = cpuidData.a * 1'000'000; //base frequency is in MHz
+
+            const auto conv = sl::ConvertUnits(tscFrequency, sl::UnitBase::Decimal);
+            Log("TSC frequency from cpuid leaf 0x16: %zu.%zu %sHz", LogLevel::Info, 
+                conv.major, conv.minor, conv.prefix);
+            return;
+        }
+        else if (maxHyperCpuidLeaf && DoCpuid(0x4000'0010, 0, cpuidData).a != 0)
+        {
+            tscFrequency = cpuidData.a * 1000; //value is in KHz
+
+            const auto conv = sl::ConvertUnits(tscFrequency, sl::UnitBase::Decimal);
+            Log("TSC frequency from cpuid leaf 0x4000'0010: %zu.%zu %sHz", LogLevel::Info, 
+                conv.major, conv.minor, conv.prefix);
+            return;
+        }
+
+        const size_t controlOffset = [=]() -> size_t
+        {
+            size_t accum = 0;
+            for (size_t i = 0; i < ControlRuns; i++)
+            {
+                const size_t begin = ReadTsc();
+                CalibrationSleep(0);
+                const size_t end = ReadTsc();
+
+                accum += end - begin;
+                if (dumpCalibData)
+                    Log("TSC control run %zu: %zu", LogLevel::Verbose, i, end - begin);
+            }
+            accum /= ControlRuns;
+            if (dumpCalibData)
+                Log("TSC control offset: %zu ticks", LogLevel::Verbose, accum);
+            return accum;
+        }();
+
+        for (size_t i = 0; i < CalibrationRuns; i++)
+        {
+            const size_t begin = ReadTsc();
+            const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
+            const size_t end = ReadTsc();
+
+            const size_t rawData = (end - begin) - controlOffset;
+            calibData[i] = (rawData * sleepTime) / realSleepTime; //oversleep correction
+            if (dumpCalibData)
+            {
+                Log("TSC calibration run %zu: rawTicks=%zu, sleepTime=%zu ns, fixedTicks=%zu",
+                    LogLevel::Verbose, i, rawData, realSleepTime, calibData[i]);
+            }
+        }
+
+        ASSERT(CoalesceTimerRuns(calibData, CalibrationRuns - RequiredRuns, dumpCalibData), "TSC calibration failed");
+        tscFrequency = calibData[0] * SampleFrequency;
+        auto conv = sl::ConvertUnits(tscFrequency, sl::UnitBase::Decimal);
+        Log("TSC calibrated as: %zu.%zu %sHz", LogLevel::Info, conv.major, conv.minor, conv.prefix);
+    }
+
+    static PvSystemTime* InitPvClock()
+    {
+        constexpr uint32_t HypervisorCpuidLeaf = 0x4000'0000;
+        constexpr uint32_t PvClockPresent = 1 << 3;
+
+        //we're running under a hypervisor, check if its KVM and if the pvclock MSR is supported
+        CpuidLeaf leaf {};
+        DoCpuid(HypervisorCpuidLeaf, 0, leaf);
+        if (leaf.b != 0x4b4d564b || leaf.c != 0x564b4d56 || leaf.d != 0x4d)
+            return nullptr; //validate KVMKVMKVM signature
+
+        DoCpuid(HypervisorCpuidLeaf + 1, 0, leaf);
+        if (!(leaf.a & PvClockPresent))
+            return nullptr;
+
+        auto maybePaddr = Core::PmAlloc();
+        VALIDATE_(maybePaddr.HasValue(), nullptr);
+
+        const uintptr_t paddr = *maybePaddr;
+        WriteMsr(MsrPvSystemTime, paddr | 1); //bit 0 is the enable bit
+
+        Log("KVM detected, enabled pvclock (io=0x%tx).", LogLevel::Info, paddr);
+        return reinterpret_cast<PvSystemTime*>(paddr + hhdmBase);
     }
 
     bool LocalApic::Init()
@@ -85,52 +330,33 @@ namespace Npk
             Out8(PortData1, 0xFF);
         }
 
+        if (IsBsp() && CpuHasFeature(CpuFeature::VGuest))
+            pvClock = InitPvClock();
+
         WriteReg(LapicReg::SpuriousConfig, IntrVectorSpurious | (1 << 8));
-        return true;
-    }
 
-    static bool CoalesceTimerRuns(sl::Span<size_t> runs, size_t allowedFails, bool printInfo)
-    {
-        const size_t stdDev = sl::StandardDeviation(runs);
-        const size_t mean = [&]() -> size_t
+        //https://github.com/projectacrn/acrn-hypervisor/blob/master/hypervisor/arch/x86/lapic.c#L65
+        for (size_t i = 8; i > 0; i--)
         {
-            size_t accum = 0;
-            for (size_t i = 0; i < runs.Size(); i++)
-                accum += runs[i];
-            return accum / runs.Size();
-        }();
-        
-        size_t validRuns = 0;
-        size_t accumulator = 0;
-        for (size_t i = 0; i < runs.Size(); i++)
-        {
-            if (runs[i] < mean - stdDev || runs[i] > mean + stdDev)
-                continue;
-
-            validRuns++;
-            accumulator += runs[i];
+            const LapicReg reg = static_cast<LapicReg>(static_cast<unsigned>(LapicReg::InService0) 
+                + (i - 1) * 0x10);
+            while (ReadReg(reg) != 0)
+                SendEoi();
         }
-
-        if (validRuns < runs.Size() - allowedFails)
-            return false;
-
-        runs[0] = accumulator / validRuns;
-        if (printInfo)
-            Log("%zu/%zu valid runs, %zu final ticks", LogLevel::Verbose, validRuns, runs.Size(), runs[0]);
         return true;
     }
 
     void LocalApic::CalibrateTimer()
     { 
-        constexpr size_t CalibrationRuns = 8;
-        constexpr size_t ControlRuns = 5;
-        constexpr size_t RequiredRuns = 5;
-        constexpr size_t SampleFrequency = 100;
-
         if (!CpuHasFeature(CpuFeature::AlwaysRunningApic) && IsBsp())
             Log("Always-running-apic not supported on this CPU.", LogLevel::Warning);
         if (!CpuHasFeature(CpuFeature::InvariantTsc) && IsBsp())
             Log("Invariant TSC not supported.", LogLevel::Warning);
+
+        CpuidLeaf cpuidData;
+        const size_t maxBaseCpuidLeaf = DoCpuid(0, 0, cpuidData).a;
+        const size_t maxHyperCpuidLeaf = CpuHasFeature(CpuFeature::VGuest) 
+            ? DoCpuid(0x4000'0000, 0, cpuidData).a : 0;
 
         const bool dumpCalibData = Core::GetConfigNumber("kernel.timer.dump_calibration_data", false);
         if (dumpCalibData)
@@ -138,90 +364,45 @@ namespace Npk
             Log("Calibration config: runs=%zu, allowedOutliers=%zu, sampleRate=%zuHz", 
                 LogLevel::Info, CalibrationRuns, CalibrationRuns - RequiredRuns, SampleFrequency);
         }
-        useTscDeadline = CpuHasFeature(CpuFeature::TscDeadline);
 
-        size_t calibData[CalibrationRuns];
-        const auto sleepTime = sl::TimeCount(SampleFrequency, 1).Rebase(sl::Nanos).ticks;
-        if (!useTscDeadline)
-        {
-            //TODO: controlOffset for LAPIC timer calibration
-
-            //we can't use the tsc as the interrupt timer source, so we'll
-            //need to calibrate the lapic timer frequency.
-            WriteReg(LapicReg::LvtTimer, 1 << 16); //mask and stop timer
-            WriteReg(LapicReg::TimerInitCount, 0);
-            WriteReg(LapicReg::TimerDivisor, 0);
-
-            for (size_t i = 0; i < CalibrationRuns; i++)
-            {
-                WriteReg(LapicReg::LvtTimer, 1 << 16);
-                WriteReg(LapicReg::TimerInitCount, 0xFFFF'FFFF);
-                const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
-
-                const size_t rawData = (uint32_t)-1 - ReadReg(LapicReg::TimerCount);
-                calibData[i] = (rawData * sleepTime) / realSleepTime;
-                if (dumpCalibData)
-                {
-                    Log("LAPIC calibration run %zu: rawTicks=%zu, sleepTime=%zu ns, fixedTicks=%zu",
-                        LogLevel::Verbose, i, rawData, realSleepTime, calibData[i]);
-                }
-            }
-            WriteReg(LapicReg::LvtTimer, 1 << 16);
-            WriteReg(LapicReg::TimerInitCount, 0);
-
-            ASSERT(CoalesceTimerRuns(calibData, CalibrationRuns - RequiredRuns, dumpCalibData), 
-                "LAPIC timer calibration failed");
-            timerFrequency = calibData[0] * SampleFrequency;
-            auto conv = sl::ConvertUnits(timerFrequency);
-            Log("LAPIC timer calibrated as: %zu.%zu %sHz", LogLevel::Info, conv.major, conv.minor, conv.prefix);
-        }
-
-        const size_t controlOffset = [=]() -> size_t
-        {
-            size_t accum = 0;
-            for (size_t i = 0; i < ControlRuns; i++)
-            {
-                const size_t begin = ReadTsc();
-                CalibrationSleep(0);
-                const size_t end = ReadTsc();
-
-                accum += end - begin;
-                Log("TSC control run %zu: %zu", LogLevel::Verbose, i, end - begin);
-            }
-            accum /= ControlRuns;
-            if (dumpCalibData)
-                Log("TSC control offset: %zu ticks", LogLevel::Verbose, accum);
-            return accum;
-        }();
-
-        //TODO: if cpuid leaf is present for tsc details, use that and dont bother calibrating
-        for (size_t i = 0; i < CalibrationRuns; i++)
-        {
-            const size_t begin = ReadTsc();
-            const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
-            const size_t end = ReadTsc();
-
-            const size_t rawData = (end - begin) - controlOffset;
-            calibData[i] = (rawData * sleepTime) / realSleepTime; //oversleep correction
-            if (dumpCalibData)
-            {
-                Log("TSC calibration run %zu: rawTicks=%zu, sleepTime=%zu ns, fixedTicks=%zu",
-                    LogLevel::Verbose, i, rawData, realSleepTime, calibData[i]);
-            }
-        }
-
-        ASSERT(CoalesceTimerRuns(calibData, CalibrationRuns - RequiredRuns, dumpCalibData), "TSC calibration failed");
-        tscFrequency = calibData[0] * SampleFrequency;
-        auto conv = sl::ConvertUnits(tscFrequency);
-        Log("TSC calibrated as: %zu.%zu %sHz", LogLevel::Info, conv.major, conv.minor, conv.prefix);
+        if (!CpuHasFeature(CpuFeature::TscDeadline))
+            CalibrateLocalTimer(dumpCalibData, maxBaseCpuidLeaf, maxHyperCpuidLeaf);
+        CalibrateTsc(dumpCalibData, maxBaseCpuidLeaf, maxHyperCpuidLeaf);
     }
 
-    TimerTickNanos LocalApic::ReadTscNanos()
+    TimerTickNanos LocalApic::ReadTscNanos() const
     {
+        if (pvClock != nullptr)
+        {
+            PvSystemTime pvTime;
+
+            while (true)
+            {
+                while (pvClock->version & 1)
+                    sl::HintSpinloop();
+
+                const uint32_t lastVersion = pvClock->version;
+                sl::MemCopy(&pvTime, pvClock, sizeof(pvTime));
+
+                if ((pvClock->version & 1) || pvClock->version != lastVersion)
+                    continue;
+                break;
+            }
+
+            TimerTickNanos time = ReadTsc() - pvTime.tscReference;
+            if (pvTime.tscShift < 0)
+                time >>= pvTime.tscShift;
+            else
+                time <<= pvTime.tscShift;
+            time = (time * pvTime.tscToSystemMul) >> 32;
+
+            return time + pvTime.systemTime;
+        }
+
         return sl::TimeCount(tscFrequency, ReadTsc()).Rebase(sl::Nanos).ticks;
     }
 
-    TimerTickNanos LocalApic::TimerMaxNanos()
+    TimerTickNanos LocalApic::TimerMaxNanos() const
     { 
         if (useTscDeadline)
             return sl::TimeCount(tscFrequency, static_cast<uint64_t>(~0)).Rebase(sl::Nanos).ticks;
@@ -238,7 +419,7 @@ namespace Npk
         else
         {
             WriteReg(LapicReg::LvtTimer, vector);
-            WriteReg(LapicReg::TimerInitCount, nanos * sl::TimeCount(timerFrequency, 1).Rebase(sl::Nanos).ticks);
+            WriteReg(LapicReg::TimerInitCount, (timerFrequency * nanos) / sl::Nanos);
         }
     }
 

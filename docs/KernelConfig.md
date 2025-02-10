@@ -25,3 +25,4 @@
 
 - `NPK_HAS_KERNEL`: defined if code is being compiled as part of the kernel.
 - `NPK_HAS_KASAN`: defined (to any value) if the kernel is being compiled with kasan.
+- `NPK_HAS_KASLR`: defined is the kernel should randomize its address space layout, this also sets any appropriate bootloader config options.

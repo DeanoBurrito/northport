@@ -18,6 +18,8 @@ namespace Npk
     constexpr inline uint32_t MsrKernelGsBase = 0xC0000102;
     constexpr inline uint32_t MsrTsc = 0x10;
     constexpr inline uint32_t MsrTscDeadline = 0x6E0;
+    constexpr inline uint32_t MsrPvSystemTime = 0x4B564D01;
+    constexpr inline uint32_t MsrPvWallClock = 0x4B564D00;
 
     constexpr inline uint16_t PortDebugcon = 0xE9;
     constexpr inline uint16_t PortPitCmd = 0x43;
