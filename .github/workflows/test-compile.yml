@@ -67,6 +67,8 @@ jobs:
         key: clang-latest
         path: |
           toolchains/llvm-build
+    - name: Download Tools
+      run: sudo snap remove curl; sudo apt install curl xorriso
     - name: Checkout repo
       uses: actions/checkout@v4
       with:
@@ -74,7 +76,7 @@ jobs:
     - name: Compile
       run: >
         cd repo;
-        make clean binaries
+        make clean all
         CPU_ARCH=${{ matrix.arch }}
         TOOLCHAIN=${{ matrix.compiler }}
         X_CXX_BIN="$GITHUB_WORKSPACE/toolchains/llvm-build/bin/clang++ --target=${{ matrix.arch }}-elf"
@@ -105,6 +107,8 @@ jobs:
           toolchains/gcc-x86_64-cross
           toolchains/gcc-riscv64-cross
           toolchains/gcc-m68k-cross
+    - name: Download Tools
+      run: sudo snap remove curl; sudo apt install curl xorriso
     - name: Checkout repo
       uses: actions/checkout@v4
       with:
@@ -112,7 +116,7 @@ jobs:
     - name: Compile
       run: >
         cd repo;
-        make clean binaries
+        make clean all
         CPU_ARCH=${{ matrix.arch }}
         TOOLCHAIN=${{ matrix.compiler }}
         X_CXX_BIN=$GITHUB_WORKSPACE/toolchains/gcc-${{ matrix.arch }}-cross/bin/${{ matrix.arch }}-buildroot-linux-gnu-g++
