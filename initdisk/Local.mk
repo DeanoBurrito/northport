@@ -19,5 +19,6 @@ $(INITDISK_TARGET): $(addprefix initdisk/, $(INITDISK_FILES)) $(INITDISK_CACHE_F
 
 $(PCI_IDS_FILE):
 	$(LOUD)-rm $(PCI_IDS_FILE)
+	$(LOUD)mkdir -p $(VENDOR_CACHE_DIR)
 	$(LOUD)curl -o $(PCI_IDS_FILE) $(PCI_IDS_URL)
 	@printf "$(C_YELLOW)[Cache]$(C_RST)Downloaded pci.ids list from $(PCI_IDS_URL).\n"

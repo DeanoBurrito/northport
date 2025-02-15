@@ -26,14 +26,15 @@ KERNEL_CXX_FLAGS_HASH = $(strip $(shell echo $(KERNEL_CXX_FLAGS) | sha256sum | c
 
 LIMINE_BINARIES = $(VENDOR_CACHE_DIR)/limine
 
+.PHONY: help
+help: help-text
+
 include misc/cross/$(CPU_ARCH).mk
 include kernel/arch/$(CPU_ARCH)/Arch.mk
 include libs/np-syslib/Local.mk
 include kernel/Local.mk
 include initdisk/Local.mk
-
-.PHONY: help
-help: help-text
+include tests/Local.mk
 
 all: $(ARCH_DEFAULT_TARGET)
 
@@ -98,10 +99,9 @@ limine-iso: limine-iso-prep
 	@printf "$(C_CYAN)[Build]$(C_RST) If qemu is installed, try it out with 'make run'!\n"
 
 $(LIMINE_BINARIES):
-	$(LOUD)-rm -rf $(VENDOR_CACHE_DIR)/limine
+	$(LOUD)-rm -rf $(LIMINE_BINARIES)
 	$(LOUD)git clone https://github.com/limine-bootloader/limine.git \
 		--branch=v8.x-binary --depth 1 $(LIMINE_BINARIES)
 	$(LOUD)cd $(LIMINE_BINARIES); make all
-	$(LOUD)touch $@
-	@printf "$(C_YELLOW)[Cache]$(C_RST) Limine repo cloned from latest v8 release.\r\n"
+	@printf "$(C_YELLOW)[Cache]$(C_RST) Limine repo cloned to local cache.\r\n"
 

@@ -1,9 +1,9 @@
 help-text:
 	@printf "\e[1;39mUsage: \e[0;39mmake $(C_YELLOW)<target>$(C_RST), where $(C_YELLOW)<target>$(C_RST) is one of the following:\n"
 	@printf "  $(C_YELLOW)all$(C_RST)\t\t Compiles everything, builds a bootable iso.\n"
-	@printf "  $(C_YELLOW)options$(C_RST)\t Displays current config info, including compiler and linker flags.\n"
-	@printf "  $(C_YELLOW)clean$(C_RST)\t\t Removes all temporary build files.\n"
+	@printf "  $(C_YELLOW)clean$(C_RST)\t\t Removes all temporary build files, does not clean download cache.\n"
 	@printf "  $(C_YELLOW)clean-cache$(C_RST)\t Removes all downloaded vendor files (bootloaders etc).\n"
+	@printf "  $(C_YELLOW)tests$(C_RST)\t\t Builds and runs unit tests, note building tests can be slow.\n"
 	@printf "  $(C_YELLOW)run$(C_RST)\t\t Builds everything and launches the kernel in qemu.\n"
 	@printf "  $(C_YELLOW)run-noaccel$(C_RST)\t Same as $(C_YELLOW)all$(C_RST), but without hardware acceleration.\n"
 	@printf "  $(C_YELLOW)debug$(C_RST)\t\t Builds everything, launches in qemu and waits for a GDB connection.\n"
