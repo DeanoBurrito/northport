@@ -6,6 +6,20 @@ on:
     paths-ignore: [ 'docs/**' ]
 
 jobs:
+  run-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download Tools
+      run: sudo snap remove curl; sudo apt install curl
+    - name: Checkout repo
+      uses: actions/checkout@v4
+      with:
+        path: 'repo'
+    - name: Do Tests
+      run: >
+        cd repo; 
+        make tests
+
   cache-gcc-binaries:
     runs-on: ubuntu-latest
     steps:
