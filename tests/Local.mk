@@ -11,6 +11,7 @@ tests: build-tests
 
 $(TESTS_TARGET): $(addprefix tests/, $(TESTS_SRCS))
 	@printf "$(C_BLUE)[Tests]$(C_RST) Building ...\n"
+	$(LOUD)mkdir -p $(@D)
 	$(LOUD)$(CXX) $(TESTS_CXX_FLAGS) $(CATCH2_DIR)/extras/catch_amalgamated.cpp \
 		$(addprefix tests/, $(TESTS_SRCS)) -o $@
 	@printf "$(C_BLUE)[Tests]$(C_RST) $(C_GREEN)Done.$(C_RST)\n"
