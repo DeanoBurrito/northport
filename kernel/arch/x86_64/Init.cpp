@@ -9,7 +9,7 @@
 
 namespace Npk
 {
-#ifdef NPK_X86_DEBUGCON_ENABLED
+#ifdef NPK_X86_ASSUME_DEBUGCON
     static void DebugconWrite(sl::StringSpan text)
     {
         for (size_t i = 0; i < text.Size(); i++)
@@ -84,7 +84,7 @@ namespace Npk
     SL_NO_KASAN
     void ArchKernelEntry()
     {
-#ifdef NPK_X86_DEBUGCON_ENABLED
+#ifdef NPK_X86_ASSUME_DEBUGCON
         Core::AddLogOutput(&debugconOutput);
 #endif
 

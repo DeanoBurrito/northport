@@ -1,7 +1,14 @@
 include Config.mk
-include misc/BuildPrep.mk
 include misc/Formatting.mk
 include misc/HelpText.mk
+
+ifeq ($(QUIET_BUILD), yes)
+	export LOUD = @
+	export LOUD_REDIRECT = 2>/dev/null
+else
+	export LOUD =
+	export LOUD_REDIRECT =
+endif
 
 KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fPIE -ffreestanding \
 	-fno-omit-frame-pointer -fvisibility=hidden -fno-asynchronous-unwind-tables \

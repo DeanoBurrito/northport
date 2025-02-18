@@ -13,6 +13,10 @@ else
 $(error "Unsupported toolchain for x86_64: $(TOOLCHAIN)")
 endif
 
+ifeq ($(X86_ASSUME_DEBUGCON), yes)
+	KERNEL_CXX_FLAGS += -DNPK_X86_ASSUME_DEBUGCON
+endif
+
 X86_64_FLAGS = -mno-red-zone -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-3dnow
 KERNEL_CXX_FLAGS += $(X86_64_FLAGS)
 KERNEL_LD_FLAGS += -ztext --no-relax
