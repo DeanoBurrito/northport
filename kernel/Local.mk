@@ -45,7 +45,7 @@ $(KERNEL_TARGET): $(KERNEL_OBJS) $(KERNEL_LD_SCRIPT)
 	@printf "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)\n"
 
 .PHONY: $(UNITY_SOURCE_FILE)
-$(UNITY_SOURCE_FILE):
+$(UNITY_SOURCE_FILE): $(addprefix kernel/, $(KERNEL_CXX_SRCS))
 	@mkdir -p $(@D)
 	$(file > $(UNITY_SOURCE_FILE))
 	$(foreach S, $(KERNEL_CXX_SRCS), $(shell printf "#include <$S>\n" >> $(UNITY_SOURCE_FILE)))
