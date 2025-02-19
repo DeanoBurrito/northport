@@ -367,6 +367,8 @@ namespace Npk
 
         if (!CpuHasFeature(CpuFeature::TscDeadline))
             CalibrateLocalTimer(dumpCalibData, maxBaseCpuidLeaf, maxHyperCpuidLeaf);
+        else
+            useTscDeadline = true;
         CalibrateTsc(dumpCalibData, maxBaseCpuidLeaf, maxHyperCpuidLeaf);
     }
 
@@ -405,8 +407,8 @@ namespace Npk
     TimerTickNanos LocalApic::TimerMaxNanos() const
     { 
         if (useTscDeadline)
-            return sl::TimeCount(tscFrequency, static_cast<uint64_t>(~0)).Rebase(sl::Nanos).ticks;
-        return sl::TimeCount(timerFrequency, static_cast<uint32_t>(~0)).Rebase(sl::Nanos).ticks;
+            return ~static_cast<uint64_t>(0);
+        return sl::TimeCount(timerFrequency, ~static_cast<uint32_t>(0)).Rebase(sl::Nanos).ticks;
     }
 
     void LocalApic::ArmTimer(TimerTickNanos nanos, size_t vector)

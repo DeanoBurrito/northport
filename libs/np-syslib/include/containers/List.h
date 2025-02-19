@@ -136,7 +136,11 @@ namespace sl
             else
                 Hk(it.ptr)->next = nullptr;
             if (temp == tail)
+            {
                 tail = static_cast<T*>(Hk(temp)->next);
+                if (tail == nullptr)
+                    head = nullptr;
+            }
             return temp;
         }
 

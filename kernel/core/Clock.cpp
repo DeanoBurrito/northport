@@ -31,6 +31,8 @@ namespace Npk::Core
 
     static void SoftClockTick(void* arg)
     {
+        (void)arg;
+
         softClockTicks++;
         softClockEvent.expiry = sl::TimeCount(softClockFreq, 1);
 
@@ -42,14 +44,12 @@ namespace Npk::Core
         ASSERT_(CurrentRunLevel() >= RunLevel::Clock);
 
         const TimerTickNanos now = ReadPollTimer();
+        ASSERT_(now > q->lastModified);
         TimerTickNanos listDelta = now - q->lastModified;
         q->lastModified = now;
 
         for (auto it = q->events.Begin(); it != q->events.End(); ++it)
         {
-            if (it->expiry.ticks == 0)
-                continue;
-
             if (listDelta < it->expiry.ticks)
             {
                 it->expiry.ticks -= listDelta;
@@ -190,6 +190,8 @@ namespace Npk::Core
 
     bool DequeueClockEvent(ClockEvent* event)
     {
+        VALIDATE_(event != nullptr, false);
+        VALIDATE_(event->queue->coreId == CoreLocalId(), false); //TODO: support this
         ASSERT_UNREACHABLE();
     }
 }
