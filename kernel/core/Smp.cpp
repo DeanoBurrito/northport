@@ -56,35 +56,6 @@ namespace Npk::Core
         Log("Smp mailbox created: %p, entries=%zu", LogLevel::Verbose, control, entryCount);
     }
 
-    void ProcessLocalMail()
-    {
-        ASSERT_(CurrentRunLevel() == RunLevel::Interrupt);
-        auto* mailbox = static_cast<MailboxControl*>(GetLocalPtr(SubsysPtr::IpiMailbox));
-        if (mailbox->shouldPanic)
-        {
-            smpPendingPanics--;
-            Halt();
-        }
-
-        mailbox->entriesLock.Lock();
-        for (size_t i = 0; i < mailbox->entries.Size(); i++)
-        {
-            mailbox->entries[i].callback(mailbox->entries[i].arg);
-            mailbox->entries[i].callback = nullptr;
-        }
-        mailbox->entriesLock.Unlock();
-
-        TlbShootdown* evict = nullptr;
-        while ((evict = mailbox->tlbEvictions.Pop()) != nullptr)
-        {
-            for (size_t i = 0; i < evict->data.length; i += PageSize())
-                HatFlushMap(evict->data.base + i);
-
-            if (--evict->data.pending == 0 && evict->data.onComplete != nullptr)
-                QueueDpc(evict->data.onComplete);
-        }
-    }
-
     static MailboxControl* FindMailbox(size_t id)
     {
         MailboxControl* found = nullptr;
@@ -150,5 +121,40 @@ namespace Npk::Core
 
         while (smpPendingPanics != 0)
             sl::HintSpinloop();
+    }
+}
+
+namespace Npk
+{
+    using namespace Core;
+
+    void DispatchIpi()
+    {
+        ASSERT_(CurrentRunLevel() == RunLevel::Interrupt);
+
+        auto* mailbox = static_cast<MailboxControl*>(GetLocalPtr(SubsysPtr::IpiMailbox));
+        if (mailbox->shouldPanic)
+        {
+            smpPendingPanics--;
+            Halt();
+        }
+
+        mailbox->entriesLock.Lock();
+        for (size_t i = 0; i < mailbox->entries.Size(); i++)
+        {
+            mailbox->entries[i].callback(mailbox->entries[i].arg);
+            mailbox->entries[i].callback = nullptr;
+        }
+        mailbox->entriesLock.Unlock();
+
+        TlbShootdown* evict = nullptr;
+        while ((evict = mailbox->tlbEvictions.Pop()) != nullptr)
+        {
+            for (size_t i = 0; i < evict->data.length; i += PageSize())
+                HatFlushMap(evict->data.base + i);
+
+            if (--evict->data.pending == 0 && evict->data.onComplete != nullptr)
+                QueueDpc(evict->data.onComplete);
+        }
     }
 }

@@ -66,7 +66,7 @@ namespace Npk
         return data;
     }
 
-    TimerTickNanos CalibrationSleep(TimerTickNanos nanos)
+    TimerNanos CalibrationSleep(TimerNanos nanos)
     {
         if (hpetRegs.ptr != nullptr)
         {
@@ -100,9 +100,9 @@ namespace Npk
         return *static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl));
     }
 
-    void GetTimerCapabilities(TimerCapabilities& caps)
+    void GetTimeCapabilities(TimerCapabilities& caps)
     {
-        caps.pollSuitableForUptime = CpuHasFeature(CpuFeature::Tsc) && CpuHasFeature(CpuFeature::InvariantTsc);
+        caps.timestampForUptime = CpuHasFeature(CpuFeature::Tsc) && CpuHasFeature(CpuFeature::InvariantTsc);
     }
 
     void InitLocalTimers()
@@ -110,18 +110,17 @@ namespace Npk
         LApic().CalibrateTimer();
     }
 
-    bool ArmIntrTimer(TimerTickNanos nanos)
+    void SetAlarm(TimerNanos nanos)
     {
         LApic().ArmTimer(nanos, IntrVectorTimer);
-        return true;
     }
 
-    TimerTickNanos MaxIntrTimerExpiry()
+    TimerNanos AlarmMax()
     {
         return LApic().TimerMaxNanos();
     }
 
-    TimerTickNanos ReadPollTimer()
+    TimerNanos GetTimestamp()
     {
         if (GetLocalPtr(SubsysPtr::IntrCtrl) == nullptr)
             return {};

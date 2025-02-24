@@ -615,3 +615,17 @@ namespace Npk::Services
         return kernelVmm;
     }
 }
+
+namespace Npk
+{
+    void DispatchPageFault(PageFaultFrame* frame)
+    {
+        using namespace Services;
+
+        const auto type = frame->write ? VmFaultType::Write : VmFaultType::Read;
+        if (KernelVmm().HandleFault(frame->address, type).HasValue())
+            return;
+
+        ASSERT_UNREACHABLE();
+    }
+}

@@ -1,7 +1,6 @@
 #pragma once
 
-#include <arch/Interrupts.h>
-#include <core/RunLevels.h>
+#include <arch/Switch.h>
 #include <core/Clock.h>
 #include <containers/List.h>
 #include <Locks.h>
@@ -22,7 +21,7 @@ namespace Npk::Core
         bool active;
 
     public:
-        TrapFrame* frame;
+        ExecFrame* frame;
         ExtendedRegs* extFrame;
         sl::ListHook queueHook;
         WaitControl* waitControl; //for use in core/Event.cpp

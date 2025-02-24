@@ -1,12 +1,9 @@
-.global VectorStub0
-.global TrapEntry
+.global InterruptStubsBegin
 
-.extern TrapDispatch
+.type InterruptEntry, @function
+.size InterruptEntry, (_EndOfInterruptEntry - InterruptEntry)
 
-.type TrapEntry,@function
-.size TrapEntry,(_EndOfTrapEntry - TrapEntry)
-
-TrapEntry:
+InterruptEntry:
     push %rax
     push %rbx
     push %rcx
@@ -23,24 +20,51 @@ TrapEntry:
     push %r14
     push %r15
 
-    ## Swap gs/kernelgs if needed
+    mov %es, %ax
+    push %rax
     mov %ds, %ax
+    push %rax
+
     cmp $0x10, %ax
     je 1f
     swapgs
 1:
     mov $0x10, %ax
     mov %ax, %ds
-    mov %ax, %ss
     mov %ax, %es
-    mov %ax, %fs
 
     mov %rsp, %rdi
-    mov 136(%rsp), %rax ## create a stack frame, so it looks like the interrupt was called.
+    mov 150(%rsp), %rax
     push %rax
     cld
-    call TrapDispatch
-_EndOfTrapEntry:
+    call InterruptDispatch
+
+    pop %rax
+    cmp $0x10, %ax
+    je 1f
+    swapgs
+1:
+    mov %ax, %ds
+    pop %rax
+    mov %ax, %es
+
+    pop %r15
+    pop %r14
+    pop %r13
+    pop %r12
+    pop %r11
+    pop %r10
+    pop %r9
+    pop %r8
+    pop %rbp
+    pop %rdi
+    pop %rsi
+    pop %rdx
+    pop %rcx
+    pop %rbx
+    pop %rax
+    iretq
+_EndOfInterruptEntry:
 
 .macro StubMacro vector
     .type VectorStub\vector,@function
@@ -56,10 +80,12 @@ _EndOfTrapEntry:
         sub $8, %rsp
     .endif
     push $\vector
-    jmp TrapEntry
+    jmp InterruptEntry
     _EndOfVectorStub\vector:
 .endm
 
+.align 0x10
+InterruptStubsBegin:
 .altmacro
 .set i, 0
 .rept 256

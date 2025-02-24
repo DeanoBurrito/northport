@@ -1,4 +1,5 @@
 #include <services/Program.h>
+#include <arch/Entry.h>
 
 namespace Npk::Services
 {
@@ -17,5 +18,12 @@ namespace Npk::Services
             return "<unknown exception type>";
         
         return ExceptionNameStrs[index];
+    }
+}
+
+namespace Npk
+{
+    void DispatchException(ExceptionFrame* frame)
+    {
     }
 }

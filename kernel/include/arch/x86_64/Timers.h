@@ -5,5 +5,5 @@
 namespace Npk
 {
     void CalibrationTimersInit();
-    TimerTickNanos CalibrationSleep(TimerTickNanos nanos);
+    TimerNanos CalibrationSleep(TimerNanos nanos);
 }

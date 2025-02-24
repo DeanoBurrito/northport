@@ -41,7 +41,7 @@ namespace Npk
     }) gdtr;
 
     constexpr size_t IdtEntryCount = 256;
-    extern uint8_t VectorStub0[] asm("VectorStub0");
+    extern uint8_t InterruptStubsBegin[] asm("InterruptStubsBegin");
 
     struct IdtEntry
     {
@@ -66,7 +66,9 @@ namespace Npk
             mov %%ax, %%ds; \
             mov %%ax, %%ss; \
             mov %%ax, %%es; \
+            mov $0, %%ax; \
             mov %%ax, %%fs; \
+            mov %%ax, %%gs; \
             pop %%rdi; \
             push %1; \
             push %%rdi; \
@@ -97,7 +99,7 @@ namespace Npk
 
         for (size_t i = 0; i < IdtEntryCount; i++)
         {
-            const uintptr_t addr = (uintptr_t)VectorStub0 + i * 16;
+            const uintptr_t addr = (uintptr_t)InterruptStubsBegin + i * 16;
 
             idtEntries[i].low = (addr & 0xFFFF) | ((addr & 0xFFFF'0000) << 32);
             idtEntries[i].low |= SelectorKernelCode << 16;
@@ -117,7 +119,6 @@ namespace Npk
 
     void ArchInitCore(size_t myId)
     { 
-        //TODO: sync MTRRs
         LoadGdt();
         LoadIdt();
 

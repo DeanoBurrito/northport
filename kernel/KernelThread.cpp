@@ -1,6 +1,5 @@
 #include <KernelThread.h>
 #include <arch/Misc.h>
-#include <arch/Interrupts.h>
 #include <core/Log.h>
 #include <services/Vmm.h>
 
@@ -23,8 +22,7 @@ namespace Npk
         KernelThread* meta = new(reinterpret_cast<void*>(stackTop)) KernelThread();
 
         meta->stackBase = reinterpret_cast<uintptr_t>(*stack);
-        meta->schedObj.frame = InitTrapFrame(stackTop, reinterpret_cast<uintptr_t>(entry), false);
-        SetTrapFrameArg(meta->schedObj.frame, 0, arg);
+        meta->schedObj.frame = InitExecFrame(stackTop, reinterpret_cast<uintptr_t>(entry), arg);
 
         return &meta->schedObj;
     }
@@ -40,6 +38,7 @@ namespace Npk
 
     void ExitKernelThread(size_t code)
     {
+        Log("Kernel thread exiting with code %zu", LogLevel::Debug, code);
         ASSERT_UNREACHABLE();
     }
 }

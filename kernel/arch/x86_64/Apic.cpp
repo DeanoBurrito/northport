@@ -151,7 +151,7 @@ namespace Npk
         {
             WriteReg(LapicReg::LvtTimer, 1 << 16);
             WriteReg(LapicReg::TimerInitCount, 0xFFFF'FFFF);
-            const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
+            const TimerNanos realSleepTime = CalibrationSleep(sleepTime);
 
             const size_t rawData = (0xFFFF'FFFF - ReadReg(LapicReg::TimerCount)) - controlOffset;
             calibData[i] = (rawData * sleepTime) / realSleepTime;
@@ -231,7 +231,7 @@ namespace Npk
         for (size_t i = 0; i < CalibrationRuns; i++)
         {
             const size_t begin = ReadTsc();
-            const TimerTickNanos realSleepTime = CalibrationSleep(sleepTime);
+            const TimerNanos realSleepTime = CalibrationSleep(sleepTime);
             const size_t end = ReadTsc();
 
             const size_t rawData = (end - begin) - controlOffset;
@@ -372,7 +372,7 @@ namespace Npk
         CalibrateTsc(dumpCalibData, maxBaseCpuidLeaf, maxHyperCpuidLeaf);
     }
 
-    TimerTickNanos LocalApic::ReadTscNanos() const
+    TimerNanos LocalApic::ReadTscNanos() const
     {
         if (pvClock != nullptr)
         {
@@ -391,7 +391,7 @@ namespace Npk
                 break;
             }
 
-            TimerTickNanos time = ReadTsc() - pvTime.tscReference;
+            TimerNanos time = ReadTsc() - pvTime.tscReference;
             if (pvTime.tscShift < 0)
                 time >>= pvTime.tscShift;
             else
@@ -404,14 +404,14 @@ namespace Npk
         return sl::TimeCount(tscFrequency, ReadTsc()).Rebase(sl::Nanos).ticks;
     }
 
-    TimerTickNanos LocalApic::TimerMaxNanos() const
+    TimerNanos LocalApic::TimerMaxNanos() const
     { 
         if (useTscDeadline)
             return ~static_cast<uint64_t>(0);
         return sl::TimeCount(timerFrequency, ~static_cast<uint32_t>(0)).Rebase(sl::Nanos).ticks;
     }
 
-    void LocalApic::ArmTimer(TimerTickNanos nanos, size_t vector)
+    void LocalApic::ArmTimer(TimerNanos nanos, size_t vector)
     {
         if (useTscDeadline)
         {

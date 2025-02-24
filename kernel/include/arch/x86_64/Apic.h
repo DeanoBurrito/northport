@@ -51,9 +51,9 @@ namespace Npk
     public:
         bool Init();
         void CalibrateTimer();
-        TimerTickNanos ReadTscNanos() const;
-        TimerTickNanos TimerMaxNanos() const;
-        void ArmTimer(TimerTickNanos nanos, size_t vector);
+        TimerNanos ReadTscNanos() const;
+        TimerNanos TimerMaxNanos() const;
+        void ArmTimer(TimerNanos nanos, size_t vector);
         void SendEoi();
         void SendIpi(size_t destAddr, bool urgent);
     };

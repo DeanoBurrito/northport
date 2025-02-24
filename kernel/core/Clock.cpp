@@ -1,6 +1,7 @@
 #include <core/Clock.h>
 #include <arch/Misc.h>
 #include <arch/Timers.h>
+#include <arch/Entry.h>
 #include <core/Config.h>
 #include <core/Log.h>
 #include <core/WiredHeap.h>
@@ -14,7 +15,7 @@ namespace Npk::Core
     constexpr size_t MaxSoftClockFreq = 10000;
     constexpr size_t MaxAcceptableEventCount = 256;
 
-    sl::Atomic<TimerTickNanos> uptimeOffset = 0;
+    sl::Atomic<TimerNanos> uptimeOffset = 0;
 
     ClockEvent softClockEvent;
     DpcStore softClockDpc;
@@ -26,7 +27,7 @@ namespace Npk::Core
     {
         size_t coreId;
         sl::FwdList<ClockEvent, &ClockEvent::listHook> events;
-        TimerTickNanos lastModified;
+        TimerNanos lastModified;
     };
 
     static void SoftClockTick(void* arg)
@@ -43,9 +44,9 @@ namespace Npk::Core
     {
         ASSERT_(CurrentRunLevel() >= RunLevel::Clock);
 
-        const TimerTickNanos now = ReadPollTimer();
+        const TimerNanos now = GetTimestamp();
         ASSERT_(now > q->lastModified);
-        TimerTickNanos listDelta = now - q->lastModified;
+        TimerNanos listDelta = now - q->lastModified;
         q->lastModified = now;
 
         for (auto it = q->events.Begin(); it != q->events.End(); ++it)
@@ -69,8 +70,8 @@ namespace Npk::Core
         q->coreId = CoreLocalId();
         SetLocalPtr(SubsysPtr::ClockQueue, q);
 
-        const TimerTickNanos uptimeBegin = ReadPollTimer();
-        TimerTickNanos expectedOffset = 0;
+        const TimerNanos uptimeBegin = GetTimestamp();
+        TimerNanos expectedOffset = 0;
         if (uptimeOffset.CompareExchange(expectedOffset, uptimeBegin))
         {
             //we're the first core, do some initial setup:
@@ -79,9 +80,9 @@ namespace Npk::Core
             Log("Set system uptime offset to %" PRIu64, LogLevel::Info, uptimeBegin);
 
             TimerCapabilities timerCaps {};
-            GetTimerCapabilities(timerCaps);
+            GetTimeCapabilities(timerCaps);
 
-            useSoftClock = !timerCaps.pollSuitableForUptime || GetConfigNumber("kernel.clock.force_sw_uptime", false);
+            useSoftClock = !timerCaps.timestampForUptime || GetConfigNumber("kernel.clock.force_sw_uptime", false);
 
             //if the hardware cant provide a suitable timer for all cores to use,
             //we'll do it in software (although this is far from ideal).
@@ -102,36 +103,6 @@ namespace Npk::Core
         }
     }
 
-    void ProcessLocalClock()
-    {
-        ASSERT_(CurrentRunLevel() >= RunLevel::Clock);
-
-        ClockQueue* q = static_cast<ClockQueue*>(GetLocalPtr(SubsysPtr::ClockQueue));
-        ASSERT_(q != nullptr);
-        size_t processedEvents = 0;
-
-        RefreshClockQueue(q);
-        while (!q->events.Empty() && q->events.Front().expiry.ticks == 0)
-        {
-            if (processedEvents == MaxAcceptableEventCount)
-            {
-                Log("Too many timer events expiring at once, delaying expiry actions to avoid livelock", LogLevel::Error);
-                break;
-            }
-
-            processedEvents++;
-            ClockEvent* expired = q->events.PopFront();
-            QueueDpc(expired->dpc);
-        }
-
-        if (!q->events.Empty())
-        {
-            const TimerTickNanos armTime = sl::Min(MaxIntrTimerExpiry(), q->events.Front().expiry.ticks);
-            ASSERT_(armTime > 0);
-            ASSERT_(ArmIntrTimer(armTime));
-        }
-    }
-
     sl::TimeCount GetUptime()
     { 
         if (useSoftClock)
@@ -140,8 +111,8 @@ namespace Npk::Core
         if (!CoreLocalAvailable() || GetLocalPtr(SubsysPtr::ClockQueue) == nullptr)
             return {};
 
-        const auto nanos = ReadPollTimer() - uptimeOffset;
-        ASSERT_(ReadPollTimer() > uptimeOffset);
+        const auto nanos = GetTimestamp() - uptimeOffset;
+        ASSERT_(GetTimestamp() > uptimeOffset);
         return sl::TimeCount(sl::TimeScale::Nanos, nanos);
     }
 
@@ -155,7 +126,7 @@ namespace Npk::Core
         ClockQueue* q = static_cast<ClockQueue*>(GetLocalPtr(SubsysPtr::ClockQueue));
         ASSERT_(q != nullptr);
         event->expiry = event->expiry.Rebase(sl::Nanos);
-        ProcessLocalClock();
+        DispatchAlarm();
 
         if (q->events.Empty() || q->events.Front().expiry.ticks > event->expiry.ticks)
         {
@@ -164,9 +135,9 @@ namespace Npk::Core
                 q->events.Front().expiry.ticks -= event->expiry.ticks;
             q->events.PushFront(event);
 
-            const TimerTickNanos armTime = sl::Min(MaxIntrTimerExpiry(), event->expiry.ticks);
+            const TimerNanos armTime = sl::Min(AlarmMax(), event->expiry.ticks);
             ASSERT_(armTime > 0);
-            ASSERT_(ArmIntrTimer(armTime));
+            SetAlarm(armTime);
 
             LowerRunLevel(prevRl);
             return;
@@ -193,5 +164,40 @@ namespace Npk::Core
         VALIDATE_(event != nullptr, false);
         VALIDATE_(event->queue->coreId == CoreLocalId(), false); //TODO: support this
         ASSERT_UNREACHABLE();
+    }
+}
+
+namespace Npk
+{
+    using namespace Core;
+
+    void DispatchAlarm()
+    {
+        ASSERT_(CurrentRunLevel() >= RunLevel::Clock);
+
+        ClockQueue* q = static_cast<ClockQueue*>(GetLocalPtr(SubsysPtr::ClockQueue));
+        ASSERT_(q != nullptr);
+        size_t processedEvents = 0;
+
+        RefreshClockQueue(q);
+        while (!q->events.Empty() && q->events.Front().expiry.ticks == 0)
+        {
+            if (processedEvents == MaxAcceptableEventCount)
+            {
+                Log("Too many timer events expiring at once, delaying expiry actions to avoid livelock", LogLevel::Error);
+                break;
+            }
+
+            processedEvents++;
+            ClockEvent* expired = q->events.PopFront();
+            QueueDpc(expired->dpc);
+        }
+
+        if (!q->events.Empty())
+        {
+            const TimerNanos armTime = sl::Min(AlarmMax(), q->events.Front().expiry.ticks);
+            ASSERT_(armTime > 0);
+            SetAlarm(armTime);
+        }
     }
 }

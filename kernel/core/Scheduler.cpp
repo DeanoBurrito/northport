@@ -1,4 +1,5 @@
 #include <core/Scheduler.h>
+#include <arch/Interrupts.h>
 #include <core/Log.h>
 #include <core/Config.h>
 #include <core/WiredHeap.h>
@@ -63,7 +64,7 @@ namespace Npk::Core
         auto next = PopThread();
         ASSERT_(next != nullptr);
         SetLocalPtr(SubsysPtr::Thread, next);
-        SwitchFrame(nullptr, nullptr, next->frame, nullptr);
+        SwitchExecFrame(nullptr, next->frame, nullptr, nullptr);
         ASSERT_UNREACHABLE();
     }
 
@@ -78,7 +79,7 @@ namespace Npk::Core
             return;
 
         SetLocalPtr(SubsysPtr::Thread, nextThread);
-        SwitchFrame(&currThread->frame, nullptr, nextThread->frame, nullptr);
+        SwitchExecFrame(&currThread->frame, nextThread->frame, nullptr, nullptr);
     }
 
     size_t Scheduler::DefaultPriority() const

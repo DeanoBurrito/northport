@@ -24,10 +24,6 @@ namespace Npk::Core
     //using the current core.
     void InitLocalClockQueue();
 
-    //called within the interrupt handler for the local interrupt clock,
-    //by the arch layer.
-    void ProcessLocalClock();
-    
     //returns the uptime, using the configured resolution.
     sl::TimeCount GetUptime();
 

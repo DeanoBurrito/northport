@@ -1,14 +1,8 @@
 #include <arch/Interrupts.h>
 #include <arch/Misc.h>
+#include <arch/Entry.h>
 #include <arch/x86_64/Apic.h>
-#include <core/Smp.h>
-#include <core/Log.h>
-#include <core/Clock.h>
-#include <services/Program.h>
-#include <services/Vmm.h>
 #include <Panic.h>
-#include <Memory.h>
-#include <Maths.h>
 
 namespace Npk
 {
@@ -32,6 +26,9 @@ namespace Npk
 
     struct TrapFrame
     {
+        uint64_t ds;
+        uint64_t es;
+
         uint64_t r15;
         uint64_t r14;
         uint64_t r13;
@@ -61,153 +58,56 @@ namespace Npk
         } iret;
     };
 
-    static_assert(sizeof(TrapFrame) == 176, "x86_64 TrapFrame size changed, update assembly sources.");
-
-    TrapFrame* InitTrapFrame(uintptr_t stack, uintptr_t entry, bool user)
-    {
-        TrapFrame* frame = reinterpret_cast<TrapFrame*>(stack) - 2;
-        sl::MemSet(frame, 0, sizeof(TrapFrame) * 2);
-
-        frame->iret.cs = user ? SelectorUserCode : SelectorKernelCode;
-        frame->iret.ss = user ? SelectorUserData : SelectorKernelData;
-        frame->iret.rsp = sl::AlignDown(stack, 16);
-        frame->iret.rip = entry;
-        frame->iret.flags = 0x202;
-        frame->rbp = 0;
-
-        return frame;
-    }
-
-    void SetTrapFrameArg(TrapFrame* frame, size_t index, void* value)
-    {
-        const uint64_t val = reinterpret_cast<uint64_t>(value);
-        switch (index)
-        {
-        case 0: 
-            frame->rdi = val; 
-            return;
-        case 1: 
-            frame->rsi = val; 
-            return;
-        case 2: 
-            frame->rdx = val; 
-            return;
-        case 3: 
-            frame->rcx = val; 
-            return;
-        case 4: 
-            frame->r8 = val; 
-            return;
-        case 5: 
-            frame->r9 = val; 
-            return;
-        }
-    }
-
-    void* GetTrapFrameArg(TrapFrame* frame, size_t index)
-    {
-        uint64_t value = 0;
-        switch (index)
-        {
-        case 0:
-            value = frame->rdi;
-            break;
-        case 1:
-            value = frame->rsi;
-            break;
-        case 2:
-            value = frame->rdx;
-            break;
-        case 3:
-            value = frame->rcx;
-            break;
-        case 4:
-            value = frame->r8;
-            break;
-        case 5:
-            value = frame->r9;
-            break;
-        }
-
-        return reinterpret_cast<void*>(value);
-    }
-
-    static Services::ProgramException TranslateException(TrapFrame* frame)
-    {
-        using namespace Services;
-
-        ProgramException ex {};
-        ex.pc = frame->iret.rip;
-        ex.stack = frame->iret.rsp;
-        ex.special = frame->vector;
-        ex.flags = frame->ec;
-
-        switch (frame->vector)
-        {
-        case 0x1: ex.type = ExceptionType::Breakpoint; break; //debug exception
-        case 0x3: ex.type = ExceptionType::Breakpoint; break; //breakpoint instruction (int3)
-        case 0x6: ex.type = ExceptionType::BadOperation; break; //invalid opcode exception
-        case 0xE: //page fault
-            ex.type = ExceptionType::MemoryAccess; 
-            ex.special = ReadCr2();
-            break; 
-        default: ex.type = ExceptionType::BadOperation; break;
-        }
-
-        return ex;
-    }
-
-    extern "C" void TrapDispatch(TrapFrame* frame)
+    extern "C" void InterruptDispatch(TrapFrame* frame)
     {
         if (CoreLocalAvailable() && GetLocalPtr(SubsysPtr::UnsafeOpAbort) != nullptr)
         {
             frame->iret.rip = reinterpret_cast<uint64_t>(GetLocalPtr(SubsysPtr::UnsafeOpAbort));
             SetLocalPtr(SubsysPtr::UnsafeOpAbort, nullptr);
-            SwitchFrame(nullptr, nullptr, frame, nullptr);
+            return;
         }
 
         using namespace Core;
         const RunLevel prevRl = RaiseRunLevel(RunLevel::Interrupt);
-        //TODO: if prevRl==Normal, stash interrupted register state
 
-        if (frame->vector < 0x20)
+        switch (frame->vector)
         {
-            using namespace Services;
-
-            auto except = TranslateException(frame);
-            bool handled = false;
-            if (except.type == ExceptionType::MemoryAccess)
+        case 0x2:
+            PanicWithString("Received NMI");
+        case 0xE:
             {
-                const VmFaultType type = (frame->ec & (1 << 1)) ? VmFaultType::Write : VmFaultType::Read;
-                //const bool isUser = frame->ec & (1 << 2);
-                handled = KernelVmm().HandleFault(except.special, type).HasValue();
+                PageFaultFrame pf {};
+                pf.address = ReadCr2();
+                pf.write = frame->ec & (1 << 1);
+                pf.user = frame->ec & (1 << 2);
+                pf.fetch = frame->ec & (1 << 4);
+                DispatchPageFault(&pf);
+                break;
             }
-            else if (frame->vector == 0x2)
-            {
-                //an NMI could be a ping to look at any number of things, say its been handled and try all of them
-                handled = true;
-
-                ProcessLocalMail();
-            }
-
-            if (!handled)
-                PanicWithException(except, frame->rbp);
-        }
-        else
-        {
-            static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl))->SendEoi();
-
-            if (frame->vector == IntrVectorIpi)
-                ProcessLocalMail();
-            else if (frame->vector == IntrVectorTimer)
-                ProcessLocalClock();
+        case IntrVectorTimer:
+            DispatchAlarm();
+            break;
+        case IntrVectorIpi:
+            DispatchIpi();
+            break;
+        default:
+            if (frame->vector >= 32)
+                DispatchInterrupt(frame->vector - 32);
             else
-            {} //TODO: notify IntrRouter
+            {
+                ExceptionFrame ex;
+                ex.pc = frame->iret.rip;
+                ex.stack = frame->iret.rsp;
+                ex.archId = frame->vector;
+                ex.archFlags = frame->ec;
+                DispatchException(&ex);
+            }
+            break;
         }
+        //TODO: DispatchSyscall()
 
+        if (frame->vector >= 32)
+            static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl))->SendEoi();
         LowerRunLevel(prevRl);
-        DisableInterrupts();
-        SwitchFrame(nullptr, nullptr, frame, nullptr);
-        ASSERT_UNREACHABLE();
     }
 }

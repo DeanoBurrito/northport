@@ -5,19 +5,19 @@
 
 namespace Npk
 {
-    using TimerTickNanos = uint64_t;
+    using TimerNanos = uint64_t;
 
     struct TimerCapabilities
     {
-        bool pollSuitableForUptime;
+        bool timestampForUptime;
     };
 
-    void GetTimerCapabilities(TimerCapabilities& caps);
+    void GetTimeCapabilities(TimerCapabilities& caps);
     void InitLocalTimers();
 
-    bool ArmIntrTimer(TimerTickNanos nanos);
-    TimerTickNanos MaxIntrTimerExpiry();
-    TimerTickNanos ReadPollTimer();
+    void SetAlarm(TimerNanos nanos);
+    TimerNanos AlarmMax();
+    TimerNanos GetTimestamp();
 }
 
 #ifdef NPK_ARCH_INCLUDE_TIMERS
