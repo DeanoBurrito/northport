@@ -26,7 +26,7 @@
  * SOFTWARE.
  */
 
-#include <stddef.h>
+#include "Types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,10 +34,9 @@ extern "C" {
 
 typedef struct
 {
-    size_t frequency;
-    size_t resolution;
-    size_t ticks;
-} npk_monotonic_time;
+    npk_uint frequency;
+    npk_uint ticks;
+} npk_duration;
 
 typedef enum
 {
@@ -47,13 +46,12 @@ typedef enum
     npk_time_scale_seconds = 1,
 } npk_time_scale;
 
-typedef struct
-{
-    npk_time_scale scale;
-    size_t ticks;
-} npk_duration;
+NPK_STRUCT_OPAQUE(clock_event);
 
-npk_monotonic_time npk_get_monotonic_time();
+npk_duration npk_get_monotonic_time();
+
+void npk_queue_clock_event(NPK_REQUIRED npk_clock_event* ev);
+npk_bool npk_try_dequeue_clock_event(NPK_REQUIRED npk_clock_event* ev);
 
 #ifdef __cplusplus
 }

@@ -26,9 +26,7 @@
  * SOFTWARE.
  */
 
-#include <stdint.h>
-#include <stddef.h>
-#include "Primitives.h"
+#include "Types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,77 +34,11 @@ extern "C" {
 
 typedef struct
 {
-    uintptr_t lower_limit;
-    uintptr_t upper_limit;
-} npk_pm_limits;
-
-typedef enum
-{
-    npk_vm_flag_write = 1 << 0,
-    npk_vm_flag_execute = 1 << 1,
-    npk_vm_flag_user = 1 << 2,
-    npk_vm_flag_guarded = 1 << 3,
-
-    npk_vm_flag_anon = 1 << 24,
-    npk_vm_flag_mmio = 1 << 25,
-    npk_vm_flag_file = 1 << 26
-} npk_vm_flags;
-
-#define NPK_VM_FLAG_TYPE_MASK (0xFF << 24)
-
-typedef struct
-{
-    uintptr_t lower_limit;
-    uintptr_t upper_limit;
-    size_t alignment;
-} npk_vm_limits;
-
-typedef enum
-{
-   npk_file_vm_flag_back_now = 1 << 1,
-} npk_file_vm_flags;
-
-typedef struct
-{
-    npk_string filepath;
-    size_t file_offset;
-    npk_file_vm_flags flags;
-} npk_file_vm_arg;
-
-typedef struct
-{
-    size_t length;
-    uintptr_t phys_base;
-} npk_mdl_ptr;
-
-typedef struct
-{
-    void* addr_space;
-    size_t length;
-    uintptr_t virt_base;
-    size_t ptr_count;
-    npk_mdl_ptr* ptrs;
+    void* base;
+    npk_uint length;
+    npk_uint offset;
+    npk_paddr* entries;
 } npk_mdl;
-
-uintptr_t npk_hhdm_base();
-size_t npk_hhdm_limit();
-
-size_t npk_pm_alloc_size();
-uintptr_t npk_pm_alloc(OPTIONAL npk_pm_limits* limits);
-uintptr_t npk_pm_alloc_many(size_t count, OPTIONAL npk_pm_limits* limits);
-bool npk_pm_free(uintptr_t paddr);
-bool npk_pm_free_many(uintptr_t paddr, size_t count);
-
-void* npk_vm_alloc(size_t length, void* arg, npk_vm_flags flags, OPTIONAL npk_vm_limits* limits);
-bool npk_vm_acquire_mdl(REQUIRED npk_mdl* mdl, void* vaddr, size_t length);
-void npk_vm_release_mdl(void* vaddr);
-bool npk_vm_free(void* vm_ptr);
-bool npk_vm_get_flags(void* vm_ptr, REQUIRED npk_vm_flags* flags);
-bool npk_vm_set_flags(void* vm_ptr, npk_vm_flags flags);
-bool npk_vm_split(void* vm_ptr, REQUIRED uintptr_t* offset);
-
-void* npk_heap_alloc(size_t count);
-void npk_heap_free(void* ptr, size_t count);
 
 #ifdef __cplusplus
 }

@@ -26,14 +26,15 @@
  * SOFTWARE.
  */
 
-#include "Primitives.h"
+#include "Types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-npk_string npk_get_config(npk_string key);
-size_t npk_get_config_num(npk_string key, size_t or_default);
+npk_string npk_get_config(npk_string key, npk_string or_default);
+npk_bool npk_get_config_raw(npk_string key, NPK_OPTIONAL npk_string* out);
+npk_uint npk_get_config_number(npk_string key, npk_uint or_default);
 
 #ifdef __cplusplus
 }

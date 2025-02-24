@@ -2,6 +2,7 @@
 
 #include <core/Pmm.h>
 #include <core/WiredHeap.h>
+#include <interfaces/driver/Memory.h>
 #include <RefCount.h>
 #include <Flags.h>
 #include <RangeAllocator.h>
@@ -90,14 +91,6 @@ namespace Npk::Services
         sl::FwdList<Core::PageInfo, &Core::PageInfo::vmObjList> content;
         sl::List<VmView, &VmView::vmoHook> views;
         size_t length;
-    };
-
-    struct npk_mdl //TODO: move to driver api headers
-    {
-        void* virt_base;
-        size_t length;
-        size_t entry0_offset;
-        uintptr_t* entries;
     };
 
     using VmmRangeAllocator = sl::RangeAllocator<uintptr_t, size_t, Core::WiredHeapAllocator>;

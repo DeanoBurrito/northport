@@ -1,6 +1,7 @@
 #include <services/Vmm.h>
 #include <services/VmPagers.h>
 #include <arch/Hat.h>
+#include <arch/Entry.h>
 #include <core/Log.h>
 #include <core/Smp.h>
 #include <core/Config.h>
@@ -430,7 +431,7 @@ namespace Npk::Services
         const size_t offsetBias = offset & PageMask();
 
         freeSpaceLock.Lock();
-        const auto maybeBase = freeSpace.Alloc(offsetBias + length);
+        const auto maybeBase = freeSpace.Alloc(offsetBias + length + (2 << PfnShift()));
         freeSpaceLock.Unlock();
 
         if (!maybeBase.HasValue())
@@ -448,7 +449,7 @@ namespace Npk::Services
         }
 
         view->lock.Lock();
-        view->base = *maybeBase + offsetBias;
+        view->base = *maybeBase + offsetBias + PageSize();
         view->length = length;
         view->offset = offset;
         view->flags = flags;
@@ -497,6 +498,7 @@ namespace Npk::Services
         viewsLock.WriterUnlock();
 
         //TODO:
+        // - dont forget we offset base by PageSize()
         // - ensure no one else is waiting to lock this view (how?)
         // - remove view from vmo's list, unref vmo
         // - unreserve swap space
@@ -589,10 +591,10 @@ namespace Npk::Services
             entries[i] = *maybeMap;
         }
 
-        mdl->virt_base = base;
+        mdl->base = base;
         mdl->length = length;
         mdl->entries = entries;
-        mdl->entry0_offset = baseOffset;
+        mdl->offset = baseOffset;
 
         return true;
     }
@@ -602,9 +604,9 @@ namespace Npk::Services
         VALIDATE_(mdl != nullptr, );
         VALIDATE_(mdl->entries != nullptr, );
 
-        UnwireRange(mdl->virt_base, mdl->length);
+        UnwireRange(mdl->base , mdl->length);
 
-        const size_t entryCount = (AlignUpPage(mdl->length - (PageSize() - mdl->entry0_offset)) >> PfnShift()) + 1;
+        const size_t entryCount = (AlignUpPage(mdl->length - (PageSize() - mdl->offset)) >> PfnShift()) + 1;
         Core::WiredFree(mdl->entries, entryCount * sizeof(uintptr_t));
         mdl->entries = nullptr;
     }
