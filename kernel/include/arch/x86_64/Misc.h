@@ -71,17 +71,18 @@ namespace Npk
     }
 
     SL_ALWAYS_INLINE
+    RunLevel ExchangeRunLevel(RunLevel rl)
+    {
+        asm("xchg %0, %%gs:0x8" : "+r"(rl) :: "memory");
+        return static_cast<RunLevel>(rl);
+    }
+
+    SL_ALWAYS_INLINE
     RunLevel CurrentRunLevel()
     {
         unsigned rl;
         GS_RELATIVE_READ(0x8, rl);
         return static_cast<RunLevel>(rl);
-    }
-
-    SL_ALWAYS_INLINE
-    void SetRunLevel(RunLevel rl)
-    {
-        GS_RELATIVE_WRITE(0x8, rl);
     }
 
     SL_ALWAYS_INLINE

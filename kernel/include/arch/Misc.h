@@ -35,7 +35,7 @@ namespace Npk
     RunLevel CurrentRunLevel();
 
     SL_ALWAYS_INLINE
-    void SetRunLevel(RunLevel rl);
+    RunLevel ExchangeRunLevel(RunLevel desired);
 
     SL_ALWAYS_INLINE
     Core::DpcQueue* CoreLocalDpcs();

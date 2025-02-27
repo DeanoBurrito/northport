@@ -34,10 +34,11 @@ InterruptEntry:
     mov %ax, %es
 
     mov %rsp, %rdi
-    mov 150(%rsp), %rax
+    mov 152(%rsp), %rax
     push %rax
     cld
     call InterruptDispatch
+    add $8, %rsp
 
     pop %rax
     cmp $0x10, %ax
@@ -63,6 +64,8 @@ InterruptEntry:
     pop %rcx
     pop %rbx
     pop %rax
+
+    add $0x10, %rsp
     iretq
 _EndOfInterruptEntry:
 

@@ -30,15 +30,12 @@ namespace Npk::Core
 
     RunLevel RaiseRunLevel(RunLevel newRl)
     {
-        const bool restoreIntrs = InterruptsEnabled();
-        DisableInterrupts();
-        ASSERT_(newRl > CurrentRunLevel());
+        const RunLevel prevRl = ExchangeRunLevel(newRl);
+        ASSERT_(newRl > prevRl);
 
-        const RunLevel prevRl = CurrentRunLevel();
-        SetRunLevel(newRl);
+        if (newRl >= RunLevel::Clock)
+            DisableInterrupts();
 
-        if (restoreIntrs && CurrentRunLevel() < RunLevel::Clock)
-            EnableInterrupts();
         return prevRl;
     }
 
@@ -76,7 +73,7 @@ namespace Npk::Core
                 break;
             }
 
-            SetRunLevel(static_cast<RunLevel>(static_cast<unsigned>(CurrentRunLevel()) - 1));
+            ExchangeRunLevel(static_cast<RunLevel>(static_cast<unsigned>(CurrentRunLevel()) - 1));
         }
 
         if (restoreIntrs && CurrentRunLevel() < RunLevel::Clock)
