@@ -1,4 +1,4 @@
-#include <arch/Entry.h>
+#include <hardware/Entry.h>
 
 namespace Npk
 {

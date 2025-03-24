@@ -1,5 +1,5 @@
 #include <services/Program.h>
-#include <arch/Entry.h>
+#include <hardware/Entry.h>
 
 namespace Npk::Services
 {

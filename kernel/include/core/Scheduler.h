@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arch/Switch.h>
+#include <hardware/Arch.h>
 #include <core/Clock.h>
 #include <containers/List.h>
 #include <Locks.h>

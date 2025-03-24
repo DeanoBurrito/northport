@@ -1,17 +1,51 @@
-#include <arch/Interrupts.h>
-#include <arch/Misc.h>
-#include <arch/Entry.h>
-#include <arch/x86_64/Apic.h>
+#include <hardware/Platform.h>
+#include <hardware/Entry.h>
+#include <hardware/x86_64/Apic.h>
+#include <hardware/x86_64/Cpuid.h>
+#include <core/Acpi.h>
+#include <core/Defs.h>
+
 #include <Panic.h>
+#include <core/Log.h>
 
 namespace Npk
 {
-    //SendIpi() and RoutePinInterrupt() are implemented in Apic.cpp
+    void PalEarlyEntry()
+    {} //no-op
+
+    void PalMappingEntry(EarlyMmuEnvironment& env, uintptr_t& vmAllocHead)
+    {
+        (void)env;
+        (void)vmAllocHead;
+    } //no-op
+
+    void PalLateEntry()
+    {} //no-op
+
+    void PalInitCore(size_t id)
+    { (void)id; } //no-op
+
+    bool PalGetRandom(sl::Span<uint8_t> data)
+    { 
+        (void)data;
+        return false;
+    }
+
+    size_t PalGetCpus(sl::Span<PalCpu> store, size_t offset)
+    {
+        return 1;
+        //TODO: implement me
+    }
+
+    void PalBootCpu(PalCpu cpu)
+    {
+        //TODO: find a page to copy the spinup blob to, ensure this page is identity mapped in kernel page tables?
+    }
 
     sl::Opt<MsiConfig> ConstructMsi(size_t core, size_t vector)
     {
         MsiConfig cfg;
-        cfg.address = ((core & 0xFF) << 12) | 0xFEE0'0000;
+        cfg.addr = ((core & 0xFF) << 12) | 0xFEE0'0000;
         cfg.data = vector & 0xFF;
 
         return cfg;
@@ -19,9 +53,51 @@ namespace Npk
 
     bool DeconstructMsi(MsiConfig cfg, size_t& core, size_t& vector)
     {
-        core = (cfg.address >> 12) & 0xFF;
+        core = (cfg.addr >> 12) & 0xFF;
         vector = cfg.data & 0xFF;
         return true;
+    }
+
+    void EmergencyReset()
+    {
+        struct SL_PACKED(
+        {
+            uint16_t limit;
+            uint64_t base;
+        }) idtr;
+        idtr.base = 0;
+        idtr.limit = 0;
+
+        asm("lidt %0; int $0" :: "m"(idtr));
+    }
+
+    static inline LocalApic& LApic()
+    {
+        return *static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl));
+    }
+
+    void GetTimeCapabilities(TimerCapabilities& caps)
+    {
+        caps.timestampForUptime = CpuHasFeature(CpuFeature::Tsc) 
+            && CpuHasFeature(CpuFeature::InvariantTsc);
+    }
+
+    void SetAlarm(TimerNanos nanos)
+    {
+        LApic().ArmTimer(nanos, IntrVectorTimer);
+    }
+
+    TimerNanos AlarmMax()
+    {
+        return LApic().TimerMaxNanos();
+    }
+
+    TimerNanos GetTimestamp()
+    {
+        if (GetLocalPtr(SubsysPtr::IntrCtrl) == nullptr)
+            return {};
+
+        return LApic().ReadTscNanos();
     }
 
     struct TrapFrame

@@ -1,5 +1,5 @@
 # ---- Toolchain Options ----
-TOOLCHAIN = gcc
+TOOLCHAIN = clang
 TOOLCHAIN_PREFIX =
 
 # ---- Build System Options ----
@@ -11,8 +11,8 @@ ENABLE_KERNEL_UBSAN = no
 ENABLE_KERNEL_ASLR = no
 
 # ---- Compiler Options ----
-# Valid ISAs: 'x86_64', 'riscv64', 'm68k'
-CPU_ARCH = x86_64
+TARGET_ARCH = x86_64
+TARGET_PLAT = pc
 KERNEL_CXX_FLAGS += -Og -g
 INCLUDE_TERMINAL_BG = no
 

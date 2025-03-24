@@ -1,14 +1,9 @@
-#include <arch/Timers.h>
-#include <arch/Misc.h>
-#include <arch/x86_64/Timers.h>
-#include <arch/x86_64/Apic.h>
-#include <arch/x86_64/Cpuid.h>
+#include <core/Acpi.h>
 #include <core/Log.h>
-#include <services/AcpiTables.h>
-#include <services/Vmm.h>
-#include <ArchHints.h>
+#include <hardware/Arch.h>
+#include <hardware/Platform.h>
+#include <core/Defs.h>
 #include <NativePtr.h>
-#include <Maths.h>
 #include <Locks.h>
 
 namespace Npk
@@ -22,25 +17,25 @@ namespace Npk
 
     sl::SpinLock pitLock;
 
-    Services::VmObject* hpetVmo;
     sl::NativePtr hpetRegs;
     size_t hpetPeriod;
 
-    void CalibrationTimersInit()
+    void CalibrationTimersInit(uintptr_t hpetMmioBase)
     {
         //TODO: would be nice to investigate the acpi timer as well
 
-        using namespace Services;
-        hpetRegs = nullptr;
-        auto hpet = static_cast<const Hpet*>(FindAcpiTable(Services::SigHpet));
-        if (hpet == nullptr)
+        using namespace Core;
+        Hpet hpet {};
+        auto hpetBuff = sl::Span(reinterpret_cast<char*>(&hpet), sizeof(hpet));
+        if (CopyAcpiTable(SigHpet, hpetBuff) == 0)
+        {
+            Log("HPET not available on this system", LogLevel::Info);
             return;
+        }
 
-        hpetVmo = Services::CreateMmioVmo(hpet->baseAddress.address, 0x1000, HatFlag::Mmio);
-        VALIDATE_(hpetVmo != nullptr, );
-        auto maybeHpetRegs = Services::VmAllocWired(hpetVmo, 0x1000, 0, VmViewFlag::Write);
-        VALIDATE_(maybeHpetRegs.HasValue(), );
-        hpetRegs = *maybeHpetRegs;
+        hpetRegs = hpetMmioBase;
+        MmuMap(LocalDomain().kernelSpace, hpetRegs.ptr, hpet.baseAddress.address, 
+            MmuFlag::Mmio | MmuFlag::Write);
 
         //reset main counter and leave it enabled
         hpetRegs.Offset(HpetRegConfig).Write<uint64_t>(0);
@@ -55,7 +50,7 @@ namespace Npk
             return;
         }
         Log("HPET avilable: period=%zuns, regs=%p (0x%" PRIx64")", LogLevel::Info,
-            hpetPeriod / FemtosPerNano, hpetRegs.ptr, hpet->baseAddress.address);
+            hpetPeriod / FemtosPerNano, hpetRegs.ptr, hpet.baseAddress.address);
     }
 
     static inline uint16_t PitRead()
@@ -93,38 +88,5 @@ namespace Npk
 
             return (0xFFFF - PitRead()) * PitPeriod;
         }
-    }
-
-    static inline LocalApic& LApic()
-    {
-        return *static_cast<LocalApic*>(GetLocalPtr(SubsysPtr::IntrCtrl));
-    }
-
-    void GetTimeCapabilities(TimerCapabilities& caps)
-    {
-        caps.timestampForUptime = CpuHasFeature(CpuFeature::Tsc) && CpuHasFeature(CpuFeature::InvariantTsc);
-    }
-
-    void InitLocalTimers()
-    {
-        LApic().CalibrateTimer();
-    }
-
-    void SetAlarm(TimerNanos nanos)
-    {
-        LApic().ArmTimer(nanos, IntrVectorTimer);
-    }
-
-    TimerNanos AlarmMax()
-    {
-        return LApic().TimerMaxNanos();
-    }
-
-    TimerNanos GetTimestamp()
-    {
-        if (GetLocalPtr(SubsysPtr::IntrCtrl) == nullptr)
-            return {};
-
-        return LApic().ReadTscNanos();
     }
 }

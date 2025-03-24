@@ -1,5 +1,4 @@
 #include <KernelThread.h>
-#include <arch/Misc.h>
 #include <core/Log.h>
 #include <services/Vmm.h>
 

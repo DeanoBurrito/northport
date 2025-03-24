@@ -18,6 +18,8 @@
     typedef __PTRDIFF_TYPE__ ptrdiff_t;
     typedef ptrdiff_t ssize_t;
 
+    typedef uint64_t Paddr;
+
     #ifndef offsetof
         #define offsetof(s, m) __builtin_offsetof(s, m)
     #endif

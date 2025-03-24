@@ -10,78 +10,39 @@
  * So while I'm not a big fan of this, I do think it's necessary for my use case. If you're here
  * because you're exploring the northport source code and hoping to learn something, this isn't it.
  */
-namespace Npk
+namespace Npk::Loader
 {
     struct MemmapEntry
     {
-        uintptr_t base;
+        Paddr base;
         size_t length;
     };
 
-    struct LoaderFramebuffer
+    struct LoaderData
     {
-        uintptr_t address;
-        size_t width;
-        size_t height;
-        size_t stride;
+        uintptr_t directMapBase;
+        size_t directMapLength;
+        Paddr kernelPhysBase;
+        sl::Opt<Paddr> rsdp;
+        sl::Opt<Paddr> fdt;
 
-        size_t pixelStride;
-        uint8_t rShift;
-        uint8_t gShift;
-        uint8_t bShift;
-        uint8_t rBits;
-        uint8_t gBits;
-        uint8_t bBits;
+        struct
+        {
+            Paddr address;
+            size_t stride;
+            uint32_t width;
+            uint32_t height;
+            uint8_t redShift;
+            uint8_t blueShift;
+            uint8_t greenShift;
+            uint8_t redBits;
+            uint8_t greenBits;
+            uint8_t blueBits;
+            bool valid;
+        } framebuffer;
     };
 
-    //early init for bootloader interface, print out lots of stuff, check responses make sense.
-    void ValidateLoaderData();
-    
-    //returns if bootloader has provided a HHDM at all, and returns base + length if it has.
-    bool GetHhdmBounds(uintptr_t& base, size_t& length);
-
-    //returns the physical address the kernel is loaded at.
-    uintptr_t GetKernelPhysAddr();
-
-    //used in the initial stages of the kernel, before the pmm and wired heap are ready. It
-    //allocates physical memory and modifies the memory map to keep track of allocations.
-    //This memory can't be freed later on, so this function should be used sparingly.
-    sl::Opt<uintptr_t> EarlyPmAlloc(size_t length);
-
-    //populates an array of memmap entries for consumption. Returns the number of entries
-    //populated (the rest are untouched), and offset allows the caller to select where to start
-    //populating the array from. Ideally you call this in a loop, with the return value accumulated
-    //and passed as the offset to the next iteration, until it returns less than entries.Size().
-    size_t GetUsableMemmap(sl::Span<MemmapEntry> entries, size_t offset);
-
-    //same as GetUsableMemmap, but for returns areas reclaimable by the kernel after
-    //the global init sequence.
-    size_t GetReclaimableMemmap(sl::Span<MemmapEntry> entries, size_t offset);
-
-    //attempts to get the rsdp from the bootloader.
-    sl::Opt<uintptr_t> GetRsdp();
-
-    //attempts to get the FDT blob passed by the bootloader.
-    sl::Opt<uintptr_t> GetDtb();
-
-    //attempts to get the initrd passed by the bootloader.
-    sl::Span<uint8_t> GetInitdisk();
-
-    sl::Span<uint8_t> GetKernelSymbolTable();
-    sl::Span<const char> GetKernelStringTable();
-
-    //attempts to start other cores known by the bootloader and jump them to kernel code,
-    //it also calls PerCoreEntry() for each core, including the BSP.
-    size_t StartupAps();
-
-    //returns the kernel command line provided by the bootloader. If no command line is
-    //available, returns a stringspan of size 0.
+    void GetData(LoaderData& data);
     sl::StringSpan GetCommandLine();
-
-    //functions similar to the GetMemmap() functions: the fbs array is filled data about
-    //framebuffers known to the bootloader, and the amount of entries written is returned.
-    //Offset can be used to fetch framebuffers beyond what was previously returned.
-    //To get all framebuffers, this function should be called in a loop, until it returns <
-    //fbs.Size().
-    size_t GetFramebuffers(sl::Span<LoaderFramebuffer> fbs, size_t offset);
+    size_t GetMemmapUsable(sl::Span<MemmapEntry> store, size_t offset);
 }

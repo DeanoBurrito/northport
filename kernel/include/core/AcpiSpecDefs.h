@@ -3,7 +3,7 @@
 #include <Types.h>
 #include <Compiler.h>
 
-namespace Npk::Services
+namespace Npk::Core
 {
     enum class GenericAddrId : uint8_t
     {

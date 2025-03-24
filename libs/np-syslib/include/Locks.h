@@ -137,7 +137,7 @@ namespace sl
 //By default these functions are only made available in kernel code.
 //The following header is also relative to the kernel source, and will only resolve for the kernel.
 //It will generate errors for other projects.
-#include <arch/Misc.h>
+#include <hardware/Arch.h>
 #include <Optional.h>
 
 namespace sl

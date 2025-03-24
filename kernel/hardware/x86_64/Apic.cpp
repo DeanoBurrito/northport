@@ -1,16 +1,14 @@
-#include <arch/x86_64/Apic.h>
-#include <arch/x86_64/Cpuid.h>
-#include <arch/x86_64/Timers.h>
+#include <hardware/x86_64/Apic.h>
+#include <hardware/x86_64/Cpuid.h>
+#include <core/Acpi.h>
 #include <core/Log.h>
-#include <core/WiredHeap.h>
 #include <core/Config.h>
-#include <services/AcpiTables.h>
-#include <services/Vmm.h>
-#include <Locks.h>
-#include <Hhdm.h>
+#include <core/PmAlloc.h>
+#include <core/WiredHeap.h>
+#include <services/VmPagers.h>
 #include <Maths.h>
+#include <Locks.h>
 #include <Memory.h>
-#include <containers/List.h>
 #include <UnitConverter.h>
 
 namespace Npk
@@ -19,6 +17,10 @@ namespace Npk
     constexpr size_t ControlRuns = 5;
     constexpr size_t RequiredRuns = 5;
     constexpr size_t SampleFrequency = 100;
+
+    constexpr size_t MadtMaxSize = 0x1000;
+
+    TimerNanos CalibrationSleep(TimerNanos duration); //defined in Timers.cpp
 
     //https://docs.kernel.org/virt/kvm/x86/msr.html
     struct SL_PACKED(PvSystemTime
@@ -38,7 +40,7 @@ namespace Npk
     uint32_t LocalApic::ReadReg(LapicReg reg)
     {
         if (x2Mode)
-            return ReadMsr((static_cast<uint32_t>(reg) >> 4) + 0x800);
+            return ReadMsr(static_cast<Msr>((static_cast<uint32_t>(reg) >> 4) + 0x800));
         else
             return mmio.Offset(static_cast<uint32_t>(reg)).Read<uint32_t>();
     }
@@ -46,7 +48,7 @@ namespace Npk
     void LocalApic::WriteReg(LapicReg reg, uint32_t value)
     {
         if (x2Mode)
-            WriteMsr((static_cast<uint32_t>(reg) >> 4) + 0x800, value);
+            WriteMsr(static_cast<Msr>((static_cast<uint32_t>(reg) >> 4) + 0x800), value);
         else
             mmio.Offset(static_cast<uint32_t>(reg)).Write<uint32_t>(value);
     }
@@ -264,47 +266,47 @@ namespace Npk
         if (!(leaf.a & PvClockPresent))
             return nullptr;
 
-        auto maybePaddr = Core::PmAlloc();
-        VALIDATE_(maybePaddr.HasValue(), nullptr);
+        auto maybePage = PmAlloc(LocalDomain());
+        VALIDATE_(maybePage.HasValue(), nullptr);
 
-        const uintptr_t paddr = *maybePaddr;
-        WriteMsr(MsrPvSystemTime, paddr | 1); //bit 0 is the enable bit
+        const Paddr paddr = PmRevLookup(LocalDomain(), *maybePage);
+        WriteMsr(Msr::PvSystemTime, paddr | 1); //bit 0 is the enable bit
 
         Log("KVM detected, enabled pvclock (io=0x%tx).", LogLevel::Info, paddr);
-        return reinterpret_cast<PvSystemTime*>(paddr + hhdmBase);
+        return nullptr;
+        //return reinterpret_cast<PvSystemTime*>(paddr + hhdmBase); //TODO: replace with mmio vmo?
     }
 
-    bool LocalApic::Init()
+    bool LocalApic::Init(uintptr_t mmioVaddr)
     {
         VALIDATE_(CpuHasFeature(CpuFeature::Apic), false);
         VALIDATE_(CpuHasFeature(CpuFeature::Tsc), false);
 
-        const uint64_t baseMsr = ReadMsr(MsrApicBase);
+        const uint64_t baseMsr = ReadMsr(Msr::ApicBase);
         VALIDATE(baseMsr & (1 << 11), false, "Local APIC globally disabled in MSR.");
 
         if (CpuHasFeature(CpuFeature::ApicX2))
         {
             x2Mode = true;
-            WriteMsr(MsrApicBase, baseMsr | (1 << 10));
+            WriteMsr(Msr::ApicBase, baseMsr | (1 << 10));
             Log("Local apic setup, in x2 mode.", LogLevel::Verbose);
         }
         else
         {
             x2Mode = false;
-            mmioVmo = Services::CreateMmioVmo(baseMsr & ~0xFFFul, 0x1000, HatFlag::Mmio);
-            VALIDATE_(mmioVmo != nullptr, false);
-
-            auto maybeMmio = Services::VmAllocWired(mmioVmo, 0x1000, 0, VmViewFlag::Write);
-            VALIDATE_(maybeMmio.HasValue(), false);
-            mmio = *maybeMmio;
+            mmio = mmioVaddr;
+            MmuMap(LocalDomain().kernelSpace, mmio.ptr, baseMsr & ~0xFFFul, MmuFlag::Mmio | MmuFlag::Write);
 
             Log("Local apic setup, mmio=%p (phys=0x%tx)", LogLevel::Verbose, mmio.ptr,
                 baseMsr & ~0xFFFul);
         }
 
-        auto madt = static_cast<const Services::Madt*>(Services::FindAcpiTable(Services::SigMadt));
-        const bool picsPresent = madt == nullptr ? true : 
-            (uint32_t)madt->flags & (uint32_t)Services::MadtFlags::PcAtCompat;
+        char madtBuffer[MadtMaxSize];
+        VALIDATE_(Core::CopyAcpiTable(Core::SigMadt, madtBuffer) > sizeof(Core::Sdt), false);
+        auto madt = reinterpret_cast<const Core::Madt*>(madtBuffer);
+        VALIDATE_(madt->length <= MadtMaxSize, false);
+
+        const bool picsPresent = (uint32_t)madt->flags & (uint32_t)Core::MadtFlags::PcAtCompat;
         if (IsBsp() && picsPresent)
         {
             Log("BSP is disabling legacy 8259 PICs.", LogLevel::Info);
@@ -416,7 +418,7 @@ namespace Npk
         if (useTscDeadline)
         {
             WriteReg(LapicReg::LvtTimer, vector | (1 << 18));
-            WriteMsr(MsrTscDeadline, ReadMsr(MsrTsc) + nanos);
+            WriteMsr(Msr::TscDeadline, ReadMsr(Msr::Tsc) + nanos);
         }
         else
         {
@@ -445,7 +447,7 @@ namespace Npk
         //into a single MSR, instead of two separate regs.
         if (x2Mode)
         {
-            WriteMsr((static_cast<uint32_t>(LapicReg::IcrLow) >> 4) + 0x800, 
+            WriteMsr(static_cast<Msr>((static_cast<uint32_t>(LapicReg::IcrLow) >> 4) + 0x800), 
                 (destAddr << 32) | low);
         }
         else
@@ -505,7 +507,6 @@ namespace Npk
         uint32_t outgoing;
         sl::Opt<uint8_t> polarity;
         sl::Opt<uint8_t> mode;
-        Services::VmObject* vmo;
     };
 
     sl::FwdList<IoApic, &IoApic::hook> ioapics;
@@ -513,10 +514,12 @@ namespace Npk
 
     void InitIoApics()
     {
-        using namespace Services;
+        using namespace Core;
 
-        auto madt = static_cast<const Madt*>(FindAcpiTable(SigMadt));
-        VALIDATE(madt != nullptr, , "MADT not found, aborting io apic discovery.");
+        char madtBuffer[MadtMaxSize];
+        VALIDATE_(CopyAcpiTable(SigMadt, madtBuffer) > sizeof(Sdt), );
+        auto madt = reinterpret_cast<const Madt*>(madtBuffer);
+        VALIDATE_(madt->length <= MadtMaxSize, );
 
         sl::CNativePtr scan = madt->sources;
         while (scan.raw < (uintptr_t)madt + madt->length)
@@ -531,11 +534,12 @@ namespace Npk
                 IoApic* ioapic = NewWired<IoApic>();
                 VALIDATE_(ioapic != nullptr, );
 
-                ioapic->mmioVmo = CreateMmioVmo(apicSrc->mmioAddr, 0x1000, HatFlag::Mmio);
-                VALIDATE_(ioapic->mmioVmo != nullptr, );
-                auto maybeMmio = VmAllocWired(ioapic->mmioVmo, 0x1000, 0, VmViewFlag::Write);
-                VALIDATE_(maybeMmio.HasValue(), );
-                ioapic->mmio = *maybeMmio;
+                //ioapic->mmioVmo = Services::CreateMmioVmo(apicSrc->mmioAddr, 0x1000, MmuFlag::Mmio);
+                //VALIDATE_(ioapic->mmioVmo != nullptr, );
+                //auto maybeMmio = VmAllocWired(ioapic->mmioVmo, 0x1000, 0, VmViewFlag::Write);
+                //VALIDATE_(maybeMmio.HasValue(), );
+                //ioapic->mmio = *maybeMmio; TODO: reinstate VMM and map io apic
+                ASSERT_UNREACHABLE();
 
                 ioapic->gsiBase = apicSrc->gsibase;
                 ioapic->pinCount = (ioapic->ReadReg(IoApicReg::Version) >> 16) & 0xFF;
@@ -592,12 +596,13 @@ namespace Npk
                 if (iso->incoming != pin)
                     continue;
 
-                Log("Pin interrupt has acpi override: %" PRIu32" -> %" PRIu32, LogLevel::Verbose, iso->incoming, iso->outgoing);
+                Log("Pin interrupt has acpi override: %" PRIu32" -> %" PRIu32, 
+                    LogLevel::Verbose, iso->incoming, iso->outgoing);
                 override = &*iso;
                 break;
             }
 
-            using namespace Services::MadtSources;
+            using namespace Core::MadtSources;
             const uint64_t polarity = override != nullptr && *override->polarity == PolarityLow ? 1 : 0;
             const uint64_t mode = override != nullptr && *override->mode == TriggerModeLevel ? 1 : 0;
             const uint64_t redirect = (vector & 0xFF) | (polarity << 13) | (mode << 15) | (core << 56);

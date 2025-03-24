@@ -1,10 +1,10 @@
-KERNEL_CXX_SRCS += Entry.cpp Exit.cpp KernelThread.cpp Panic.cpp \
-	core/Clock.cpp core/Config.cpp core/Event.cpp core/WiredHeap.cpp core/IntrRouter.cpp \
-	core/Log.cpp core/Pmm.cpp core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp \
+KERNEL_CXX_SRCS += BringUp.cpp Exit.cpp KernelThread.cpp Panic.cpp \
+	core/Acpi.cpp core/Clock.cpp core/Config.cpp core/Event.cpp \
+	core/IntrRouter.cpp core/Log.cpp core/PmAccess.cpp core/PmAlloc.cpp \
+	core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp core/WiredHeap.cpp \
 	cpp/Stubs.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS)) \
-	services/AcpiTables.cpp services/BadSwap.cpp services/MagicKeys.cpp \
-	services/Program.cpp services/SymbolStore.cpp services/Vmm.cpp services/VmPagers.cpp
+	services/Program.cpp services/SymbolStore.cpp services/VmManager.cpp
 
 ifeq ($(ENABLE_KERNEL_ASAN), yes)
 	KERNEL_CXX_SRCS += cpp/Asan.cpp
@@ -30,7 +30,7 @@ endif
 
 BAKED_CONSTANTS_FILE = interfaces/intra/BakedConstants.cpp
 UNITY_SOURCE_FILE = $(BUILD_DIR)/kernel/GeneratedUnitySource.cpp
-KERNEL_LD_SCRIPT = kernel/$(ARCH_DIR)/Linker.lds
+KERNEL_LD_SCRIPT = kernel/$(PLAT_DIR)/Linker.lds
 KERNEL_OBJS = $(patsubst %.S, $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_AS_SRCS)) 
 ifeq ($(KERNEL_UNITY_BUILD), yes)
 	KERNEL_OBJS += $(patsubst %.cpp, $(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o, $(UNITY_SOURCE_FILE))
@@ -62,7 +62,8 @@ kernel/$(BAKED_CONSTANTS_FILE):
 	@printf "#include <interfaces/intra/BakedConstants.h>\n \
 		namespace Npk \n\
 		{ \n\
-			const char* targetArchStr = \"$(CPU_ARCH)\"; \n\
+			const char* targetArchStr = \"$(TARGET_ARCH)\"; \n\
+			const char* targetPlatformStr = \"$(TARGET_PLAT)\"; \n\
 			const char* gitCommitHash = \"$(shell git rev-parse HEAD)\"; \n\
 			const char* gitCommitShortHash = \"$(shell git rev-parse --short HEAD)\"; \n\
 			const bool gitCommitDirty = $(shell git diff-index --quiet HEAD --) $(.SHELLSTATUS); \n\

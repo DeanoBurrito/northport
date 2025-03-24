@@ -1,8 +1,7 @@
 #pragma once
 
 #include <NativePtr.h>
-#include <arch/Timers.h>
-#include <services/VmPagers.h>
+#include <hardware/Platform.h>
 
 namespace Npk
 {
@@ -35,7 +34,6 @@ namespace Npk
     class LocalApic
     {
     private:
-        Services::VmObject* mmioVmo;
         sl::NativePtr mmio;
         size_t tscFrequency;
         size_t timerFrequency;
@@ -49,7 +47,7 @@ namespace Npk
         void CalibrateTsc(bool dumpCalibData, size_t maxBaseCpuidLeaf, size_t maxHyperCpuidLeaf);
 
     public:
-        bool Init();
+        bool Init(uintptr_t mmioVaddr);
         void CalibrateTimer();
         TimerNanos ReadTscNanos() const;
         TimerNanos TimerMaxNanos() const;

@@ -4,8 +4,7 @@
 
 namespace Npk::Core
 {
-    void InitConfigStore();
-    void LateInitConfigStore();
+    void InitConfigStore(sl::StringSpan source);
 
     sl::StringSpan GetConfig(sl::StringSpan key);
     size_t GetConfigNumber(sl::StringSpan key, size_t orDefault);

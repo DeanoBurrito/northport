@@ -1,4 +1,4 @@
-#include <arch/x86_64/Cpuid.h>
+#include <hardware/x86_64/Cpuid.h>
 #include <core/Log.h>
 #include <NanoPrintf.h>
 

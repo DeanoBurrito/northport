@@ -33,6 +33,7 @@ namespace Npk::Core
         sl::List<WaitEntry, &WaitEntry::hook> waiters;
 
     public:
+        void Notify();
         void Signal(size_t amount);
         void Reset(size_t initialCount, size_t maxCount);
     };

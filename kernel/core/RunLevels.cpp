@@ -1,6 +1,5 @@
 #include <core/RunLevels.h>
-#include <arch/Misc.h>
-#include <arch/Interrupts.h>
+#include <hardware/Arch.h>
 #include <core/Log.h>
 #include <core/Smp.h>
 
@@ -34,15 +33,14 @@ namespace Npk::Core
         ASSERT_(newRl > prevRl);
 
         if (newRl >= RunLevel::Clock)
-            DisableInterrupts();
+            DisableIntrs();
 
         return prevRl;
     }
 
     void LowerRunLevel(RunLevel newRl)
     {
-        const bool restoreIntrs = InterruptsEnabled();
-        DisableInterrupts();
+        const bool restoreIntrs = DisableIntrs();
         ASSERT_(newRl < CurrentRunLevel());
 
         while (CurrentRunLevel() != newRl)
@@ -51,9 +49,9 @@ namespace Npk::Core
             {
             case RunLevel::Dpc:
                 {
-                    auto dpcs = CoreLocalDpcs();
+                    auto dpcs = LocalDpcs();
                     if (restoreIntrs)
-                        EnableInterrupts();
+                        EnableIntrs();
 
                     DpcStore* dpc = nullptr;
                     while ((dpc = dpcs->Pop()) != nullptr)
@@ -61,7 +59,7 @@ namespace Npk::Core
                         dpc->next = nullptr;
                         dpc->data.function(dpc->data.arg);
                     }
-                    DisableInterrupts();
+                    DisableIntrs();
                     break;
                 }
             case RunLevel::Apc: //TODO: APCs
@@ -77,7 +75,7 @@ namespace Npk::Core
         }
 
         if (restoreIntrs && CurrentRunLevel() < RunLevel::Clock)
-            EnableInterrupts();
+            EnableIntrs();
     }
 
     void QueueDpc(DpcStore* dpc)
@@ -89,7 +87,7 @@ namespace Npk::Core
          * worrying about the current core's runlevel. Later on we raise the runlevel to
          * execute any dpcs if we're below the DPC runlevel.
          */
-        CoreLocalDpcs()->Push(dpc);
+        LocalDpcs()->Push(dpc);
 
         if (CurrentRunLevel() >= RunLevel::Dpc)
             return;
@@ -103,22 +101,12 @@ namespace Npk::Core
         VALIDATE_(apc != nullptr, );
         VALIDATE_(apc->next == nullptr, );
 
-        CoreLocalApcs()->Push(apc);
+        LocalApcs()->Push(apc);
 
         if (CurrentRunLevel() >= RunLevel::Apc)
             return;
         const auto prevRl = CurrentRunLevel();
         RaiseRunLevel(RunLevel::Apc);
         LowerRunLevel(prevRl);
-    }
-
-    static void DpcOverIpiHandler(void* arg)
-    { 
-        return QueueDpc(static_cast<DpcStore*>(arg)); 
-    }
-
-    void QueueRemoteDpc(size_t coreId, DpcStore* dpc)
-    {
-        SendSmpMail(coreId, DpcOverIpiHandler, dpc);
     }
 }

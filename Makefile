@@ -19,13 +19,14 @@ KERNEL_LD_FLAGS += -zmax-page-size=0x1000 -static -pie -nostdlib --gc-sections
 
 BUILD_DIR = .build
 VENDOR_CACHE_DIR = .cache
-ARCH_DIR = arch/$(CPU_ARCH)
+ARCH_DIR = hardware/$(TARGET_ARCH)
+PLAT_DIR = hardware/$(TARGET_ARCH)/$(TARGET_PLAT)
 KERNEL_TARGET = $(BUILD_DIR)/npk.elf
 BUILD_TARGETS = $(KERNEL_TARGET) $(INITDISK_TARGET)
 ISO_BUILD_DIR = $(BUILD_DIR)/iso
-ISO_TARGET = $(BUILD_DIR)/northport-live-$(CPU_ARCH).iso
+ISO_TARGET = $(BUILD_DIR)/northport-live-$(TARGET_ARCH)-$(TARGET_PLAT).iso
 
-ARCH_TARGET = $(CPU_ARCH)-elf
+ARCH_TARGET = $(TARGET_ARCH)-elf
 KERNEL_VER_MAJOR = 0
 KERNEL_VER_MINOR = 5
 KERNEL_VER_REVISION = 0
@@ -36,12 +37,13 @@ LIMINE_BINARIES = $(VENDOR_CACHE_DIR)/limine
 .PHONY: help
 help: help-text
 
-include misc/cross/$(CPU_ARCH).mk
-include kernel/arch/$(CPU_ARCH)/Arch.mk
+include misc/cross/$(TARGET_ARCH).mk
+include kernel/$(ARCH_DIR)/Arch.mk
+include kernel/$(PLAT_DIR)/Plat.mk
 include libs/np-syslib/Local.mk
+include tests/Local.mk
 include kernel/Local.mk
 include initdisk/Local.mk
-include tests/Local.mk
 
 all: $(ARCH_DEFAULT_TARGET)
 
@@ -57,8 +59,9 @@ clean-cache:
 
 .PHONY: options
 options:
-	@printf "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Arch:$(C_RST)\
-	 $(CPU_ARCH), $(C_CYAN)Boot Protocol:$(C_RST) $(KERNEL_BOOT_PROTOCOL), $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)\n"
+	@printf "$(C_CYAN)Toolchain:$(C_RST) $(TOOLCHAIN), $(C_CYAN)Target:$(C_RST)\
+	 $(TARGET_ARCH)-$(TARGET_PLAT), $(C_CYAN)Boot Protocol:$(C_RST) $(KERNEL_BOOT_PROTOCOL),\
+	 $(C_CYAN)Quiet:$(C_RST) $(QUIET_BUILD)\n"
 	@printf "$(C_CYAN)Kernel C++ flags:$(C_RST) $(KERNEL_CXX_FLAGS)\n"
 	@printf "$(C_CYAN)Kernel LD flags:$(C_RST) $(KERNEL_LD_FLAGS)\n"
 ifeq ($(COUNT_TODOS), yes)

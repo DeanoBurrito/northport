@@ -1,7 +1,7 @@
 #include <core/Clock.h>
-#include <arch/Misc.h>
-#include <arch/Timers.h>
-#include <arch/Entry.h>
+#include <hardware/Arch.h>
+#include <hardware/Platform.h>
+#include <hardware/Entry.h>
 #include <core/Config.h>
 #include <core/Log.h>
 #include <core/WiredHeap.h>
@@ -67,7 +67,7 @@ namespace Npk::Core
         ClockQueue* q = NewWired<ClockQueue>();
         ASSERT_(q != nullptr);
 
-        q->coreId = CoreLocalId();
+        q->coreId = CoreId();
         SetLocalPtr(SubsysPtr::ClockQueue, q);
 
         const TimerNanos uptimeBegin = GetTimestamp();
@@ -162,7 +162,7 @@ namespace Npk::Core
     bool DequeueClockEvent(ClockEvent* event)
     {
         VALIDATE_(event != nullptr, false);
-        VALIDATE_(event->queue->coreId == CoreLocalId(), false); //TODO: support this
+        VALIDATE_(event->queue->coreId == CoreId(), false); //TODO: support this
         ASSERT_UNREACHABLE();
     }
 }

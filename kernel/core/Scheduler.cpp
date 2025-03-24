@@ -1,5 +1,5 @@
 #include <core/Scheduler.h>
-#include <arch/Interrupts.h>
+#include <hardware/Platform.h>
 #include <core/Log.h>
 #include <core/Config.h>
 #include <core/WiredHeap.h>
@@ -39,7 +39,7 @@ namespace Npk::Core
     {
         VALIDATE_(idle != nullptr, );
 
-        coreId = CoreLocalId();
+        coreId = CoreId();
         idleThread = idle;
         size_t priorities = GetConfigNumber("kernel.scheduler.priorities", DefaultPriorityCount);
         priorities = sl::Clamp<size_t>(priorities, 1, MaxPrioritiesCount);
@@ -59,7 +59,7 @@ namespace Npk::Core
     [[noreturn]]
     void Scheduler::Kickstart()
     {
-        DisableInterrupts();
+        DisableIntrs();
 
         auto next = PopThread();
         ASSERT_(next != nullptr);

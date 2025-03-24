@@ -1,126 +1,115 @@
 #include <core/Smp.h>
-#include <arch/Hat.h>
-#include <arch/Interrupts.h>
-#include <core/Pmm.h>
 #include <core/Log.h>
-#include <core/WiredHeap.h>
-#include <Hhdm.h>
-#include <containers/List.h>
-#include <Locks.h>
+#include <hardware/Platform.h>
+#include <Maths.h>
 
 namespace Npk::Core
 {
-    struct MailboxEntry
+    constexpr size_t PanicWaitCycles = 0x800'0000;
+
+    SmpInfo smpInfo;
+
+    bool MailToOne(CpuId who, MailboxEntry mail, bool urgent)
     {
-        SmpMailCallback callback;
-        void* arg;
-    };
-
-    struct MailboxControl
-    {
-        sl::FwdListHook hook;
-
-        size_t id;
-        ShootdownQueue tlbEvictions;
-        sl::Atomic<bool> shouldPanic;
-        sl::SpinLock entriesLock; //TODO: switch to lockfree ringbuffer
-        sl::Span<MailboxEntry> entries;
-    };
-
-    sl::RwLock mailboxesLock;
-    sl::FwdList<MailboxControl, &MailboxControl::hook> mailboxes;
-    sl::Atomic<size_t> smpPendingPanics = 0;
-
-    void InitLocalSmpMailbox()
-    {
-        MailboxControl* control = NewWired<MailboxControl>();
-        ASSERT_(control != nullptr);
-
-        auto maybePm = PmAlloc();
-        ASSERT_(maybePm.HasValue());
-
-        const size_t entryCount = PageSize() / sizeof(MailboxEntry);
-        MailboxEntry* entries = reinterpret_cast<MailboxEntry*>(*maybePm + hhdmBase);
-        control->entries = sl::Span<MailboxEntry>(entries, entryCount);
-        for (size_t i = 0; i < control->entries.Size(); i++)
-            control->entries[i].callback = nullptr;
-
-        control->id = CoreLocalId();
-        SetLocalPtr(SubsysPtr::IpiMailbox, control);
-
-        mailboxesLock.WriterLock();
-        mailboxes.PushBack(control);
-        smpPendingPanics++;
-        mailboxesLock.WriterUnlock();
-
-        Log("Smp mailbox created: %p, entries=%zu", LogLevel::Verbose, control, entryCount);
+        return MailToMany({ &who, 1 }, mail, urgent);
     }
 
-    static MailboxControl* FindMailbox(size_t id)
-    {
-        MailboxControl* found = nullptr;
-        mailboxesLock.ReaderLock();
+    void DispatchIpi();
 
-        for (auto it = mailboxes.Begin(); it != mailboxes.End(); ++it)
+    bool MailToMany(sl::Span<CpuId> who, MailboxEntry mail, bool urgent)
+    {
+        ASSERT(urgent == false, "TODO: not implemented");
+
+        size_t failCount = 0;
+        bool selfMail = false;
+
+        for (size_t i = 0; i < who.Size(); i++)
         {
-            if (it->id != id)
-                continue;
-            found = &*it;
-            break;
-        }
-        
-        mailboxesLock.ReaderUnlock();
-        return found;
-    }
+            auto control = static_cast<MailboxControl*>(GetPerCpu(who[i], smpInfo.offsets.mailbox));
 
-    void SendSmpMail(size_t destCore, SmpMailCallback callback, void* arg)
-    {
-        VALIDATE_(callback != nullptr, );
-        MailboxControl* dest = FindMailbox(destCore);
-        VALIDATE_(dest != nullptr, );
+            control->lock.Lock();
+            auto entry = control->free.PopFront();
+            control->lock.Unlock();
 
-        sl::ScopedLock scopeLock(dest->entriesLock);
-        for (size_t i = 0; i < dest->entries.Size(); i++)
-        {
-            if (dest->entries[i].callback != nullptr)
-                continue;
-
-            dest->entries[i].callback = callback;
-            dest->entries[i].arg = arg;
-            SendIpi(destCore, false);
-            return;
-        }
-
-        Log("Failed to send mail to core %zu, mailbox full.", LogLevel::Fatal, destCore);
-    }
-
-    void SendShootdown(size_t destCore, TlbShootdown* shootdown)
-    {
-        VALIDATE_(shootdown != nullptr, );
-        MailboxControl* dest = FindMailbox(destCore);
-        VALIDATE_(dest != nullptr, );
-        
-        dest->tlbEvictions.Push(shootdown);
-    }
-
-    void PanicAllCores()
-    {
-        mailboxesLock.ReaderLock();
-        for (auto it = mailboxes.Begin(); it != mailboxes.End(); ++it)
-        {
-            if (it->id == CoreLocalId())
+            if (entry == nullptr)
             {
-                smpPendingPanics--;
+                failCount++;
                 continue;
             }
 
-            it->shouldPanic = true;
-            SendIpi(it->id, true);
-        }
-        mailboxesLock.ReaderUnlock();
+            *entry = mail;
+            control->lock.Lock();
+            control->pending.PushBack(entry);
+            control->lock.Unlock();
 
-        while (smpPendingPanics != 0)
-            sl::HintSpinloop();
+            if (who[i] == CoreId())
+                selfMail = true;
+            else
+                SendIpi(who[i], urgent);
+        }
+
+        if (selfMail)
+        {
+            auto prevRl = RaiseRunLevel(RunLevel::Interrupt);
+            DispatchIpi();
+            LowerRunLevel(prevRl);
+        }
+
+        return failCount == 0;
+    }
+
+    bool MailToSet(CpuBitset who, MailboxEntry mail, bool urgent)
+    {
+        CpuId ids[sizeof(CpuBitset) * 8];
+        size_t idsNextSlot = 0;
+
+        for (size_t i = 0; i < sizeof(CpuBitset); i++)
+        {
+            if ((who & (1ull << i)) != 0)
+                ids[idsNextSlot++] = i;
+        }
+
+        return MailToMany({ ids, idsNextSlot }, mail, urgent);
+    }
+
+    bool MailToAll(MailboxEntry mail, bool urgent, bool includeSelf)
+    {
+        size_t failCount = 0;
+
+        for (size_t i = 0; i < smpInfo.cpuCount; i++)
+        {
+            if (i == CoreId() && !includeSelf)
+                continue;
+            
+            if (MailToOne(i, mail, urgent))
+                continue;
+            failCount++;
+        }
+
+        return failCount == 0;
+    }
+
+    sl::Atomic<CpuBitset> pendingPanics;
+
+    void PanicAllCores()
+    {
+        pendingPanics.SetBits(static_cast<CpuBitset>(~0));
+
+        for (size_t i = 0; i < smpInfo.cpuCount; i++)
+        {
+            auto control = static_cast<MailboxControl*>(GetPerCpu(i, smpInfo.offsets.mailbox));
+            control->remotePanic = 1;
+            SendIpi(i, true);
+        }
+
+        while (pendingPanics != 0)
+        {
+            for (size_t i = 0; i < PanicWaitCycles; i++)
+                sl::HintSpinloop();
+
+            Log("Panic sequence stalled, waiting on other cpus to ack: 0x%tu",
+                LogLevel::Info, pendingPanics.Load());
+        }
     }
 }
 
@@ -132,29 +121,29 @@ namespace Npk
     {
         ASSERT_(CurrentRunLevel() == RunLevel::Interrupt);
 
-        auto* mailbox = static_cast<MailboxControl*>(GetLocalPtr(SubsysPtr::IpiMailbox));
-        if (mailbox->shouldPanic)
+        auto control = static_cast<MailboxControl*>(GetMyPerCpu(smpInfo.offsets.mailbox));
+        if (control->remotePanic)
         {
-            smpPendingPanics--;
+            pendingPanics.ClearBits(1 << CoreId());
             Halt();
         }
 
-        mailbox->entriesLock.Lock();
-        for (size_t i = 0; i < mailbox->entries.Size(); i++)
+        while (true)
         {
-            mailbox->entries[i].callback(mailbox->entries[i].arg);
-            mailbox->entries[i].callback = nullptr;
-        }
-        mailbox->entriesLock.Unlock();
+            control->lock.Lock();
+            auto entry = control->pending.PopFront();
+            control->lock.Unlock();
+            
+            if (entry == nullptr)
+                break;
 
-        TlbShootdown* evict = nullptr;
-        while ((evict = mailbox->tlbEvictions.Pop()) != nullptr)
-        {
-            for (size_t i = 0; i < evict->data.length; i += PageSize())
-                HatFlushMap(evict->data.base + i);
+            entry->callback(entry->arg);
+            if (entry->onComplete != nullptr)
+                entry->onComplete->Notify();
 
-            if (--evict->data.pending == 0 && evict->data.onComplete != nullptr)
-                QueueDpc(evict->data.onComplete);
+            control->lock.Lock();
+            control->free.PushBack(entry);
+            control->lock.Unlock();
         }
     }
 }

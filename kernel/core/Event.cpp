@@ -27,7 +27,10 @@ namespace Npk::Core
         if (waiters.Empty())
             return;
 
+        //TODO: change this to SignalCount() and add SignalAll
         auto control = waiters.Front().control;
+        //TODO: instead of enqueuing the thread, we should try complete the wait
+        //for them ('help' them), if the first thread cant be completed, try the next one?
         SchedEnqueue(control->thread, control->threadPriority); //TODO: apply temporary priority boost here
     }
 

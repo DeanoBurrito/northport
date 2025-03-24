@@ -1,14 +1,15 @@
 #include <core/Config.h>
 #include <core/Log.h>
-#include <interfaces/loader/Generic.h>
 #include <Memory.h>
+#include <Maths.h>
 
 namespace Npk::Core
 {
+    constexpr size_t MaxCmdLineSize = 1024;
     constexpr sl::StringSpan AffirmativeStrs[] = { "true", "yes", "yeah" };
     constexpr size_t AffirmStrsCount = sizeof(AffirmativeStrs) / sizeof(sl::StringSpan);
 
-    char* ownedCmdline;
+    char cmdlineStore[MaxCmdLineSize];
     sl::StringSpan cmdline;
 
     static bool IsDigit(const char c, size_t base)
@@ -70,19 +71,16 @@ namespace Npk::Core
         return value;
     }
 
-    void InitConfigStore()
+    void InitConfigStore(sl::StringSpan source)
     {
-        ownedCmdline = nullptr;
-        cmdline = GetCommandLine();
+        const size_t length = sl::Min(source.Size(), MaxCmdLineSize);
+        sl::MemCopy(cmdlineStore, source.Begin(), length);
+        cmdline = { cmdlineStore, length };
 
         Log("Config store init: %.*s", LogLevel::Info, (int)cmdline.Size(), cmdline.Begin());
-    }
-
-    void LateInitConfigStore()
-    {
-        ownedCmdline = new char[cmdline.Size()];
-        sl::MemCopy(ownedCmdline, cmdline.Begin(), cmdline.Size());
-        cmdline = sl::StringSpan(ownedCmdline, cmdline.Size());
+        const size_t truncatedLen = source.Size() - length;
+        if (truncatedLen > 0)
+            Log("Config store too small! Truncated %zu characters.", LogLevel::Warning, truncatedLen);
     }
 
     sl::StringSpan GetConfig(sl::StringSpan key)

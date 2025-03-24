@@ -1,4 +1,23 @@
 .global InterruptStubsBegin
+.global RealEntry
+.global BspStackTop
+
+.extern KernelEntry
+
+.pushsection .bss
+.balign 0x1000
+.zero 0x8000
+BspStackTop:
+.popsection
+
+.type RealEntry, @function
+.size RealEntry, (_EndOfRealEntry - RealEntry)
+
+.pushsection .text
+RealEntry:
+    lea BspStackTop(%rip), %rsp
+    call KernelEntry
+_EndOfRealEntry:
 
 .type InterruptEntry, @function
 .size InterruptEntry, (_EndOfInterruptEntry - InterruptEntry)
@@ -68,6 +87,7 @@ InterruptEntry:
     add $0x10, %rsp
     iretq
 _EndOfInterruptEntry:
+.popsection
 
 .macro StubMacro vector
     .type VectorStub\vector,@function
@@ -87,6 +107,7 @@ _EndOfInterruptEntry:
     _EndOfVectorStub\vector:
 .endm
 
+.pushsection .rodata
 .align 0x10
 InterruptStubsBegin:
 .altmacro
@@ -95,3 +116,4 @@ InterruptStubsBegin:
 StubMacro %i
 .set i, i + 1
 .endr
+.popsection

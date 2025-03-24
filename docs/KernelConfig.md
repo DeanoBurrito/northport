@@ -7,8 +7,7 @@
 - `kernel.smp.inhibit`: prevents starting additional cores to the BSP. This is from the kernel's perspective, the firmware or bootloader may still bring up additional cores if they are present.
 - `kernel.heap.trash_after_use`: kernel heap memory is filled with random data after being freed. This incurs a performance penalty to freeing memory but can catch use-after-free bugs.
 - `kernel.heap.trash_before_use`: similar to trash_after_use, this helps catch initialization errors with objects allocated on the kernel heap by filling new allocations with random data before returning to the caller.
-- `kernel.pmm.trash_before_use`: writes junk data to physical before returning it to the caller, similar usage to the heap feature.
-- `kernel.pmm.trash_after_use`: writes junk data to physical memory after freeing it, similar usage to the heap feature.
+- `kernel.pma.cache_entries`: sets the number of physical memory access cache entries. This value is rounded up to a convinient multiple for the mmu, so it may not be the exact value used at runtime.
 - `kernel.vmd.wake_page_count`: sets the threshold value for waking the virtual memory daemon (page-out thread). When this number (or fewer) free pages are left in the PMM, it will wake the thread.
 - `kernel.vmd.wake_page_percent`: similar to `wake_page_count`, but offers a percentage-based value (as the total number of usable pages).
 - `kenrel.vmd.wake_timeout_ms`: VM daemon will run unconditionally after a number of milliseconds (500ms by default), this allows the value to be overriden.
@@ -24,5 +23,6 @@
 ## Pre-processor Defines
 
 - `NPK_HAS_KERNEL`: defined if code is being compiled as part of the kernel.
+- `NPK_HAS_TESTS`: defined is code is being compiled as part of test suite.
 - `NPK_HAS_KASAN`: defined (to any value) if the kernel is being compiled with kasan.
 - `NPK_HAS_KASLR`: defined is the kernel should randomize its address space layout, this also sets any appropriate bootloader config options.

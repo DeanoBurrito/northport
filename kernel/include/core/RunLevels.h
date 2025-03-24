@@ -44,7 +44,6 @@ namespace Npk::Core
 
     void QueueDpc(DpcStore* dpc);
     void QueueApc(ApcStore* apc);
-    void QueueRemoteDpc(size_t coreId, DpcStore* dpc);
 }
 
 using Npk::Core::RunLevel;
