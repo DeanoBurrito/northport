@@ -18,10 +18,8 @@ SECTIONS
     KERNEL_TEXT_BEGIN = .;
     .text :
     {
-        *(.text)
-        *(.text.*)
-        *(.ltext)
-        *(.ltext.*)
+        *(.text .text.*)
+        *(.ltext .ltext.*)
     } :text
     KERNEL_TEXT_END = .;
 
@@ -30,10 +28,8 @@ SECTIONS
     KERNEL_RODATA_BEGIN = .;
     .rodata : 
     {
-        *(.rodata)
-        *(.rodata.*)
-        *(.lrodata)
-        *(.lrodata.*)
+        *(.rodata .rodata.*)
+        *(.lrodata .lrodata.*)
     } :rodata
 
     .init_array :
@@ -55,10 +51,8 @@ SECTIONS
     KERNEL_DATA_BEGIN = .;
     .data : 
     {
-        *(.data)
-        *(.data.*)
-        *(.ldata)
-        *(.ldata.*)
+        *(.data .data.*)
+        *(.ldata .ldata.*)
     } :data
 
     .dynamic :
@@ -72,6 +66,16 @@ SECTIONS
         *(.bss .bss.*)
         *(.lbss .lbss.*)
     } :data
+
+    . += CONSTANT(MAXPAGESIZE);
+
+    .local_to.cpu :
+    {
+        KERNEL_CPULOCALS_BEGIN = .;
+        *(.sl_tagged.cpubase .sl_tagged.cpubase.*)
+        *(.sl_tagged.cpulocal .sl_tagged.cpulocal.*)
+        KERNEL_CPULOCALS_END = .;
+    }
 
     /DISCARD/ :
     {

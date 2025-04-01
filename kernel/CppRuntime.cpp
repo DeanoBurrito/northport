@@ -1,4 +1,4 @@
-#include <core/Log.h>
+#include <Kernel.hpp>
 
 extern "C"
 {
@@ -6,18 +6,18 @@ extern "C"
 
     void __stack_chk_fail()
     {
-        ASSERT_UNREACHABLE();
+        NPK_UNREACHABLE();
     }
 
     int __cxa_atexit()
     {
-        return 0;
+        NPK_UNREACHABLE();
     }
 
     void* __dso_handle;
 
     void __cxa_pure_virtual()
     {
-        ASSERT_UNREACHABLE()
+        NPK_UNREACHABLE();
     }
 }

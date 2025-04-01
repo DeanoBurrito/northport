@@ -1,20 +1,7 @@
-KERNEL_CXX_SRCS += BringUp.cpp Exit.cpp KernelThread.cpp Panic.cpp \
-	core/Acpi.cpp core/Clock.cpp core/Config.cpp core/Event.cpp \
-	core/IntrRouter.cpp core/Log.cpp core/PmAccess.cpp core/PmAlloc.cpp \
-	core/RunLevels.cpp core/Scheduler.cpp core/Smp.cpp core/WiredHeap.cpp \
-	cpp/Stubs.cpp \
-	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS)) \
-	services/Program.cpp services/SymbolStore.cpp services/VmManager.cpp
+KERNEL_CXX_SRCS += BringUp.cpp CppRuntime.cpp Logging.cpp \
+	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
-ifeq ($(ENABLE_KERNEL_ASAN), yes)
-	KERNEL_CXX_SRCS += cpp/Asan.cpp
-
-	KERNEL_CXX_FLAGS += -fsanitize=kernel-address -DNPK_HAS_KASAN
-	ifeq ($(TOOLCHAIN), clang)
-		KERNEL_CXX_FLAGS += -asan-mapping-offset=0xdfffe00000000000
-	endif
-endif
-
+# TODO: ASAN support
 ifeq ($(ENABLE_KERNEL_UBSAN), yes)
 	KERNEL_CXX_SRCS += cpp/UBSan.cpp
 	KERNEL_CXX_FLAGS += -fsanitize=undefined
@@ -28,7 +15,7 @@ else
 $(error "Unknown boot protocol: $(KERNEL_BOOT_PROTOCOL), build aborted.")
 endif
 
-BAKED_CONSTANTS_FILE = interfaces/intra/BakedConstants.cpp
+BAKED_CONSTANTS_FILE = BakedConstants.cpp
 UNITY_SOURCE_FILE = $(BUILD_DIR)/kernel/GeneratedUnitySource.cpp
 KERNEL_LD_SCRIPT = kernel/$(PLAT_DIR)/Linker.lds
 KERNEL_OBJS = $(patsubst %.S, $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_AS_SRCS)) 
@@ -59,18 +46,15 @@ $(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o: $(UNITY_SOURCE_FILE)
 kernel/$(BAKED_CONSTANTS_FILE):
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Creating source file for build-time kernel constants\n"
 	@mkdir -p $(@D)
-	@printf "#include <interfaces/intra/BakedConstants.h>\n \
+	@printf "#include <BakedConstants.hpp>\n \
 		namespace Npk \n\
 		{ \n\
-			const char* targetArchStr = \"$(TARGET_ARCH)\"; \n\
-			const char* targetPlatformStr = \"$(TARGET_PLAT)\"; \n\
-			const char* gitCommitHash = \"$(shell git rev-parse HEAD)\"; \n\
-			const char* gitCommitShortHash = \"$(shell git rev-parse --short HEAD)\"; \n\
-			const bool gitCommitDirty = $(shell git diff-index --quiet HEAD --) $(.SHELLSTATUS); \n\
+			const char* gitHash = \"$(shell git rev-parse HEAD)\"; \n\
+			const bool gitDirty = $(shell git diff-index --quiet HEAD --) $(.SHELLSTATUS); \n\
+			const char* compileFlags = \"$(KERNEL_CXX_FLAGS)\"; \n\
 			const size_t versionMajor = $(KERNEL_VER_MAJOR); \n\
 			const size_t versionMinor = $(KERNEL_VER_MINOR); \n\
 			const size_t versionRev = $(KERNEL_VER_REVISION); \n\
-			const char* toolchainUsed = \"$(TOOLCHAIN)\"; \n\
 		}" > kernel/$(BAKED_CONSTANTS_FILE)
 
 $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o: kernel/%.S
