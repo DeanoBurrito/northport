@@ -3,6 +3,7 @@ TOOLCHAIN = clang
 TOOLCHAIN_PREFIX =
 
 # ---- Build System Options ----
+DEFAULT_TARGET = help-text
 QUIET_BUILD = yes
 KERNEL_UNITY_BUILD = yes
 COUNT_TODOS = yes

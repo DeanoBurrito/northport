@@ -1,4 +1,8 @@
 include Config.mk
+
+.PHONY: first-target
+first-target: $(DEFAULT_TARGET)
+
 include misc/Formatting.mk
 include misc/HelpText.mk
 
