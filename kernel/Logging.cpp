@@ -1,4 +1,4 @@
-#include <Kernel.hpp>
+#include <KernelApi.hpp>
 #include <Memory.h>
 #include <NanoPrintf.h>
 #include <Maths.h>
@@ -19,8 +19,14 @@ namespace Npk
 
         const size_t realLen = sl::Min(formatLen, MaxLogLength);
 
+        LogSinkMessage sinkMsg {};
+        sinkMsg.level = level;
+        sinkMsg.text = { formatBuff, realLen };
+        sinkMsg.when = sl::TimePoint::Now();
+        sinkMsg.who = "kernel";
+
         for (auto it = logSinks.Begin(); it != logSinks.End(); ++it)
-            it->Write({ formatBuff, realLen }, level);
+            it->Write(sinkMsg);
     }
 
     void AddLogSink(LogSink& sink)
@@ -34,5 +40,22 @@ namespace Npk
     void RemoveLogSink(LogSink& sink)
     {
         logSinks.Remove(&sink);
+    }
+
+    sl::StringSpan LogLevelStr(LogLevel level)
+    {
+        constexpr sl::StringSpan levelStrs[] =
+        {
+            "Error",
+            "Warning",
+            "Info",
+            "Verbose",
+            "Trace",
+            "Debug",
+        };
+
+        if (static_cast<size_t>(level) > static_cast<size_t>(LogLevel::Debug))
+            return "unknown level";
+        return levelStrs[static_cast<size_t>(level)];
     }
 }

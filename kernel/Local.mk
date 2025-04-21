@@ -1,4 +1,5 @@
-KERNEL_CXX_SRCS += BringUp.cpp CppRuntime.cpp Logging.cpp \
+KERNEL_CXX_SRCS += BringUp.cpp Config.cpp CppRuntime.cpp Logging.cpp PageAccess.cpp \
+	Panic.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support

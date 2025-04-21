@@ -1,4 +1,4 @@
-#include <Kernel.hpp>
+#include <KernelApi.hpp>
 
 extern "C"
 {

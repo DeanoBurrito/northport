@@ -1,23 +1,42 @@
 #include <hardware/Arch.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/PortIo.hpp>
-#include <Kernel.hpp>
+#include <hardware/x86_64/Mmu.hpp>
+#include <KernelApi.hpp>
 #include <Memory.h>
+#include <NanoPrintf.h>
 
 namespace Npk
 {
     struct TrapFrame {};
 
     extern "C" void InterruptDispatch(TrapFrame* frame)
-    {}
+    { (void)frame; }
 }
 
 namespace Npk
 {
-    static void DebugconWrite(sl::StringSpan message, LogLevel level)
+    constexpr const char DebugconHeaderStr[] = "[%7s] ";
+    constexpr const char DebugconHeaderColourStr[] = "%s[%7s]%s ";
+    bool debugconDoColour;
+
+    static void DebugconPutc(int c, void* ignored)
     {
-        for (size_t i = 0; i < message.Size(); i++)
-            Out8(Port::Debugcon, message[i]);
+        (void)ignored;
+        Out8(Port::Debugcon, static_cast<uint8_t>(c));
+    }
+
+    static void DebugconWrite(LogSinkMessage msg)
+    {
+        const auto levelStr = LogLevelStr(msg.level);
+
+        if (debugconDoColour)
+            npf_pprintf(DebugconPutc, nullptr, DebugconHeaderColourStr, "", levelStr.Begin(), "");
+        else
+            npf_pprintf(DebugconPutc, nullptr, DebugconHeaderStr, levelStr.Begin());
+
+        for (size_t i = 0; i < msg.text.Size(); i++)
+            Out8(Port::Debugcon, msg.text[i]);
 
         Out8(Port::Debugcon, '\n');
         Out8(Port::Debugcon, '\r');
@@ -25,7 +44,8 @@ namespace Npk
 
     static void DebugconReset()
     {
-        DebugconWrite("\n\r\n\r", LogLevel::Info);
+        Out8(Port::Debugcon, '\n');
+        Out8(Port::Debugcon, '\r');
     }
 
     LogSink debugconLogSink
@@ -41,6 +61,10 @@ namespace Npk
         //for qemu (tcg/kvm) or bochs and assume it exists.
         //Far from perfect, but its helpful for now.
 
+        debugconDoColour = ReadConfigUint("npk.x86.debugcon_do_colour", true);
+        if (ReadConfigUint("npk.x86.debugcon_force_enable", false))
+            return AddLogSink(debugconLogSink);
+
         if (!CpuHasFeature(CpuFeature::VGuest))
             return;
 
@@ -55,5 +79,18 @@ namespace Npk
     void ArchInitEarly()
     {
         CheckForDebugcon();
+    }
+
+    void ArchInit(InitState& state)
+    { (void)state; } //no-op
+
+    KernelMap ArchSetKernelMap(sl::Opt<KernelMap> next)
+    {
+        const KernelMap prev = READ_CR(3);
+
+        if (next.HasValue())
+            WRITE_CR(3, *next);
+
+        return prev;
     }
 }

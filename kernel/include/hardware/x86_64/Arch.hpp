@@ -5,6 +5,36 @@
 namespace Npk
 {
     SL_ALWAYS_INLINE
+    size_t PfnShift()
+    {
+        return 12;
+    }
+
+    struct CoreLocalHeader
+    {
+        CpuId swId;
+        uintptr_t selfAddr;
+    };
+
+    SL_ALWAYS_INLINE
+    CpuId MyCoreId()
+    {
+        CpuId id;
+        asm("mov %%gs:0" : "=r"(id));
+        return id;
+    }
+    static_assert(offsetof(CoreLocalHeader, swId) == 0);
+
+    SL_ALWAYS_INLINE
+    uintptr_t ArchMyCpuLocals()
+    {
+        uintptr_t addr;
+        asm("mov %%gs:8" : "=r"(addr));
+        return addr;
+    }
+    static_assert(offsetof(CoreLocalHeader, selfAddr) == 8);
+
+    SL_ALWAYS_INLINE
     void WaitForIntr()
     {
         asm("hlt");
@@ -23,4 +53,7 @@ namespace Npk
 
         return flags & (1 << 9);
     }
+
+#define READ_CR(num) ({ uint64_t val; asm("mov %%cr" #num ", %0" : "=r"(val)); val; })
+#define WRITE_CR(num, val) do { asm("mov %0, %%cr" #num :: "r"(val)); } while (false)
 }
