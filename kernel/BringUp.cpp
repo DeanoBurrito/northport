@@ -9,7 +9,6 @@
 
 namespace Npk
 {
-    void DispatchAlarm() {}
     void DispatchIpi() {}
     void DispatchInterrupt(size_t vector) { (void)vector; }
     void DispatchPageFault(PageFaultFrame* frame) { (void)frame; }
@@ -258,23 +257,22 @@ extern "C"
         MapKernelImage(initState, loaderState.kernelBase);
         const uintptr_t perCpuStore = InitPerCpuStore(initState, 1);
         const uintptr_t apStacks = InitApStacks(initState, 0);
-        sl::StringSpan configBacking = CopyCommandLine(initState, loaderState.commandLine);
+        sl::StringSpan configCopy = CopyCommandLine(initState, loaderState.commandLine);
 
+        SetMyLocals(perCpuStore, 0);
         ArchInit(initState);
         PlatInit(initState);
-        InitPmFreeList(initState);
 
+        InitPmFreeList(initState);
         ArchSetKernelMap({});
-        SetConfigStore(configBacking);
+        SetConfigStore(configCopy);
 
         //TODO: boot APs
         //TODO: convert ourselves to a thread asap, so we can use waiting
         Log("---- INIT DONE ----", LogLevel::Debug);
 
+        IntrsOn();
         while (true) //become the idle thread for the bsp
-        {
-            IntrsOn();
             WaitForIntr();
-        }
     }
 }

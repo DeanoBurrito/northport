@@ -21,6 +21,10 @@ namespace Npk
     void RemoveLogSink(LogSink& sink);
     sl::StringSpan LogLevelStr(LogLevel level);
 
+    Ipl RaiseIpl(Ipl target);
+    void LowerIpl(Ipl target);
+    sl::StringSpan IplStr(Ipl which);
+
     void SetConfigStore(sl::StringSpan store);
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
     sl::StringSpan ReadConfigString(sl::StringSpan key, sl::StringSpan defaultValue);
