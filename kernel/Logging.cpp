@@ -58,4 +58,10 @@ namespace Npk
             return "unknown level";
         return levelStrs[static_cast<size_t>(level)];
     }
+    static_assert(static_cast<LogLevel>(0) == LogLevel::Error);
+    static_assert(static_cast<LogLevel>(1) == LogLevel::Warning);
+    static_assert(static_cast<LogLevel>(2) == LogLevel::Info);
+    static_assert(static_cast<LogLevel>(3) == LogLevel::Verbose);
+    static_assert(static_cast<LogLevel>(4) == LogLevel::Trace);
+    static_assert(static_cast<LogLevel>(5) == LogLevel::Debug);
 }

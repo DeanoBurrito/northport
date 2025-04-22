@@ -69,11 +69,11 @@ SECTIONS
 
     . += CONSTANT(MAXPAGESIZE);
 
-    .local_to.cpu (NOLOAD) :
+    .percpu (NOLOAD) :
     {
         KERNEL_CPULOCALS_BEGIN = .;
-        *(.sl_tagged.cpubase .sl_tagged.cpubase.*)
-        *(.sl_tagged.cpulocal .sl_tagged.cpulocal.*)
+        KEEP(*(.sl_tagged.cpubase .sl_tagged.cpubase.*))
+        KEEP(*(.sl_tagged.cpulocal .sl_tagged.cpulocal.*))
         KERNEL_CPULOCALS_END = .;
     }
 

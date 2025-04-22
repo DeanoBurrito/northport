@@ -13,6 +13,8 @@ namespace Npk
     SL_ALWAYS_INLINE
     uintptr_t MyCpuLocals();
 
+    void SetMyLocals(uintptr_t where, CpuId softwareId);
+
     SL_ALWAYS_INLINE
     void WaitForIntr();
 

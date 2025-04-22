@@ -7,8 +7,12 @@ namespace Npk
 {
     enum class Port : uint16_t
     {
-        PitData = 0x40,
+        Pic0Command = 0x20,
+        Pic0Data = 0x21,
+        PitData0 = 0x40,
         PitCommand = 0x43,
+        Pic1Command = 0xA0,
+        Pic1Data = 0xA1,
         Debugcon = 0xE9,
     };
 

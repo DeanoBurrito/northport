@@ -1,6 +1,7 @@
 #pragma once
 
 #include <hardware/Arch.hpp>
+#include <hardware/x86_64/Msr.hpp>
 
 namespace Npk
 {
@@ -20,16 +21,16 @@ namespace Npk
     CpuId MyCoreId()
     {
         CpuId id;
-        asm("mov %%gs:0" : "=r"(id));
+        asm("mov %%gs:0, %0" : "=r"(id));
         return id;
     }
     static_assert(offsetof(CoreLocalHeader, swId) == 0);
 
     SL_ALWAYS_INLINE
-    uintptr_t ArchMyCpuLocals()
+    uintptr_t MyCpuLocals()
     {
         uintptr_t addr;
-        asm("mov %%gs:8" : "=r"(addr));
+        asm("mov %%gs:8, %0" : "=r"(addr));
         return addr;
     }
     static_assert(offsetof(CoreLocalHeader, selfAddr) == 8);
@@ -55,5 +56,5 @@ namespace Npk
     }
 
 #define READ_CR(num) ({ uint64_t val; asm("mov %%cr" #num ", %0" : "=r"(val)); val; })
-#define WRITE_CR(num, val) do { asm("mov %0, %%cr" #num :: "r"(val)); } while (false)
+#define WRITE_CR(num, val) do { asm("mov %0, %%cr" #num :: "r"(val) : "memory"); } while (false)
 }

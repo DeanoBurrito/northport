@@ -8,6 +8,7 @@
 #include <Locks.h>
 #include <containers/List.h>
 #include <Compiler.h>
+#include <Time.h>
 
 extern "C" char KERNEL_CPULOCALS_BEGIN[];
 
@@ -42,30 +43,67 @@ namespace Npk
     public:
         constexpr CpuLocal() = default;
 
-        T& Get()
+        T* Get()
         {
             const uintptr_t base = MyCpuLocals();
             const uintptr_t offset = reinterpret_cast<uintptr_t>(this) -
                 reinterpret_cast<uintptr_t>(KERNEL_CPULOCALS_BEGIN);
 
-            return *reinterpret_cast<T*>(base + offset);
+            return reinterpret_cast<T*>(base + offset);
         }
 
         T* operator&()
         {
-             return &Get();
+             return Get();
         }
 
-        T& operator->()
+        T* operator->()
         {
             return Get();
         }
 
+        T& operator*()
+        {
+            return *Get();
+        }
+
         void operator=(const T& latest)
         {
-            Get() = latest;
+            *Get() = latest;
         }
     };
+
+    enum class Ipl
+    {
+        Passive,
+        Dpc,
+        Clock,
+        Interrupt,
+    };
+
+    struct Dpc;
+
+    using DpcEntry = void (*)(Dpc* self, void* arg);
+
+    struct Dpc
+    {
+        sl::FwdListHook hook;
+        DpcEntry function;
+        void* arg;
+    };
+
+    using DpcQueue = sl::FwdList<Dpc, &Dpc::hook>;
+
+    struct ClockEvent
+    {
+        Dpc* dpc;
+        sl::ListHook hook;
+        CpuId cpu;
+        sl::TimePoint expiry;
+    };
+    static_assert(offsetof(ClockEvent, dpc) == 0);
+
+    using ClockQueue = sl::List<ClockEvent, &ClockEvent::hook>;
 
     enum class WaitResult
     {

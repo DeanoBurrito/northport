@@ -10,6 +10,7 @@ namespace Npk
         ApicBase = 0x1B,
         Tsc = 0x10,
         TscDeadline = 0x6E0,
+        X2ApicBase = 0x800,
         Efer = 0xC0000080,
         GsBase = 0xC0000101,
         KernelGsBase = 0xC0000102,

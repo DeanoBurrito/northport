@@ -2,6 +2,7 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Mmu.hpp>
+#include <hardware/x86_64/LocalApic.hpp>
 #include <KernelApi.hpp>
 #include <Memory.h>
 #include <NanoPrintf.h>
@@ -16,6 +17,20 @@ namespace Npk
 
 namespace Npk
 {
+    SL_TAGGED(cpubase, CoreLocalHeader localHeader);
+
+    void SetMyLocals(uintptr_t where, CpuId softwareId)
+    {
+        const uintptr_t offset = where - (uintptr_t)&localHeader;
+        WriteMsr(Msr::GsBase, offset);
+
+        asm("mov %0, %%gs:0" :: "r"(softwareId));
+        asm("mov %0, %%gs:8" :: "r"(where));
+        Log("Cpu %zu locals at: abs=0x%tx, rel=0x%tx", LogLevel::Verbose, softwareId, where, offset);
+    }
+    static_assert(offsetof(CoreLocalHeader, swId) == 0);
+    static_assert(offsetof(CoreLocalHeader, selfAddr) == 8);
+
     constexpr const char DebugconHeaderStr[] = "[%7s] ";
     constexpr const char DebugconHeaderColourStr[] = "%s[%7s]%s ";
     bool debugconDoColour;
@@ -82,7 +97,9 @@ namespace Npk
     }
 
     void ArchInit(InitState& state)
-    { (void)state; } //no-op
+    { 
+        InitBspLapic(state);
+    }
 
     KernelMap ArchSetKernelMap(sl::Opt<KernelMap> next)
     {
