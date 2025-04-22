@@ -15,6 +15,7 @@ namespace Npk
     {
         CpuId swId;
         uintptr_t selfAddr;
+        ThreadContext* currThread;
     };
 
     SL_ALWAYS_INLINE
@@ -34,6 +35,22 @@ namespace Npk
         return addr;
     }
     static_assert(offsetof(CoreLocalHeader, selfAddr) == 8);
+
+    SL_ALWAYS_INLINE
+    ThreadContext* GetCurrentThread()
+    {
+        ThreadContext* ptr;
+        asm("mov %%gs:16, %0" : "=r"(ptr));
+        return ptr;
+    }
+    static_assert(offsetof(CoreLocalHeader, currThread) == 16);
+
+    SL_ALWAYS_INLINE
+    void SetCurrentThread(ThreadContext* thread)
+    {
+        asm("mov %0, %%gs:16" :: "r"(thread));
+    }
+    static_assert(offsetof(CoreLocalHeader, currThread) == 16);
 
     SL_ALWAYS_INLINE
     void WaitForIntr()

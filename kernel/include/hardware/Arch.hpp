@@ -15,6 +15,18 @@ namespace Npk
 
     void SetMyLocals(uintptr_t where, CpuId softwareId);
 
+    struct ArchThreadContext;
+    struct ThreadContext;
+
+    SL_ALWAYS_INLINE
+    ThreadContext* GetCurrentThread();
+
+    SL_ALWAYS_INLINE
+    void SetCurrentThread(ThreadContext* context);
+
+    void ArchSwitchThread(ArchThreadContext** current, ArchThreadContext* next) 
+        asm("ArchSwitchThread");
+
     SL_ALWAYS_INLINE
     void WaitForIntr();
 

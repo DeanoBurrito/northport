@@ -1,4 +1,5 @@
 #include <KernelApi.hpp>
+#include <Scheduler.hpp>
 #include <BakedConstants.hpp>
 #include <interfaces/loader/Generic.hpp>
 #include <Maths.h>
@@ -268,11 +269,14 @@ extern "C"
         SetConfigStore(configCopy);
 
         //TODO: boot APs
-        //TODO: convert ourselves to a thread asap, so we can use waiting
-        Log("---- INIT DONE ----", LogLevel::Debug);
+
+        Log("BSP init done, becoming idle thread.", LogLevel::Trace);
+        ThreadContext idleContext {};
+        SetIdleThread(&idleContext);
+        SetCurrentThread(&idleContext);
 
         IntrsOn();
-        while (true) //become the idle thread for the bsp
+        while (true)
             WaitForIntr();
     }
 }

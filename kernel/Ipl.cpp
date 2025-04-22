@@ -1,4 +1,5 @@
 #include <KernelApi.hpp>
+#include <Scheduler.hpp>
 
 namespace Npk
 {
@@ -47,8 +48,15 @@ namespace Npk
                     }
                     break;
                 }
-            case Ipl::Passive: break; //TODO: inform scheduler switch is possible
+            case Ipl::Passive: 
+                //there may be a pending context switch, let the scheduler
+                //know it can perform that now if it wants.
+                OnPassiveRunLevel();
+                break;
             }
+
+            const Ipl nextIpl = static_cast<Ipl>(static_cast<unsigned>(currentIpl) - 1);
+            localIpl = nextIpl;
 
             if (restoreIntrs)
                 IntrsOn();
