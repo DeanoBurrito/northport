@@ -129,44 +129,4 @@ namespace sl
             lock.Unlock();
         }
     };
-
-#ifdef NPK_HAS_KERNEL
-} //close the namespace to prevent contamination
-
-//These locks require the use of privileged functions only available in the northport kernel.
-//By default these functions are only made available in kernel code.
-//The following header is also relative to the kernel source, and will only resolve for the kernel.
-//It will generate errors for other projects.
-#include <hardware/Arch.h>
-#include <Optional.h>
-
-namespace sl
-{
-    template<RunLevel CriticalLevel>
-    class RunLevelLock
-    {
-    private:
-        sl::Opt<RunLevel> prevLevel;
-        sl::SpinLock lock;
-
-    public:
-        constexpr RunLevelLock() : prevLevel(), lock()
-        {}
-
-        inline void Lock()
-        {
-            if (Npk::CoreLocalAvailable() && Npk::CurrentRunLevel() < CriticalLevel)
-                prevLevel = Npk::Core::RaiseRunLevel(CriticalLevel);
-            return lock.Lock();
-        }
-
-        inline void Unlock()
-        {
-            lock.Unlock();
-            if (prevLevel.HasValue())
-                Npk::Core::LowerRunLevel(*prevLevel);
-            prevLevel = {};
-        }
-    };
-#endif
 }

@@ -12,6 +12,10 @@
     #define SL_UNREACHABLE()  __builtin_unreachable()
     #define SL_NO_PROFILE [[gnu::no_instrument_function]]
     #define SL_NO_KASAN [[gnu::no_sanitize_address]]
+
+    #define SL_TAGGED(id, variable) [[gnu::section(".sl_tagged." #id)]] variable
+    #define SL_FILENAME_MACRO __FILE_NAME__
+    #define SL_RETURN_ADDR __builtin_extract_return_addr(__builtin_return_address(0))
     
     #define SL_LIKELY(x) __builtin_expect(!!(x), 1)
     #define SL_UNLIKELY(x) __builtin_expect(!!(x), 0)
