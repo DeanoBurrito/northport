@@ -21,6 +21,7 @@ namespace Npk
         uintptr_t vmAllocHead;
         Paddr pmAllocHead;
         size_t pmAllocIndex;
+        size_t usedPages;
 
         inline char* VmAlloc(size_t length)
         {
@@ -110,31 +111,24 @@ namespace Npk
         Success,
         Timeout,
         Cancelled,
-        Alerted,
     };
 
     enum class WaitFlag
     {
         Cancellable,
-        Alertable,
         All,
     };
 
     using WaitFlags = sl::Flags<WaitFlag>;
 
     struct WaitEntry;
-
-    struct Waiter
-    {
-        bool cancellable;
-        bool alertable;
-    };
+    struct ThreadContext;
 
     struct WaitEntry
     {
         sl::ListHook hook;
 
-        Waiter* waiter;
+        ThreadContext* thread;
         bool satisfied;
     };
 
@@ -148,12 +142,15 @@ namespace Npk
 
     public:
         void Reset();
-        void Signal(size_t count, bool sticky);
+        void Signal(size_t count, bool all, bool sticky);
     };
 
-    using Mutex = sl::SpinLock;
-
-    using CondVar = Waitable;
+    class Mutex : private Waitable
+    {
+    public:
+        void Lock();
+        void Unlock();
+    };
 
     enum class LogLevel
     {
@@ -222,8 +219,6 @@ namespace Npk
         MmuSpace* kernelSpace;
         Paddr zeroPage;
         
-        CondVar highMemoryPressure;
-
         struct
         {
             Mutex lock;

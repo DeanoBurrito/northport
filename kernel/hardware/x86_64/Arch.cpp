@@ -12,7 +12,10 @@ namespace Npk
     struct TrapFrame {};
 
     extern "C" void InterruptDispatch(TrapFrame* frame)
-    { (void)frame; }
+    {
+        (void)frame;
+        NPK_UNREACHABLE();
+    }
 }
 
 namespace Npk
@@ -31,8 +34,6 @@ namespace Npk
     static_assert(offsetof(CoreLocalHeader, swId) == 0);
     static_assert(offsetof(CoreLocalHeader, selfAddr) == 8);
 
-    constexpr const char DebugconHeaderStr[] = "[%7s] ";
-    constexpr const char DebugconHeaderColourStr[] = "%s[%7s]%s ";
     bool debugconDoColour;
 
     static void DebugconPutc(int c, void* ignored)
@@ -43,12 +44,26 @@ namespace Npk
 
     static void DebugconWrite(LogSinkMessage msg)
     {
-        const auto levelStr = LogLevelStr(msg.level);
+        constexpr const char FormatStr[] = "%.0s[%7s]%.0s ";
+        constexpr const char ColourFormatStr[] = "%s[%7s]%s ";
+        constexpr const char ResetColourStr[] = "\e[39m";
 
-        if (debugconDoColour)
-            npf_pprintf(DebugconPutc, nullptr, DebugconHeaderColourStr, "", levelStr.Begin(), "");
-        else
-            npf_pprintf(DebugconPutc, nullptr, DebugconHeaderStr, levelStr.Begin());
+        const auto levelStr = LogLevelStr(msg.level);
+        const char* format = debugconDoColour ? ColourFormatStr : FormatStr;
+        const char* colourStr = [](LogLevel level) -> const char*
+        {
+            switch (level)
+            {
+            case LogLevel::Error:   return "\e[31m";
+            case LogLevel::Warning: return "\e[33m";
+            case LogLevel::Info:    return "\e[97m";
+            case LogLevel::Verbose: return "\e[90m";
+            case LogLevel::Trace:   return "\e[37m";
+            case LogLevel::Debug:   return "\e[34m";
+            }
+        }(msg.level);
+
+        npf_pprintf(DebugconPutc, nullptr, format, colourStr, levelStr.Begin(), ResetColourStr);
 
         for (size_t i = 0; i < msg.text.Size(); i++)
             Out8(Port::Debugcon, msg.text[i]);

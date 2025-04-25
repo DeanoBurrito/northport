@@ -58,6 +58,7 @@ namespace Npk
         sl::MmioRegisters<LApicReg, uint32_t> mmio;
         size_t tscFreq;
         size_t timerFreq;
+        uint32_t acpiId;
         bool x2Mode;
 
         inline Msr RegToMsr(LApicReg reg)
@@ -92,8 +93,9 @@ namespace Npk
             WriteMsr(Msr::ApicBase, ReadMsr(Msr::ApicBase) | (1 << 10));
     }
 
-    static void FinishLapicInit(Madt* madt, uint32_t acpiId)
+    static void FinishLapicInit(Madt* madt)
     {
+        lapic->Write(LApicReg::SpuriousVector, SpuriousVector);
         lapic->Write(LApicReg::LvtTimer, LvtMasked | SpuriousVector);
         lapic->Write(LApicReg::LvtThermalSensor, LvtMasked | SpuriousVector);
         lapic->Write(LApicReg::LvtPerfMonitor, LvtMasked | SpuriousVector);
@@ -104,8 +106,39 @@ namespace Npk
         if (madt == nullptr)
             return;
 
+        const uint32_t myLapicId = lapic->Read(LApicReg::Id) 
+            >> (lapic->x2Mode ? 24 : 0);
         char* scan = reinterpret_cast<char*>(madt) + sizeof(Madt);
         const char* end = scan + madt->length;
+
+        //first pass: find the acpi processor id assocaited with this lapic
+        lapic->acpiId = -1;
+        while (scan < end)
+        {
+            const auto source = reinterpret_cast<MadtSource*>(scan);
+            scan += source->length;
+
+            if (source->type == MadtSourceType::LocalApic)
+            {
+                const auto src = static_cast<MadtSources::LocalApic*>(source);
+                if (src->apicId == myLapicId)
+                    lapic->acpiId = src->acpiProcessorId;
+            }
+            else if (source->type == MadtSourceType::LocalX2Apic)
+            {
+                const auto src = static_cast<MadtSources::LocalX2Apic*>(source);
+                if (src->apicId == myLapicId)
+                    lapic->acpiId = src->acpiProcessorId;
+            }
+        }
+        if (lapic->acpiId == -1)
+        {
+            Log("LAPIC %u has no entry in MADT, cannot determine acpi processor id.",
+                LogLevel::Error, myLapicId);
+            return;
+        }
+
+        //second pass: find any nmi entries that apply to this lapic
         while (scan < end)
         {
             const auto source = reinterpret_cast<MadtSource*>(scan);
@@ -137,7 +170,7 @@ namespace Npk
                 continue;
 
             //0xFFFF'FFFF (and 0xFF for non-x2 apics) is a special ID meaning 'everyone'
-            if (targetAcpiId != 0xFFFF'FFFF && targetAcpiId != acpiId)
+            if (targetAcpiId != 0xFFFF'FFFF && targetAcpiId != lapic->acpiId)
                 continue;
 
             const LApicReg lvt = inputNumber == 1 ? LApicReg::LvtLint1 : LApicReg::LvtLint0;
@@ -164,8 +197,9 @@ namespace Npk
             ArchEarlyMap(state, mmioAddr, lapic->mmio.BaseAddress(), MmuFlag::Write | MmuFlag::Mmio);
         }
 
-        FinishLapicInit(nullptr, 0);
+        FinishLapicInit(nullptr);
 
+        //TODO: handling lapic errors and CMCIs, maybe notify of thermal interrupt
         //TODO: add detection for PICs being present (there's a bit in acpi/madt)
 
         //BSP should take care of initializing, remapping and masking the PICs.
@@ -201,5 +235,20 @@ namespace Npk
     void SignalEoi()
     {
         lapic->Write(LApicReg::Eoi, 0);
+    }
+
+    void SendIpi(uint32_t dest, IpiType type, uint8_t vector)
+    {
+        const uint32_t low = vector | ((uint32_t)type << 8);
+
+        if (lapic->x2Mode)
+            WriteMsr(lapic->RegToMsr(LApicReg::IcrLow), ((uint64_t)dest << 32) | low);
+        else
+        {
+            //IPIs are sent upon writing to IcrLow, so set the destination first
+            lapic->Write(LApicReg::IcrHigh, dest << 24);
+            lapic->Write(LApicReg::IcrLow, low);
+        }
+
     }
 }

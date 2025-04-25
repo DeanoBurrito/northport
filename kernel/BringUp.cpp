@@ -43,6 +43,7 @@ namespace Npk
                 continue;
             }
 
+            usedPages++;
             const Paddr ret = pmAllocHead;
             pmAllocHead += PageSize();
 
@@ -52,7 +53,7 @@ namespace Npk
         NPK_UNREACHABLE();
     }
 
-    void InitPageInfoStore(InitState& state)
+    static void InitPageInfoStore(InitState& state)
     {
         constexpr size_t MaxLoaderRanges = 32;
 
@@ -109,7 +110,7 @@ namespace Npk
             rangesBase, minUsablePaddr, maxUsablePaddr, domain0.pfndb);
     }
 
-    void InitPmAccess(InitState& state)
+    static void InitPmAccess(InitState& state)
     {
         constexpr size_t NullPaddr = 0;
 
@@ -125,7 +126,7 @@ namespace Npk
         InitPageAccessCache(pmaEntries, slots, NullPaddr);
     }
 
-    void MapKernelImage(InitState& state, Paddr physBase)
+    static void MapKernelImage(InitState& state, Paddr physBase)
     {
         const uintptr_t virtBase = reinterpret_cast<uintptr_t>(KERNEL_BLOB_BEGIN);
 
@@ -142,7 +143,7 @@ namespace Npk
             KERNEL_BLOB_BEGIN, physBase);
     }
     
-    uintptr_t InitPerCpuStore(InitState& state, size_t cpuCount)
+    static uintptr_t InitPerCpuStore(InitState& state, size_t cpuCount)
     {
         const size_t localsSize = reinterpret_cast<uintptr_t>(KERNEL_CPULOCALS_END) 
             - reinterpret_cast<uintptr_t>(KERNEL_CPULOCALS_BEGIN);
@@ -156,7 +157,7 @@ namespace Npk
         return reinterpret_cast<uintptr_t>(base);
     }
     
-    uintptr_t InitApStacks(InitState& state, size_t apCount)
+    static uintptr_t InitApStacks(InitState& state, size_t apCount)
     {
         const size_t stride = KernelStackSize() + PageSize();
         const size_t totalSize = apCount * stride;
@@ -168,7 +169,7 @@ namespace Npk
         return reinterpret_cast<uintptr_t>(base);
     }
 
-    sl::StringSpan CopyCommandLine(InitState& state, sl::StringSpan source)
+    static sl::StringSpan CopyCommandLine(InitState& state, sl::StringSpan source)
     {
         char* vbase = state.VmAlloc(source.Size());
         for (size_t i = 0; i < source.Size(); i += PageSize())
@@ -181,13 +182,17 @@ namespace Npk
         return sl::StringSpan(vbase, source.Size());
     }
 
-    void InitPmFreeList(InitState& state)
+    static void InitPmFreeList(InitState& state)
     {
         constexpr size_t MaxLoaderRanges = 32;
 
         Loader::MemoryRange ranges[MaxLoaderRanges];
         size_t rangesBase = state.pmAllocIndex;
         size_t totalPages = 0;
+
+        Log("Populating domain0 PM freelist from bootloader map:", LogLevel::Verbose);
+        Log("%9s|%18s|%12s|%12s", LogLevel::Verbose, 
+            "New Pages", "Base Address", "Total Pages", "Total Size");
 
         while (true)
         {
@@ -202,8 +207,10 @@ namespace Npk
 
                 PageInfo* info = LookupPageInfo(base);
                 totalPages += pageCount;
-                Log("Ingesting usable memory: %6zu pages at 0x%08tx, total of %zu pages.",
-                    LogLevel::Verbose, pageCount, base, totalPages);
+
+                const auto conv = sl::ConvertUnits(totalPages << PfnShift());
+                Log("%9zu|%#18tx|%12zu|%4zu.%zu %sB", LogLevel::Verbose,
+                    pageCount, base, totalPages, conv.major, conv.minor, conv.prefix);
 
                 const KernelMap loaderMap = ArchSetKernelMap({});
                 sl::ScopedLock lock(domain0.freeLists.lock);
@@ -218,8 +225,53 @@ namespace Npk
         }
 
         const auto conv = sl::ConvertUnits(totalPages << PfnShift());
-        Log("Usable memory after init: %zu.%zu %sB (%zu pages)", LogLevel::Info,
-            conv.major, conv.minor, conv.prefix, totalPages);
+        const auto kernConv = sl::ConvertUnits(state.usedPages << PfnShift());
+        Log("%zu.%zu %sB usable memory, kernel init used %zu.%zu %sB", LogLevel::Info, conv.major, 
+            conv.minor, conv.prefix, kernConv.major, kernConv.minor, kernConv.prefix);
+    }
+
+    static void PrintWelcome()
+    {
+        Log("Northport kernel v%zu.%zu.%zu starting ...", LogLevel::Info,
+            versionMajor, versionMinor, versionRev);
+        Log("Compiler flags: %s", LogLevel::Verbose, compileFlags);
+        Log("Base Commit%s: %s", LogLevel::Verbose, gitDirty ? " (dirty)" : "",
+            gitHash);
+    }
+
+    struct SetupInfo
+    {
+        uintptr_t apStacks;
+        size_t stackStride;
+        uintptr_t perCpuStores;
+        size_t perCpuStride;
+        sl::StringSpan configCopy;
+    };
+
+    static SetupInfo SetupDomain0(const Loader::LoadState& loaderState)
+    {
+        SetupInfo setupInfo {};
+        setupInfo.stackStride = KernelStackSize() + PageSize();
+
+        InitState initState {};
+        initState.dmBase = loaderState.directMapBase;
+        initState.vmAllocHead = ArchInitBspMmu(initState);
+
+        domain0.zeroPage = initState.PmAlloc();
+
+        InitPageInfoStore(initState);
+        InitPmAccess(initState);
+        MapKernelImage(initState, loaderState.kernelBase);
+        setupInfo.perCpuStores = InitPerCpuStore(initState, 1);
+        setupInfo.apStacks = InitApStacks(initState, 0);
+        setupInfo.configCopy = CopyCommandLine(initState, loaderState.commandLine);
+
+        SetMyLocals(setupInfo.perCpuStores, 0);
+        ArchInit(initState);
+        PlatInit(initState);
+        InitPmFreeList(initState);
+
+        return setupInfo;
     }
 }
 
@@ -231,12 +283,7 @@ extern "C"
 
         ArchInitEarly();
         PlatInitEarly();
-
-        Log("Northport kernel v%zu.%zu.%zu starting ...", LogLevel::Info,
-            versionMajor, versionMinor, versionRev);
-        Log("Compiler flags: %s", LogLevel::Verbose, compileFlags);
-        Log("Base Commit%s: %s", LogLevel::Verbose, gitDirty ? " (dirty)" : "",
-            gitHash);
+        PrintWelcome();
 
         const size_t globalCtorCount = 
             ((uintptr_t)&INIT_ARRAY_END - (uintptr_t)&INIT_ARRAY_BEGIN) / sizeof(void*);
@@ -246,29 +293,10 @@ extern "C"
 
         const auto loaderState = Loader::GetEntryState();
         SetConfigStore(loaderState.commandLine);
+        const auto setupInfo = SetupDomain0(loaderState);
 
-        InitState initState {};
-        initState.dmBase = loaderState.directMapBase;
-        initState.vmAllocHead = ArchInitBspMmu(initState);
-
-        domain0.zeroPage = initState.PmAlloc();
-
-        InitPageInfoStore(initState);
-        InitPmAccess(initState);
-        MapKernelImage(initState, loaderState.kernelBase);
-        const uintptr_t perCpuStore = InitPerCpuStore(initState, 1);
-        const uintptr_t apStacks = InitApStacks(initState, 0);
-        sl::StringSpan configCopy = CopyCommandLine(initState, loaderState.commandLine);
-
-        SetMyLocals(perCpuStore, 0);
-        ArchInit(initState);
-        PlatInit(initState);
-
-        InitPmFreeList(initState);
         ArchSetKernelMap({});
-        SetConfigStore(configCopy);
-
-        //TODO: boot APs
+        SetConfigStore(setupInfo.configCopy);
 
         Log("BSP init done, becoming idle thread.", LogLevel::Trace);
         ThreadContext idleContext {};
