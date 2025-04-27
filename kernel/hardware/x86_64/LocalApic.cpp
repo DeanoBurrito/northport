@@ -131,7 +131,7 @@ namespace Npk
                     lapic->acpiId = src->acpiProcessorId;
             }
         }
-        if (lapic->acpiId == -1)
+        if (lapic->acpiId == (uint32_t)-1)
         {
             Log("LAPIC %u has no entry in MADT, cannot determine acpi processor id.",
                 LogLevel::Error, myLapicId);
@@ -186,17 +186,20 @@ namespace Npk
         }
     }
 
-    void InitBspLapic(InitState& state)
+    void InitBspLapic(uintptr_t& virtBase)
     {
         PrepareLocalApic();
 
         if (!lapic->x2Mode)
         {
             const Paddr mmioAddr = ReadMsr(Msr::ApicBase) & ~0xFFFul;
-            lapic->mmio = state.VmAlloc(PageSize());
-            ArchEarlyMap(state, mmioAddr, lapic->mmio.BaseAddress(), MmuFlag::Write | MmuFlag::Mmio);
+            lapic->mmio = virtBase;
+            virtBase += PageSize();
+            ArchAddMap(MyKernelMap(), lapic->mmio.BaseAddress(), mmioAddr, MmuFlag::Write | MmuFlag::Mmio);
+            Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
         }
 
+        //TODO: get access to madt
         FinishLapicInit(nullptr);
 
         //TODO: handling lapic errors and CMCIs, maybe notify of thermal interrupt

@@ -5,5 +5,6 @@ namespace Npk
     struct InitState;
 
     void PlatInitEarly();
-    void PlatInit(InitState& state);
+    void PlatInitDomain0(InitState& state);
+    void PlatInitFull(uintptr_t& virtBase);
 }

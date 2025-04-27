@@ -97,33 +97,19 @@ namespace Npk
 
                 base = AlignDownPage((base >> PfnShift()) * sizeof(PageInfo));
                 top = AlignUpPage((top >> PfnShift()) * sizeof(PageInfo));
+                Log("PageInfo region: 0x%tx-0x%tx -> 0x%tx-0x%tx", LogLevel::Trace,
+                    ranges[i].base, ranges[i].base + ranges[i].length, base, top);
 
-                for (size_t s = base; s < top; s += PageSize())
-                    ArchEarlyMap(state, state.PmAlloc(), virtOffset + base, MmuFlag::Write);
+                for (Paddr s = base; s < top; s += PageSize())
+                    ArchEarlyMap(state, state.PmAlloc(), virtOffset + s, MmuFlag::Write);
             }
 
             if (count < MaxLoaderRanges)
                 break;
         }
 
-        Log("PageInfo store mapped: %zu ranges covering 0x%tx-0x%tx, store @ %p", LogLevel::Info,
-            rangesBase, minUsablePaddr, maxUsablePaddr, domain0.pfndb);
-    }
-
-    static void InitPmAccess(InitState& state)
-    {
-        constexpr size_t NullPaddr = 0;
-
-        const size_t pmaEntries = ReadConfigUint("npk.pm.temp_mapping_count", 512);
-        const size_t totalSize = pmaEntries << PfnShift();
-
-        char* base = state.VmAlloc(totalSize);
-        for (size_t i = 0; i < pmaEntries; i++)
-            ArchEarlyMap(state, NullPaddr, reinterpret_cast<uintptr_t>(base) + (i << PfnShift()), MmuFlag::Write);
-
-        const size_t slotsSize = sizeof(PageAccessCache::Slot) * pmaEntries;
-        auto slots = reinterpret_cast<PageAccessCache::Slot*>(state.VmAllocAnon(slotsSize));
-        InitPageAccessCache(pmaEntries, slots, NullPaddr);
+        Log("PageInfo store mapped: %zu ranges covering 0x%tx-0x%tx", LogLevel::Info,
+            rangesBase, minUsablePaddr, maxUsablePaddr);
     }
 
     static void MapKernelImage(InitState& state, Paddr physBase)
@@ -177,6 +163,8 @@ namespace Npk
             const Paddr page = state.PmAlloc();
             const size_t len = sl::Min(source.Size() - i, PageSize());
             sl::MemCopy(reinterpret_cast<void*>(page + state.dmBase), source.Begin() + i, len);
+
+            ArchEarlyMap(state, page, reinterpret_cast<uintptr_t>(vbase) + i, {});
         }
 
         return sl::StringSpan(vbase, source.Size());
@@ -213,7 +201,6 @@ namespace Npk
                     pageCount, base, totalPages, conv.major, conv.minor, conv.prefix);
 
                 const KernelMap loaderMap = ArchSetKernelMap({});
-                sl::ScopedLock lock(domain0.freeLists.lock);
                 info->pm.count = pageCount;
                 domain0.freeLists.free.PushBack(info);
                 domain0.freeLists.pageCount += pageCount;
@@ -241,37 +228,49 @@ namespace Npk
 
     struct SetupInfo
     {
+        uintptr_t virtBase;
         uintptr_t apStacks;
         size_t stackStride;
         uintptr_t perCpuStores;
         size_t perCpuStride;
         sl::StringSpan configCopy;
+        size_t pmaEntries;
+        uintptr_t pmaSlots;
     };
 
     static SetupInfo SetupDomain0(const Loader::LoadState& loaderState)
     {
         SetupInfo setupInfo {};
         setupInfo.stackStride = KernelStackSize() + PageSize();
+        setupInfo.pmaEntries = ReadConfigUint("npk.pm.temp_mapping_count", 512);
 
         InitState initState {};
         initState.dmBase = loaderState.directMapBase;
-        initState.vmAllocHead = ArchInitBspMmu(initState);
+        initState.vmAllocHead = ArchInitBspMmu(initState, setupInfo.pmaEntries);
 
         domain0.zeroPage = initState.PmAlloc();
 
         InitPageInfoStore(initState);
-        InitPmAccess(initState);
-        MapKernelImage(initState, loaderState.kernelBase);
+        setupInfo.pmaSlots = reinterpret_cast<uintptr_t>(
+            initState.VmAllocAnon(setupInfo.pmaEntries * sizeof(PageAccessCache::Slot)));
         setupInfo.perCpuStores = InitPerCpuStore(initState, 1);
         setupInfo.apStacks = InitApStacks(initState, 0);
         setupInfo.configCopy = CopyCommandLine(initState, loaderState.commandLine);
+        MapKernelImage(initState, loaderState.kernelBase);
 
-        SetMyLocals(setupInfo.perCpuStores, 0);
-        ArchInit(initState);
-        PlatInit(initState);
+        ArchInitDomain0(initState);
+        PlatInitDomain0(initState);
         InitPmFreeList(initState);
 
+        setupInfo.virtBase = initState.vmAllocHead;
         return setupInfo;
+    }
+
+    CPU_LOCAL(MemoryDomain*, localMemoryDomain);
+
+    MemoryDomain& MyMemoryDomain()
+    {
+        return **localMemoryDomain;
     }
 }
 
@@ -296,13 +295,23 @@ extern "C"
         const auto setupInfo = SetupDomain0(loaderState);
 
         ArchSetKernelMap({});
+        SetMyLocals(setupInfo.perCpuStores, 0);
+        localMemoryDomain = &domain0;
+        InitPageAccessCache(setupInfo.pmaEntries, setupInfo.pmaSlots);
         SetConfigStore(setupInfo.configCopy);
 
-        Log("BSP init done, becoming idle thread.", LogLevel::Trace);
+        Log("System early init done, BSP is entering init thread.", LogLevel::Trace);
         ThreadContext idleContext {};
         SetIdleThread(&idleContext);
         SetCurrentThread(&idleContext);
 
+        uintptr_t virtBase = setupInfo.virtBase;
+        ArchInitFull(virtBase);
+        PlatInitFull(virtBase);
+        //TODO: boot APs
+        //TODO: init vmm - virtBase serves as top of bump allocated region
+
+        Log("BSP init thread done, becoming idle thread", LogLevel::Trace);
         IntrsOn();
         while (true)
             WaitForIntr();

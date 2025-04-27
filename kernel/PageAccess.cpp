@@ -1,19 +1,43 @@
 #include <KernelApi.hpp>
+#include <Memory.h>
+#include <Maths.h>
 
 namespace Npk
 {
-    void InitPageAccessCache(size_t entries, PageAccessCache::Slot* slots, Paddr defaultPaddr)
-    {
-        //NPK_UNREACHABLE(); //TODO: implement
-    }
+    static PageAccessCache accessCache;
 
-    PageAccessRef AccessPage(Paddr paddr)
+    bool Internal::PmaCacheSetEntry(size_t slot, void** curVaddr, Paddr curPaddr, Paddr nextPaddr)
     {
-        NPK_UNREACHABLE();
+        (void)curPaddr;
+
+        *curVaddr = ArchSetTempMap(MyKernelMap(), slot, nextPaddr);
+        return true;
     }
 
     size_t CopyFromPages(Paddr base, sl::Span<char> buffer)
     {
-        NPK_UNREACHABLE();
+        for (size_t i = 0; i < buffer.Size(); i += PageSize())
+        {
+            PageAccessRef access = AccessPage(base + i);
+            if (!access.Valid())
+                return i;
+
+            const size_t copyLen = sl::Min(buffer.Size() - i, PageSize());
+            sl::MemCopy(&buffer[i], access->value, copyLen);
+        }
+        
+        return buffer.Size();
+    }
+
+    void InitPageAccessCache(size_t entries, uintptr_t slots)
+    {
+        auto slotsPtr = reinterpret_cast<PageAccessCache::Slot*>(slots);
+        accessCache.Init({ slotsPtr, entries }, 0);
+        Log("Initialized page access cache", LogLevel::Trace);
+    }
+
+    PageAccessRef AccessPage(Paddr paddr)
+    {
+        return accessCache.Get(paddr);
     }
 }

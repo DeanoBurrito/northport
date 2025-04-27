@@ -14,6 +14,30 @@ extern "C" char KERNEL_CPULOCALS_BEGIN[];
 
 namespace Npk
 {
+    class IntrSpinLock
+    {
+    private:
+        sl::SpinLock lock;
+        bool prevIntrs;
+
+    public:
+        constexpr IntrSpinLock() : lock {}, prevIntrs(false)
+        {}
+
+        inline void Lock()
+        {
+            prevIntrs = IntrsOff();
+            lock.Lock();
+        }
+
+        inline void Unlock()
+        {
+            lock.Unlock();
+            if (prevIntrs)
+                IntrsOn();
+        }
+    };
+
     struct InitState
     {
         uintptr_t dmBase;
@@ -208,20 +232,18 @@ namespace Npk
 
     using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
 
-    struct MmuSpace;
-
     struct MemoryDomain
     {
         Paddr physOffset;
         PageInfo* pfndb;
 
         uintptr_t pmaBase;
-        MmuSpace* kernelSpace;
+        KernelMap kernelSpace;
         Paddr zeroPage;
         
         struct
         {
-            Mutex lock;
+            IntrSpinLock lock;
             size_t pageCount;
             PageList free;
             PageList zeroed;

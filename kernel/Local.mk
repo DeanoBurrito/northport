@@ -1,5 +1,5 @@
 KERNEL_CXX_SRCS += BringUp.cpp Config.cpp CppRuntime.cpp Ipl.cpp Logging.cpp \
-	PageAccess.cpp Panic.cpp Scheduler.cpp \
+	PageAccess.cpp PageAlloc.cpp Panic.cpp Scheduler.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support

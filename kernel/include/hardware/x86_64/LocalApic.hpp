@@ -4,7 +4,7 @@
 
 namespace Npk
 {
-    void InitBspLapic(InitState& state);
+    void InitBspLapic(uintptr_t& virtBase);
     void SignalEoi();
 
     enum class IpiType

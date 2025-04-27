@@ -103,6 +103,7 @@ namespace Npk
     {
         localScheduler->idleThread = thread;
         thread->priority = 0;
+        Log("Set idle thread to %p", LogLevel::Trace, thread);
     }
 
     void OnPassiveRunLevel()

@@ -25,6 +25,8 @@ namespace Npk
     void LowerIpl(Ipl target);
     sl::StringSpan IplStr(Ipl which);
 
+    void QueueDpc(Dpc* dpc);
+
     void SetConfigStore(sl::StringSpan store);
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
     sl::StringSpan ReadConfigString(sl::StringSpan key, sl::StringSpan defaultValue);
@@ -41,14 +43,22 @@ namespace Npk
         return ((info - domain0.pfndb) << PfnShift()) + domain0.physOffset;
     }
 
-    PageInfo* AllocPage();
+    MemoryDomain& MyMemoryDomain();
+
+    SL_ALWAYS_INLINE
+    KernelMap* MyKernelMap()
+    {
+        return &MyMemoryDomain().kernelSpace;
+    }
+
+    PageInfo* AllocPage(bool canFail);
     void FreePage(PageInfo* page);
 
     using PageAccessCache = sl::LruCache<Paddr, void*, Internal::PmaCacheSetEntry>;
     using PageAccessRef = PageAccessCache::CacheRef;
 
     size_t CopyFromPages(Paddr base, sl::Span<char> buffer);
-    void InitPageAccessCache(size_t entries, PageAccessCache::Slot* slots, Paddr defaultPaddr);
+    void InitPageAccessCache(size_t entries, uintptr_t slots);
     PageAccessRef AccessPage(Paddr paddr);
 
     SL_ALWAYS_INLINE
@@ -57,8 +67,51 @@ namespace Npk
         return AccessPage(LookupPagePaddr(page));
     }
 
-    WaitResult WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout, WaitFlags flags);
+    void CancelWait(ThreadContext* thread);
     WaitResult WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, sl::TimeCount timeout, WaitFlags flags);
+
+    SL_ALWAYS_INLINE
+    WaitResult WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout, WaitFlags flags)
+    {
+        return WaitMany({ &what, 1 }, entry, timeout, flags);
+    }
+
+    SL_ALWAYS_INLINE
+    void ResetWaitable(Waitable* what)
+    {
+        what->Reset();
+    }
+
+    SL_ALWAYS_INLINE
+    void SignalOnce(Waitable* what)
+    {
+        what->Signal(1, false, false);
+    }
+
+    SL_ALWAYS_INLINE
+    void SignalCondition(Waitable* what)
+    {
+        what->Signal(1, true, true);
+    }
+
+    SL_ALWAYS_INLINE
+    void SignalWaitable(Waitable* what, size_t count, bool wakeAll, bool stickyCount)
+    {
+        what->Signal(count, wakeAll, stickyCount);
+    }
+
+    SL_ALWAYS_INLINE
+    void Mutex::Lock()
+    {
+        WaitEntry entry;
+        WaitOne(this, &entry, {}, {});
+    }
+
+    SL_ALWAYS_INLINE
+    void Mutex::Unlock()
+    {
+        SignalOnce(this);
+    }
 }
 
 #define NPK_ASSERT_STRINGIFY(x) NPK_ASSERT_STRINGIFY2(x)

@@ -13,6 +13,8 @@ namespace Npk
     SL_ALWAYS_INLINE
     uintptr_t MyCpuLocals();
 
+    using KernelMap = Paddr;
+
     void SetMyLocals(uintptr_t where, CpuId softwareId);
 
     struct ArchThreadContext;
@@ -48,8 +50,9 @@ namespace Npk
     struct InitState;
 
     void ArchInitEarly();
-    uintptr_t ArchInitBspMmu(InitState& state);
-    void ArchInit(InitState& state);
+    uintptr_t ArchInitBspMmu(InitState& state, size_t tempMapCount);
+    void ArchInitDomain0(InitState& state);
+    void ArchInitFull(uintptr_t& virtBase);
 
     SL_ALWAYS_INLINE
     size_t PfnShift();
@@ -105,10 +108,19 @@ namespace Npk
 
     using MmuFlags = sl::Flags<MmuFlag>;
 
-    using KernelMap = Paddr;
+    enum class MmuError
+    {
+        Success = 0,
+        InvalidArg,
+        PageAllocFailed,
+        NoMap,
+        MapAlreadyExits
+    };
 
     void ArchEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, MmuFlags flags);
     KernelMap ArchSetKernelMap(sl::Opt<KernelMap> next);
+    void* ArchSetTempMap(KernelMap* map, size_t index, Paddr paddr);
+    MmuError ArchAddMap(KernelMap* map, uintptr_t vaddr, Paddr paddr, MmuFlags flags);
 }
 
 #ifdef __x86_64__

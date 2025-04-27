@@ -24,15 +24,14 @@ namespace Npk
 
     void SetMyLocals(uintptr_t where, CpuId softwareId)
     {
-        const uintptr_t offset = where - (uintptr_t)&localHeader;
-        WriteMsr(Msr::GsBase, offset);
+        auto tls = reinterpret_cast<CoreLocalHeader*>(where);
+        tls->swId = softwareId;
+        tls->selfAddr = where;
+        tls->currThread = nullptr;
 
-        asm("mov %0, %%gs:0" :: "r"(softwareId));
-        asm("mov %0, %%gs:8" :: "r"(where));
-        Log("Cpu %zu locals at: abs=0x%tx, rel=0x%tx", LogLevel::Verbose, softwareId, where, offset);
+        WriteMsr(Msr::GsBase, where);
+        Log("Cpu %zu locals at %p", LogLevel::Info, softwareId, tls);
     }
-    static_assert(offsetof(CoreLocalHeader, swId) == 0);
-    static_assert(offsetof(CoreLocalHeader, selfAddr) == 8);
 
     bool debugconDoColour;
 
@@ -111,17 +110,20 @@ namespace Npk
         CheckForDebugcon();
     }
 
-    void ArchInit(InitState& state)
-    { 
-        InitBspLapic(state);
+    void ArchInitDomain0(InitState& state)
+    { (void)state; } //no-op
+
+    void ArchInitFull(uintptr_t& virtBase)
+    {
+        InitBspLapic(virtBase);
     }
 
     KernelMap ArchSetKernelMap(sl::Opt<KernelMap> next)
     {
         const KernelMap prev = READ_CR(3);
 
-        if (next.HasValue())
-            WRITE_CR(3, *next);
+        const Paddr future = next.HasValue() ? *next : kernelMap;
+        WRITE_CR(3, future);
 
         return prev;
     }

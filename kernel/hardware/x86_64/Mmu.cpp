@@ -3,6 +3,7 @@
 #include <hardware/x86_64/Mmu.hpp>
 #include <KernelApi.hpp>
 #include <Memory.h>
+#include <Maths.h>
 
 extern "C"
 {
@@ -15,6 +16,7 @@ extern "C"
 
 namespace Npk
 {
+    constexpr size_t PtEntries = 512;
     constexpr size_t MaxPtIndices = 6;
 
     constexpr uint64_t PresentFlag = 1 << 0;
@@ -33,8 +35,15 @@ namespace Npk
     bool globalPageSupport;
     bool patSupport;
 
-    PageTable* kernelMap;
+    Paddr kernelMap;
     Paddr apBootPage;
+    uintptr_t tempMapBase;
+    sl::Span<uint64_t> tempMapAccess;
+
+    struct PageTable
+    {
+        uint64_t ptes[PtEntries];
+    };
 
     static inline void GetAddressIndices(uintptr_t vaddr, size_t* indices)
     {
@@ -60,7 +69,33 @@ namespace Npk
         }
     }
 
-    uintptr_t ArchInitBspMmu(InitState& state)
+    //internal-use only, returns the paddr of the last-level page-table
+    static Paddr DoEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, MmuFlags flags)
+    {
+        size_t indices[MaxPtIndices];
+        GetAddressIndices(vaddr, indices);
+
+        auto pt = reinterpret_cast<PageTable*>(kernelMap + state.dmBase);
+        for (size_t i = ptLevels; i != 1; i--)
+        {
+            uint64_t* pte = &pt->ptes[indices[i]];
+            if ((*pte & PresentFlag) == 0)
+                SET_PTE(pte, state.PmAlloc() | PresentFlag | WriteFlag);
+
+            pt = reinterpret_cast<PageTable*>((*pte & addrMask) + state.dmBase);
+        }
+
+        uint64_t pte = (paddr & addrMask) | PresentFlag;
+        //if (vaddr >= (static_cast<uintptr_t>(~0) >> 1))
+            //pte |= GlobalFlag; //only set global flag for higher-half mappings
+
+        ApplyFlagsToPte(pte, flags);
+        SET_PTE(&pt->ptes[indices[1]], pte);
+
+        return reinterpret_cast<Paddr>(pt) - state.dmBase;
+    }
+
+    uintptr_t ArchInitBspMmu(InitState& state, size_t tempMapCount)
     {
         const uint64_t cr4 = READ_CR(4);
         ptLevels = (cr4 & (1 << 12)) ? 5 : 4;
@@ -76,8 +111,8 @@ namespace Npk
         addrMask--;
         addrMask &= ~0xFFFul;
 
-        const Paddr ptRoot = state.PmAlloc();
-        kernelMap = reinterpret_cast<PageTable*>(ptRoot);
+        kernelMap = state.PmAlloc();
+        domain0.kernelSpace = kernelMap;
         //TODO: map hhdm as pageaccess optimization
 
         apBootPage = state.PmAlloc();
@@ -88,30 +123,137 @@ namespace Npk
         sl::MemCopy(reinterpret_cast<void*>(apBootPage + state.dmBase), SpinupBlob, blobLength);
         Log("AP boot blob @ 0x%tx", LogLevel::Verbose, apBootPage);
 
+        uintptr_t vmAllocHead = -(1ull << (9 * ptLevels + 11)); 
 
-        return -(1ull << (9 * ptLevels + 11));
+        tempMapBase = vmAllocHead;
+        tempMapCount = sl::AlignUp(tempMapCount, PtEntries);
+        vmAllocHead += tempMapCount << PfnShift();
+        tempMapAccess = { reinterpret_cast<uint64_t*>(vmAllocHead), tempMapCount };
+
+        for (size_t i = 0; i < tempMapCount; i++)
+        {
+            const Paddr pt = DoEarlyMap(state, 0, tempMapBase + (i << PfnShift()), MmuFlag::Write);
+
+            if ((i & (PtEntries - 1)) == 0)
+            {
+                DoEarlyMap(state, pt, vmAllocHead, MmuFlag::Write);
+                vmAllocHead += PageSize();
+            }
+        }
+        Log("Temp mappings prepared: 0x%tx (access @ %p, %zu)", LogLevel::Info,
+            tempMapBase, tempMapAccess.Begin(), tempMapAccess.Size());
+
+        return vmAllocHead;
     }
 
     void ArchEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, MmuFlags flags)
     {
+        DoEarlyMap(state, paddr, vaddr, flags);
+    }
+
+    void* ArchSetTempMap(KernelMap* map, size_t index, Paddr paddr)
+    {
+        NPK_ASSERT(map != nullptr);
+        NPK_ASSERT(index < tempMapAccess.Size());
+
+        const uintptr_t vaddr = (index << PfnShift()) + tempMapBase;
+
+        const uint64_t pte = (paddr & addrMask) | PresentFlag | WriteFlag;
+        SET_PTE(&tempMapAccess[index], pte);
+        INVLPG(vaddr);
+
+        return reinterpret_cast<void*>(vaddr);
+    }
+
+    struct WalkResult
+    {
+        PageAccessRef ptRef;
+        size_t level;
+        uint64_t* pte;
+        bool complete;
+        bool bad;
+    };
+
+    static WalkResult WalkTables(KernelMap* map, sl::Span<size_t> indices)
+    {
+        WalkResult result {};
+
+        PageAccessRef nextPtRef = AccessPage(*map);
+        for (size_t i = ptLevels; i > 0; i--)
+        {
+            if (!nextPtRef.Valid())
+            {
+                result.bad = true;
+                return result;
+            }
+
+            result.pte = &static_cast<PageTable*>(nextPtRef->value)->ptes[indices[i]];
+            result.level = i;
+            result.ptRef = nextPtRef;
+
+            if ((*result.pte & PresentFlag) == 0)
+            {
+                result.complete = false;
+                return result;
+            }
+
+            const uint64_t nextPt = *result.pte & addrMask;
+            nextPtRef = AccessPage(nextPt);
+        }
+
+        result.complete = *result.pte & PresentFlag;
+        return result;
+    }
+
+    MmuError ArchAddMap(KernelMap* map, uintptr_t vaddr, Paddr paddr, MmuFlags flags)
+    {
+        NPK_CHECK(map != nullptr, MmuError::InvalidArg);
+
+        const uint64_t intermediateFlags = PresentFlag | WriteFlag | 
+            (flags.Has(MmuFlag::User) ? UserFlag : 0);
+
+        size_t allocPageCount = 0;
+        PageInfo* allocPages[MaxPtIndices];
+
         size_t indices[MaxPtIndices];
         GetAddressIndices(vaddr, indices);
 
-        auto pt = reinterpret_cast<PageTable*>(reinterpret_cast<uintptr_t>(kernelMap) + state.dmBase);
-        for (size_t i = ptLevels; i != 1; i--)
-        {
-            uint64_t* pte = &pt->ptes[indices[i]];
-            if ((*pte & PresentFlag) == 0)
-                SET_PTE(pte, state.PmAlloc() | PresentFlag | WriteFlag);
+        WalkResult path = WalkTables(map, indices);
+        NPK_CHECK(!path.bad, MmuError::InvalidArg);
+        NPK_CHECK(!path.complete, MmuError::MapAlreadyExits);
 
-            pt = reinterpret_cast<PageTable*>((*pte & addrMask) + state.dmBase);
+        //allocate pages up front, so we know we have enough before make them
+        //visible to the mmu
+        while (allocPageCount < path.level - 1)
+        {
+            allocPages[allocPageCount++] = AllocPage(true);
+            if (allocPages[allocPageCount - 1] == nullptr)
+            {
+                //an allocation failed, free pages and abort
+                for (size_t i = 0; i < allocPageCount; i++)
+                    FreePage(allocPages[i]);
+                return MmuError::PageAllocFailed;
+            }
+        }
+
+        while (path.level != 1)
+        {
+            auto page = allocPages[path.level - 1];
+            page->mmu.validPtes = 0;
+
+            LookupPageInfo(path.ptRef->key)->mmu.validPtes++;
+            SET_PTE(path.pte, LookupPagePaddr(page) | intermediateFlags);
+
+            path.level--;
+            path.ptRef = AccessPage(page);
+            NPK_ASSERT(path.ptRef.Valid());
+            path.pte = &static_cast<PageTable*>(path.ptRef->value)->ptes[indices[path.level]];
         }
 
         uint64_t pte = (paddr & addrMask) | PresentFlag;
-        if (vaddr >= (static_cast<uintptr_t>(~0) >> 1))
-            pte |= GlobalFlag; //only set global flag for higher-half mappings
-
         ApplyFlagsToPte(pte, flags);
-        SET_PTE(&pt->ptes[indices[1]], pte);
+        SET_PTE(path.pte, pte);
+
+        return MmuError::Success;
     }
 }
