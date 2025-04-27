@@ -89,6 +89,7 @@ namespace sl
                 freelist.PushBack(found);
                 return nullptr;
             }
+            found->key = key;
             tree.Insert(found);
             
             return found;
