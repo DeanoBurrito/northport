@@ -6,7 +6,7 @@ namespace Npk
     struct Scheduler
     {
     private:
-        sl::SpinLock queuesLock;
+        IntrSpinLock queuesLock;
         sl::Span<RunQueue> queues;
 
     public:
@@ -45,12 +45,19 @@ namespace Npk
 
     CPU_LOCAL(Scheduler, localScheduler);
 
-    void Yield()
+    void Yield(bool voluntary)
     {
         const bool prevIntrs = IntrsOff();
         localScheduler->switchPending = false;
 
         ThreadContext* current = GetCurrentThread();
+        if (voluntary)
+        {
+            current->lock.Lock();
+            current->priorityBoost = 0;
+            current->lock.Unlock();
+        }
+
         ThreadContext* next = localScheduler->PopThread();
         if (current == next)
         {
@@ -62,6 +69,7 @@ namespace Npk
                 IntrsOn();
             return;
         }
+        localScheduler->PushThread(current);
 
         SetCurrentThread(next);
         ArchSwitchThread(&current->context, next->context);
@@ -74,12 +82,22 @@ namespace Npk
     {
         NPK_ASSERT(thread != nullptr);
 
-        sl::ScopedLock threadLock(thread->lock);
+        thread->lock.Lock();
         NPK_ASSERT(thread->sched == nullptr);
+
         thread->sched = &*localScheduler;
         thread->priorityBoost = boost;
+        thread->lock.Unlock();
 
         localScheduler->PushThread(thread);
+
+        if (thread->EffectivePriority() > GetCurrentThread()->EffectivePriority())
+        {
+            localScheduler->switchPending = true;
+
+            if (CurrentIpl() == Ipl::Passive)
+                Yield(false);
+        }
     }
 
     void DequeueThread(ThreadContext* thread)
@@ -97,6 +115,7 @@ namespace Npk
 
         localScheduler->RemoveThread(thread);
         thread->priorityBoost = 0;
+        thread->sched = nullptr;
     }
 
     void SetIdleThread(ThreadContext* thread)
@@ -109,6 +128,6 @@ namespace Npk
     void OnPassiveRunLevel()
     {
         if (localScheduler->switchPending)
-            Yield();
+            Yield(false);
     }
 }

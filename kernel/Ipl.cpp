@@ -6,6 +6,16 @@ namespace Npk
     CPU_LOCAL(DpcQueue, dpcQueue);
     CPU_LOCAL(Ipl, localIpl);
 
+    void AssertIpl(Ipl target)
+    {
+        NPK_ASSERT(target == *localIpl);
+    }
+
+    Ipl CurrentIpl()
+    {
+        return *localIpl;
+    }
+
     Ipl RaiseIpl(Ipl target)
     {
         const bool prevIntrs = IntrsOff();

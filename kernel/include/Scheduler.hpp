@@ -8,7 +8,7 @@ namespace Npk
 
     struct ThreadContext
     {
-        sl::SpinLock lock;
+        IntrSpinLock lock;
         ArchThreadContext* context;
         Scheduler* sched;
         size_t priority;
@@ -23,7 +23,7 @@ namespace Npk
 
     using RunQueue = sl::List<ThreadContext, &ThreadContext::queueHook>;
 
-    void Yield();
+    void Yield(bool voluntary);
     void EnqueueThread(ThreadContext* thread, size_t boost);
     void DequeueThread(ThreadContext* thread);
     void SetIdleThread(ThreadContext* thread);

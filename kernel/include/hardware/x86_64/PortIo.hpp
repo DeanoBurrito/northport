@@ -14,6 +14,7 @@ namespace Npk
         Pic1Command = 0xA0,
         Pic1Data = 0xA1,
         Debugcon = 0xE9,
+        Com1 = 0x3F8,
     };
 
     SL_ALWAYS_INLINE

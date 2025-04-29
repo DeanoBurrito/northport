@@ -21,6 +21,8 @@ namespace Npk
     void RemoveLogSink(LogSink& sink);
     sl::StringSpan LogLevelStr(LogLevel level);
 
+    void AssertIpl(Ipl target);
+    Ipl CurrentIpl();
     Ipl RaiseIpl(Ipl target);
     void LowerIpl(Ipl target);
     sl::StringSpan IplStr(Ipl which);
