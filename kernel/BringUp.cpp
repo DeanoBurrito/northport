@@ -16,6 +16,16 @@ namespace Npk
     void DispatchSyscall(SyscallFrame* frame) { (void)frame; }
     void DispatchException(ExceptionFrame* frame) { (void)frame; }
 
+    static sl::Opt<Paddr> rootPtrs[static_cast<size_t>(ConfigRootType::Count)];
+
+    sl::Opt<Paddr> GetConfigRoot(ConfigRootType type)
+    {
+        const size_t index = static_cast<size_t>(type);
+        if (index < static_cast<size_t>(ConfigRootType::Count))
+            return rootPtrs[index];
+        return {};
+    }
+
     MemoryDomain domain0;
 
     char* InitState::VmAllocAnon(size_t length)
@@ -292,9 +302,12 @@ extern "C"
 
         const auto loaderState = Loader::GetEntryState();
         SetConfigStore(loaderState.commandLine);
-        const auto setupInfo = SetupDomain0(loaderState);
+        rootPtrs[static_cast<size_t>(ConfigRootType::Rsdp)] = loaderState.rsdp;
+        rootPtrs[static_cast<size_t>(ConfigRootType::Fdt)] = loaderState.fdt;
 
+        const auto setupInfo = SetupDomain0(loaderState);
         ArchSetKernelMap({});
+
         SetMyLocals(setupInfo.perCpuStores, 0);
         localMemoryDomain = &domain0;
         InitPageAccessCache(setupInfo.pmaEntries, setupInfo.pmaSlots);

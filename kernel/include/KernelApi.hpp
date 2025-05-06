@@ -32,6 +32,7 @@ namespace Npk
     void SetConfigStore(sl::StringSpan store);
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
     sl::StringSpan ReadConfigString(sl::StringSpan key, sl::StringSpan defaultValue);
+    sl::Opt<Paddr> GetConfigRoot(ConfigRootType type);
 
     SL_ALWAYS_INLINE
     PageInfo* LookupPageInfo(Paddr paddr)
@@ -59,7 +60,7 @@ namespace Npk
     using PageAccessCache = sl::LruCache<Paddr, void*, Internal::PmaCacheSetEntry>;
     using PageAccessRef = PageAccessCache::CacheRef;
 
-    size_t CopyFromPages(Paddr base, sl::Span<char> buffer);
+    size_t CopyFromPhysical(Paddr base, sl::Span<char> buffer);
     void InitPageAccessCache(size_t entries, uintptr_t slots);
     PageAccessRef AccessPage(Paddr paddr);
 

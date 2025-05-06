@@ -14,7 +14,7 @@ namespace Npk
         return true;
     }
 
-    size_t CopyFromPages(Paddr base, sl::Span<char> buffer)
+    size_t CopyFromPhysical(Paddr base, sl::Span<char> buffer)
     {
         for (size_t i = 0; i < buffer.Size(); i += PageSize())
         {

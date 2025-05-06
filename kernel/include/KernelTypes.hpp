@@ -59,6 +59,15 @@ namespace Npk
         Paddr PmAlloc();
     };
 
+    enum class ConfigRootType
+    {
+        Rsdp,
+        Fdt,
+        BootInfo,
+
+        Count
+    };
+
     template<typename T>
     class CpuLocal
     {

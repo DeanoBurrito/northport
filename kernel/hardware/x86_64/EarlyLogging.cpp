@@ -59,23 +59,11 @@ namespace Npk
 
     bool CheckForDebugcon()
     {
-        //Afaik we cant check for debugcon directly, but we can check
-        //for qemu (tcg/kvm) or bochs and assume it exists.
-        //Far from perfect, but its helpful for now.
-
         debugconDoColour = ReadConfigUint("npk.x86.debugcon_do_colour", true);
-        if (ReadConfigUint("npk.x86.debugcon_force_enable", false))
-        {
-            AddLogSink(debugconSink);
-            return true;
-        }
 
-        if (!CpuHasFeature(CpuFeature::VGuest))
-            return false;
-
-        CpuidLeaf leaf {};
-        DoCpuid(0x4000'0000, 0, leaf);
-        if (leaf.b != 0x4b4d564b || leaf.c != 0x564b4d56 || leaf.d != 0x4d)
+        //reading from port 0xE9 returns 0xE9 on qemu and bochs, can be used to detect
+        //the presence of debugcon.
+        if (In8(Port::Debugcon) != 0xE9)
             return false;
 
         AddLogSink(debugconSink);
@@ -195,12 +183,7 @@ namespace Npk
     bool CheckForCom1()
     {
         com1DoColour = ReadConfigUint("npk.x86.com1_do_colour", true);
-
-        if (ReadConfigUint("npk.x86.com1_force_enable", true))
-        {
-            AddLogSink(com1Sink);
-            return true;
-        }
+        AddLogSink(com1Sink);
 
         return false;
     }
