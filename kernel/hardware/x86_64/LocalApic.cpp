@@ -199,8 +199,9 @@ namespace Npk
             Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
         }
 
-        //TODO: get access to madt
-        FinishLapicInit(nullptr);
+        auto maybeMadt = GetAcpiTable(SigMadt);
+        Madt* madt = maybeMadt.HasValue() ? static_cast<Madt*>(*maybeMadt) : nullptr;
+        FinishLapicInit(madt);
 
         //TODO: handling lapic errors and CMCIs, maybe notify of thermal interrupt
         //TODO: add detection for PICs being present (there's a bit in acpi/madt)
@@ -252,6 +253,5 @@ namespace Npk
             lapic->Write(LApicReg::IcrHigh, dest << 24);
             lapic->Write(LApicReg::IcrLow, low);
         }
-
     }
 }

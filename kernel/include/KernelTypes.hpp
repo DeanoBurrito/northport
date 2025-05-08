@@ -162,6 +162,7 @@ namespace Npk
         sl::ListHook hook;
 
         ThreadContext* thread;
+        sl::StringSpan reason; //NOTE: this serves no purpose and is purely advisory
         bool satisfied;
     };
 
@@ -266,6 +267,8 @@ namespace Npk
             PageList standby;
         } liveLists;
     };
+
+    struct Sdt;
 }
 
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)

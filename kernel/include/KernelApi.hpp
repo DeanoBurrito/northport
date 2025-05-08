@@ -32,7 +32,9 @@ namespace Npk
     void SetConfigStore(sl::StringSpan store);
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
     sl::StringSpan ReadConfigString(sl::StringSpan key, sl::StringSpan defaultValue);
+
     sl::Opt<Paddr> GetConfigRoot(ConfigRootType type);
+    sl::Opt<Sdt*> GetAcpiTable(sl::StringSpan signature);
 
     SL_ALWAYS_INLINE
     PageInfo* LookupPageInfo(Paddr paddr)

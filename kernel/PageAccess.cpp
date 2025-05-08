@@ -16,9 +16,26 @@ namespace Npk
 
     size_t CopyFromPhysical(Paddr base, sl::Span<char> buffer)
     {
-        for (size_t i = 0; i < buffer.Size(); i += PageSize())
+        const size_t offset = base & PageMask();
+
+        size_t i = 0;
+        if (offset != 0)
         {
-            PageAccessRef access = AccessPage(base + i);
+            PageAccessRef access = AccessPage(AlignDownPage(base));
+            if (!access.Valid())
+                return 0;
+
+            const size_t copyLen = sl::Min(buffer.Size(), PageSize() - offset);
+            const uintptr_t srcAddr = reinterpret_cast<uintptr_t>(access->value);
+            sl::MemCopy(&buffer[0], reinterpret_cast<void*>(srcAddr + offset), copyLen);
+
+            i += copyLen;
+            base = AlignUpPage(base);
+        }
+
+        for (; i < buffer.Size(); i += PageSize())
+        {
+            PageAccessRef access = AccessPage(base + i - offset);
             if (!access.Valid())
                 return i;
 
@@ -38,6 +55,8 @@ namespace Npk
 
     PageAccessRef AccessPage(Paddr paddr)
     {
+        NPK_CHECK((paddr & PageMask()) == 0, {});
+
         return accessCache.Get(paddr);
     }
 }

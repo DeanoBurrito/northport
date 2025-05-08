@@ -11,7 +11,7 @@ extern "C"
 
     int __cxa_atexit()
     {
-        NPK_UNREACHABLE();
+        return 0;
     }
 
     void* __dso_handle;
