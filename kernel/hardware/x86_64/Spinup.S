@@ -8,7 +8,7 @@ SpinupBlob:
     cli
     cld
 
-    movl %cs:(BootInfo + 24 - SpinupBlob), %eax
+    movl %cs:(BootInfo + 32 - SpinupBlob), %eax
     mov %eax, %cr3
 
     mov %cr4, %eax
@@ -65,9 +65,10 @@ Gdtr:
 ## These values are patched before each core runs through this code
 .align 16
 BootInfo:
-    .8byte 0 ## software-assigned cpu id
+    .8byte 0 ## cpu-local storage, contains software assigned id
     .8byte 0 ## entry function
     .8byte 0 ## entry stack
+    .8byte 0 ## flag to indicate to bsp that we're alive
     .4byte 0 ## cr3 address
 _EndOfSpinupBlob:
 

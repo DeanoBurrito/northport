@@ -113,3 +113,8 @@ namespace sl
 
     using StringSpan = Span<const char>;
 }
+
+constexpr inline sl::StringSpan operator""_span(const char* str, size_t len)
+{
+    return sl::StringSpan(str, len);
+}

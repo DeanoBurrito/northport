@@ -208,7 +208,7 @@ namespace Npk
                 totalPages += pageCount;
 
                 const auto conv = sl::ConvertUnits(totalPages << PfnShift());
-                Log("%9zu|%#18tx|%12zu|%4zu.%zu %sB", LogLevel::Verbose,
+                Log("%9zu|%#18tx|%12zu|%4zu.%03zu %sB", LogLevel::Verbose,
                     pageCount, base, totalPages, conv.major, conv.minor, conv.prefix);
 
                 const KernelMap loaderMap = ArchSetKernelMap({});
@@ -260,12 +260,15 @@ namespace Npk
         initState.vmAllocHead = ArchInitBspMmu(initState, setupInfo.pmaEntries);
 
         domain0.zeroPage = initState.PmAlloc();
+        const size_t cpuCount = PlatGetCpuCount(initState);
 
         InitPageInfoStore(initState);
         setupInfo.pmaSlots = reinterpret_cast<uintptr_t>(
             initState.VmAllocAnon(setupInfo.pmaEntries * sizeof(PageAccessCache::Slot)));
-        setupInfo.perCpuStores = InitPerCpuStore(initState, 1);
-        setupInfo.apStacks = InitApStacks(initState, 0);
+        setupInfo.perCpuStores = InitPerCpuStore(initState, cpuCount);
+        setupInfo.perCpuStride = reinterpret_cast<uintptr_t>(KERNEL_CPULOCALS_END) 
+            - reinterpret_cast<uintptr_t>(KERNEL_CPULOCALS_BEGIN);
+        setupInfo.apStacks = InitApStacks(initState, cpuCount - 1);
         setupInfo.configCopy = CopyCommandLine(initState, loaderState.commandLine);
         MapKernelImage(initState, loaderState.kernelBase);
 
@@ -419,6 +422,7 @@ extern "C"
 
         ArchInitFull(virtBase);
         PlatInitFull(virtBase);
+        PlatBootAps(setupInfo.apStacks, setupInfo.perCpuStores, setupInfo.perCpuStride);
         //TODO: boot APs
         //TODO: init vmm - virtBase serves as top of bump allocated region
 

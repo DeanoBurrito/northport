@@ -14,7 +14,8 @@ namespace sl
         "Ei", "Zi", "Yi"
     };
 
-    constexpr size_t unitStrsCount = 9;
+    constexpr size_t unitStrsCount = sizeof(unitStrsBinary) / sizeof(const char*);
+    static_assert(sizeof(unitStrsDecimal) == sizeof(unitStrsBinary));
 
     UnitConversion ConvertUnits(size_t input, UnitBase base)
     {
@@ -30,7 +31,18 @@ namespace sl
             count++;
         }
 
-        conv.prefix = base == UnitBase::Decimal ? unitStrsDecimal[count] : unitStrsBinary[count];
+        if (base == UnitBase::Decimal)
+            conv.prefix = unitStrsDecimal[count];
+        else 
+        {
+            if (base == UnitBase::Binary)
+                conv.prefix = unitStrsBinary[count];
+            else
+                conv.prefix = "?";
+
+            //re-scale minor component so it fits nicely (e.g. 12.1023 looks odd compared to 12.999)
+            conv.minor = conv.minor * 1000 / div;
+        }
         return conv;
     }
 }

@@ -108,25 +108,25 @@ namespace Npk
 
         const uint32_t myLapicId = lapic->Read(LApicReg::Id) 
             >> (lapic->x2Mode ? 24 : 0);
-        char* scan = reinterpret_cast<char*>(madt) + sizeof(Madt);
-        const char* end = scan + madt->length;
+        auto scan = reinterpret_cast<const char*>(madt) + sizeof(Madt);
+        const char* end = scan + madt->length - sizeof(Madt);
 
         //first pass: find the acpi processor id assocaited with this lapic
         lapic->acpiId = -1;
         while (scan < end)
         {
-            const auto source = reinterpret_cast<MadtSource*>(scan);
+            const auto source = reinterpret_cast<const MadtSource*>(scan);
             scan += source->length;
 
             if (source->type == MadtSourceType::LocalApic)
             {
-                const auto src = static_cast<MadtSources::LocalApic*>(source);
+                auto src = static_cast<const MadtSources::LocalApic*>(source);
                 if (src->apicId == myLapicId)
                     lapic->acpiId = src->acpiProcessorId;
             }
             else if (source->type == MadtSourceType::LocalX2Apic)
             {
-                const auto src = static_cast<MadtSources::LocalX2Apic*>(source);
+                auto src = static_cast<const MadtSources::LocalX2Apic*>(source);
                 if (src->apicId == myLapicId)
                     lapic->acpiId = src->acpiProcessorId;
             }
@@ -139,9 +139,10 @@ namespace Npk
         }
 
         //second pass: find any nmi entries that apply to this lapic
+        scan = reinterpret_cast<const char*>(madt) + sizeof(Madt);
         while (scan < end)
         {
-            const auto source = reinterpret_cast<MadtSource*>(scan);
+            auto source = reinterpret_cast<const MadtSource*>(scan);
             scan += source->length;
 
             uint32_t targetAcpiId;
@@ -150,7 +151,7 @@ namespace Npk
 
             if (source->type == MadtSourceType::LocalApicNmi)
             {
-                const auto nmi = static_cast<MadtSources::LocalApicNmi*>(source);
+                const auto nmi = static_cast<const MadtSources::LocalApicNmi*>(source);
 
                 targetAcpiId = nmi->acpiProcessorId;
                 if (targetAcpiId == 0xFF)
@@ -160,7 +161,7 @@ namespace Npk
             }
             else if (source->type == MadtSourceType::LocalX2ApicNmi)
             {
-                const auto nmi = static_cast<MadtSources::LocalX2ApicNmi*>(source);
+                auto nmi = static_cast<const MadtSources::LocalX2ApicNmi*>(source);
 
                 targetAcpiId = nmi->acpiProcessorId;
                 polarityModeFlags = nmi->polarityModeFlags;
@@ -183,6 +184,23 @@ namespace Npk
             lapic->Write(lvt, value);
             Log("Applied lapic nmi override: lint%u, active-%s, %s-triggered.", LogLevel::Verbose,
                 inputNumber, activeLow ? "low" : "high", levelTriggered ? "level" : "edge");
+        }
+    }
+
+    static void EnableLocalApic()
+    {
+        lapic->Write(LApicReg::SpuriousVector, SpuriousVector | (1 << 8));
+
+        //https://github.com/projectacrn/acrn-hypervisor/blob/master/hypervisor/arch/x86/lapic.c#L65
+        //tl;dr: sometimes are pending interrupts left over from when the firmware or bootloader
+        //was using the hardware, so we acknowledge any pending interrupts now, so the
+        //kernel starts with a clean slate.
+        for (size_t i = 8; i > 0; i--)
+        {
+            const LApicReg reg = static_cast<LApicReg>(static_cast<unsigned>(LApicReg::Isr0) 
+                + (i - 1) * 0x10);
+            while (lapic->Read(reg) != 0)
+                SignalEoi();
         }
     }
 
@@ -218,21 +236,7 @@ namespace Npk
         Out8(Port::Pic0Data, 0xFF);
         Out8(Port::Pic1Data, 0xFF);
 
-        //enable local apic
-        lapic->Write(LApicReg::SpuriousVector, SpuriousVector | (1 << 8));
-
-        //https://github.com/projectacrn/acrn-hypervisor/blob/master/hypervisor/arch/x86/lapic.c#L65
-        //tl;dr: sometimes are pending interrupts left over from when the firmware or bootloader
-        //was using the hardware, so we acknowledge any pending interrupts now, so the
-        //kernel starts with a clean slate.
-        for (size_t i = 8; i > 0; i--)
-        {
-            const LApicReg reg = static_cast<LApicReg>(static_cast<unsigned>(LApicReg::Isr0) 
-                + (i - 1) * 0x10);
-            while (lapic->Read(reg) != 0)
-                SignalEoi();
-        }
-
+        EnableLocalApic();
         Log("BSP local APIC initialized", LogLevel::Verbose);
     }
 
@@ -241,9 +245,31 @@ namespace Npk
         lapic->Write(LApicReg::Eoi, 0);
     }
 
+    uint32_t MyLapicId()
+    {
+        return lapic->Read(LApicReg::Id) >> (lapic->x2Mode ? 24 : 0);
+    }
+
     void SendIpi(uint32_t dest, IpiType type, uint8_t vector)
     {
-        const uint32_t low = vector | ((uint32_t)type << 8);
+        constexpr uint32_t LevelAssert = 1 << 14;
+        constexpr uint32_t LevelTriggered = 1 << 15;
+
+        uint32_t low;
+        switch (type)
+        {
+        case IpiType::Init:
+            low = LevelTriggered | LevelAssert | ((uint32_t)IpiType::Init << 8);
+            break;
+        case IpiType::InitDeAssert:
+            low = LevelTriggered | ((uint32_t)IpiType::Init << 8);
+            break;
+        default:
+            low = ((uint32_t)type << 8) | vector;
+            break;
+        }
+
+        lapic->Write(LApicReg::ErrorStatus, 0);
 
         if (lapic->x2Mode)
             WriteMsr(lapic->RegToMsr(LApicReg::IcrLow), ((uint64_t)dest << 32) | low);
@@ -253,5 +279,16 @@ namespace Npk
             lapic->Write(LApicReg::IcrHigh, dest << 24);
             lapic->Write(LApicReg::IcrLow, low);
         }
+    }
+
+    bool LastIpiSent()
+    {
+        constexpr uint32_t DeliveryPending = 1 << 12;
+        constexpr uint32_t IpiFailedBits = (1 << 2) | (1 << 5);
+
+        while (lapic->Read(LApicReg::IcrLow) & DeliveryPending)
+            sl::HintSpinloop();
+
+        return !(lapic->Read(LApicReg::ErrorStatus) & IpiFailedBits);
     }
 }

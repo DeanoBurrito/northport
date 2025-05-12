@@ -2,6 +2,7 @@
 
 #include <Types.h>
 #include <Compiler.h>
+#include <Flags.h>
 
 namespace Npk
 {
@@ -82,10 +83,12 @@ namespace Npk
         uint64_t entries[];
     });
 
-    enum class MadtFlags : uint32_t
+    enum class MadtFlag
     {
-        PcAtCompat = 1 << 0,
+        PcAtCompat = 0,
     };
+
+    using MadtFlags = sl::Flags<MadtFlag, uint32_t>;
     
     enum class MadtSourceType : uint8_t
     {
@@ -111,11 +114,13 @@ namespace Npk
 
     namespace MadtSources
     {
-        enum class LocalApicFlags : uint32_t
+        enum class LocalApicFlag
         {
-            Enabled = 1 << 0,
-            OnlineCapable = 1 << 1,
+            Enabled = 0,
+            OnlineCapable = 1,
         };
+
+        using LocalApicFlags = sl::Flags<LocalApicFlag, uint32_t>;
         
         struct SL_PACKED(LocalApic : public MadtSource
         {
@@ -294,12 +299,14 @@ namespace Npk
             uint32_t clockDomain;
         });
 
-        enum class MemorySrasFlags : uint32_t
+        enum class SrasFlag
         {
-            Enabled = 1 << 0,
-            HotPluggable = 1 << 1,
-            NonVolatile = 1 << 2,
+            Enabled = 0,
+            HotPluggable = 1,
+            NonVolatile = 2,
         };
+
+        using SrasFlags = sl::Flags<SrasFlag, uint32_t>;
 
         struct SL_PACKED(MemorySras : public Sras
         {
@@ -310,7 +317,7 @@ namespace Npk
             uint32_t lengthLow;
             uint32_t lengthHigh;
             uint32_t reserved1;
-            MemorySrasFlags flags;
+            SrasFlags flags;
         });
 
         struct SL_PACKED(X2ApicSras : public Sras
@@ -342,10 +349,12 @@ namespace Npk
         Sras resStructs[];
     });
 
-    enum class RhctFlags : uint32_t
+    enum class RhctFlag
     {
-        TimerCannotWake = 1 << 0,
+        TimerCannotWake = 0,
     };
+
+    using RhctFlags = sl::Flags<RhctFlag, uint32_t>;
 
     struct SL_PACKED(Rhct : public Sdt
     {

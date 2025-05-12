@@ -36,10 +36,10 @@ namespace sl
         { return other.frequency != frequency || other.ticks != ticks; }
     };
 
-    constexpr sl::TimeScale EpochFrequency = TimeScale::Nanos;
-
     struct TimePoint
     {
+        constexpr static sl::TimeScale Frequency = TimeScale::Nanos;
+
         size_t epoch;
 
         static TimePoint Now()
