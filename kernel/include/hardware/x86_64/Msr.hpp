@@ -2,6 +2,7 @@
 
 #include <Types.h>
 #include <Compiler.h>
+#include <Span.h>
 
 namespace Npk
 {
@@ -9,6 +10,10 @@ namespace Npk
     {
         ApicBase = 0x1B,
         Tsc = 0x10,
+        MtrrCap = 0xFE,
+        MtrrPhysBase = 0x200,
+        MtrrPhysMask = 0x201,
+        MtrrDefType = 0x2FF,
         TscDeadline = 0x6E0,
         X2ApicBase = 0x800,
         Efer = 0xC0000080,
@@ -31,4 +36,7 @@ namespace Npk
     {
         asm volatile("wrmsr" :: "a"(data & 0xFFFF'FFFF), "d"(data >> 32), "c"(static_cast<uint32_t>(which)));
     }
+
+    void SaveMtrrs(sl::Span<uint64_t> regs);
+    void RestoreMtrrs(sl::Span<uint64_t> regs);
 }

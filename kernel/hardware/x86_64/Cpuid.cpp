@@ -38,6 +38,8 @@ namespace Npk
         { .leaf {0x8000'0007, 0}, .index = 'd', .shift = 8, .name = "inv-tsc" },
         { .leaf {1, 0}, .index = 'd', .shift = 16, .name = "pat" },
         { .leaf {0x8000'0008, 0}, .index = 'b', .shift = 21, .name = "invlpgb" },
+        { .leaf {1, 0}, .index = 'd', .shift = 12, .name = "mtrr" },
+        { .leaf {0x4000'0001, 0}, .index = 'a', .shift = 3, .name = "pv-sysclock" },
     };
 
     static_assert(sizeof(accessors) / sizeof(CpuFeatureAccessor) == static_cast<size_t>(CpuFeature::Count));

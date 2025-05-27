@@ -26,6 +26,9 @@ namespace Npk
         InvariantTsc,
         Pat,
         BroadcastInvlpg,
+        Mtrr,
+        PvClock,
+
         Count
     };
 
@@ -48,6 +51,10 @@ namespace Npk
             }
         }
     };
+
+    constexpr uint32_t BaseLeaf = 0;
+    constexpr uint32_t HypervisorLeaf = 0x4000'0000;
+    constexpr uint32_t ExtendedLeaf = 0x8000'0000;
 
     CpuidLeaf& DoCpuid(uint32_t leaf, uint32_t subleaf, CpuidLeaf& data);
 
