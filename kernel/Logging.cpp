@@ -7,6 +7,7 @@ namespace Npk
 {
     constexpr size_t MaxLogLength = 128;
 
+    IntrSpinLock logLock;
     sl::List<LogSink, &LogSink::listHook> logSinks; //TODO: locking?
 
     void Log(const char* message, LogLevel level, ...)
@@ -25,6 +26,7 @@ namespace Npk
         sinkMsg.when = sl::TimePoint::Now();
         sinkMsg.who = "kernel";
 
+        sl::ScopedLock scopeLock(logLock);
         for (auto it = logSinks.Begin(); it != logSinks.End(); ++it)
             it->Write(sinkMsg);
     }

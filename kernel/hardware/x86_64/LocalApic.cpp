@@ -11,7 +11,7 @@ namespace Npk
     constexpr uint32_t LvtModeNmi = 1 << 10;
     constexpr uint32_t LvtMasked = 1 << 16;
     constexpr uint32_t LvtActiveLow = 1 << 13;
-    constexpr uint32_t LvtLevelTrigger = 1 << 15;
+    constexpr uint32_t LvtLevelTrigger = 1 << 14;
     constexpr uint8_t SpuriousVector = 0xFF;
     constexpr uint8_t PicIrqBase = 0x20;
 
@@ -250,6 +250,11 @@ namespace Npk
         return lapic->Read(LApicReg::Id) >> (lapic->x2Mode ? 24 : 0);
     }
 
+    uint8_t MyLapicVersion()
+    {
+        return lapic->Read(LApicReg::Version) & 0xFF;
+    }
+
     void SendIpi(uint32_t dest, IpiType type, uint8_t vector)
     {
         constexpr uint32_t LevelAssert = 1 << 14;
@@ -265,7 +270,7 @@ namespace Npk
             low = LevelTriggered | ((uint32_t)IpiType::Init << 8);
             break;
         default:
-            low = ((uint32_t)type << 8) | vector;
+            low = LevelAssert | ((uint32_t)type << 8) | vector;
             break;
         }
 

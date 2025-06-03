@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Time.h>
+#include <Compiler.h>
 
 namespace Npk
 {
@@ -14,4 +15,14 @@ namespace Npk
 
     void PlatSetAlarm(sl::TimePoint expiry);
     sl::TimePoint PlatReadTimestamp();
+
+    SL_ALWAYS_INLINE
+    void PlatStallFor(sl::TimeCount duration)
+    {
+        auto start = PlatReadTimestamp();
+        auto end = duration.Rebase(start.Frequency).ticks + start.epoch;
+        
+        while (PlatReadTimestamp().epoch < end)
+            asm volatile("");
+    }
 }

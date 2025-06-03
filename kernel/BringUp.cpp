@@ -17,13 +17,34 @@ namespace Npk
     void DispatchSyscall(SyscallFrame* frame) { (void)frame; }
     void DispatchException(ExceptionFrame* frame) { (void)frame; }
 
-    static sl::Opt<Paddr> rootPtrs[static_cast<size_t>(ConfigRootType::Count)];
+    static Paddr configRootPtr;
+    static sl::Opt<ConfigRootType> configRootType;
+
+    static void SetConfigRoot(const Loader::LoadState& loaderState)
+    {
+        NPK_ASSERT(!configRootType.HasValue());
+
+        if (loaderState.rsdp.HasValue())
+        {
+            configRootType = ConfigRootType::Rsdp;
+            configRootPtr = *loaderState.rsdp;
+        }
+        else if (loaderState.fdt.HasValue())
+        {
+            configRootType = ConfigRootType::Fdt;
+            configRootPtr = *loaderState.fdt;
+        }
+
+        constexpr const char* TypeStrs[] = { "rsdp", "fdt", "bootinfo" };
+        const char* typeStr = TypeStrs[static_cast<size_t>(*configRootType)];
+
+        Log("Config root pointer set: %s @ 0x%tx", LogLevel::Info, typeStr, configRootPtr);
+    }
 
     sl::Opt<Paddr> GetConfigRoot(ConfigRootType type)
     {
-        const size_t index = static_cast<size_t>(type);
-        if (index < static_cast<size_t>(ConfigRootType::Count))
-            return rootPtrs[index];
+        if (configRootType.HasValue() && *configRootType == type)
+            return configRootPtr;
         return {};
     }
 
@@ -401,8 +422,7 @@ extern "C"
 
         const auto loaderState = Loader::GetEntryState();
         SetConfigStore(loaderState.commandLine);
-        rootPtrs[static_cast<size_t>(ConfigRootType::Rsdp)] = loaderState.rsdp;
-        rootPtrs[static_cast<size_t>(ConfigRootType::Fdt)] = loaderState.fdt;
+        SetConfigRoot(loaderState);
 
         const auto setupInfo = SetupDomain0(loaderState);
         ArchSetKernelMap({});
@@ -423,7 +443,6 @@ extern "C"
         ArchInitFull(virtBase);
         PlatInitFull(virtBase);
         PlatBootAps(setupInfo.apStacks, setupInfo.perCpuStores, setupInfo.perCpuStride);
-        //TODO: boot APs
         //TODO: init vmm - virtBase serves as top of bump allocated region
 
         Log("BSP init thread done, becoming idle thread", LogLevel::Trace);
