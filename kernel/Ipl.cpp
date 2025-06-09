@@ -3,6 +3,7 @@
 
 namespace Npk
 {
+    CPU_LOCAL(IntrSpinLock, dpcQueueLock);
     CPU_LOCAL(DpcQueue, dpcQueue);
     CPU_LOCAL(Ipl, localIpl);
 
@@ -29,6 +30,22 @@ namespace Npk
         return prev;
     }
 
+    static void RunDpcs()
+    {
+        NPK_ASSERT(CurrentIpl() == Ipl::Dpc);
+
+        while (true)
+        {
+            dpcQueueLock->Lock();
+            Dpc* dpc = dpcQueue->PopFront();
+            dpcQueueLock->Unlock();
+
+            if (dpc == nullptr)
+                break;
+            dpc->function(dpc, dpc->arg);
+        }
+    }
+
     void LowerIpl(Ipl target)
     {
         while (true)
@@ -47,17 +64,8 @@ namespace Npk
             case Ipl::Interrupt: break; //no-op
             case Ipl::Clock: break; //no-op
             case Ipl::Dpc:
-                {
-                    Dpc* dpc = nullptr;
-                    while ((dpc = dpcQueue->PopFront()) != nullptr)
-                    {
-                        if (restoreIntrs)
-                            IntrsOn();
-                        dpc->function(dpc, dpc->arg);
-                        IntrsOff();
-                    }
-                    break;
-                }
+                RunDpcs();
+                break;
             case Ipl::Passive: 
                 //there may be a pending context switch, let the scheduler
                 //know it can perform that now if it wants.
@@ -94,8 +102,19 @@ namespace Npk
 
     void QueueDpc(Dpc* dpc)
     {
-        const Ipl prevIpl = RaiseIpl(Ipl::Dpc);
+        NPK_CHECK(dpc != nullptr, );
+        NPK_CHECK(dpc->function != nullptr, );
+
+        if (CurrentIpl() < Ipl::Dpc)
+        {
+            const auto prevIpl = RaiseIpl(Ipl::Dpc);
+            dpc->function(dpc, dpc->arg);
+            LowerIpl(prevIpl);
+            return;
+        }
+
+        dpcQueueLock->Lock();
         dpcQueue->PushBack(dpc);
-        LowerIpl(prevIpl);
+        dpcQueueLock->Unlock();
     }
 }

@@ -28,6 +28,10 @@ namespace Npk
         BroadcastInvlpg,
         Mtrr,
         PvClock,
+        WriteFsGsBase,
+        SysCall,
+        SysEnter,
+        DebugExtensions,
 
         Count
     };

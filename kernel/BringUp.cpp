@@ -14,7 +14,7 @@ namespace Npk
     void DispatchIpi() {}
     void DispatchInterrupt(size_t vector) { (void)vector; }
     void DispatchPageFault(PageFaultFrame* frame) { (void)frame; }
-    void DispatchSyscall(SyscallFrame* frame) { (void)frame; }
+    void DispatchSyscall(SyscallFrame frame) { (void)frame; }
     void DispatchException(ExceptionFrame* frame) { (void)frame; }
 
     static Paddr configRootPtr;
@@ -445,7 +445,7 @@ extern "C"
         PlatBootAps(setupInfo.apStacks, setupInfo.perCpuStores, setupInfo.perCpuStride);
         //TODO: init vmm - virtBase serves as top of bump allocated region
 
-        Log("BSP init thread done, becoming idle thread", LogLevel::Trace);
+        Log("BSP init thread done, becoming idle thread", LogLevel::Verbose);
         IntrsOn();
         while (true)
             WaitForIntr();

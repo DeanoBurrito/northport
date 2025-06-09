@@ -40,6 +40,10 @@ namespace Npk
         { .leaf {0x8000'0008, 0}, .index = 'b', .shift = 21, .name = "invlpgb" },
         { .leaf {1, 0}, .index = 'd', .shift = 12, .name = "mtrr" },
         { .leaf {0x4000'0001, 0}, .index = 'a', .shift = 3, .name = "pv-sysclock" },
+        { .leaf {7, 0}, .index = 'b', .shift = 0, .name = "wrfsgsbase" },
+        { .leaf {0x8000'0001, 0}, .index = 'd', .shift = 11, .name = "syscall" },
+        { .leaf {1, 0}, .index = 'd', .shift = 11, .name = "sysenter" },
+        { .leaf {1, 0}, .index = 'd', .shift = 2, .name = "dbg-exts" },
     };
 
     static_assert(sizeof(accessors) / sizeof(CpuFeatureAccessor) == static_cast<size_t>(CpuFeature::Count));

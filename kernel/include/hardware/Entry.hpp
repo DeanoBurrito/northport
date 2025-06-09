@@ -10,10 +10,16 @@ namespace Npk
 {
     struct SyscallFrame
     {
+    private:
+        void* data;
+
+    public:
         constexpr static size_t ArgCount = 6;
 
-        void* args[ArgCount];
-        void* rets[ArgCount];
+        SyscallFrame(void* data) : data(data) {}
+
+        uintptr_t& Pc();
+        uintptr_t& Arg(size_t index);
     };
 
     enum class ExceptionType : uintptr_t
@@ -43,6 +49,6 @@ namespace Npk
     void DispatchIpi();
     void DispatchInterrupt(size_t vector);
     void DispatchPageFault(PageFaultFrame* frame);
-    void DispatchSyscall(SyscallFrame* frame);
+    void DispatchSyscall(SyscallFrame frame);
     void DispatchException(ExceptionFrame* frame);
 }

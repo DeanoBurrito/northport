@@ -5,6 +5,8 @@
 
 namespace Npk
 {
+    void CommonCpuSetup();
+
     SL_ALWAYS_INLINE
     size_t PfnShift()
     {

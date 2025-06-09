@@ -5,6 +5,7 @@
 #include <hardware/x86_64/PvClock.hpp>
 #include <AcpiTypes.hpp>
 #include <KernelApi.hpp>
+#include <Scheduler.hpp>
 #include <Maths.h>
 
 extern "C"
@@ -168,12 +169,18 @@ namespace Npk
 
         auto* locals = reinterpret_cast<const CoreLocalHeader*>(localStorage);
         SetMyLocals(localStorage, locals->swId);
+        Log("Core %zu is online.", LogLevel::Info, MyCoreId());
 
-        Log("Core %zu is alive!", LogLevel::Debug, MyCoreId());
+        CommonCpuSetup();
+
+        ThreadContext idleContext {};
+        SetIdleThread(&idleContext);
+        SetCurrentThread(&idleContext);
+
+        Log("AP init thread done, becoming idle thread.", LogLevel::Verbose);
+        IntrsOn();
         while (true)
             WaitForIntr();
-        //TODO: init cr0 + cr4 + efer
-        NPK_UNREACHABLE();
     }
 
     static bool TryStartAp(uint32_t lapicId, BootInfo* bootInfo, sl::TimeCount deAssertDelay, sl::TimeCount sipiDelay)
