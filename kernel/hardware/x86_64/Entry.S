@@ -1,8 +1,24 @@
 .global InterruptStubsBegin
 .global RealEntry
 .global BspStackTop
+.global SysCallEntry
+.global SysEnterEntry
+.global BadSysCallEntry
 
 .extern KernelEntry
+.extern InterruptDispatch
+.extern SyscallDispatch
+
+.type RealEntry, @function
+.size RealEntry, (_EndOfRealEntry - RealEntry)
+.type InterruptEntry, @function
+.size InterruptEntry, (_EndOfInterruptEntry - InterruptEntry)
+.type SysCallEntry, @function
+.size SysCallEntry, (_EndOfSysCallEntry - SysCallEntry)
+.type SysEnterEntry, @function
+.size SysEnterEntry, (_EndOfSysEnterEntry - SysEnterEntry)
+.type BadSysCallEntry, @function
+.size BadSysCallEntry, (_EndOfBadSysCallEntry - BadSysCallEntry)
 
 .pushsection .bss
 .balign 0x1000
@@ -10,17 +26,11 @@
 BspStackTop:
 .popsection
 
-.type RealEntry, @function
-.size RealEntry, (_EndOfRealEntry - RealEntry)
-
 .pushsection .text
 RealEntry:
     lea BspStackTop(%rip), %rsp
     call KernelEntry
 _EndOfRealEntry:
-
-.type InterruptEntry, @function
-.size InterruptEntry, (_EndOfInterruptEntry - InterruptEntry)
 
 InterruptEntry:
     push %rax
@@ -53,11 +63,8 @@ InterruptEntry:
     mov %ax, %es
 
     mov %rsp, %rdi
-    mov 152(%rsp), %rax
-    push %rax
     cld
     call InterruptDispatch
-    add $8, %rsp
 
     pop %rax
     cmp $0x10, %ax
@@ -87,6 +94,114 @@ InterruptEntry:
     add $0x10, %rsp
     iretq
 _EndOfInterruptEntry:
+
+## AMD have brought many great things to x86, but syscall is not one of them.
+## We enter the kernel without a valid stack set, and there is a race condition
+## with exceptions occuring before we can execute `swapgs`.
+## The solution is to assume the race condition is invisible in this codepath,
+## and from inside the DB/BP/NMI/MCE/etc handlers we need another mechanism
+## to verify which gs base msr is the kernel pointer. So for the purpose of
+## `syscall` entry, we're ignoring any racey exceptions.
+## Similar calling convention to `sysenter`: rcx=user pc, r11=user flags, rdx=unused,
+## rdi/rsi/rax/rbx/r12/r13 are arguments and return values.
+SysCallEntry:
+swapgs
+
+xchg %rsp, %gs:24
+push %rcx
+xor %rcx, %rcx
+xchg %rcx, %gs:24
+push %rcx
+push %r11
+push %rbp
+
+push %rdi
+push %rsi
+push %rax
+push %rbx
+push %r12
+push %r13
+
+mov $0x10, %ax
+mov %ax, %ds
+mov %ax, %es
+
+mov %rsp, %rdi
+mov $0, %rsi
+call SyscallDispatch
+
+mov $0x20, %ax
+mov %ax, %ds
+mov %ax, %es
+
+pop %r13
+pop %r12
+pop %rbx
+pop %rax
+pop %rsi
+pop %rdi
+
+pop %rbp
+pop %r11
+pop %rcx
+mov %rcx, %gs:24
+pop %rcx
+xchg %rsp, %gs:24
+
+swapgs
+sysretq
+_EndOfSysCallEntry:
+
+## Entry via `sysenter` is significantly easier since we have a kernel-controlled
+## stack already. This instruction leaves the calling convention to the OS,
+## I've opted to use the following: rdx=user pc, rcx=user stack, r11=user flags,
+## rbp=user scratch reg, arguments and return values are passed in 
+## rdi/rsi/rax/rbx/r12/r13
+SysEnterEntry:
+swapgs
+
+push %rdx
+push %rcx
+push %r11
+push %rbp
+
+push %rdi
+push %rsi
+push %rax
+push %rbx
+push %r12
+push %r13
+
+mov $0x10, %ax
+mov %ax, %ds
+mov %ax, %es
+
+mov %rsp, %rdi
+mov $1, %rsi
+cld
+call SyscallDispatch
+
+mov $0x20, %ax
+mov %ax, %ds
+mov %ax, %es
+
+pop %r13
+pop %r12
+pop %rbx
+pop %rax
+pop %rsi
+pop %rdi
+
+pop %rbp
+popf
+
+swapgs
+sysexitq
+_EndOfSysEnterEntry:
+
+BadSysCallEntry:
+ud2
+_EndOfBadSysCallEntry:
 .popsection
 
 .macro StubMacro vector

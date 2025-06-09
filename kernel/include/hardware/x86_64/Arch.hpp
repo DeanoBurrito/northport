@@ -18,7 +18,9 @@ namespace Npk
         CpuId swId;
         uintptr_t selfAddr;
         ThreadContext* currThread;
+        void* syscallStack;
     };
+    static_assert(offsetof(CoreLocalHeader, syscallStack) == 24);
 
     SL_ALWAYS_INLINE
     CpuId MyCoreId()
