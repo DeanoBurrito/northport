@@ -64,8 +64,6 @@ namespace Npk
         Rsdp,
         Fdt,
         BootInfo,
-
-        Count
     };
 
     template<typename T>
@@ -181,6 +179,9 @@ namespace Npk
 
     class Mutex : private Waitable
     {
+    private:
+        ThreadContext* owner;
+
     public:
         void Lock();
         void Unlock();
@@ -202,6 +203,7 @@ namespace Npk
         sl::StringSpan who;
         sl::TimePoint when;
         LogLevel level;
+        CpuId cpu;
     };
 
     struct LogSink

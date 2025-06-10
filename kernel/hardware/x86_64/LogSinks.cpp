@@ -16,8 +16,8 @@ namespace Npk
 
     static void DebugconWrite(LogSinkMessage msg)
     {
-        constexpr const char FormatStr[] = "%.0s[%7s]%.0s ";
-        constexpr const char ColourFormatStr[] = "%s[%7s]%s ";
+        constexpr const char FormatStr[] = "%.0s[c%u %7s]%.0s ";
+        constexpr const char ColourFormatStr[] = "%s[c%u %7s]%s ";
         constexpr const char ResetColourStr[] = "\e[39m";
 
         const auto levelStr = LogLevelStr(msg.level);
@@ -35,7 +35,7 @@ namespace Npk
             }
         }(msg.level);
 
-        npf_pprintf(DebugconPutc, nullptr, format, colourStr, levelStr.Begin(), ResetColourStr);
+        npf_pprintf(DebugconPutc, nullptr, format, colourStr, msg.cpu, levelStr.Begin(), ResetColourStr);
 
         for (size_t i = 0; i < msg.text.Size(); i++)
             Out8(Port::Debugcon, msg.text[i]);
@@ -107,8 +107,8 @@ namespace Npk
 
     static void Com1Write(LogSinkMessage msg)
     {
-        constexpr const char FormatStr[] = "%.0s[%7s]%.0s ";
-        constexpr const char ColourFormatStr[] = "%s[%7s]%s ";
+        constexpr const char FormatStr[] = "%.0s[c%u %7s]%.0s ";
+        constexpr const char ColourFormatStr[] = "%s[c%u %7s]%s ";
         constexpr const char ResetColourStr[] = "\e[39m";
 
         const auto levelStr = LogLevelStr(msg.level);
@@ -126,7 +126,7 @@ namespace Npk
             }
         }(msg.level);
 
-        npf_pprintf(Com1Putc, nullptr, format, colourStr, levelStr.Begin(), ResetColourStr);
+        npf_pprintf(Com1Putc, nullptr, format, colourStr, msg.cpu, levelStr.Begin(), ResetColourStr);
 
         for (size_t i = 0; i < msg.text.Size(); i++)
             Com1Putc(msg.text[i], nullptr);

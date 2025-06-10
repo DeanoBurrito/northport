@@ -25,6 +25,7 @@ namespace Npk
         sinkMsg.text = { formatBuff, realLen };
         sinkMsg.when = sl::TimePoint::Now();
         sinkMsg.who = "kernel";
+        sinkMsg.cpu = MyCoreId();
 
         sl::ScopedLock scopeLock(logLock);
         for (auto it = logSinks.Begin(); it != logSinks.End(); ++it)

@@ -49,11 +49,6 @@ InterruptEntry:
     push %r14
     push %r15
 
-    mov %es, %ax
-    push %rax
-    mov %ds, %ax
-    push %rax
-
     cmp $0x10, %ax
     je 1f
     swapgs
@@ -71,9 +66,6 @@ InterruptEntry:
     je 1f
     swapgs
 1:
-    mov %ax, %ds
-    pop %rax
-    mov %ax, %es
 
     pop %r15
     pop %r14

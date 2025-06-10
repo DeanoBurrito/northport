@@ -6,6 +6,22 @@
 
 namespace Npk
 {
+    template<typename Table, typename SubTable>
+    inline const SubTable* NextSubtable(const Table* table, const SubTable* src = nullptr)
+    {
+        uintptr_t next;
+        if (src == nullptr)
+            next = reinterpret_cast<uintptr_t>(table) + sizeof(*table);
+        else
+            next = reinterpret_cast<uintptr_t>(src) + src->length;
+
+        auto end = reinterpret_cast<uintptr_t>(table) + table->length;
+        if (next >= end)
+            return nullptr;
+
+        return reinterpret_cast<const SubTable*>(next);
+    }
+
     enum class AcpiAddrSpace : uint8_t
     {
         Memory = 0,
@@ -50,6 +66,7 @@ namespace Npk
         uint8_t checksum2;
         uint8_t reserved[3];
     });
+    static_assert(sizeof(Rsdp) == 36);
 
     struct SL_PACKED(Sdt
     {
@@ -63,6 +80,7 @@ namespace Npk
         uint32_t creator;
         uint32_t creatorRevision;
     });
+    static_assert(sizeof(Sdt) == 36);
 
     constexpr size_t SdtSigLength = 4;
     constexpr const char SigRsdt[] = "RSDT";
@@ -78,11 +96,13 @@ namespace Npk
     {
         uint32_t entries[];
     });
+    static_assert(sizeof(Rsdt) == 36);
 
     struct SL_PACKED(Xsdt : public Sdt
     {
         uint64_t entries[];
     });
+    static_assert(sizeof(Xsdt) == 36);
 
     enum class MadtFlag
     {
@@ -112,6 +132,7 @@ namespace Npk
         MadtSourceType type;
         uint8_t length;
     });
+    static_assert(sizeof(MadtSource) == 2);
 
     namespace MadtSources
     {
@@ -129,6 +150,7 @@ namespace Npk
             uint8_t apicId;
             LocalApicFlags flags;
         });
+        static_assert(sizeof(LocalApic) == 8);
 
         struct SL_PACKED(IoApic : public MadtSource
         {
@@ -137,6 +159,7 @@ namespace Npk
             uint32_t mmioAddr;
             uint32_t gsibase;
         });
+        static_assert(sizeof(IoApic) == 12);
 
         constexpr uint16_t PolarityMask = 0b11;
         constexpr uint16_t PolarityDefault = 0b00;
@@ -154,12 +177,14 @@ namespace Npk
             uint32_t mappedGsi; //what it actually is
             uint16_t polarityModeFlags;
         });
+        static_assert(sizeof(SourceOverride) == 10);
 
         struct SL_PACKED(NmiSource : public MadtSource
         {
             uint16_t polarityModeFlags;
             uint32_t gsi;
         });
+        static_assert(sizeof(NmiSource) == 8);
 
         struct SL_PACKED(LocalApicNmi : public MadtSource
         {
@@ -167,6 +192,7 @@ namespace Npk
             uint16_t polarityModeFlags;
             uint8_t lintNumber;
         });
+        static_assert(sizeof(LocalApicNmi) == 6);
 
         struct SL_PACKED(LocalX2Apic : public MadtSource
         {
@@ -175,6 +201,7 @@ namespace Npk
             LocalApicFlags flags;
             uint32_t acpiProcessorId;
         });
+        static_assert(sizeof(LocalX2Apic) == 16);
 
         struct SL_PACKED(LocalX2ApicNmi : public MadtSource
         {
@@ -183,6 +210,7 @@ namespace Npk
             uint8_t lintNumber;
             uint8_t reserved[3];
         });
+        static_assert(sizeof(LocalX2ApicNmi) == 12);
 
         struct SL_PACKED(WakeupMailbox : public MadtSource
         {
@@ -190,8 +218,9 @@ namespace Npk
             uint32_t reserved;
             uint64_t mailboxAddress;
         });
+        static_assert(sizeof(WakeupMailbox) == 16);
 
-        struct SL_PACKED(RvLocalController : public MadtSource
+        struct SL_PACKED(Rintc: public MadtSource
         {
             uint8_t version;
             uint8_t reserved;
@@ -202,6 +231,7 @@ namespace Npk
             uint64_t imsicMmioBase;
             uint32_t imsicMmioLength;
         });
+        static_assert(sizeof(Rintc) == 36);
 
         struct SL_PACKED(Imsic : public MadtSource
         {
@@ -215,6 +245,7 @@ namespace Npk
             uint8_t groupIndexBits;
             uint8_t groupIndexShift;
         });
+        static_assert(sizeof(Imsic) == 16);
 
         struct SL_PACKED(Aplic : public MadtSource
         {
@@ -228,6 +259,7 @@ namespace Npk
             uint64_t mmioBase;
             uint32_t mmioLength;
         });
+        static_assert(sizeof(Aplic) == 36);
 
         struct SL_PACKED(Plic : public MadtSource
         {
@@ -241,6 +273,7 @@ namespace Npk
             uint64_t mmioBase;
             uint32_t gsiBase;
         });
+        static_assert(sizeof(Plic) == 36);
     }
     
     struct SL_PACKED(Madt : public Sdt
@@ -249,6 +282,9 @@ namespace Npk
         MadtFlags flags;
         MadtSource sources[];
     });
+    static_assert(sizeof(Madt) == 44);
+
+#define NextMadtSubtable(x, ...) NextSubtable<Madt, MadtSource>(x, ##__VA_ARGS__)
 
     struct SL_PACKED(Hpet : public Sdt
     {
@@ -258,6 +294,7 @@ namespace Npk
         uint16_t minClockTicks;
         uint8_t pageProtection;
     });
+    static_assert(sizeof(Hpet) == 56);
 
     struct SL_PACKED(McfgSegment
     {
@@ -267,12 +304,14 @@ namespace Npk
         uint8_t lastBus;
         uint32_t reserved;
     });
+    static_assert(sizeof(McfgSegment) == 16);
 
     struct SL_PACKED(Mcfg : public Sdt
     {
         uint64_t reserved; //good one pci-sig, all in a day's work i'm sure.
         McfgSegment segments[];
     });
+    static_assert(sizeof(Mcfg) == 44);
 
     enum class SrasType : uint8_t
     {
@@ -287,6 +326,7 @@ namespace Npk
         SrasType type;
         uint8_t length;
     });
+    static_assert(sizeof(Sras) == 2);
 
     namespace SratStructs
     {
@@ -299,6 +339,7 @@ namespace Npk
             uint8_t domain1[3];
             uint32_t clockDomain;
         });
+        static_assert(sizeof(LocalApicSras) == 16);
 
         enum class SrasFlag
         {
@@ -319,16 +360,20 @@ namespace Npk
             uint32_t lengthHigh;
             uint32_t reserved1;
             SrasFlags flags;
+            uint64_t reserved2;
         });
+        static_assert(sizeof(MemorySras) == 40);
 
         struct SL_PACKED(X2ApicSras : public Sras
         {
-            uint16_t reserved;
+            uint16_t reserved0;
             uint32_t domain;
             uint32_t apicId;
             uint32_t flags; //same as LocalApicSras flags
             uint32_t clockDomain;
+            uint32_t reserved1;
         });
+        static_assert(sizeof(X2ApicSras) == 24);
 
         struct SL_PACKED(GenericSras : public Sras
         {
@@ -338,9 +383,8 @@ namespace Npk
             uint8_t handle[16];
             uint32_t flags;
             uint32_t reserved1;
-            uint64_t acpiHid;
-            uint32_t acpiUid;
         });
+        static_assert(sizeof(GenericSras) == 32);
     }
 
     struct SL_PACKED(Srat : public Sdt
@@ -349,6 +393,9 @@ namespace Npk
         uint64_t reserved1;
         Sras resStructs[];
     });
+    static_assert(sizeof(Srat) == 48);
+
+#define NextSratSubtable(x, ...) NextSubtable<Srat, Sras>(x, ##__VA_ARGS__)
 
     enum class RhctFlag
     {
@@ -364,6 +411,7 @@ namespace Npk
         uint32_t nodeCount;
         uint32_t nodesOffset;
     });
+    static_assert(sizeof(Rhct) == 56);
 
     enum class RhctNodeType : uint16_t
     {
@@ -386,14 +434,18 @@ namespace Npk
         uint16_t length;
         uint16_t revision;
     });
+    static_assert(sizeof(RhctNode) == 6);
+
+#define NextRhctSubtable(x, ...) NextSubtable<Rhct, RhctNode>(x, ##__VA_ARGS__)
 
     namespace RhctNodes
     {
         struct SL_PACKED(IsaStringNode : public RhctNode
         {
-            uint16_t strLength;
+            uint16_t strLength; //includes null terminator
             uint8_t str[];
         });
+        static_assert(sizeof(IsaStringNode) == 8);
 
         struct SL_PACKED(CmoNode : public RhctNode
         {
@@ -402,12 +454,14 @@ namespace Npk
             uint8_t cbopSize;
             uint8_t cbozSize;
         });
+        static_assert(sizeof(CmoNode) == 10);
 
         struct SL_PACKED(MmuNode : public RhctNode
         {
             uint8_t reserved;
             MmuNodeType type;
         });
+        static_assert(sizeof(MmuNode) == 8);
 
         struct SL_PACKED(HartInfoNode : public RhctNode
         {
@@ -415,6 +469,7 @@ namespace Npk
             uint32_t acpiProcessorId;
             uint32_t offsets[]; //offsets to linked structures, relative to start of RHCT
         });
+        static_assert(sizeof(HartInfoNode) == 12);
     }
 
     enum class PowerProfile : uint8_t
@@ -535,6 +590,7 @@ namespace Npk
         GenericAddr sleepStatusReg;
         uint64_t hypervisorVendorId;
     });
+    static_assert(sizeof(Fadt) == 276);
 
     enum class FacsFlag 
     {
@@ -565,4 +621,5 @@ namespace Npk
         FacsOspmFlags ospmFlags;
         uint8_t reserved1[24];
     });
+    static_assert(sizeof(Facs) == 64);
 }

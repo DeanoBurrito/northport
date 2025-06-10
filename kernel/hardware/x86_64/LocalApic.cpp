@@ -3,6 +3,7 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Msr.hpp>
 #include <AcpiTypes.hpp>
+#include <hardware/Entry.hpp>
 #include <KernelApi.hpp>
 #include <Mmio.h>
 
@@ -12,7 +13,6 @@ namespace Npk
     constexpr uint32_t LvtMasked = 1 << 16;
     constexpr uint32_t LvtActiveLow = 1 << 13;
     constexpr uint32_t LvtLevelTrigger = 1 << 14;
-    constexpr uint8_t SpuriousVector = 0xFF;
     constexpr uint8_t PicIrqBase = 0x20;
 
     enum class LApicReg
@@ -56,10 +56,12 @@ namespace Npk
     struct LocalApic
     {
         sl::MmioRegisters<LApicReg, uint32_t> mmio;
-        size_t tscFreq;
-        size_t timerFreq;
+        uint64_t tscExpiry;
+        uint64_t tscFreq;
+        uint64_t timerFreq;
         uint32_t acpiId;
         bool x2Mode;
+        bool hasTscDeadline;
 
         inline Msr RegToMsr(LApicReg reg)
         {
@@ -91,33 +93,35 @@ namespace Npk
         lapic->x2Mode = CpuHasFeature(CpuFeature::ApicX2);
         if (lapic->x2Mode)
             WriteMsr(Msr::ApicBase, ReadMsr(Msr::ApicBase) | (1 << 10));
+
+        if (CpuHasFeature(CpuFeature::TscDeadline))
+        {
+            lapic->hasTscDeadline = true;
+            WriteMsr(Msr::TscDeadline, 0);
+        }
     }
 
     static void FinishLapicInit(Madt* madt)
     {
-        lapic->Write(LApicReg::SpuriousVector, SpuriousVector);
-        lapic->Write(LApicReg::LvtTimer, LvtMasked | SpuriousVector);
-        lapic->Write(LApicReg::LvtThermalSensor, LvtMasked | SpuriousVector);
-        lapic->Write(LApicReg::LvtPerfMonitor, LvtMasked | SpuriousVector);
-        lapic->Write(LApicReg::LvtLint0, LvtMasked | SpuriousVector);
-        lapic->Write(LApicReg::LvtLint1, LvtMasked | SpuriousVector);
-        lapic->Write(LApicReg::LvtError, LvtMasked | SpuriousVector);
+        lapic->Write(LApicReg::SpuriousVector, LapicSpuriousVector);
+        lapic->Write(LApicReg::LvtTimer, LvtMasked | LapicSpuriousVector);
+        lapic->Write(LApicReg::LvtThermalSensor, LvtMasked | LapicSpuriousVector);
+        lapic->Write(LApicReg::LvtPerfMonitor, LvtMasked | LapicSpuriousVector);
+        lapic->Write(LApicReg::LvtLint0, LvtMasked | LapicSpuriousVector);
+        lapic->Write(LApicReg::LvtLint1, LvtMasked | LapicSpuriousVector);
+        lapic->Write(LApicReg::LvtError, LvtMasked | LapicSpuriousVector);
+        lapic->Write(LApicReg::TimerInitCount, 0);
 
         if (madt == nullptr)
             return;
 
         const uint32_t myLapicId = lapic->Read(LApicReg::Id) 
             >> (lapic->x2Mode ? 24 : 0);
-        auto scan = reinterpret_cast<const char*>(madt) + sizeof(Madt);
-        const char* end = scan + madt->length - sizeof(Madt);
 
         //first pass: find the acpi processor id assocaited with this lapic
         lapic->acpiId = -1;
-        while (scan < end)
+        for (auto source = NextMadtSubtable(madt); source != nullptr; source = NextMadtSubtable(madt, source))
         {
-            const auto source = reinterpret_cast<const MadtSource*>(scan);
-            scan += source->length;
-
             if (source->type == MadtSourceType::LocalApic)
             {
                 auto src = static_cast<const MadtSources::LocalApic*>(source);
@@ -139,12 +143,8 @@ namespace Npk
         }
 
         //second pass: find any nmi entries that apply to this lapic
-        scan = reinterpret_cast<const char*>(madt) + sizeof(Madt);
-        while (scan < end)
+        for (auto source = NextMadtSubtable(madt); source != nullptr; source = NextMadtSubtable(madt, source))
         {
-            auto source = reinterpret_cast<const MadtSource*>(scan);
-            scan += source->length;
-
             uint32_t targetAcpiId;
             uint16_t polarityModeFlags;
             uint8_t inputNumber;
@@ -189,7 +189,7 @@ namespace Npk
 
     static void EnableLocalApic()
     {
-        lapic->Write(LApicReg::SpuriousVector, SpuriousVector | (1 << 8));
+        lapic->Write(LApicReg::SpuriousVector, LapicSpuriousVector | (1 << 8));
 
         //https://github.com/projectacrn/acrn-hypervisor/blob/master/hypervisor/arch/x86/lapic.c#L65
         //tl;dr: sometimes are pending interrupts left over from when the firmware or bootloader
@@ -253,6 +253,37 @@ namespace Npk
     uint8_t MyLapicVersion()
     {
         return lapic->Read(LApicReg::Version) & 0xFF;
+    }
+
+    void ArmTscInterrupt(uint64_t expiry)
+    {
+        const bool restoreIntrs = IntrsOff();
+        if (lapic->hasTscDeadline)
+        {
+            lapic->Write(LApicReg::LvtTimer, (0b10 << 17) | LapicTimerVector);
+            WriteMsr(Msr::TscDeadline, expiry);
+        }
+        else
+        {
+            NPK_UNREACHABLE();
+            //TODO: convert tsc ticks to lapic ticks, store in tscExpiry and chain lapic interrupts
+        }
+
+        if (restoreIntrs)
+            IntrsOn();
+    }
+
+    void HandleLapicTimerInterrupt()
+    {
+        if (lapic->hasTscDeadline)
+            return DispatchAlarm();
+
+        //we're emulating the tsc, check if we dispatch the alarm now
+        if (ReadTsc() >= lapic->tscExpiry)
+            return DispatchAlarm();
+
+        //need to wait a bit longer, re-arm lapic timer
+        NPK_UNREACHABLE();
     }
 
     void SendIpi(uint32_t dest, IpiType type, uint8_t vector)

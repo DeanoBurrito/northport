@@ -4,6 +4,10 @@
 
 namespace Npk
 {
+    constexpr uint8_t LapicIpiVector = 0xFD;
+    constexpr uint8_t LapicTimerVector = 0xFE;
+    constexpr uint8_t LapicSpuriousVector = 0xFF;
+
     void InitBspLapic(uintptr_t& virtBase);
     void SignalEoi();
     uint32_t MyLapicId();
@@ -19,7 +23,7 @@ namespace Npk
     }
 
     void ArmTscInterrupt(uint64_t expiry);
-    void DisarmTscInterrupt();
+    void HandleLapicTimerInterrupt();
 
     enum class IpiType
     {

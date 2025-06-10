@@ -6,7 +6,9 @@
 #include <AcpiTypes.hpp>
 #include <KernelApi.hpp>
 #include <Scheduler.hpp>
+#include <Mmio.h>
 #include <Maths.h>
+#include <UnitConverter.h>
 
 extern "C"
 {
@@ -39,17 +41,157 @@ namespace Npk
     void PlatInitDomain0(InitState& state)
     { (void)state; } //no-op
 
-    static void InitReferenceTimer()
+    enum class HpetReg
     {
+        Capabilities = 0,
+        Config = 0x10,
+        IntrStatus = 0x20,
+        MainCounter = 0xF0,
+        Timer0Config = 0x100,
+        Timer0Value = 0x108,
+        Timer0IntrRouting = 0x110,
+    };
+
+    static uint64_t acpiTimerAddr;
+    static bool acpiTimerIsMmio;
+    static bool acpiTimerIs32bit;
+
+    static bool TryInitPmTimer(Fadt* table, uintptr_t& virtBase)
+    {
+        if (ReadConfigUint("npk.x86.ignore_acpi_pm_timer", false))
+            return false;
+        if (table == nullptr)
+            return false;
+        if (table->flags.Has(FadtFlag::HwReducedAcpi))
+            return false;
+
+        acpiTimerAddr = 0;
+        if (table->length >= offsetof(Fadt, xPmTimerBlock) && table->xPmTimerBlock.address != 0)
+        {
+            acpiTimerAddr = table->xPmTimerBlock.address;
+            const auto type = table->xPmTimerBlock.type;
+            NPK_CHECK(type == AcpiAddrSpace::IO || type == AcpiAddrSpace::Memory, false);
+            acpiTimerIsMmio = type == AcpiAddrSpace::Memory;
+        }
+        else if (table->length >= offsetof(Fadt, pmTimerBlock) && table->pmTimerBlock != 0)
+        {
+            acpiTimerAddr = table->pmTimerBlock;
+            acpiTimerIsMmio = false;
+        }
+        if (acpiTimerAddr == 0)
+            return false;
+
+        acpiTimerIs32bit = table->flags.Has(FadtFlag::TimerValExt);
+        Log("ACPI timer available as reference timer: addr=0x%tx (%s), width=%s",
+            LogLevel::Info, acpiTimerAddr, acpiTimerIsMmio ? "mmio" : "pio", 
+            acpiTimerIs32bit ? "32-bit" : "24-bit");
+
+        return true;
     }
 
-    static uint64_t ReadReferenceTimer()
+    static sl::MmioRegisters<HpetReg, uint64_t> hpetRegs;
+    static uint64_t hpetFreq;
+
+    static bool TryInitHpet(Hpet* table, uintptr_t& virtBase)
+    {
+        if (ReadConfigUint("npk.x86.ignore_hpet", false))
+            return false;
+        if (table == nullptr)
+            return false;
+
+        //the HPET spec *implies* the timer blocks must live in memory space, but
+        //it does seem to allow for IO space blocks. For now we only support memory space.
+        NPK_CHECK(table->baseAddress.type == AcpiAddrSpace::Memory, false);
+
+        auto ret = ArchAddMap(MyKernelMap(), virtBase, table->baseAddress.address, 
+            MmuFlag::Write | MmuFlag::Mmio);
+        if (ret != MmuError::Success)
+            return false;
+
+        hpetRegs = virtBase;
+        virtBase += PageSize();
+
+        const uint64_t caps = hpetRegs.Read(HpetReg::Capabilities);
+
+        const bool is64bit = caps & (1 << 13);
+        const uint8_t timers = 1 + ((caps >> 8) & 0xF);
+        const uint64_t period = (caps >> 32) & 0xFFFF'FFFF;
+
+        hpetFreq = sl::Femtos / period;
+        const auto freq = sl::ConvertUnits(hpetFreq);
+        Log("HPET available as reference timer: counter=%s, timers=%u, freq=%zu.%zu %sHz",
+            LogLevel::Info, is64bit ? "64-bit" : "32-bit", timers, freq.major, 
+            freq.minor, freq.prefix);
+
+        return true;
+    }
+
+    static void InitReferenceTimer(uintptr_t& virtBase)
+    {
+        if (auto fadt = GetAcpiTable(SigFadt); 
+            fadt.HasValue() && TryInitPmTimer(static_cast<Fadt*>(*fadt), virtBase))
+            return;
+
+        auto maybeHpet = GetAcpiTable(SigHpet);
+        if (auto hpet = GetAcpiTable(SigHpet);
+            hpet.HasValue() && TryInitHpet(static_cast<Hpet*>(*hpet), virtBase))
+            return;
+
+        //Afaik there isn't a way to test for the presence of a PIT, you just have to know.
+        //I have included a command line flag in case we ever run on a system where
+        //it's not present.
+        const bool forceIgnorePit = ReadConfigUint("npk.x86.ignore_pit", false);
+        //dont laugh at this lol: but the PIT is the last option for a reference timer, so it's
+        //not available we cant continue.
+        NPK_ASSERT(!forceIgnorePit);
+
+        Log("PIT selected as calibration reference timer", LogLevel::Verbose);
+    }
+
+    static uint64_t ReferenceSleep(uint64_t sleepNanos)
     {
         NPK_UNREACHABLE();
+        if (acpiTimerAddr != 0)
+        {
+        }
+        else if (hpetRegs.BaseAddress() != 0)
+        {
+        }
+        else
+        {
+            //PIT
+        }
     }
 
     CPU_LOCAL(uint64_t, tscFreq);
     bool hasPvClocks;
+
+    static sl::Opt<uint64_t> CoalesceTimerData(sl::Span<uint64_t> runs, size_t allowedOutliers)
+    {
+        uint64_t mean = 0;
+        for (size_t i = 0; i < runs.Size(); i++)
+            mean += runs[i];
+        mean /= runs.Size();
+
+        const uint64_t deviation = sl::StandardDeviation(runs);
+
+        size_t validCount = 0;
+        uint64_t accumulator = 0;
+        for (size_t i = 0; i < runs.Size(); i++)
+        {
+            if (runs[i] < mean - deviation || runs[i] > mean + deviation)
+                continue;
+
+            validCount++;
+            accumulator += runs[i];
+        }
+
+        if (validCount < runs.Size() - allowedOutliers)
+            return {};
+
+        accumulator /= validCount;
+        return accumulator;
+    }
 
     static uint64_t CalibrateTsc()
     {
@@ -62,7 +204,15 @@ namespace Npk
          *  4a. acpi pm timer
          *  4b. hpet
          *  4c. pit
+         * There is also the option of the user explicitly telling us the tsc freq, if they want.
          */
+
+        if (auto freq = ReadConfigUint("npk.x86.tsc_freq_override", 0); freq != 0)
+        {
+            Log("TSC frequency set to %zuHz by command line override.", LogLevel::Trace,
+                freq);
+            return freq;
+        }
 
         CpuidLeaf cpuid {};
         const size_t baseLeaves = DoCpuid(BaseLeaf, 0, cpuid).a;
@@ -71,9 +221,10 @@ namespace Npk
         DoCpuid(0x15, 0, cpuid);
         if (baseLeaves >= 0x15 && cpuid.b != 0 && cpuid.a != 0)
         {
-            Log("TSC frequency acquired from cpuid 0x15: %u / %u * %u", LogLevel::Trace,
-                cpuid.c, cpuid.b, cpuid.a);
-            return (cpuid.c * cpuid.b) / cpuid.a;
+            const uint64_t freq = (cpuid.c * cpuid.b) / cpuid.a;
+            Log("TSC frequency acquired from cpuid 0x15: %u / %u * %u = %luHz", LogLevel::Trace,
+                cpuid.c, cpuid.b, cpuid.a, freq);
+            return freq;
         }
 
         //2.
@@ -96,17 +247,21 @@ namespace Npk
         constexpr size_t MaxCalibRuns = 64;
         const size_t calibRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_calibration_runs", 10), 1, MaxCalibRuns);
         const size_t sampleFreq = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_sample_freq", 100), 10, 1000);
-        const size_t neededRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_needed_runs", 5), 1, calibRuns);
-        const size_t controlRuns = sl::Clamp<size_t>(ReadConfigUint("npkl.x86.tsc_control_runs", 5), 1, calibRuns);
+        const size_t neededRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_needed_runs", 7), 1, calibRuns);
+        const size_t controlRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_control_runs", 5), 1, calibRuns);
+        const bool dumpCalibData = ReadConfigUint("npk.x86.tsc_dump_calibration", true);
 
         size_t controlOffset = 0;
-        size_t calibData[MaxCalibRuns];
+        uint64_t calibData[MaxCalibRuns];
+        uint64_t calibNanos = sl::TimeCount(sampleFreq, 1).Rebase(sl::Nanos).ticks;
+        Log("Calibrating TSC: sampling=%zu hz, runs=%zu (mulligans=%zu, control=%zu)", LogLevel::Trace,
+            sampleFreq, calibRuns, calibRuns - neededRuns, controlRuns);
 
         //control runs, determine time taken to read reference timer
         for (size_t i = 0; i < controlRuns; i++)
         {
             const size_t tscBegin = ReadTsc();
-            ReadReferenceTimer();
+            ReferenceSleep(0);
             const size_t tscEnd = ReadTsc();
 
             controlOffset += tscEnd - tscBegin;
@@ -117,27 +272,42 @@ namespace Npk
 
         for (size_t i = 0; i < calibRuns; i++)
         {
-            const size_t tscBegin = ReadTsc();
-            /*(
-            while (ReadReferenceTimer() < refEndTime)
-                sl::HintSpinloop();
-            */
-            const size_t tscEnd = ReadTsc();
+            const uint64_t tscBegin = ReadTsc();
+            const uint64_t realCalibNanos = ReferenceSleep(calibNanos);
+            const uint64_t tscEnd = ReadTsc();
+
+            if (realCalibNanos == 0)
+            {
+                //something went wrong with the calibration sleep (massive SMI?)
+                calibData[i] = 0;
+                continue;
+            }
 
             calibData[i] = (tscEnd - tscBegin) - controlOffset;
-            Log("TSC calibratun run: begin=%zu, end=%zu, total (minus control)=%zu", LogLevel::Verbose,
-                tscBegin, tscEnd, calibData[i]);
-
-            NPK_UNREACHABLE(); //TODO: finish calibrating by coalescing runs
+            calibData[i] = (calibData[i] * calibNanos) / realCalibNanos; //oversleep correction
+            if (dumpCalibData)
+            {
+                Log("TSC calibratun run: begin=%zu, end=%zu, adjusted=%zu", LogLevel::Verbose,
+                    tscBegin, tscEnd, calibData[i]);
+            }
         }
+
+        const auto maybeTscPeriod = CoalesceTimerData({ calibData, calibRuns }, calibRuns - neededRuns);
+        NPK_ASSERT(maybeTscPeriod.HasValue());
+
+        const uint64_t tscFreq = *maybeTscPeriod * sampleFreq;
+        const auto conv = sl::ConvertUnits(tscFreq);
+        Log("TSC calibrated as %zu Hz (%zu.%zu %sHz)", LogLevel::Info, tscFreq,
+            conv.major, conv.minor, conv.prefix);
+        return tscFreq;
     }
 
     sl::Span<uint64_t> savedMtrrs;
 
     void PlatInitFull(uintptr_t& virtBase)
     { 
-        InitReferenceTimer();
-        *tscFreq = CalibrateTsc();
+        InitReferenceTimer(virtBase);
+        *tscFreq = CalibrateTsc(); //TODO: fallback for systems without tsc?
 
         if (CpuHasFeature(CpuFeature::VGuest))
             hasPvClocks = TryInitPvClocks(virtBase);
@@ -165,12 +335,13 @@ namespace Npk
 
     static void ApEntryFunc(uint64_t localStorage)
     {
-        RestoreMtrrs(savedMtrrs);
-
+        //setting cpu locals must be the first thing we do, since logging
+        //relies on this for cpu-id
         auto* locals = reinterpret_cast<const CoreLocalHeader*>(localStorage);
         SetMyLocals(localStorage, locals->swId);
         Log("Core %zu is online.", LogLevel::Info, MyCoreId());
 
+        RestoreMtrrs(savedMtrrs);
         CommonCpuSetup();
 
         ThreadContext idleContext {};
@@ -241,14 +412,10 @@ namespace Npk
         bootInfo->cr3 = reinterpret_cast<uint64_t>(kernelMap);
 
         size_t idAlloc = 1; //id=0 is BSP (the currently executing core)
-        auto scan = reinterpret_cast<const char*>(*maybeMadt) + sizeof(Madt);
-        const char* end = scan + static_cast<Madt*>(*maybeMadt)->length - sizeof(Madt);
 
-        while (scan < end)
+        auto madt = static_cast<const Madt*>(*maybeMadt);
+        for (auto source = NextMadtSubtable(madt); source != nullptr; source = NextMadtSubtable(madt, source))
         {
-            const auto source = reinterpret_cast<const MadtSource*>(scan);
-            scan += source->length;
-
             uint32_t targetLapicId = MyLapicId();
             if (source->type == MadtSourceType::LocalApic)
             {
