@@ -6,7 +6,7 @@
 
 namespace Npk
 {
-    enum class GenericAddrId : uint8_t
+    enum class AcpiAddrSpace : uint8_t
     {
         Memory = 0,
         IO = 1,
@@ -20,7 +20,7 @@ namespace Npk
         Serial = 9
     };
 
-    enum class GenericAddrSize : uint8_t
+    enum class AcpiAddrSize : uint8_t
     {
         Undefined = 0,
         Byte = 1,
@@ -31,10 +31,10 @@ namespace Npk
     
     struct SL_PACKED(GenericAddr
     {
-        GenericAddrId type;
+        AcpiAddrSpace type;
         uint8_t bitWidth;
         uint8_t bitOffset;
-        GenericAddrSize size;
+        AcpiAddrSize size;
         uint64_t address;
     });
 
@@ -72,6 +72,7 @@ namespace Npk
     constexpr const char SigMcfg[] = "MCFG";
     constexpr const char SigSrat[] = "SRAT";
     constexpr const char SigRhct[] = "RHCT";
+    constexpr const char SigFadt[] = "FACP";
 
     struct SL_PACKED(Rsdt : public Sdt
     {
@@ -415,4 +416,153 @@ namespace Npk
             uint32_t offsets[]; //offsets to linked structures, relative to start of RHCT
         });
     }
+
+    enum class PowerProfile : uint8_t
+    {
+        Unspecified = 0,
+        Desktop = 1,
+        Mobile = 2,
+        Workstation = 3,
+        EnterpriseServer = 4,
+        SohoServer = 5,
+        AppliancePc = 6,
+        PerformanceServer = 7,
+        Tablet = 8,
+    };
+
+    enum class FadtFlag
+    {
+        Wbinvd = 0,
+        WbinvdFlush = 1,
+        ProcC1 = 2,
+        Lvl2Up = 3,
+        PowerButton = 4,
+        SleepButton = 5,
+        FixedRtcWake = 6,
+        RtcS4 = 7,
+        TimerValExt = 8,
+        DockingCapable = 9,
+        ResetRegSupport = 10,
+        SealedCase = 11,
+        Headless = 12,
+        CpuSwSleep = 13,
+        PciWakeCapable = 14,
+        UsePlatformClock = 15,
+        S4RtcStatusValiv = 16,
+        RemotePowerOnCapable = 17,
+        ForceApicClusterModel = 18,
+        ForceApicPhysicalAddressing = 19,
+        HwReducedAcpi = 20,
+        LowPowerS0Idle = 21,
+        PersistentCpuCaches = 22,
+    };
+
+    enum class X86BootFlag
+    {
+        LegacyDevices = 0,
+        Ps2Keyboard = 1,
+        VgaNotPresent = 2,
+        MsiNotSupported = 3,
+        NoPcieAspmCtrls = 4,
+        NoCmosRtc = 5,
+    };
+
+    enum class ArmBootFlag
+    {
+        PsciCompliant = 0,
+        PsciUseHvc = 1,
+    };
+
+    using FadtFlags = sl::Flags<FadtFlag, uint32_t>;
+    using X86BootFlags = sl::Flags<X86BootFlag, uint16_t>;
+    using ArmBootFlags = sl::Flags<ArmBootFlag, uint16_t>;
+
+    struct SL_PACKED(Fadt : public Sdt
+    {
+        uint32_t firmwareCtrl; //pointer to FACS table
+        uint32_t dsdt;
+        uint8_t reserved0;
+        PowerProfile preferredPmProfile;
+        uint16_t sciInt;
+        uint32_t smiCmd;
+        uint8_t acpiEnableCmd;
+        uint8_t acpiDisableCmd;
+        uint8_t s4BiosReq;
+        uint8_t pstateCount;
+        uint32_t pm1aEventBlock;
+        uint32_t pm1bEventBlock;
+        uint32_t pm1aCtrlBlock;
+        uint32_t pm1bCtrlBlock;
+        uint32_t pm2CtrlBlock;
+        uint32_t pmTimerBlock;
+        uint32_t gpe0Block;
+        uint32_t gpe1Block;
+        uint8_t pm1EventLength;
+        uint8_t pm1CtrlLength;
+        uint8_t pm2CtrlLength;
+        uint8_t pmTimerLength;
+        uint8_t gpe0BlockLength;
+        uint8_t gpe1BlockLength;
+        uint8_t gpe1Base;
+        uint8_t cstateChangedCmd;
+        uint16_t c2LatencyUs;
+        uint16_t c3LatencyUs;
+        uint16_t flushSize;
+        uint16_t flushStride;
+        uint8_t dutyOffset;
+        uint8_t dutyWidth;
+        uint8_t dayAlarm;
+        uint8_t monthAlarm;
+        uint8_t rtcCentury;
+        X86BootFlags x86Flags;
+        uint8_t reserved1;
+        FadtFlags flags;
+        GenericAddr resetReg;
+        uint8_t resetValue;
+        ArmBootFlags armFlags;
+        uint8_t errataVersion;
+        uint64_t xFirmwareCtrl;
+        uint64_t xDsdt;
+        GenericAddr xPm1aEventBlock;
+        GenericAddr xPm1bEventBlock;
+        GenericAddr xPm1aCtrlBlock;
+        GenericAddr xPm1bCtrlBlock;
+        GenericAddr xPm2CtrlBlock;
+        GenericAddr xPmTimerBlock;
+        GenericAddr xGpe0Block;
+        GenericAddr xGpe1Block;
+        GenericAddr sleepCtrlReg;
+        GenericAddr sleepStatusReg;
+        uint64_t hypervisorVendorId;
+    });
+
+    enum class FacsFlag 
+    {
+        S4Bios = 0,
+        Supports64BitWake = 1,
+    };
+
+    enum class FacsOspmFlag
+    {
+        Wake64Bit = 0,
+    };
+
+    using FacsFlags = sl::Flags<FacsFlag, uint32_t>;
+    using FacsOspmFlags = sl::Flags<FacsOspmFlag, uint32_t>;
+
+    //must be 64-byte aligned
+    struct SL_PACKED(Facs
+    {
+        uint8_t signature[4]; //"FACS"
+        uint32_t length;
+        uint32_t hwSignature;
+        uint32_t fwWakingVector;
+        uint32_t globalLock;
+        FacsFlags flags;
+        uint64_t xFwWakingVector;
+        uint8_t version;
+        uint8_t reserved0[3];
+        FacsOspmFlags ospmFlags;
+        uint8_t reserved1[24];
+    });
 }
