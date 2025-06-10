@@ -1,14 +1,14 @@
 #pragma once
 
+#include <Compiler.h>
+
 namespace sl
 {
-    template<typename T, typename BackingInt = unsigned long>
-    struct Flags
+    template<typename T, typename BackingInt = unsigned long, unsigned Alignment = alignof(BackingInt)>
+    struct SL_PACKED(alignas(Alignment) Flags
     {
-    private:
-        BackingInt value;
-    
-    public:
+        alignas(alignof(BackingInt)) BackingInt value;
+
         constexpr Flags() : value{}
         {}
 
@@ -96,12 +96,7 @@ namespace sl
 
         inline constexpr bool operator!=(const Flags other) const
         { return value != other.value; }
-
-        //NOTE: using this defeats the whole purpose of this class, this function
-        //is for printing debug output.
-        inline constexpr BackingInt Raw() const
-        { return value; }
-    };
+    });
 }
 
 template<typename T>

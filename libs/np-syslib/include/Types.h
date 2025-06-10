@@ -20,7 +20,6 @@
 
     typedef uint64_t Paddr;
     typedef size_t CpuId;
-    typedef uint64_t CpuBitset;
 
     #ifndef offsetof
         #define offsetof(s, m) __builtin_offsetof(s, m)
