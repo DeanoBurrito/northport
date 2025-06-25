@@ -38,6 +38,29 @@ namespace Npk
         }
     };
 
+    enum class Ipl
+    {
+        Passive,
+        Dpc,
+        Clock,
+        Interrupt,
+    };
+
+    template<Ipl min, Ipl max = min>
+    class IplSpinLock
+    {
+    private:
+        sl::SpinLock lock;
+        Ipl prevIpl;
+
+    public:
+        constexpr IplSpinLock() : lock {}, prevIpl {}
+        {}
+
+        inline void Lock();
+        inline void Unlock();
+    };
+
     struct InitState
     {
         uintptr_t dmBase;
@@ -105,14 +128,6 @@ namespace Npk
         }
     };
 
-    enum class Ipl
-    {
-        Passive,
-        Dpc,
-        Clock,
-        Interrupt,
-    };
-
     struct Dpc;
 
     using DpcEntry = void (*)(Dpc* self, void* arg);
@@ -137,54 +152,48 @@ namespace Npk
 
     using ClockQueue = sl::List<ClockEvent, &ClockEvent::hook>;
 
-    enum class WaitResult
+    enum class WaitStatus
     {
-        Success,
-        Timeout,
+        Incomplete,
+        Timedout,
+        Reset,
         Cancelled,
+        Success,
     };
 
-    enum class WaitFlag
+    enum class WaitableType
     {
-        Cancellable,
-        All,
+        Condition,
+        Timer,
+        Mutex,
     };
-
-    using WaitFlags = sl::Flags<WaitFlag>;
 
     struct WaitEntry;
     struct ThreadContext;
+    struct Waitable;
 
     struct WaitEntry
     {
-        sl::ListHook hook;
+        sl::ListHook waitableQueueHook;
 
         ThreadContext* thread;
-        sl::StringSpan reason; //NOTE: this serves no purpose and is purely advisory
-        bool satisfied;
+        Waitable* waitable;
+        sl::Atomic<WaitStatus> status;
     };
 
-    class Waitable
+    struct Waitable
     {
-    private:
-        size_t count : 8 * sizeof(size_t) - 1;
-        bool sticky : 1;
+        WaitableType type;
 
-        sl::List<WaitEntry, &WaitEntry::hook> entries;
+        IplSpinLock<Ipl::Dpc> lock;
+        sl::List<WaitEntry, &WaitEntry::waitableQueueHook> waiters;
 
-    public:
-        void Reset();
-        void Signal(size_t count, bool all, bool sticky);
-    };
-
-    class Mutex : private Waitable
-    {
-    private:
-        ThreadContext* owner;
-
-    public:
-        void Lock();
-        void Unlock();
+        size_t tickets;
+        union
+        {
+            ClockEvent clockEvent;
+            ThreadContext* mutexHolder;
+        };
     };
 
     enum class LogLevel
@@ -263,7 +272,7 @@ namespace Npk
 
         struct 
         {
-            Mutex lock;
+            Waitable lock;
             PageList active;
             PageList dirty;
             PageList standby;

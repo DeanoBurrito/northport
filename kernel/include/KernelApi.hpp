@@ -27,7 +27,29 @@ namespace Npk
     void LowerIpl(Ipl target);
     sl::StringSpan IplStr(Ipl which);
 
+    template<Ipl min, Ipl max>
+    inline void IplSpinLock<min, max>::Lock()
+    {
+        prevIpl = CurrentIpl();
+        if (prevIpl > max || min > prevIpl)
+            Panic("Bad IPL when acquiring IplSpinLock");
+
+        RaiseIpl(max);
+        lock.Lock();
+    }
+
+    template<Ipl min, Ipl max>
+    inline void IplSpinLock<min, max>::Unlock()
+    {
+        if (prevIpl < max)
+            LowerIpl(prevIpl);
+        lock.Unlock();
+    }
+
     void QueueDpc(Dpc* dpc);
+    
+    void AddClockEvent(ClockEvent* event);
+    bool RemoveClockEvent(ClockEvent* event);
 
     void SetConfigStore(sl::StringSpan store);
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
@@ -73,49 +95,14 @@ namespace Npk
     }
 
     void CancelWait(ThreadContext* thread);
-    WaitResult WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, sl::TimeCount timeout, WaitFlags flags);
+    WaitStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, sl::TimeCount timeout, sl::StringSpan reason = {});
+    void SignalWaitable(Waitable* what);
+    void ResetWaitable(Waitable* what, WaitableType newType);
 
     SL_ALWAYS_INLINE
-    WaitResult WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout, WaitFlags flags)
+    WaitStatus WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout, sl::StringSpan reason = {})
     {
-        return WaitMany({ &what, 1 }, entry, timeout, flags);
-    }
-
-    SL_ALWAYS_INLINE
-    void ResetWaitable(Waitable* what)
-    {
-        what->Reset();
-    }
-
-    SL_ALWAYS_INLINE
-    void SignalOnce(Waitable* what)
-    {
-        what->Signal(1, false, false);
-    }
-
-    SL_ALWAYS_INLINE
-    void SignalCondition(Waitable* what)
-    {
-        what->Signal(1, true, true);
-    }
-
-    SL_ALWAYS_INLINE
-    void SignalWaitable(Waitable* what, size_t count, bool wakeAll, bool stickyCount)
-    {
-        what->Signal(count, wakeAll, stickyCount);
-    }
-
-    SL_ALWAYS_INLINE
-    void Mutex::Lock()
-    {
-        WaitEntry entry;
-        WaitOne(this, &entry, {}, {});
-    }
-
-    SL_ALWAYS_INLINE
-    void Mutex::Unlock()
-    {
-        SignalOnce(this);
+        return WaitMany({ &what, 1 }, entry, timeout, reason);
     }
 }
 

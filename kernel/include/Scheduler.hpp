@@ -9,23 +9,29 @@ namespace Npk
     struct ThreadContext
     {
         IntrSpinLock lock;
+        sl::ListHook queueHook;
         ArchThreadContext* context;
         Scheduler* sched;
-        size_t priority;
-        size_t priorityBoost;
-        sl::ListHook queueHook;
+        uint8_t basePriority;
+        uint8_t priorityBoost;
 
-        inline size_t EffectivePriority()
+        IplSpinLock<Ipl::Dpc> waitEntriesLock;
+        sl::Span<WaitEntry> waitEntries;
+        sl::StringSpan waitReason;
+
+        size_t Priority()
         {
-            return priority + priorityBoost;
+            return basePriority + priorityBoost;
         }
     };
 
     using RunQueue = sl::List<ThreadContext, &ThreadContext::queueHook>;
 
     void Yield(bool voluntary);
-    void EnqueueThread(ThreadContext* thread, size_t boost);
+    void EnqueueThread(ThreadContext* thread);
     void DequeueThread(ThreadContext* thread);
     void SetIdleThread(ThreadContext* thread);
     void OnPassiveRunLevel();
+
+    //TODO: BoostThread(), SetThreadPriority()
 }
