@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ArchHints.h>
+#include <Atomic.h>
 
 namespace sl
 {
@@ -40,93 +41,41 @@ namespace sl
     class SpinLock
     {
     private:
-        char lock;
+        constexpr static char LockedValue = 1;
+        constexpr static char UnlockedValue = 0;
+
+        sl::Atomic<char> lock;
+
     public:
-        constexpr SpinLock() : lock(0)
+        constexpr SpinLock() : lock(UnlockedValue)
         {}
 
         inline void Lock()
         {
             while (true)
             {
-                if (!__atomic_test_and_set(&lock, __ATOMIC_ACQUIRE))
+                char expected = UnlockedValue;
+                if (lock.CompareExchange(expected, LockedValue, Acquire))
                     break;
-                while (__atomic_load_n(&lock, __ATOMIC_ACQUIRE))
+                while (lock.Load(Acquire) == LockedValue)
                     HintSpinloop();
             }
         }
 
         inline bool TryLock()
         {
-            return !__atomic_test_and_set(&lock, __ATOMIC_ACQUIRE);
+            char expected = UnlockedValue;
+            return lock.CompareExchange(expected, LockedValue, Acquire);
         }
 
         inline void Unlock()
         {
-            __atomic_clear(&lock, __ATOMIC_RELEASE);
-        }
-    };
-    
-    class TicketLock
-    {
-    private:
-        unsigned serving;
-        unsigned next;
-
-    public:
-        constexpr TicketLock() : serving(0), next(0)
-        {}
-
-        inline void Lock()
-        {
-            const unsigned ticket = __atomic_fetch_add(&next, 1, __ATOMIC_RELAXED);
-            while (__atomic_load_n(&serving, __ATOMIC_ACQUIRE) != ticket)
-                HintSpinloop();
+            lock.Store(UnlockedValue, Release);
         }
 
-        inline void Unlock()
+        inline bool IsLocked()
         {
-            __atomic_add_fetch(&serving, 1, __ATOMIC_RELEASE);
-        }
-    };
-
-    class RwLock
-    {
-    private:
-        unsigned writers { 0 };
-        unsigned readers { 0 };
-        sl::TicketLock lock {};
-        
-    public:
-        inline void ReaderLock()
-        {
-            while (__atomic_load_n(&writers, __ATOMIC_ACQUIRE) != 0)
-                HintSpinloop();
-
-            lock.Lock();
-            __atomic_add_fetch(&readers, 1, __ATOMIC_ACQUIRE);
-            lock.Unlock();
-        }
-
-        inline void ReaderUnlock()
-        {
-            __atomic_sub_fetch(&readers, 1, __ATOMIC_RELEASE);
-        }
-
-        inline void WriterLock()
-        {
-            __atomic_add_fetch(&writers, 1, __ATOMIC_ACQUIRE);
-
-            lock.Lock();
-            
-            while (__atomic_load_n(&readers, __ATOMIC_ACQUIRE) != 0)
-                HintSpinloop();
-        }
-
-        inline void WriterUnlock()
-        {
-            __atomic_sub_fetch(&writers, 1, __ATOMIC_RELEASE);
-            lock.Unlock();
+            return lock.Load(Relaxed);
         }
     };
 }

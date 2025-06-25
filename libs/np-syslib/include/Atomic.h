@@ -74,28 +74,28 @@ namespace sl
         }
 
         void Store(T incoming, MemoryOrder order = MemoryOrder::SeqCst)
-        { __atomic_store_n(&value, incoming, (int)order); }
+        { __atomic_store(&value, &incoming, (int)order); }
 
         void Store(T incoming, MemoryOrder order = MemoryOrder::SeqCst) volatile
-        { __atomic_store_n(&value, incoming, (int)order); }
+        { __atomic_store(&value, &incoming, (int)order); }
 
         T Load(MemoryOrder order = MemoryOrder::SeqCst) const
-        { return __atomic_load_n(&value, (int)order); }
+        { T ret; __atomic_load(&value, &ret, (int)order); return ret; }
 
         T Load(MemoryOrder order = MemoryOrder::SeqCst) const volatile
-        { return __atomic_load_n(&value, (int)order); }
+        { T ret; __atomic_load(&value, &ret, (int)order); return ret; }
 
         T Exchange(T incoming, MemoryOrder order = MemoryOrder::SeqCst)
-        { return __atomic_exchange_n(&value, incoming, (int)order); }
+        { __atomic_exchange(&value, &incoming, (int)order); return incoming; }
 
         T Exchange(T incoming, MemoryOrder order = MemoryOrder::SeqCst) volatile
-        { return __atomic_exchange_n(&value, incoming, (int)order); }
+        { __atomic_exchange(&value, &incoming, (int)order); return incoming; }
 
         bool CompareExchange(T& expected, T desired, MemoryOrder order = MemoryOrder::SeqCst)
-        { return __atomic_compare_exchange_n(&value, &expected, desired, false, (int)order, (int)order); }
+        { return __atomic_compare_exchange(&value, &expected, &desired, false, (int)order, (int)order); }
 
         bool CompareExchange(T& expected, T desired, MemoryOrder order = MemoryOrder::SeqCst) volatile
-        { return __atomic_compare_exchange_n(&value, &expected, desired, false, (int)order, (int)order); }
+        { return __atomic_compare_exchange(&value, &expected, &desired, false, (int)order, (int)order); }
 
         T operator++(int)
         { return FetchAdd(1); }
@@ -201,23 +201,5 @@ namespace sl
 
         void Xor(T incoming, MemoryOrder order = MemoryOrder::SeqCst) volatile
         { __atomic_fetch_xor(&value, incoming, (int)order); }
-
-        void ClearBits(T mask, MemoryOrder order = MemoryOrder::SeqCst)
-        { __atomic_and_fetch(&value, (T)~mask, (int)order); }
-        
-        void ClearBits(T mask, MemoryOrder order = MemoryOrder::SeqCst) volatile
-        { __atomic_and_fetch(&value, (T)~mask, (int)order); }
-
-        void SetBits(T mask, MemoryOrder order = MemoryOrder::SeqCst)
-        { __atomic_or_fetch(&value, (T)mask, (int)order); }
-
-        void SetBits(T mask, MemoryOrder order = MemoryOrder::SeqCst) volatile
-        { __atomic_or_fetch(&value, (T)mask, (int)order); }
-
-        bool HasBits(T mask, MemoryOrder order = MemoryOrder::SeqCst)
-        { return (__atomic_load_n(&value, (int)order) & mask) != (T)0; }
-
-        bool HasBits(T mask, MemoryOrder order = MemoryOrder::SeqCst) volatile
-        { return (__atomic_load_n(&value, (int)order) & mask) != (T)0; }
     };
 }

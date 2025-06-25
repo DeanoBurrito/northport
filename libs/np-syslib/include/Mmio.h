@@ -11,13 +11,13 @@ namespace sl
         AccessType out;
 #ifdef __x86_64__
         if constexpr (sizeof(AccessType) == 1)
-            asm("movb (%1), %0" : "=r"(out) : "r"(addr));
+            asm("movb (%1), %0" : "=a"(out) : "r"(addr));
         else if constexpr (sizeof(AccessType) == 2)
-            asm("movw (%1), %0" : "=r"(out) : "r"(addr));
+            asm("movw (%1), %0" : "=a"(out) : "r"(addr));
         else if constexpr (sizeof(AccessType) == 4)
-            asm("movl (%1), %0" : "=r"(out) : "r"(addr));
+            asm("movl (%1), %0" : "=a"(out) : "r"(addr));
         else if constexpr (sizeof(AccessType) == 8)
-            asm("movq (%1), %0" : "=r"(out) : "r"(addr));
+            asm("movq (%1), %0" : "=a"(out) : "r"(addr));
         else
             SL_UNREACHABLE();
 #else
@@ -36,13 +36,13 @@ namespace sl
     {
 #ifdef __x86_64__
         if constexpr (sizeof(AccessType) == 1)
-            asm("movb %0, (%1)" :: "r"(value), "r"(addr));
+            asm("movb %0, (%1)" :: "a"(value), "r"(addr));
         else if constexpr (sizeof(AccessType) == 2)
-            asm("movw %0, (%1)" :: "r"(value), "r"(addr));
+            asm("movw %0, (%1)" :: "a"(value), "r"(addr));
         else if constexpr (sizeof(AccessType) == 4)
-            asm("movl %0, (%1)" :: "r"(value), "r"(addr));
+            asm("movl %0, (%1)" :: "a"(value), "r"(addr));
         else if constexpr (sizeof(AccessType) == 8)
-            asm("movq %0, (%1)" :: "r"(value), "r"(addr));
+            asm("movq %0, (%1)" :: "a"(value), "r"(addr));
         else
             SL_UNREACHABLE();
 #else

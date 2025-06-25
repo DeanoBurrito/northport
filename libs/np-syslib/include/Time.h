@@ -56,6 +56,9 @@ namespace sl
 
         bool operator<(TimePoint other)
         { return epoch < other.epoch; }
+
+        TimePoint operator+(TimeCount duration)
+        { return { epoch + duration.Rebase(Frequency).ticks }; }
     };
 }
 
