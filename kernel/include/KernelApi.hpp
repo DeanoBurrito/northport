@@ -47,6 +47,10 @@ namespace Npk
     }
 
     void QueueDpc(Dpc* dpc);
+    RemoteCpuStatus* RemoteStatus(CpuId who);
+    void SendMail(CpuId who, SmpMail* mail);
+    void FlushRemoteTlbs(sl::Span<CpuId> who, RemoteFlushRequest* what, bool sync);
+    void SetMyIpiId(void* id);
     
     void AddClockEvent(ClockEvent* event);
     bool RemoveClockEvent(ClockEvent* event);

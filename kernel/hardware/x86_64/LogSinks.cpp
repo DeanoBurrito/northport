@@ -6,7 +6,12 @@
 
 namespace Npk
 {
+    constexpr const char ResetColourStr[] = "\e[39m";
+    constexpr const char FormatStr[] = "%.0s[c%u %7s]%.0s ";
+    constexpr const char ColourFormatStr[] = "%s[c%u %7s]%s ";
+
     bool debugconDoColour;
+    bool com1DoColour;
 
     static void DebugconPutc(int c, void* ignored)
     {
@@ -16,10 +21,6 @@ namespace Npk
 
     static void DebugconWrite(LogSinkMessage msg)
     {
-        constexpr const char FormatStr[] = "%.0s[c%u %7s]%.0s ";
-        constexpr const char ColourFormatStr[] = "%s[c%u %7s]%s ";
-        constexpr const char ResetColourStr[] = "\e[39m";
-
         const auto levelStr = LogLevelStr(msg.level);
         const char* format = debugconDoColour ? ColourFormatStr : FormatStr;
         const char* colourStr = [](LogLevel level) -> const char*
@@ -83,8 +84,6 @@ namespace Npk
         ModemStatus = 6,
     };
 
-    bool com1DoColour;
-
     static inline void WriteUartReg(UartReg reg, uint8_t value)
     {
         Out8(static_cast<Port>((uint16_t)reg + (uint16_t)Port::Com1), value);
@@ -107,10 +106,6 @@ namespace Npk
 
     static void Com1Write(LogSinkMessage msg)
     {
-        constexpr const char FormatStr[] = "%.0s[c%u %7s]%.0s ";
-        constexpr const char ColourFormatStr[] = "%s[c%u %7s]%s ";
-        constexpr const char ResetColourStr[] = "\e[39m";
-
         const auto levelStr = LogLevelStr(msg.level);
         const char* format = debugconDoColour ? ColourFormatStr : FormatStr;
         const char* colourStr = [](LogLevel level) -> const char*

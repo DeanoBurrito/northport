@@ -1,4 +1,5 @@
 #include <hardware/Plat.hpp>
+#include <hardware/Entry.hpp>
 #include <hardware/x86_64/Mmu.hpp>
 #include <hardware/x86_64/LocalApic.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
@@ -333,6 +334,12 @@ namespace Npk
         }
     }
 
+    static void RemoteFunction(void* arg)
+    {
+        (void)arg;
+        Log("Hello, I am a remotely-called function from core %p!", LogLevel::Debug, arg);
+    }
+
     static void ApEntryFunc(uint64_t localStorage)
     {
         //setting cpu locals must be the first thing we do, since logging
@@ -343,13 +350,20 @@ namespace Npk
 
         RestoreMtrrs(savedMtrrs);
         CommonCpuSetup();
+        InitApLapic();
 
         ThreadContext idleContext {};
-        SetIdleThread(&idleContext);
-        SetCurrentThread(&idleContext);
+        BringCpuOnline(&idleContext);
 
         Log("AP init thread done, becoming idle thread.", LogLevel::Verbose);
         IntrsOn();
+
+        SmpMail mail {};
+        mail.data.onComplete = nullptr;
+        mail.data.arg = reinterpret_cast<void*>(MyCoreId());
+        mail.data.function = RemoteFunction;
+        SendMail(0, &mail);
+
         while (true)
             WaitForIntr();
     }
@@ -471,4 +485,10 @@ namespace Npk
         return { sl::TimeCount(*tscFreq, ReadTsc()).Rebase(sl::TimePoint::Frequency).ticks };
     }
     static_assert(sl::TimePoint::Frequency == sl::TimeScale::Nanos); //ReadPvSystemTime() returns nanos
+
+    void PlatSendIpi(void* id)
+    {
+        const uint32_t apicId = reinterpret_cast<uintptr_t>(id);
+        SendIpi(apicId, IpiType::Fixed, LapicIpiVector);
+    }
 }

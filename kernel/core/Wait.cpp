@@ -87,6 +87,8 @@ namespace Npk
             entry->waitable->tickets = 0;
             entry->waitable->mutexHolder = entry->thread;
             break;
+        default:
+            NPK_UNREACHABLE();
         }
 
         return true;
@@ -104,6 +106,8 @@ namespace Npk
         case WaitableType::Mutex:
             what->tickets++;
             return what->tickets;
+        default:
+            NPK_UNREACHABLE();
         }
     }
 
@@ -149,7 +153,7 @@ namespace Npk
         UnlockWaitables(thread->waitEntries);
         thread->waitEntriesLock.Unlock();
 
-        EnqueueThread(thread);
+        EnqueueThread(thread, 0);
     }
 
     static void DoTimeoutWait(Dpc* dpc, void* arg)
@@ -293,7 +297,7 @@ namespace Npk
                 break;
 
             waiter->status.Store(WaitStatus::Success, sl::Release);
-            EnqueueThread(waiter->thread);
+            EnqueueThread(waiter->thread, 0);
         }
         what->lock.Unlock();
         //TODO: we'll need figure out early completion, will need a per-thread atomic wait status
@@ -318,6 +322,8 @@ namespace Npk
             case WaitableType::Mutex:
                 canReset = what->mutexHolder == nullptr;
                 break;
+            default:
+                NPK_UNREACHABLE();
             }
 
             if (canReset)
@@ -329,7 +335,7 @@ namespace Npk
         {
             auto waiter = what->waiters.PopFront();
             waiter->status.Store(WaitStatus::Reset, sl::Release);
-            EnqueueThread(waiter->thread);
+            EnqueueThread(waiter->thread, 0);
         }
 
         what->tickets = 0;

@@ -256,4 +256,16 @@ namespace Npk
 
         return MmuError::Success;
     }
+
+    void ArchFlushTlb(uintptr_t base, size_t length)
+    {
+        const uintptr_t top = base + length;
+        base = AlignDownPage(base);
+
+        while (base < top)
+        {
+            INVLPG(base);
+            base += PageSize();
+        }
+    }
 }

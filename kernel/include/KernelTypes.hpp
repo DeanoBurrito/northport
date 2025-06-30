@@ -7,6 +7,7 @@
 #include <Flags.h>
 #include <Locks.h>
 #include <containers/List.h>
+#include <containers/Queue.h>
 #include <Compiler.h>
 #include <Time.h>
 
@@ -38,7 +39,7 @@ namespace Npk
         }
     };
 
-    enum class Ipl
+    enum class Ipl : uint8_t
     {
         Passive,
         Dpc,
@@ -152,7 +153,7 @@ namespace Npk
 
     using ClockQueue = sl::List<ClockEvent, &ClockEvent::hook>;
 
-    enum class WaitStatus
+    enum class WaitStatus : uint8_t
     {
         Incomplete,
         Timedout,
@@ -161,7 +162,7 @@ namespace Npk
         Success,
     };
 
-    enum class WaitableType
+    enum class WaitableType : uint8_t
     {
         Condition,
         Timer,
@@ -194,6 +195,42 @@ namespace Npk
             ClockEvent clockEvent;
             ThreadContext* mutexHolder;
         };
+    };
+
+    struct SmpMailData;
+    using MailQueue = sl::QueueMpSc<SmpMailData>;
+    using MailFunction = void (*)(void* arg);
+
+    struct SmpMailData
+    {
+        MailFunction function;
+        void* arg;
+        Waitable* onComplete;
+    };
+    using SmpMail = MailQueue::Item;
+
+    struct RemoteFlushData;
+    using ShootdownQueue = sl::QueueMpSc<RemoteFlushData>;
+
+    struct RemoteFlushData
+    {
+        uintptr_t base;
+        size_t length;
+        sl::Atomic<size_t> acknowledgements;
+    };
+    using RemoteFlushRequest = ShootdownQueue::Item;
+
+    struct RemoteCpuStatus
+    {
+        sl::Atomic<bool> ipiPending;
+    };
+
+    struct SmpControl
+    {
+        void* ipiId;
+        MailQueue mail;
+        ShootdownQueue shootdowns;
+        RemoteCpuStatus status;
     };
 
     enum class LogLevel
@@ -253,10 +290,15 @@ namespace Npk
 
     using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
 
+    struct SmpControl;
+
     struct MemoryDomain
     {
         Paddr physOffset;
         PageInfo* pfndb;
+
+        CpuId smpBase;
+        sl::Span<SmpControl> smpControls;
 
         uintptr_t pmaBase;
         KernelMap kernelSpace;

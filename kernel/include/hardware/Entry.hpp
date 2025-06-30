@@ -51,4 +51,9 @@ namespace Npk
     void DispatchPageFault(PageFaultFrame* frame);
     void DispatchSyscall(SyscallFrame frame);
     void DispatchException(ExceptionFrame* frame);
+
+    struct ThreadContext;
+
+    void BringCpuOnline(ThreadContext* idle);
+    //void BringCpuOffline();
 }

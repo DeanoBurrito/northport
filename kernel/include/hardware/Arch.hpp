@@ -121,6 +121,7 @@ namespace Npk
     KernelMap ArchSetKernelMap(sl::Opt<KernelMap> next);
     void* ArchSetTempMap(KernelMap* map, size_t index, Paddr paddr);
     MmuError ArchAddMap(KernelMap* map, uintptr_t vaddr, Paddr paddr, MmuFlags flags);
+    void ArchFlushTlb(uintptr_t base, size_t length);
 }
 
 #ifdef __x86_64__

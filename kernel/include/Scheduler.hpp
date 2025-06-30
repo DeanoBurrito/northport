@@ -28,7 +28,7 @@ namespace Npk
     using RunQueue = sl::List<ThreadContext, &ThreadContext::queueHook>;
 
     void Yield(bool voluntary);
-    void EnqueueThread(ThreadContext* thread);
+    void EnqueueThread(ThreadContext* thread, uint8_t boost);
     void DequeueThread(ThreadContext* thread);
     void SetIdleThread(ThreadContext* thread);
     void OnPassiveRunLevel();

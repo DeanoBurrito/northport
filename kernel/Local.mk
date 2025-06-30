@@ -1,5 +1,6 @@
-KERNEL_CXX_SRCS += BringUp.cpp Config.cpp CppRuntime.cpp Ipl.cpp Logging.cpp \
-	PageAccess.cpp PageAlloc.cpp Panic.cpp Scheduler.cpp \
+KERNEL_CXX_SRCS += core/BringUp.cpp core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
+	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp core/Panic.cpp \
+	core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support

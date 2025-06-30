@@ -38,12 +38,9 @@ namespace Npk
         Isr7 = 0x170,
 
         ErrorStatus = 0x280,
-        LvtCmci = 0x2F0,
         IcrLow = 0x300,
         IcrHigh = 0x310,
         LvtTimer = 0x320,
-        LvtThermalSensor = 0x330,
-        LvtPerfMonitor = 0x340,
         LvtLint0 = 0x350,
         LvtLint1 = 0x360,
         LvtError = 0x370,
@@ -105,12 +102,12 @@ namespace Npk
     {
         lapic->Write(LApicReg::SpuriousVector, LapicSpuriousVector);
         lapic->Write(LApicReg::LvtTimer, LvtMasked | LapicSpuriousVector);
-        lapic->Write(LApicReg::LvtThermalSensor, LvtMasked | LapicSpuriousVector);
-        lapic->Write(LApicReg::LvtPerfMonitor, LvtMasked | LapicSpuriousVector);
         lapic->Write(LApicReg::LvtLint0, LvtMasked | LapicSpuriousVector);
         lapic->Write(LApicReg::LvtLint1, LvtMasked | LapicSpuriousVector);
         lapic->Write(LApicReg::LvtError, LvtMasked | LapicSpuriousVector);
         lapic->Write(LApicReg::TimerInitCount, 0);
+
+        SetMyIpiId(reinterpret_cast<void*>(MyLapicId()));
 
         if (madt == nullptr)
             return;
@@ -221,7 +218,6 @@ namespace Npk
         Madt* madt = maybeMadt.HasValue() ? static_cast<Madt*>(*maybeMadt) : nullptr;
         FinishLapicInit(madt);
 
-        //TODO: handling lapic errors and CMCIs, maybe notify of thermal interrupt
         //TODO: add detection for PICs being present (there's a bit in acpi/madt)
 
         //BSP should take care of initializing, remapping and masking the PICs.
@@ -237,7 +233,25 @@ namespace Npk
         Out8(Port::Pic1Data, 0xFF);
 
         EnableLocalApic();
-        Log("BSP local APIC initialized", LogLevel::Verbose);
+        Log("BSP local APIC initialized.", LogLevel::Verbose);
+    }
+
+    void InitApLapic()
+    {
+        PrepareLocalApic();
+
+        if (!lapic->x2Mode)
+        {
+            //TODO: map pre-reserved address space window and map lapic mmio if required
+            aouihiuh
+        }
+
+        auto maybeMadt = GetAcpiTable(SigMadt);
+        Madt* madt = maybeMadt.HasValue() ? static_cast<Madt*>(*maybeMadt) : nullptr;
+        FinishLapicInit(madt);
+
+        EnableLocalApic();
+        Log("AP local APIC initialized.", LogLevel::Verbose);
     }
 
     void SignalEoi()
@@ -284,6 +298,15 @@ namespace Npk
 
         //need to wait a bit longer, re-arm lapic timer
         NPK_UNREACHABLE();
+    }
+
+    void HandleLapicErrorInterrupt()
+    {
+        const uint32_t status = lapic->Read(LApicReg::ErrorStatus);
+
+        Log("Local APIC error: lapic-%u%s, status=0x%x", LogLevel::Error, 
+            MyLapicId(), lapic->x2Mode ? ", x2-mode" : "", status);
+        lapic->Write(LApicReg::ErrorStatus, 0);
     }
 
     void SendIpi(uint32_t dest, IpiType type, uint8_t vector)

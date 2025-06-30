@@ -25,4 +25,6 @@ namespace Npk
         while (PlatReadTimestamp().epoch < end)
             asm volatile("");
     }
+
+    void PlatSendIpi(void* id);
 }

@@ -11,8 +11,7 @@
 
 namespace Npk
 {
-    void DispatchIpi() {}
-    void DispatchInterrupt(size_t vector) { (void)vector; }
+    void DispatchInterrupt(size_t vector) { (void)vector; };
     void DispatchPageFault(PageFaultFrame* frame) { (void)frame; }
     void DispatchSyscall(SyscallFrame frame) { (void)frame; }
     void DispatchException(ExceptionFrame* frame) { (void)frame; }
@@ -187,6 +186,18 @@ namespace Npk
         return reinterpret_cast<uintptr_t>(base);
     }
 
+    static void InitSmpControlBlocks(InitState& state, size_t cpuCount)
+    {
+        const size_t size = cpuCount * sizeof(SmpControl);
+
+        const auto base = state.VmAllocAnon(size);
+        domain0.smpBase = 0;
+        domain0.smpControls = { reinterpret_cast<SmpControl*>(base), cpuCount };
+
+        Log("Smp control blocks: 0x%zxB each, base %zu, based at %p", LogLevel::Info,
+            sizeof(SmpControl), domain0.smpBase, base);
+    }
+
     static sl::StringSpan CopyCommandLine(InitState& state, sl::StringSpan source)
     {
         char* vbase = state.VmAlloc(source.Size());
@@ -293,6 +304,7 @@ namespace Npk
         setupInfo.configCopy = CopyCommandLine(initState, loaderState.commandLine);
         MapKernelImage(initState, loaderState.kernelBase);
 
+        InitSmpControlBlocks(initState, cpuCount);
         ArchInitDomain0(initState);
         PlatInitDomain0(initState);
         InitPmFreeList(initState);
@@ -402,6 +414,15 @@ namespace Npk
     {
         return **localMemoryDomain;
     }
+
+    void BringCpuOnline(ThreadContext* idle)
+    {
+        SetIdleThread(idle);
+        SetCurrentThread(idle);
+        Log("Cpu %zu is online and available to the system.", LogLevel::Info, MyCoreId());
+
+        localMemoryDomain = &domain0; //TODO: multi-domain
+    }
 }
 
 extern "C"
@@ -432,10 +453,13 @@ extern "C"
         InitPageAccessCache(setupInfo.pmaEntries, setupInfo.pmaSlots);
         SetConfigStore(setupInfo.configCopy);
 
+        for (size_t i = 0; i < domain0.smpControls.Size(); i++)
+            new(&domain0.smpControls[i]) SmpControl();
+
         Log("System early init done, BSP is entering init thread.", LogLevel::Trace);
+
         ThreadContext idleContext {};
-        SetIdleThread(&idleContext);
-        SetCurrentThread(&idleContext);
+        BringCpuOnline(&idleContext);
 
         uintptr_t virtBase = setupInfo.virtBase;
         TryMapAcpiTables(virtBase);
