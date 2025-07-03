@@ -15,12 +15,62 @@ extern "C" char InterruptStubsBegin[];
 
 namespace Npk
 {
-    struct TrapFrame {};
+    struct TrapFrame 
+    {
+        uint64_t r15;
+        uint64_t r14;
+        uint64_t r13;
+        uint64_t r12;
+        uint64_t r11;
+        uint64_t r10;
+        uint64_t r9;
+        uint64_t r8;
+        uint64_t rbp;
+        uint64_t rdi;
+        uint64_t rsi;
+        uint64_t rdx;
+        uint64_t rcx;
+        uint64_t rbx;
+        uint64_t rax;
+        uint64_t vector;
+        uint64_t ec;
 
-    extern "C" void InterruptDispatch(TrapFrame* frame)
+        struct
+        {
+            uint64_t rip;
+            uint64_t cs;
+            uint64_t flags;
+            uint64_t rsp;
+            uint64_t ss;
+        } iret;
+    };
+
+    static void DispatchException(TrapFrame* frame)
     {
         (void)frame;
         NPK_UNREACHABLE();
+    }
+
+    extern "C" void InterruptDispatch(TrapFrame* frame)
+    {
+        auto prevIpl = RaiseIpl(Ipl::Interrupt);
+
+        if (frame->vector < 0x20)
+            DispatchException(frame);
+        else if (frame->vector == LapicSpuriousVector)
+        {} //no-op
+        else if (frame->vector == LapicErrorVector)
+            HandleLapicErrorInterrupt();
+        else if (frame->vector == LapicTimerVector)
+            HandleLapicTimerInterrupt();
+        else if (frame->vector == LapicIpiVector)
+            DispatchIpi();
+        else
+            DispatchInterrupt(frame->vector - 0x20);
+
+        if (frame->vector >= 0x20 && frame->vector != LapicSpuriousVector)
+            SignalEoi();
+        LowerIpl(prevIpl);
     }
 
     struct ArchSyscallFrame 
@@ -117,7 +167,7 @@ namespace Npk
             const uint64_t addr = (uintptr_t)InterruptStubsBegin + i * 16;
             idt[i].data[0] = (addr & 0xFFFF) | ((addr & 0xFFFF'0000) << 32);
             idt[i].data[0] |= 0x08 << 16; //kernel code selector
-            idt[i].data[0] |= ((0b111ull << 8) | (1ull << 15)) << 32; //present | type
+            idt[i].data[0] |= ((0b1110ull << 8) | (1ull << 15)) << 32; //present | type
             idt[i].data[1] = addr >> 32;
         }
         asm("lidt %0" :: "m"(idtr));
@@ -171,7 +221,7 @@ namespace Npk
 
         if (CpuHasFeature(CpuFeature::SysCall))
         {
-            WriteMsr(Msr::Star, (0x18ull << 48) | (0x8ull << 32));
+            WriteMsr(Msr::Star, ((0x18ull | 3) << 48) | (0x8ull << 32));
             WriteMsr(Msr::LStar, reinterpret_cast<uint64_t>(SysCallEntry));
             WriteMsr(Msr::CStar, reinterpret_cast<uint64_t>(BadSysCallEntry));
             WriteMsr(Msr::SFMask, 1 << 9); //will disable intrs on syscall entry
@@ -213,6 +263,9 @@ namespace Npk
 
     void ArchInitEarly()
     {
+        const uint64_t dummyLocals = reinterpret_cast<uint64_t>(KERNEL_CPULOCALS_BEGIN);
+        SetMyLocals(dummyLocals, 0);
+
         if (!CheckForDebugcon())
             CheckForCom1();
         CommonCpuSetup();

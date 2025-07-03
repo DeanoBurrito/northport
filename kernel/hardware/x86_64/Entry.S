@@ -49,7 +49,8 @@ InterruptEntry:
     push %r14
     push %r15
 
-    cmp $0x10, %ax
+    mov %cs, %ax
+    cmp $0x8, %ax
     je 1f
     swapgs
 1:
@@ -61,8 +62,8 @@ InterruptEntry:
     cld
     call InterruptDispatch
 
-    pop %rax
-    cmp $0x10, %ax
+    mov 144(%rsp), %ax
+    cmp $0x8, %ax
     je 1f
     swapgs
 1:
@@ -214,7 +215,7 @@ _EndOfBadSysCallEntry:
     _EndOfVectorStub\vector:
 .endm
 
-.pushsection .rodata
+.pushsection .text
 .align 0x10
 InterruptStubsBegin:
 .altmacro

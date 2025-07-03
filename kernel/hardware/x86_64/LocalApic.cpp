@@ -78,6 +78,7 @@ namespace Npk
     };
 
     CPU_LOCAL(LocalApic, lapic);
+    uintptr_t lapicMmioBase;
 
     static void PrepareLocalApic()
     {
@@ -207,9 +208,13 @@ namespace Npk
 
         if (!lapic->x2Mode)
         {
+            lapicMmioBase = virtBase;
+            const size_t cpuCount = MyMemoryDomain().smpControls.Size(); //TODO: account for multiple domains
+            virtBase += PageSize() * cpuCount;
+            Log("Reserved address space for %zu LAPICs", LogLevel::Trace, cpuCount);
+
+            lapic->mmio = lapicMmioBase;
             const Paddr mmioAddr = ReadMsr(Msr::ApicBase) & ~0xFFFul;
-            lapic->mmio = virtBase;
-            virtBase += PageSize();
             ArchAddMap(MyKernelMap(), lapic->mmio.BaseAddress(), mmioAddr, MmuFlag::Write | MmuFlag::Mmio);
             Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
         }
@@ -242,8 +247,12 @@ namespace Npk
 
         if (!lapic->x2Mode)
         {
-            //TODO: map pre-reserved address space window and map lapic mmio if required
-            aouihiuh
+            NPK_ASSERT(lapicMmioBase != 0);
+
+            lapic->mmio = lapicMmioBase + PageSize() * MyCoreId();
+            const Paddr mmioAddr = ReadMsr(Msr::ApicBase) & ~0xFFFul;
+            ArchAddMap(MyKernelMap(), lapic->mmio.BaseAddress(), mmioAddr, MmuFlag::Write | MmuFlag::Mmio);
+            Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
         }
 
         auto maybeMadt = GetAcpiTable(SigMadt);
@@ -261,7 +270,7 @@ namespace Npk
 
     uint32_t MyLapicId()
     {
-        return lapic->Read(LApicReg::Id) >> (lapic->x2Mode ? 24 : 0);
+        return lapic->Read(LApicReg::Id) >> (lapic->x2Mode ? 0 : 24);
     }
 
     uint8_t MyLapicVersion()

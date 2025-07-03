@@ -350,20 +350,13 @@ namespace Npk
 
         RestoreMtrrs(savedMtrrs);
         CommonCpuSetup();
-        InitApLapic();
 
         ThreadContext idleContext {};
         BringCpuOnline(&idleContext);
+        InitApLapic();
 
         Log("AP init thread done, becoming idle thread.", LogLevel::Verbose);
         IntrsOn();
-
-        SmpMail mail {};
-        mail.data.onComplete = nullptr;
-        mail.data.arg = reinterpret_cast<void*>(MyCoreId());
-        mail.data.function = RemoteFunction;
-        SendMail(0, &mail);
-
         while (true)
             WaitForIntr();
     }
