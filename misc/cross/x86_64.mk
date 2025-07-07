@@ -29,14 +29,15 @@ UEFI_BOOT_NAME = BOOTX64.EFI
 RUN_WITH_BIOS = no
 
 QEMU_BASE = qemu-system-x86_64 -machine q35 \
-	-smp 4 -m 128M -cdrom $(ISO_TARGET) \
-	-debugcon /dev/stdout -monitor stdio
+	-smp 4 -m 128M -cdrom $(ISO_TARGET)
 ifneq ($(RUN_WITH_BIOS), yes)
 	QEMU_BASE += -drive if=pflash,format=raw,file=$(QEMU_FW_FILE),readonly=on
 endif
 
-QEMU_ACCEL = --enable-kvm -cpu host,+invtsc
-QEMU_NO_ACCEL = -serial /dev/stdout
+QEMU_ACCEL = --enable-kvm -cpu host,+invtsc,migratable=no
+QEMU_NO_ACCEL =
+QEMU_HEADED = -debugcon /dev/stdout -monitor stdio
+QEMU_HEADLESS = -nographic
 QEMU_DEBUG = -s -S -no-reboot -no-shutdown
 QEMU_FW_FILE = $(VENDOR_CACHE_DIR)/ovmf-x86_64.fd
 OVMF_DOWNLOAD_URL = https://retrage.github.io/edk2-nightly/bin/RELEASEX64_OVMF.fd
