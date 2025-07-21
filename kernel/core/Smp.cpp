@@ -54,7 +54,7 @@ namespace Npk
 
         control->mail.Push(mail);
         if (!control->status.ipiPending.Exchange(true, sl::Acquire))
-            PlatSendIpi(control->ipiId, false);
+            PlatSendIpi(control->ipiId);
     }
 
     void FlushRemoteTlbs(sl::Span<CpuId> who, RemoteFlushRequest* what, bool sync)
@@ -74,7 +74,7 @@ namespace Npk
 
             control->shootdowns.Push(what);
             if (!control->status.ipiPending.Exchange(true, sl::Acquire))
-                PlatSendIpi(control->ipiId, false);
+                PlatSendIpi(control->ipiId);
         }
 
         if (!sync)

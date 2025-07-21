@@ -12,6 +12,7 @@ extern "C" char SysCallEntry[];
 extern "C" char SysEnterEntry[];
 extern "C" char BadSysCallEntry[];
 extern "C" char InterruptStubsBegin[];
+extern "C" char DebugEventEntry[];
 
 namespace Npk
 {
@@ -45,30 +46,51 @@ namespace Npk
         } iret;
     };
 
-    static void DispatchException(TrapFrame* frame)
+    extern "C" Debugger::DebugError DebugEventEntryNext(Debugger::EventType type, void* arg)
     {
-        (void)frame;
-        NPK_UNREACHABLE();
+        return DispatchDebugEvent(type, arg);
+    }
+    
+    static void HandleException(TrapFrame* frame)
+    {
+        switch (frame->vector)
+        {
+        case 2: //NMI
+        //TODO: handle exception
+        }
     }
 
     extern "C" void InterruptDispatch(TrapFrame* frame)
     {
         auto prevIpl = RaiseIpl(Ipl::Interrupt);
 
-        if (frame->vector < 0x20)
-            DispatchException(frame);
-        else if (frame->vector == LapicSpuriousVector)
-        {} //no-op
-        else if (frame->vector == LapicErrorVector)
+        bool suppressEoi = false;
+        switch (frame->vector)
+        {
+        case LapicSpuriousVector:
+            suppressEoi = true;
+            break;
+        case LapicErrorVector:
             HandleLapicErrorInterrupt();
-        else if (frame->vector == LapicTimerVector)
+            break;
+        case LapicTimerVector:
             HandleLapicTimerInterrupt();
-        else if (frame->vector == LapicIpiVector)
+            break;
+        case LapicIpiVector:
             DispatchIpi();
-        else
-            DispatchInterrupt(frame->vector - 0x20);
+            break;
+        default:
+            if (frame->vector < 0x20)
+            {
+                suppressEoi = true;
+                HandleException(frame);
+            }
+            else
+                DispatchInterrupt(frame->vector - 0x20);
+            break;
+        }
 
-        if (frame->vector >= 0x20 && frame->vector != LapicSpuriousVector)
+        if (!suppressEoi)
             SignalEoi();
         LowerIpl(prevIpl);
     }
@@ -164,7 +186,10 @@ namespace Npk
 
         for (size_t i = 0; i < IdtSize; i++)
         {
-            const uint64_t addr = (uintptr_t)InterruptStubsBegin + i * 16;
+
+            uint64_t addr = (uintptr_t)InterruptStubsBegin + i * 16;
+            if (i == DebugEventVector)
+                addr = (uintptr_t)DebugEventEntry;
             idt[i].data[0] = (addr & 0xFFFF) | ((addr & 0xFFFF'0000) << 32);
             idt[i].data[0] |= 0x08 << 16; //kernel code selector
             idt[i].data[0] |= ((0b1110ull << 8) | (1ull << 15)) << 32; //present | type
@@ -259,15 +284,15 @@ namespace Npk
     }
 
     bool CheckForDebugcon();
-    bool CheckForCom1();
+    bool CheckForCom1(bool debuggerOnly);
 
     void ArchInitEarly()
     {
         const uint64_t dummyLocals = reinterpret_cast<uint64_t>(KERNEL_CPULOCALS_BEGIN);
         SetMyLocals(dummyLocals, 0);
 
-        if (!CheckForDebugcon())
-            CheckForCom1();
+        const bool e9Active = CheckForDebugcon();
+        CheckForCom1(e9Active); //if debugcon is active, com1 is only allowed to be used for the debugger
         CommonCpuSetup();
     }
 

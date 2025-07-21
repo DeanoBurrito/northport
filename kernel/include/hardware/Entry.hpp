@@ -45,12 +45,19 @@ namespace Npk
         bool user;
     };
 
+    namespace Debugger 
+    { 
+        enum class EventType; 
+        enum class DebugError;
+    }
+
     void DispatchAlarm();
     void DispatchIpi();
     void DispatchInterrupt(size_t vector);
     void DispatchPageFault(PageFaultFrame* frame);
     void DispatchSyscall(SyscallFrame frame);
     void DispatchException(ExceptionFrame* frame);
+    Debugger::DebugError DispatchDebugEvent(Debugger::EventType type, void* data);
 
     struct ThreadContext;
 

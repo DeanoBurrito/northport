@@ -470,6 +470,8 @@ extern "C"
         ArchInitFull(virtBase);
         PlatInitFull(virtBase);
         PlatBootAps(setupInfo.apStacks, setupInfo.perCpuStores, setupInfo.perCpuStride);
+
+        Debugger::Initialize(domain0.smpControls.Size());
         //TODO: init vmm - virtBase serves as top of bump allocated region
 
         Log("BSP init thread done, becoming idle thread", LogLevel::Verbose);

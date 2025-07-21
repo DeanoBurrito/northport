@@ -76,6 +76,17 @@ namespace Npk
         return flags & (1 << 9);
     }
 
+    constexpr uint8_t DebugEventVector = 0xFB;
+
+    SL_ALWAYS_INLINE
+    Debugger::DebugError ArchCallDebugger(Debugger::EventType type, void* data)
+    {
+        Debugger::DebugError ret;
+        asm("int $0xFB; mov %%eax, %0" : "=r"(ret) : "D"(type), "S"(data) : "memory", "rax");
+        return ret;
+    }
+    static_assert(DebugEventVector == 0xFB);
+
 #define READ_CR(num) ({ uint64_t val; asm("mov %%cr" #num ", %0" : "=r"(val)); val; })
 #define WRITE_CR(num, val) do { asm("mov %0, %%cr" #num :: "r"(val) : "memory"); } while (false)
 }

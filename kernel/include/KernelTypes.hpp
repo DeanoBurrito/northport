@@ -31,6 +31,19 @@ namespace Npk
             lock.Lock();
         }
 
+        inline bool TryLock()
+        {
+            const bool restoreIntrs = IntrsOff();
+            const bool success = lock.TryLock();
+
+            if (success)
+                prevIntrs = restoreIntrs;
+            else if (restoreIntrs)
+                IntrsOn();
+
+            return success;
+        }
+
         inline void Unlock()
         {
             lock.Unlock();
@@ -59,6 +72,7 @@ namespace Npk
         {}
 
         inline void Lock();
+        inline bool TryLock();
         inline void Unlock();
     };
 
@@ -142,6 +156,16 @@ namespace Npk
 
     using DpcQueue = sl::FwdList<Dpc, &Dpc::hook>;
 
+    enum class CycleAccount
+    {
+        User,
+        Kernel,
+        KernelInterrupt,
+        Driver,
+        DriverInterrupt,
+        Debugger,
+    };
+
     struct ClockEvent
     {
         Dpc* dpc;
@@ -220,9 +244,12 @@ namespace Npk
     };
     using RemoteFlushRequest = ShootdownQueue::Item;
 
+    struct LocalScheduler;
+
     struct RemoteCpuStatus
     {
         sl::Atomic<bool> ipiPending;
+        LocalScheduler* scheduler;
     };
 
     struct SmpControl
@@ -290,9 +317,7 @@ namespace Npk
 
     using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
 
-    struct SmpControl;
-
-    struct MemoryDomain
+    struct SystemDomain
     {
         Paddr physOffset;
         PageInfo* pfndb;

@@ -4,6 +4,7 @@
 
 namespace Npk
 {
+    static_assert(DebugEventVector == 0xFB);
     constexpr uint8_t LapicErrorVector = 0xFC;
     constexpr uint8_t LapicIpiVector = 0xFD;
     constexpr uint8_t LapicTimerVector = 0xFE;

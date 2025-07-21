@@ -1,6 +1,7 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <KernelApi.hpp>
+#include <debugger/Debugger.hpp>
 #include <NanoPrintf.h>
 #include <Maths.h>
 
@@ -60,6 +61,9 @@ namespace Npk
 
     bool CheckForDebugcon()
     {
+        if (!ReadConfigUint("npk.x86.debugcon_enable", true))
+            return false;
+
         debugconDoColour = ReadConfigUint("npk.x86.debugcon_do_colour", true);
 
         //reading from port 0xE9 returns 0xE9 on qemu and bochs, can be used to detect
@@ -168,6 +172,19 @@ namespace Npk
         Com1Putc('\r', nullptr);
     }
 
+    static void Com1DebugSend(Debugger::DebugTransport* inst, sl::Span<uint8_t> data)
+    {
+        if (inst == nullptr)
+            return;
+
+        for (size_t i = 0; i < data.Size(); i++)
+            Com1Putc(data[i], nullptr);
+    }
+
+    static size_t Com1DebugReceive(Debugger::DebugTransport* inst, sl::Span<uint8_t> buffer, sl::Span<uint8_t> breakSeq)
+    {
+    }
+
     LogSink com1Sink
     {
         .listHook = {},
@@ -175,11 +192,30 @@ namespace Npk
         .Write = Com1Write
     };
 
-    bool CheckForCom1()
+    Debugger::DebugTransport com1Transport
     {
+        .name = "com1",
+        .opaque = nullptr,
+        .Send = Com1DebugSend,
+        .Receive = Com1DebugReceive,
+    };
+
+    bool CheckForCom1(bool debuggerOnly)
+    {
+        if (!ReadConfigUint("npk.x86.com1_enable", true))
+            return false;
+
+        if (ReadConfigUint("npk.x86.com1_for_debugger", false))
+        {
+            Debugger::AddTransport(&com1Transport);
+            return false;
+        }
+        if (debuggerOnly)
+            return false;
+
         com1DoColour = ReadConfigUint("npk.x86.com1_do_colour", true);
         AddLogSink(com1Sink);
 
-        return false;
+        return true;
     }
 }
