@@ -3,7 +3,7 @@
 
 namespace Npk
 {
-    static PageInfo* TakePage(MemoryDomain& dom)
+    static PageInfo* TakePage(SystemDomain& dom)
     {
         if (!dom.freeLists.zeroed.Empty())
             return dom.freeLists.zeroed.PopFront();
@@ -21,7 +21,7 @@ namespace Npk
 
     PageInfo* AllocPage(bool canFail)
     {
-        MemoryDomain& dom = MyMemoryDomain();
+        SystemDomain& dom = MySystemDomain();
 
         dom.freeLists.lock.Lock();
         PageInfo* page = TakePage(dom);
@@ -35,7 +35,7 @@ namespace Npk
 
     void FreePage(PageInfo* page)
     {
-        MemoryDomain& dom = MyMemoryDomain();
+        SystemDomain& dom = MySystemDomain();
 
         dom.freeLists.lock.Lock();
         dom.freeLists.free.PushBack(page);

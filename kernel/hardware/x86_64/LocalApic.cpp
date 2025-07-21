@@ -113,8 +113,7 @@ namespace Npk
         if (madt == nullptr)
             return;
 
-        const uint32_t myLapicId = lapic->Read(LApicReg::Id) 
-            >> (lapic->x2Mode ? 24 : 0);
+        const uint32_t myLapicId = MyLapicId();
 
         //first pass: find the acpi processor id assocaited with this lapic
         lapic->acpiId = -1;
@@ -209,7 +208,7 @@ namespace Npk
         if (!lapic->x2Mode)
         {
             lapicMmioBase = virtBase;
-            const size_t cpuCount = MyMemoryDomain().smpControls.Size(); //TODO: account for multiple domains
+            const size_t cpuCount = MySystemDomain().smpControls.Size(); //TODO: account for multiple domains
             virtBase += PageSize() * cpuCount;
             Log("Reserved address space for %zu LAPICs", LogLevel::Trace, cpuCount);
 

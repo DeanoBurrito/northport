@@ -83,7 +83,7 @@ namespace Npk
     {
         if (key.Empty())
             return {};
-        if (key.End() - 1 == 0)
+        if (key[key.Size() - 1] == 0)
             key = key.Subspan(0, key.Size() - 1);
 
         for (size_t i = 0; i < configStore.Size(); i++)
@@ -102,7 +102,7 @@ namespace Npk
     { 
         constexpr sl::StringSpan YesStrs[] =
         {
-            "true", "yes", "yeah"
+            "true"_span, "yes"_span, "yeah"_span
         };
 
         const sl::StringSpan nullValue {};
@@ -113,7 +113,7 @@ namespace Npk
 
         for (size_t i = 0; i < sizeof(YesStrs) / sizeof(sl::StringSpan); i++)
         {
-            if (value == YesStrs[i].Subspan(0, YesStrs[i].Size() - 1))
+            if (value == YesStrs[i].Subspan(0, YesStrs[i].Size()))
                 return true;
         }
 
@@ -127,10 +127,15 @@ namespace Npk
             return defaultValue;
 
         size_t offset = *value;
+        //consume trailing whitespace of key
         while (offset < configStore.Size() && IsSpace(configStore[offset]))
             offset++;
+
         if (offset >= configStore.Size() || configStore[offset] != KeyValueDelim)
             return defaultValue; //key is present but has no assigned value
+        offset++;
+
+        //consume leading whitespace in value
         while (offset < configStore.Size() && IsSpace(configStore[offset]))
             offset++;
 

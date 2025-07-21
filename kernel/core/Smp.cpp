@@ -4,7 +4,7 @@ namespace Npk
 {
     static inline SmpControl* GetControl(CpuId who)
     {
-        auto& dom = MyMemoryDomain();
+        auto& dom = MySystemDomain();
         who -= dom.smpBase;
 
         if (who >= dom.smpControls.Size())
@@ -54,7 +54,7 @@ namespace Npk
 
         control->mail.Push(mail);
         if (!control->status.ipiPending.Exchange(true, sl::Acquire))
-            PlatSendIpi(control->ipiId);
+            PlatSendIpi(control->ipiId, false);
     }
 
     void FlushRemoteTlbs(sl::Span<CpuId> who, RemoteFlushRequest* what, bool sync)
@@ -74,7 +74,7 @@ namespace Npk
 
             control->shootdowns.Push(what);
             if (!control->status.ipiPending.Exchange(true, sl::Acquire))
-                PlatSendIpi(control->ipiId);
+                PlatSendIpi(control->ipiId, false);
         }
 
         if (!sync)
@@ -102,5 +102,14 @@ namespace Npk
         auto control = GetControl(MyCoreId());
         NPK_CHECK(control != nullptr, );
         control->ipiId = id;
+    }
+
+    void* GetIpiId(CpuId id)
+    {
+        auto control = GetControl(id);
+        if (control == nullptr)
+            return nullptr;
+
+        return control->ipiId;
     }
 }

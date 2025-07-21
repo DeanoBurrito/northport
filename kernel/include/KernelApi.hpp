@@ -10,7 +10,7 @@ namespace Npk
         bool PmaCacheSetEntry(size_t slot, void** curVaddr, Paddr curPaddr, Paddr nextPaddr);
     };
 
-    extern MemoryDomain domain0;
+    extern SystemDomain domain0;
 
     SL_PRINTF_FUNC(1, 3)
     void Log(const char* msg, LogLevel level, ...);
@@ -39,6 +39,24 @@ namespace Npk
     }
 
     template<Ipl min, Ipl max>
+    inline bool IplSpinLock<min, max>::TryLock()
+    {
+        auto lastIpl = CurrentIpl();
+        if (lastIpl > max || min > lastIpl)
+            Panic("Bad IPL when trying to acquire IplSpinLock");
+
+        RaiseIpl(max);
+        const bool success = lock.TryLock();
+
+        if (success)
+            prevIpl = lastIpl;
+        else
+            LowerIpl(prevIpl);
+
+        return success;
+    }
+
+    template<Ipl min, Ipl max>
     inline void IplSpinLock<min, max>::Unlock()
     {
         if (prevIpl < max)
@@ -51,7 +69,9 @@ namespace Npk
     void SendMail(CpuId who, SmpMail* mail);
     void FlushRemoteTlbs(sl::Span<CpuId> who, RemoteFlushRequest* what, bool sync);
     void SetMyIpiId(void* id);
+    void* GetIpiId(CpuId id);
     
+    CycleAccount SetCycleAccount(CycleAccount who);
     void AddClockEvent(ClockEvent* event);
     bool RemoveClockEvent(ClockEvent* event);
 
@@ -74,12 +94,12 @@ namespace Npk
         return ((info - domain0.pfndb) << PfnShift()) + domain0.physOffset;
     }
 
-    MemoryDomain& MyMemoryDomain();
+    SystemDomain& MySystemDomain();
 
     SL_ALWAYS_INLINE
     KernelMap* MyKernelMap()
     {
-        return &MyMemoryDomain().kernelSpace;
+        return &MySystemDomain().kernelSpace;
     }
 
     PageInfo* AllocPage(bool canFail);

@@ -2,11 +2,13 @@
 #include <AcpiTypes.hpp>
 #include <Scheduler.hpp>
 #include <BakedConstants.hpp>
+#include <debugger/Debugger.hpp>
 #include <interfaces/loader/Generic.hpp>
 #include <Maths.h>
 #include <Memory.h>
 #include <UnitConverter.h>
 
+//TODO: temporary, this is only needed for DispatchInterrupt/PageFault/Syscall/Exception below
 #include <hardware/Entry.hpp>
 
 namespace Npk
@@ -47,7 +49,7 @@ namespace Npk
         return {};
     }
 
-    MemoryDomain domain0;
+    SystemDomain domain0;
 
     char* InitState::VmAllocAnon(size_t length)
     {
@@ -408,20 +410,21 @@ namespace Npk
         return {};
     }
 
-    CPU_LOCAL(MemoryDomain*, localMemoryDomain);
+    CPU_LOCAL(SystemDomain*, localSystemDomain);
 
-    MemoryDomain& MyMemoryDomain()
+    SystemDomain& MySystemDomain()
     {
-        return **localMemoryDomain;
+        return **localSystemDomain;
     }
 
     void BringCpuOnline(ThreadContext* idle)
     {
-        SetIdleThread(idle);
+        localSystemDomain = &domain0; //TODO: multi-domain
+
+        InitLocalScheduler(idle);
         SetCurrentThread(idle);
         Log("Cpu %zu is online and available to the system.", LogLevel::Info, MyCoreId());
 
-        localMemoryDomain = &domain0; //TODO: multi-domain
     }
 }
 
@@ -449,7 +452,7 @@ extern "C"
         ArchSetKernelMap({});
 
         SetMyLocals(setupInfo.perCpuStores, 0);
-        localMemoryDomain = &domain0;
+        localSystemDomain = &domain0;
         InitPageAccessCache(setupInfo.pmaEntries, setupInfo.pmaSlots);
         SetConfigStore(setupInfo.configCopy);
 
