@@ -434,6 +434,9 @@ extern "C"
     {
         using namespace Npk;
 
+        const auto loaderState = Loader::GetEntryState();
+        SetConfigStore(loaderState.commandLine, true);
+
         ArchInitEarly();
         PlatInitEarly();
         PrintWelcome();
@@ -444,17 +447,14 @@ extern "C"
             INIT_ARRAY_BEGIN[i]();
         Log("Ran %zu global constructors.", LogLevel::Verbose, globalCtorCount);
 
-        const auto loaderState = Loader::GetEntryState();
-        SetConfigStore(loaderState.commandLine);
         SetConfigRoot(loaderState);
-
         const auto setupInfo = SetupDomain0(loaderState);
         ArchSetKernelMap({});
 
         SetMyLocals(setupInfo.perCpuStores, 0);
         localSystemDomain = &domain0;
         InitPageAccessCache(setupInfo.pmaEntries, setupInfo.pmaSlots);
-        SetConfigStore(setupInfo.configCopy);
+        SetConfigStore(setupInfo.configCopy, false);
 
         for (size_t i = 0; i < domain0.smpControls.Size(); i++)
             new(&domain0.smpControls[i]) SmpControl();

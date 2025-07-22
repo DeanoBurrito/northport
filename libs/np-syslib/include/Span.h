@@ -56,6 +56,11 @@ namespace sl
             return Span(data + begin, length);
         }
 
+        Span<const T> Const() const
+        {
+            return Span<const T>(data, size);
+        }
+
         Span Find(Span other) const
         {
             if (other.size > size || other.Empty())

@@ -75,7 +75,7 @@ namespace Npk
     void AddClockEvent(ClockEvent* event);
     bool RemoveClockEvent(ClockEvent* event);
 
-    void SetConfigStore(sl::StringSpan store);
+    void SetConfigStore(sl::StringSpan store, bool noLog);
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
     sl::StringSpan ReadConfigString(sl::StringSpan key, sl::StringSpan defaultValue);
 

@@ -8,10 +8,12 @@ namespace Npk
 
     static sl::StringSpan configStore {};
 
-    void SetConfigStore(sl::StringSpan store)
+    void SetConfigStore(sl::StringSpan store, bool noLog)
     {
         configStore = store;
 
+        if (noLog)
+            return;
         Log("Config store set to: %.*s", LogLevel::Info, static_cast<int>(store.Size()), store.Begin());
     }
 

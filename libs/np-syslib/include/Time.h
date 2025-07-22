@@ -15,8 +15,8 @@ namespace sl
 
     struct TimeCount
     {
-        size_t frequency;
-        size_t ticks;
+        uint64_t frequency;
+        uint64_t ticks;
 
         constexpr TimeCount() : frequency(0), ticks(0)
         {}
@@ -29,10 +29,10 @@ namespace sl
 
         TimeCount Rebase(size_t newFrequency) const;
 
-        bool operator==(const TimeCount& other) const
+        constexpr bool operator==(const TimeCount& other) const
         { return other.frequency == frequency && other.ticks == ticks; }
 
-        bool operator!=(const TimeCount& other) const
+        constexpr bool operator!=(const TimeCount& other) const
         { return other.frequency != frequency || other.ticks != ticks; }
     };
 
@@ -40,26 +40,35 @@ namespace sl
     {
         constexpr static sl::TimeScale Frequency = TimeScale::Nanos;
 
-        size_t epoch;
+        uint64_t epoch;
 
         static TimePoint Now()
         { return {}; }
 
-        bool operator==(TimePoint other)
+        constexpr bool operator==(TimePoint other)
         { return epoch == other.epoch; }
 
-        bool operator!=(TimePoint other)
+        constexpr bool operator!=(TimePoint other)
         { return epoch != other.epoch; }
 
-        bool operator>(TimePoint other)
+        constexpr bool operator>(TimePoint other)
         { return epoch > other.epoch; }
 
-        bool operator<(TimePoint other)
+        constexpr bool operator<(TimePoint other)
         { return epoch < other.epoch; }
 
         TimePoint operator+(TimeCount duration)
         { return { epoch + duration.Rebase(Frequency).ticks }; }
+
+        constexpr TimeCount ToCount() const
+        { return TimeCount(Frequency, epoch); }
     };
+
+    constexpr TimePoint operator-(TimePoint a, TimePoint b)
+    { return { a.epoch - b.epoch }; }
+
+    constexpr TimePoint operator+(TimePoint a, TimePoint b)
+    { return { a.epoch + b.epoch }; }
 }
 
 constexpr sl::TimeCount operator""_ms(unsigned long long units)

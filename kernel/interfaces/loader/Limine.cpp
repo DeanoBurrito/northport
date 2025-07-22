@@ -80,7 +80,7 @@ namespace Npk::Loader
         sl::StringSpan cmdline {};
         if (fileReq.response != nullptr)
         {
-            const size_t len = sl::MemFind(fileReq.response->kernel_file->cmdline, ' ', sl::NoLimit);
+            const size_t len = sl::MemFind(fileReq.response->kernel_file->cmdline, 0, sl::NoLimit);
             cmdline = sl::StringSpan(fileReq.response->kernel_file->cmdline, len);
         }
 

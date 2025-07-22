@@ -86,10 +86,10 @@ namespace sl
         { T ret; __atomic_load(&value, &ret, (int)order); return ret; }
 
         T Exchange(T incoming, MemoryOrder order = MemoryOrder::SeqCst)
-        { __atomic_exchange(&value, &incoming, (int)order); return incoming; }
+        { T ret; __atomic_exchange(&value, &incoming, &ret, (int)order); return ret; }
 
         T Exchange(T incoming, MemoryOrder order = MemoryOrder::SeqCst) volatile
-        { __atomic_exchange(&value, &incoming, (int)order); return incoming; }
+        { T ret; __atomic_exchange(&value, &incoming, &ret, (int)order); return ret; }
 
         bool CompareExchange(T& expected, T desired, MemoryOrder order = MemoryOrder::SeqCst)
         { return __atomic_compare_exchange(&value, &expected, &desired, false, (int)order, (int)order); }
