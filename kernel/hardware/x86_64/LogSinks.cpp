@@ -172,17 +172,30 @@ namespace Npk
         Com1Putc('\r', nullptr);
     }
 
-    static void Com1DebugSend(Debugger::DebugTransport* inst, sl::Span<uint8_t> data)
+    static bool Com1DebugSend(Debugger::DebugTransport* inst, sl::Span<const uint8_t> data)
     {
-        if (inst == nullptr)
-            return;
+        (void)inst;
 
         for (size_t i = 0; i < data.Size(); i++)
             Com1Putc(data[i], nullptr);
+
+        //TODO: check error bits in LineStatus
+        return true;
     }
 
-    static size_t Com1DebugReceive(Debugger::DebugTransport* inst, sl::Span<uint8_t> buffer, sl::Span<uint8_t> breakSeq)
+    static size_t Com1DebugReceive(Debugger::DebugTransport* inst, sl::Span<uint8_t> buffer)
     {
+        (void)inst;
+
+        for (size_t i = 0; i < buffer.Size(); i++)
+        {
+            if ((ReadUartReg(UartReg::LineStatus) & 0b1) == 0)
+                return i;
+
+            buffer[i] = ReadUartReg(UartReg::Data);
+        }
+
+        return buffer.Size();
     }
 
     LogSink com1Sink
@@ -207,8 +220,9 @@ namespace Npk
 
         if (ReadConfigUint("npk.x86.com1_for_debugger", false))
         {
+            Com1Reset();
             Debugger::AddTransport(&com1Transport);
-            return false;
+            return true;
         }
         if (debuggerOnly)
             return false;

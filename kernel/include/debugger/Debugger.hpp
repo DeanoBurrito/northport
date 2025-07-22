@@ -28,8 +28,10 @@ namespace Npk::Debugger
         const char* name;
         void* opaque;
 
-        void (*Send)(DebugTransport* inst, sl::Span<uint8_t> data);
-        size_t (*Receive)(DebugTransport* inst, sl::Span<uint8_t> buffer, sl::Span<uint8_t> breakSeq);
+        //returns whether sending was error-free
+        bool (*Send)(DebugTransport* inst, sl::Span<const uint8_t> data);
+        //returns number of bytes received
+        size_t (*Receive)(DebugTransport* inst, sl::Span<uint8_t> buffer);
     };
     
     struct DebugProtocol
