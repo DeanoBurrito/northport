@@ -3,6 +3,20 @@
 #include <hardware/Plat.hpp>
 #include <hardware/Entry.hpp>
 
+/* Clock Subsystem:
+ * There's two things happening in this file:
+ * - The first is 'cycle accounting', a name shamelessly stolen from minoca
+ *   sources. This is just tracking who's been using cpu processing time.
+ * - The second is the clock queue(s). This allows us to multiplex 1 hardware
+ *   timer (that provides a timestamp + interrupt capabilities) into as many
+ *   events as we need in software. All clock queue related code runs at DPC
+ *   IPL. Each cpu core maintains its own clock queue, which is a lock and
+ *   a doubly linked list of clock events, sorted with the soonest-expiring
+ *   first. Generally a cpu only managed it's local clock queue, with the
+ *   exception being cancelling a queued clock event. Since a thread might
+ *   have migrated between starting and wanting to stop a clock event, we need
+ *   to support this, hence why each clock queue has a lock.
+ */
 namespace Npk
 {
     constexpr size_t AlarmFreeMs = 100;
@@ -169,8 +183,8 @@ namespace Npk
     {
         NPK_ASSERT(event != nullptr);
 
-        auto queue = event->queue.Exchange(nullptr);
-        if (queue == nullptr)
+        auto queue = event->queue.Exchange(nullptr, sl::Acquire);
+        if (queue == nullptr || queue == reinterpret_cast<ClockQueue*>(1))
             return false;
 
         queue->lock.Lock();
