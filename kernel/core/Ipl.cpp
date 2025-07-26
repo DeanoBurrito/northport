@@ -62,7 +62,6 @@ namespace Npk
             switch (currentIpl)
             {
             case Ipl::Interrupt: break; //no-op
-            case Ipl::Clock: break; //no-op
             case Ipl::Dpc:
                 RunDpcs();
                 break;
@@ -87,7 +86,6 @@ namespace Npk
         {
             "Passive",
             "Dpc",
-            "Clock",
             "Interrupt"
         };
 
@@ -97,8 +95,7 @@ namespace Npk
     }
     static_assert(static_cast<Ipl>(0) == Ipl::Passive);
     static_assert(static_cast<Ipl>(1) == Ipl::Dpc);
-    static_assert(static_cast<Ipl>(2) == Ipl::Clock);
-    static_assert(static_cast<Ipl>(3) == Ipl::Interrupt);
+    static_assert(static_cast<Ipl>(2) == Ipl::Interrupt);
 
     void QueueDpc(Dpc* dpc)
     {

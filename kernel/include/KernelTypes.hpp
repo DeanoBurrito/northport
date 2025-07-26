@@ -56,7 +56,6 @@ namespace Npk
     {
         Passive,
         Dpc,
-        Clock,
         Interrupt,
     };
 
@@ -166,16 +165,25 @@ namespace Npk
         Debugger,
     };
 
+    struct Waitable;
+    struct ClockQueue;
+
     struct ClockEvent
     {
         Dpc* dpc;
+        Waitable* waitable;
         sl::ListHook hook;
-        CpuId cpu;
         sl::TimePoint expiry;
+        sl::Atomic<ClockQueue*> queue;
     };
-    static_assert(offsetof(ClockEvent, dpc) == 0);
 
-    using ClockQueue = sl::List<ClockEvent, &ClockEvent::hook>;
+    using ClockList = sl::List<ClockEvent, &ClockEvent::hook>;
+
+    struct ClockQueue
+    {
+        IplSpinLock<Ipl::Dpc> lock;
+        ClockList events;
+    };
 
     enum class WaitStatus : uint8_t
     {

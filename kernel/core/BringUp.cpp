@@ -49,7 +49,7 @@ namespace Npk
         return {};
     }
 
-    SystemDomain domain0;
+    SystemDomain domain0 {};
 
     char* InitState::VmAllocAnon(size_t length)
     {

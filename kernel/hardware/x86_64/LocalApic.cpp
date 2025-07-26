@@ -298,7 +298,10 @@ namespace Npk
     void HandleLapicTimerInterrupt()
     {
         if (lapic->hasTscDeadline)
+        {
+            WriteMsr(Msr::TscDeadline, 0);
             return DispatchAlarm();
+        }
 
         //we're emulating the tsc, check if we dispatch the alarm now
         if (ReadTsc() >= lapic->tscExpiry)
