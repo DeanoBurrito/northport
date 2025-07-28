@@ -1,9 +1,9 @@
-#include <KernelApi.hpp>
 #include <AcpiTypes.hpp>
-#include <Scheduler.hpp>
 #include <BakedConstants.hpp>
+#include <KernelApi.hpp>
+#include <Loader.hpp>
+#include <Scheduler.hpp>
 #include <debugger/Debugger.hpp>
-#include <interfaces/loader/Generic.hpp>
 #include <Maths.h>
 #include <Memory.h>
 #include <UnitConverter.h>

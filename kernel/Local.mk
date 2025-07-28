@@ -1,7 +1,8 @@
-KERNEL_CXX_SRCS += core/BringUp.cpp core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
+KERNEL_CXX_SRCS += core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
 	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp core/Panic.cpp \
 	core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
 	debugger/Debugger.cpp debugger/ProtocolGdb.cpp \
+	entry/BringUp.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support
@@ -11,9 +12,9 @@ ifeq ($(ENABLE_KERNEL_UBSAN), yes)
 endif
 
 ifeq ($(KERNEL_BOOT_PROTOCOL), limine)
-	KERNEL_CXX_SRCS += interfaces/loader/Limine.cpp
+	KERNEL_CXX_SRCS += entry/Limine.cpp
 else ifeq ($(KERNEL_BOOT_PROTOCOL), crow)
-	KERNEL_CXX_SRCS += interfaces/loader/Crow.cpp
+	KERNEL_CXX_SRCS += entry/Crow.cpp
 else
 $(error "Unknown boot protocol: $(KERNEL_BOOT_PROTOCOL), build aborted.")
 endif

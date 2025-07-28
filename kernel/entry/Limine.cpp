@@ -1,4 +1,4 @@
-#include <interfaces/loader/Generic.hpp>
+#include <Loader.hpp>
 #include <KernelApi.hpp>
 #include <Memory.h>
 #include "Limine.h"
