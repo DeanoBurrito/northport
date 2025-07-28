@@ -1,15 +1,22 @@
 #include <debugger/Debugger.hpp>
-#include <debugger/GdbRemote.hpp>
+#include <debugger/ProtocolGdb.hpp>
 #include <KernelApi.hpp>
 #include <containers/List.h>
 #include <Maths.h>
 
-/* Kernel Debugger Theory:
- * - besides initialize(), actual debugger work happens inside the interrupt handler for RtlDispatchDebugRequest()
- * - operates in lockstep with debugger commands. Kernel runs until a stop condition is met and then notifies debugger.
- *      - exception to this is host sending 'STOP NOW' message, we'll need device interrupts for this.
- * - bitmap of enabled debug events, which we can check before submitting RtlDispatchDebugRequest(), saves some overhead.
- * - separation of high level debugger control, debugger protocol, and debugger transport
+/* Kernel Debugger:
+ * There's three main moving parts here:
+ * - transport, provided by the arch/platform layer. Used to get bytes to and from the host machine.
+ * - protocol, interprets and fulfills commands from the host.
+ * - core, provides the public API for the rest of the kernel and common functionality
+ *   between protocols and machines.
+ *
+ * The debugger core mostly lives within `DispatchDebugEvent()`, 
+ *
+ * - allowedEvents bitmap, saves some overhead
+ * - freezing protocol
+ * - core/protocol operates in lockstep with host
+ *   TODO: write this out properly
  */
 namespace Npk::Debugger
 {
@@ -17,8 +24,10 @@ namespace Npk::Debugger
     static bool connected;
     static size_t cpuCount;
     static DebugProtocol* activeProtocol;
+    static DebugTransport* activeTransport;
     
     static sl::Atomic<size_t> freezingCount;
+    static sl::Flags<EventType> allowedEvents;
 
     DebugError Initialize(size_t numCpus)
     {
@@ -28,7 +37,7 @@ namespace Npk::Debugger
             return DebugError::NotSupported;
         }
 
-        const auto protocolChoice = ReadConfigString("npk.debugger.protocol", "gdb");
+        const auto protocolChoice = ReadConfigString("npk.debugger.protocol", "gdb"_span);
         if (protocolChoice == "gdb"_span)
             activeProtocol = GetGdbProtocol();
         else
@@ -37,12 +46,15 @@ namespace Npk::Debugger
                 LogLevel::Error, (int)protocolChoice.Size(), protocolChoice.Begin());
             return DebugError::BadEnvironment;
         }
+        activeProtocol->transport = activeTransport;
         //TODO: ensure at least one transport is available
 
         cpuCount = numCpus;
-        initialized = true;
         connected = false;
         freezingCount = 0;
+        allowedEvents.Reset();
+        allowedEvents.Set(EventType::RequestConnect);
+        initialized = true;
 
         Log("Debugger initialized: transport=serial, protocol=%s.", LogLevel::Info, 
             activeProtocol->name);
@@ -59,6 +71,8 @@ namespace Npk::Debugger
     {
         if (!initialized)
             return DebugError::NotSupported;
+        if (!allowedEvents.Has(EventType::RequestConnect))
+            return DebugError::NotSupported;
 
         return ArchCallDebugger(EventType::RequestConnect, nullptr);
     }
@@ -67,8 +81,35 @@ namespace Npk::Debugger
     {
         if (!initialized)
             return;
+        if (!allowedEvents.Has(EventType::RequestDisconnect))
+            return;
 
         ArchCallDebugger(EventType::RequestDisconnect, nullptr);
+    }
+
+    void NotifyOfEvent(EventType type, void* eventData)
+    {
+        if (!initialized)
+            return;
+
+        if (freezingCount.Load(sl::SeqCst) != 0)
+            freezingCount.Sub(1, sl::SeqCst);
+        while (freezingCount.Load(sl::SeqCst) != 0)
+            sl::HintSpinloop();
+
+        //check if the debugger cares about this event type right now
+        if (!allowedEvents.Has(type))
+            return;
+
+        ArchCallDebugger(type, eventData);
+    }
+
+    void AddTransport(DebugTransport* transport)
+    {
+        if (initialized)
+            return;
+
+        activeTransport = transport;
     }
 
     static const char* EventTypeStr(EventType type)
@@ -77,18 +118,45 @@ namespace Npk::Debugger
         {
         case EventType::RequestConnect: return "request-connect";
         case EventType::RequestDisconnect: return "request-disconnect";
+        case EventType::AddTransport: return "add-transport";
+
+        case EventType::CpuException: return "exception";
+        case EventType::Interrupt: return "interrupt";
+        case EventType::Ipi: return "ipi";
         default:
             return "n/a";
         }
     }
 
+    /* Freezing protocol:
+     * Set `freezingCount` to the number of cpus in the system, then notify other
+     * cpuvia an IPI. Remote cpuwill then notify the debugger of an IPI occuring,
+     * at which point we check the value of `freezingCount`. If it's non-zero, that cpu
+     * decrements `freezingCount` and spins until it is set to 0. The cpu that initiated
+     * the freeze waits until it reaches 1, then it can continue with debugging.
+     * To thaw all cpus, setting `freezingCount` to 0 will let them continue.
+     * There is a race condition with this during system startup, where remote cpus
+     * might not have populated their 'ipi id' fields, so we cant notify them. The
+     * workaround is to re-send the ipi after an amount of time (10ms by default).
+     */
     static void FreezeAllCpus()
     {
         freezingCount.Store(cpuCount, sl::SeqCst);
 
-        //TODO: send NMI to notify of freeze occuring
-        while (freezingCount.Load(sl::SeqCst) != 1)
-            sl::HintSpinloop();
+        const auto pingInterval = 10_ms;
+        auto startTime = PlatReadTimestamp();
+        auto endTime = startTime.epoch;
+        do
+        {
+            if (PlatReadTimestamp().epoch >= endTime)
+            {
+                for (size_t i = 0; i < cpuCount; i++)
+                    PlatSendIpi(GetIpiId(i));
+                startTime = PlatReadTimestamp();
+                endTime = pingInterval.Rebase(startTime.Frequency).ticks + startTime.epoch;
+            }
+        }
+        while (freezingCount.Load(sl::SeqCst) != 1);
     }
 
     static void ThawAllCpus()
@@ -126,6 +194,15 @@ namespace Npk
             }
             result = activeProtocol->Connect(activeProtocol);
             connected = result == DebugError::Success;
+
+            if (connected)
+            {
+                allowedEvents.Clear(EventType::RequestConnect);
+                allowedEvents.Set(EventType::RequestDisconnect);
+                allowedEvents.Set(EventType::CpuException);
+                allowedEvents.Set(EventType::Interrupt);
+                allowedEvents.Set(EventType::Ipi);
+            }
             break;
 
         case EventType::RequestDisconnect:
@@ -138,13 +215,15 @@ namespace Npk
             //TODO: flush and pending requests, reset breakpoints
             result = DebugError::Success;
             break;
-            
+
         default:
             NPK_UNREACHABLE(); //TODO: not this! we cant use Panic() from inside the debugger core
         }
 
         ThawAllCpus();
         SetCycleAccount(prevCycleAccount);
+
+        Log("Debugger event result: %u", LogLevel::Debug, result);
         return result;
     }
 }

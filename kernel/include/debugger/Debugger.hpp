@@ -11,6 +11,10 @@ namespace Npk::Debugger
         RequestDisconnect,
         AddTransport,
 
+        CpuException,
+        Interrupt,
+        Ipi,
+
         Count
     };
 
@@ -47,5 +51,7 @@ namespace Npk::Debugger
     DebugError Initialize(size_t cpuCount);
     DebugError Connect();
     void Disconnect();
+    void NotifyOfEvent(EventType type, void* eventData);
+
     void AddTransport(DebugTransport* transport);
 }

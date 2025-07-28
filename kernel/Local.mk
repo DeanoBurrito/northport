@@ -1,6 +1,7 @@
 KERNEL_CXX_SRCS += core/BringUp.cpp core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
 	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp core/Panic.cpp \
 	core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
+	debugger/Debugger.cpp debugger/ProtocolGdb.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support

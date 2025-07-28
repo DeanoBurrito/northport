@@ -1,4 +1,4 @@
-#include <debugger/GdbRemote.hpp>
+#include <debugger/ProtocolGdb.hpp>
 #include <NanoPrintf.h>
 
 namespace Npk::Debugger
@@ -20,11 +20,13 @@ namespace Npk::Debugger
         .debugProtocol =
         {
             .name = "gdb-remote",
+            .transport = nullptr,
             .opaque = &gdbProtocolInstance,
 
             .Connect = GdbConnect,
             .Disconnect = GdbDisconnect,
         },
+        .workingBuffer = {},
     };
 
     DebugProtocol* GetGdbProtocol()
@@ -131,7 +133,7 @@ namespace Npk::Debugger
                 //received too much data: TODO: this is a weird failure path, we return nothing?
                 return {}; 
             }
-            if (dataEnd == -1)
+            if (dataEnd == (size_t)-1)
             {
                 //we dont have a complete packet yet, carry on receiving
                 continue;
@@ -153,7 +155,7 @@ namespace Npk::Debugger
                 dataBegin = i + 1;
                 break;
             }
-            if (dataBegin == -1)
+            if (dataBegin == (size_t)-1)
             {
                 //we didnt catch the start of the packet, NACK the host.
                 SendAck(transport, false);
@@ -206,5 +208,6 @@ namespace Npk::Debugger
 
     static void GdbDisconnect(DebugProtocol* inst)
     {
+        (void)inst;
     }
 }
