@@ -135,51 +135,51 @@ _EndOfDebugEventEntry:
 ## Similar calling convention to `sysenter`: rcx=user pc, r11=user flags, rdx=unused,
 ## rdi/rsi/rax/rbx/r12/r13 are arguments and return values.
 SysCallEntry:
-swapgs
+    swapgs
 
-xchg %rsp, %gs:24
-push %rcx
-xor %rcx, %rcx
-xchg %rcx, %gs:24
-push %rcx
-push %r11
-push %rbp
+    xchg %rsp, %gs:24
+    push %rcx
+    xor %rcx, %rcx
+    xchg %rcx, %gs:24
+    push %rcx
+    push %r11
+    push %rbp
 
-push %rdi
-push %rsi
-push %rax
-push %rbx
-push %r12
-push %r13
+    push %rdi
+    push %rsi
+    push %rax
+    push %rbx
+    push %r12
+    push %r13
 
-mov $0x10, %ax
-mov %ax, %ds
-mov %ax, %es
+    mov $0x10, %ax
+    mov %ax, %ds
+    mov %ax, %es
 
-mov %rsp, %rdi
-mov $0, %rsi
-call SyscallDispatch
+    mov %rsp, %rdi
+    mov $0, %rsi
+    call SyscallDispatch
 
-mov $0x20, %ax
-mov %ax, %ds
-mov %ax, %es
+    mov $0x20, %ax
+    mov %ax, %ds
+    mov %ax, %es
 
-pop %r13
-pop %r12
-pop %rbx
-pop %rax
-pop %rsi
-pop %rdi
+    pop %r13
+    pop %r12
+    pop %rbx
+    pop %rax
+    pop %rsi
+    pop %rdi
 
-pop %rbp
-pop %r11
-pop %rcx
-mov %rcx, %gs:24
-pop %rcx
-xchg %rsp, %gs:24
+    pop %rbp
+    pop %r11
+    pop %rcx
+    mov %rcx, %gs:24
+    pop %rcx
+    xchg %rsp, %gs:24
 
-swapgs
-sysretq
+    swapgs
+    sysretq
 _EndOfSysCallEntry:
 
 ## Entry via `sysenter` is significantly easier since we have a kernel-controlled
@@ -188,45 +188,45 @@ _EndOfSysCallEntry:
 ## rbp=user scratch reg, arguments and return values are passed in 
 ## rdi/rsi/rax/rbx/r12/r13
 SysEnterEntry:
-swapgs
+    swapgs
 
-push %rdx
-push %rcx
-push %r11
-push %rbp
+    push %rdx
+    push %rcx
+    push %r11
+    push %rbp
 
-push %rdi
-push %rsi
-push %rax
-push %rbx
-push %r12
-push %r13
+    push %rdi
+    push %rsi
+    push %rax
+    push %rbx
+    push %r12
+    push %r13
 
-mov $0x10, %ax
-mov %ax, %ds
-mov %ax, %es
+    mov $0x10, %ax
+    mov %ax, %ds
+    mov %ax, %es
 
-mov %rsp, %rdi
-mov $1, %rsi
-cld
-call SyscallDispatch
+    mov %rsp, %rdi
+    mov $1, %rsi
+    cld
+    call SyscallDispatch
 
-mov $0x20, %ax
-mov %ax, %ds
-mov %ax, %es
+    mov $0x20, %ax
+    mov %ax, %ds
+    mov %ax, %es
 
-pop %r13
-pop %r12
-pop %rbx
-pop %rax
-pop %rsi
-pop %rdi
+    pop %r13
+    pop %r12
+    pop %rbx
+    pop %rax
+    pop %rsi
+    pop %rdi
 
-pop %rbp
-popf
+    pop %rbp
+    popf
 
-swapgs
-sysexitq
+    swapgs
+    sysexitq
 _EndOfSysEnterEntry:
 
 BadSysCallEntry:
