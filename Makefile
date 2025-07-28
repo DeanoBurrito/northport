@@ -100,7 +100,7 @@ attach:
 
 binaries: options $(BUILD_TARGETS)
 
-$(BUILD_DIR)/limine.conf: Config.mk
+$(BUILD_DIR)/limine.conf: Config.mk misc/loader-config/limine.conf
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -xc++ -E -P misc/loader-config/limine.conf -o $@
 
 limine-iso-prep: binaries $(LIMINE_BINARIES) $(BUILD_DIR)/limine.conf
