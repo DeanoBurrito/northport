@@ -2,6 +2,8 @@
 
 namespace Npk
 {
+    constexpr sl::TimeCount IpiDebounceTime = 1_ms;
+
     static inline SmpControl* GetControl(CpuId who)
     {
         auto& dom = MySystemDomain();
@@ -34,7 +36,7 @@ namespace Npk
             shootdown->data.acknowledgements.Sub(1, sl::Release);
         }
 
-        control->status.ipiPending.Store(false, sl::Release);
+        control->status.lastIpi.Store({}, sl::Release);
     }
 
     RemoteCpuStatus* RemoteStatus(CpuId who)
@@ -116,7 +118,14 @@ namespace Npk
         auto control = GetControl(who);
         NPK_CHECK(control != nullptr, );
 
-        if (!control->status.ipiPending.Exchange(true, sl::Acquire))
+        const auto lastIpi = control->status.lastIpi.Load(sl::Relaxed);
+        auto nextIpi = IpiDebounceTime.Rebase(lastIpi.Frequency).ticks + lastIpi.epoch;
+        if (nextIpi > PlatReadTimestamp().epoch)
+            return;
+
+        sl::TimePoint expected { nextIpi };
+        sl::TimePoint desired { PlatReadTimestamp().epoch + IpiDebounceTime.ticks };
+        if (control->status.lastIpi.CompareExchange(expected, desired, sl::Acquire))
             PlatSendIpi(control->ipiId);
     }
 }
