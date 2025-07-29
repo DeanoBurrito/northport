@@ -70,6 +70,7 @@ namespace Npk
     void FlushRemoteTlbs(sl::Span<CpuId> who, RemoteFlushRequest* what, bool sync);
     void SetMyIpiId(void* id);
     void* GetIpiId(CpuId id);
+    void NudgeCpu(CpuId who);
     
     CycleAccount SetCycleAccount(CycleAccount who);
     void AddClockEvent(ClockEvent* event);

@@ -53,8 +53,7 @@ namespace Npk
         NPK_CHECK(control != nullptr, );
 
         control->mail.Push(mail);
-        if (!control->status.ipiPending.Exchange(true, sl::Acquire))
-            PlatSendIpi(control->ipiId);
+        NudgeCpu(who);
     }
 
     void FlushRemoteTlbs(sl::Span<CpuId> who, RemoteFlushRequest* what, bool sync)
@@ -73,8 +72,7 @@ namespace Npk
             }
 
             control->shootdowns.Push(what);
-            if (!control->status.ipiPending.Exchange(true, sl::Acquire))
-                PlatSendIpi(control->ipiId);
+            NudgeCpu(who[i]);
         }
 
         if (!sync)
@@ -111,5 +109,14 @@ namespace Npk
             return nullptr;
 
         return control->ipiId;
+    }
+
+    void NudgeCpu(CpuId who)
+    {
+        auto control = GetControl(who);
+        NPK_CHECK(control != nullptr, );
+
+        if (!control->status.ipiPending.Exchange(true, sl::Acquire))
+            PlatSendIpi(control->ipiId);
     }
 }

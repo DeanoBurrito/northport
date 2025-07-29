@@ -2,6 +2,7 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Msr.hpp>
+#include <hardware/x86_64/Tsc.hpp>
 #include <AcpiTypes.hpp>
 #include <hardware/Entry.hpp>
 #include <KernelApi.hpp>
@@ -54,7 +55,6 @@ namespace Npk
     {
         sl::MmioRegisters<LApicReg, uint32_t> mmio;
         uint64_t tscExpiry;
-        uint64_t tscFreq;
         uint64_t timerFreq;
         uint32_t acpiId;
         bool x2Mode;
@@ -110,6 +110,7 @@ namespace Npk
 
         SetMyIpiId(reinterpret_cast<void*>(MyLapicId()));
 
+        //TODO: calibrate lapic timer here, if we need it (tsc deadline isnt available)
         if (madt == nullptr)
             return;
 
@@ -222,19 +223,20 @@ namespace Npk
         Madt* madt = maybeMadt.HasValue() ? static_cast<Madt*>(*maybeMadt) : nullptr;
         FinishLapicInit(madt);
 
-        //TODO: add detection for PICs being present (there's a bit in acpi/madt)
-
-        //BSP should take care of initializing, remapping and masking the PICs.
-        Out8(Port::Pic0Command, 0x11);
-        Out8(Port::Pic1Command, 0x11);
-        Out8(Port::Pic0Data, PicIrqBase);
-        Out8(Port::Pic1Data, PicIrqBase + 8);
-        Out8(Port::Pic0Data, 4);
-        Out8(Port::Pic1Data, 2);
-        Out8(Port::Pic0Data, 1);
-        Out8(Port::Pic1Data, 1);
-        Out8(Port::Pic0Data, 0xFF);
-        Out8(Port::Pic1Data, 0xFF);
+        if (madt != nullptr && madt->flags.Has(MadtFlag::PcAtCompat))
+        {
+            //BSP should take care of initializing, remapping and masking the PICs.
+            Out8(Port::Pic0Command, 0x11);
+            Out8(Port::Pic1Command, 0x11);
+            Out8(Port::Pic0Data, PicIrqBase);
+            Out8(Port::Pic1Data, PicIrqBase + 8);
+            Out8(Port::Pic0Data, 4);
+            Out8(Port::Pic1Data, 2);
+            Out8(Port::Pic0Data, 1);
+            Out8(Port::Pic1Data, 1);
+            Out8(Port::Pic0Data, 0xFF);
+            Out8(Port::Pic1Data, 0xFF);
+        }
 
         EnableLocalApic();
         Log("BSP local APIC initialized.", LogLevel::Verbose);
@@ -287,6 +289,7 @@ namespace Npk
         }
         else
         {
+            lapic->tscExpiry = expiry;
             NPK_UNREACHABLE();
             //TODO: convert tsc ticks to lapic ticks, store in tscExpiry and chain lapic interrupts
         }
