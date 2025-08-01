@@ -256,7 +256,7 @@ namespace Npk
 
     struct RemoteCpuStatus
     {
-        sl::Atomic<bool> ipiPending;
+        sl::Atomic<sl::TimePoint> lastIpi;
         LocalScheduler* scheduler;
     };
 

@@ -47,6 +47,13 @@ namespace Npk::Loader
         .response = nullptr
     };
 
+    limine_boot_time_request timeReq
+    {
+        .id = LIMINE_BOOT_TIME_REQUEST,
+        .revision = 0,
+        .response = nullptr
+    };
+
     LoadState GetEntryState()
     {
         NPK_ASSERT(hhdmReq.response != nullptr);
@@ -77,6 +84,10 @@ namespace Npk::Loader
                 fdt = static_cast<Paddr>(addr);
         }
 
+        sl::Opt<sl::TimePoint> timeOffset {};
+        if (timeReq.response != nullptr)
+            timeOffset = sl::TimePoint(timeReq.response->boot_time * sl::TimePoint::Frequency);
+
         sl::StringSpan cmdline {};
         if (fileReq.response != nullptr)
         {
@@ -91,6 +102,7 @@ namespace Npk::Loader
             .bspId = 0,
             .rsdp = rsdp,
             .fdt = fdt,
+            .timeOffset = timeOffset,
             .commandLine = cmdline
         };
     }

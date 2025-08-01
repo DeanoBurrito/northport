@@ -3,6 +3,7 @@
 #include <Types.h>
 #include <Span.h>
 #include <Optional.h>
+#include <Time.h>
 
 namespace Npk::Loader
 {
@@ -13,6 +14,7 @@ namespace Npk::Loader
         CpuId bspId;
         sl::Opt<Paddr> rsdp;
         sl::Opt<Paddr> fdt;
+        sl::Opt<sl::TimePoint> timeOffset;
         sl::StringSpan commandLine;
     };
 

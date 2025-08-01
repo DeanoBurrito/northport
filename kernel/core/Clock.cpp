@@ -4,7 +4,7 @@
 #include <hardware/Entry.hpp>
 
 /* Clock Subsystem:
- * There's two things happening in this file:
+ * There's a few things happening in this file:
  * - The first is 'cycle accounting', a name shamelessly stolen from minoca
  *   sources. This is just tracking who's been using cpu processing time.
  * - The second is the clock queue(s). This allows us to multiplex 1 hardware
@@ -16,6 +16,8 @@
  *   exception being cancelling a queued clock event. Since a thread might
  *   have migrated between starting and wanting to stop a clock event, we need
  *   to support this, hence why each clock queue has a lock.
+ * - The third is correlating real world time with system time, we do this
+ *   via `systemTimeOffset` which is added to the platform provided timestamp.
  */
 namespace Npk
 {
@@ -183,7 +185,7 @@ namespace Npk
     {
         NPK_ASSERT(event != nullptr);
 
-        auto queue = event->queue.Exchange(nullptr, sl::Acquire);
+        auto queue = event->queue.Exchange(nullptr, sl::AcqRel);
         if (queue == nullptr || queue == reinterpret_cast<ClockQueue*>(1))
             return false;
 
@@ -205,5 +207,25 @@ namespace Npk
     void DispatchAlarm()
     {
         QueueClockDpc();
+    }
+
+    static sl::Atomic<sl::TimePoint> systemTimeOffset {};
+
+    sl::TimePoint GetTime()
+    {
+        return PlatReadTimestamp() + systemTimeOffset.Load(sl::Relaxed);
+    }
+
+    sl::TimePoint GetTimeOffset()
+    {
+        return systemTimeOffset.Load(sl::Relaxed);
+    }
+
+    void SetTimeOffset(sl::TimePoint offset)
+    {
+        auto prev = systemTimeOffset.Exchange(offset, sl::Relaxed);
+
+        Log("System time offset adjusted: from=%zu, to=%zu", LogLevel::Info,
+            prev.epoch, offset.epoch);
     }
 }

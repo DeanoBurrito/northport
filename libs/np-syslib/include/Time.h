@@ -45,6 +45,12 @@ namespace sl
         static TimePoint Now()
         { return {}; }
 
+        constexpr TimePoint() : epoch {}
+        {}
+
+        constexpr TimePoint(uint64_t value) : epoch(value)
+        {}
+
         constexpr bool operator==(TimePoint other)
         { return epoch == other.epoch; }
 

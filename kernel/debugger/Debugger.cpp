@@ -130,7 +130,7 @@ namespace Npk::Debugger
 
     /* Freezing protocol:
      * Set `freezingCount` to the number of cpus in the system, then notify other
-     * cpuvia an IPI. Remote cpuwill then notify the debugger of an IPI occuring,
+     * cpus via an IPI. Remote cpus will then notify the debugger of an IPI occuring,
      * at which point we check the value of `freezingCount`. If it's non-zero, that cpu
      * decrements `freezingCount` and spins until it is set to 0. The cpu that initiated
      * the freeze waits until it reaches 1, then it can continue with debugging.

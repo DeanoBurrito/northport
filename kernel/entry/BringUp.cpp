@@ -437,6 +437,9 @@ extern "C"
         const auto loaderState = Loader::GetEntryState();
         SetConfigStore(loaderState.commandLine, true);
 
+        if (loaderState.timeOffset.HasValue())
+            SetTimeOffset({ *loaderState.timeOffset });
+
         ArchInitEarly();
         PlatInitEarly();
         PrintWelcome();

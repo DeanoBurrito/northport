@@ -75,6 +75,15 @@ namespace Npk
     CycleAccount SetCycleAccount(CycleAccount who);
     void AddClockEvent(ClockEvent* event);
     bool RemoveClockEvent(ClockEvent* event);
+    sl::TimePoint GetTime();
+    sl::TimePoint GetTimeOffset();
+    void SetTimeOffset(sl::TimePoint offset);
+
+    SL_ALWAYS_INLINE
+    sl::TimePoint GetMonotonicTime()
+    {
+        return PlatReadTimestamp();
+    }
 
     void SetConfigStore(sl::StringSpan store, bool noLog);
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
