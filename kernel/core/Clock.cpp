@@ -27,6 +27,10 @@ namespace Npk
         AlarmFreeMs * (sl::TimePoint::Frequency / sl::TimeScale::Millis) 
     };
 
+    //NOT a real queue! we need a magic value for some logic down below, that
+    //is non-null.
+    static ClockQueue* const enqueuing = reinterpret_cast<ClockQueue*>(alignof(ClockQueue*));
+
     struct CycleAccounting
     {
         IntrSpinLock lock;
@@ -164,7 +168,7 @@ namespace Npk
             return;
         }
 
-        const auto intent = reinterpret_cast<ClockQueue*>(1);
+        const auto intent = enqueuing;
         event->queue.Store(intent, sl::Release);
         clockQueue->lock.Lock();
         auto prevQueue = event->queue.Exchange(&*clockQueue, sl::Acquire);
@@ -186,7 +190,7 @@ namespace Npk
         NPK_ASSERT(event != nullptr);
 
         auto queue = event->queue.Exchange(nullptr, sl::AcqRel);
-        if (queue == nullptr || queue == reinterpret_cast<ClockQueue*>(1))
+        if (queue == nullptr || queue == enqueuing)
             return false;
 
         queue->lock.Lock();
@@ -225,7 +229,14 @@ namespace Npk
     {
         auto prev = systemTimeOffset.Exchange(offset, sl::Relaxed);
 
-        Log("System time offset adjusted: from=%zu, to=%zu", LogLevel::Info,
-            prev.epoch, offset.epoch);
+        const auto dirStr = offset.epoch > prev.epoch ? "+" : "-";
+        const auto diff = offset.epoch > prev.epoch ? offset.epoch - prev.epoch
+            : prev.epoch - offset.epoch;
+        auto date = sl::CalendarPoint::From(offset);
+
+        Log("System time offset set: %s%zu, new base is %02u/%02u/%02" 
+            PRIu32" %02u:%02u.%02u",
+            LogLevel::Info, dirStr, diff, date.dayOfMonth, date.month, 
+            date.year, date.hour, date.minute, date.second);
     }
 }

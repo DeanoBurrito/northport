@@ -6,7 +6,9 @@
 #include <AcpiTypes.hpp>
 #include <hardware/Entry.hpp>
 #include <KernelApi.hpp>
+#include <Maths.h>
 #include <Mmio.h>
+#include <UnitConverter.h>
 
 namespace Npk
 {
@@ -99,6 +101,107 @@ namespace Npk
         }
     }
 
+    static bool CalibrateLapicTimer()
+    {
+        //this follows a similar pattern to calibrating the tsc, see that
+        //file for more thoughts.
+        if (auto freq = ReadConfigUint("npk.x86.lapic_freq_override", 0); freq != 0)
+        {
+            Log("LAPIC timer frequency set to %zuHz by command line override",
+                LogLevel::Trace, freq);
+            lapic->timerFreq = freq;
+            return true;
+        }
+
+        CpuidLeaf cpuid {};
+        const size_t baseLeaves = DoCpuid(BaseLeaf, 0, cpuid).a;
+
+        DoCpuid(0x15, 0, cpuid);
+        if (baseLeaves > 0x15 && cpuid.c != 0)
+        {
+            Log("LAPIC timer frequency acquired from cpuid 0x15: %uHz",
+                LogLevel::Trace, cpuid.c);
+            lapic->timerFreq = cpuid.c;
+            return true;
+        }
+
+        DoCpuid(0x16, 0, cpuid);
+        if (baseLeaves > 0x16 && cpuid.c != 0)
+        {
+            Log("LAPIC timer frequency acquired from cpuid 0x16: %uMHz",
+                LogLevel::Trace, cpuid.c);
+            lapic->timerFreq = cpuid.c;
+            return true;
+        }
+
+        DoCpuid(HypervisorLeaf, 0, cpuid);
+        if (cpuid.a >= 0x10 && DoCpuid(HypervisorLeaf + 0x10, 0, cpuid).b != 0)
+        {
+            Log("LAPIC timer acquired from cpuid 0x4000'1000: %uKHz",
+                LogLevel::Trace, cpuid.b);
+            lapic->timerFreq = cpuid.b * 1000;
+            return true;
+        }
+
+        constexpr size_t MaxCalibRuns = 64;
+        const size_t calibRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.lapic_calibration_runs", 10), 1, MaxCalibRuns);
+        const size_t sampleFreq = sl::Clamp<size_t>(ReadConfigUint("npk.x86.lapic_sample_freq", 100), 10, 1000);
+        const size_t neededRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.lapic_needed_runs", 7), 1, calibRuns);
+        const size_t controlRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.lapic_control_runs", 5), 1, calibRuns);
+        const bool dumpCalibData = ReadConfigUint("npk.x86.lapic_dump_calibration", true);
+
+        size_t controlOffset = 0;
+        uint64_t calibData[MaxCalibRuns];
+        uint64_t calibNanos = sl::TimeCount(sampleFreq, 1).Rebase(sl::Nanos).ticks;
+        Log("Calibrating LAPIC timer: sampling=%zu hz, runs=%zu (mulligans=%zu, control=%zu)", LogLevel::Trace,
+            sampleFreq, calibRuns, calibRuns - neededRuns, controlRuns);
+
+        //TODO: this is BS? we dont want to remove this time from the calibration
+        for (size_t i = 0; i < controlRuns; i++)
+        {
+            const size_t timerBegin = ReadTsc();
+            ReferenceSleep(0);
+            const size_t timerEnd = ReadTsc();
+
+            controlOffset += timerEnd - timerBegin;
+        }
+
+        controlOffset /= controlRuns;
+        Log("Control offset for reference timer: %zu lapic timer ticks", LogLevel::Trace, controlOffset);
+
+        for (size_t i = 0; i < calibRuns; i++)
+        {
+            const uint64_t timerBegin = ReadTsc();
+            const uint64_t realCalibNanos = ReferenceSleep(calibNanos);
+            const uint64_t timerEnd = ReadTsc();
+
+            if (realCalibNanos == 0)
+            {
+                calibData[i] = 0;
+                continue;
+            }
+
+            calibData[i] = (timerEnd - timerBegin) - controlOffset;
+            calibData[i] = (calibData[i] * calibNanos) / realCalibNanos; //oversleep correction
+            if (dumpCalibData)
+            {
+                Log("LAPIC timer calibratun run: begin=%zu, end=%zu, adjusted=%zu, slept=%zuns", LogLevel::Verbose,
+                    timerBegin, timerEnd, calibData[i], realCalibNanos);
+            }
+        }
+
+        const auto maybePeriod = CoalesceTimerData({ calibData, calibRuns }, calibRuns - neededRuns);
+        NPK_ASSERT(maybePeriod.HasValue());
+
+        const uint64_t timerFreq = *maybePeriod * sampleFreq;
+        const auto conv = sl::ConvertUnits(timerFreq, sl::UnitBase::Decimal);
+        Log("LAPIC timer calibrated as %zu Hz (%zu.%zu %sHz)", LogLevel::Info, timerFreq,
+            conv.major, conv.minor, conv.prefix);
+
+        lapic->timerFreq = timerFreq;
+        return true;
+    }
+
     static void FinishLapicInit(Madt* madt)
     {
         lapic->Write(LApicReg::SpuriousVector, LapicSpuriousVector);
@@ -110,7 +213,9 @@ namespace Npk
 
         SetMyIpiId(reinterpret_cast<void*>(MyLapicId()));
 
-        //TODO: calibrate lapic timer here, if we need it (tsc deadline isnt available)
+        if (!lapic->hasTscDeadline)
+            NPK_ASSERT(CalibrateLapicTimer());
+
         if (madt == nullptr)
             return;
 
@@ -209,7 +314,7 @@ namespace Npk
         if (!lapic->x2Mode)
         {
             lapicMmioBase = virtBase;
-            const size_t cpuCount = MySystemDomain().smpControls.Size(); //TODO: account for multiple domains
+            const size_t cpuCount = MySystemDomain().smpControls.Size();
             virtBase += PageSize() * cpuCount;
             Log("Reserved address space for %zu LAPICs", LogLevel::Trace, cpuCount);
 

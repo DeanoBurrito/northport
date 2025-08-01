@@ -15,7 +15,7 @@ namespace Npk
         data = In8(Port::PitData0);
         data |= static_cast<uint16_t>(In8(Port::PitData0)) << 8;
 
-        return data;
+        return 0xFFFF - data;
     }
 
     SL_ALWAYS_INLINE

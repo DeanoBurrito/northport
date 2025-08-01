@@ -216,6 +216,11 @@ namespace Npk
 
     bool CalibrateTsc()
     {
+        if (!CpuHasFeature(CpuFeature::Tsc))
+            return false;
+        if (!CpuHasFeature(CpuFeature::InvariantTsc) && MyCoreId() == 0)
+            Log("This cpu does not report an invariant tsc.", LogLevel::Warning);
+
         //TODO: if we have invariant tsc, can we clone BSP's calibration data?
         const uint64_t freq = Calibrate();
         *tscFreq = freq;

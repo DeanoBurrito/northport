@@ -75,6 +75,28 @@ namespace sl
 
     constexpr TimePoint operator+(TimePoint a, TimePoint b)
     { return { a.epoch + b.epoch }; }
+
+    struct CalendarPoint
+    {
+        uint32_t year;
+        uint16_t dayOfYear;
+        uint8_t dayOfMonth;
+        uint8_t dayOfWeek;
+        uint8_t month;
+        uint8_t week;
+        uint8_t hour;
+        uint8_t minute;
+        uint8_t second;
+
+        static CalendarPoint Now()
+        { return {}; } //TODO: Implement this and TimePoint::Now()
+
+        static CalendarPoint From(TimePoint input);
+
+        CalendarPoint() = default;
+
+        TimePoint ToTimePoint();
+    };
 }
 
 constexpr sl::TimeCount operator""_ms(unsigned long long units)
