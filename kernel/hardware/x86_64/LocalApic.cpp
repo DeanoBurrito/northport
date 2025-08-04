@@ -70,12 +70,18 @@ namespace Npk
 
         inline uint32_t Read(LApicReg reg)
         {
-            return x2Mode ? ReadMsr(RegToMsr(reg)) : mmio.Read(reg);
+            if (x2Mode) 
+                return ReadMsr(RegToMsr(reg));
+            else
+                return mmio.Read(reg);
         }
 
         inline void Write(LApicReg reg, uint32_t value)
         {
-            return x2Mode ? WriteMsr(RegToMsr(reg), value) : mmio.Write(reg, value);
+            if (x2Mode)
+                WriteMsr(RegToMsr(reg), value);
+            else
+                mmio.Write(reg, value);
         }
     };
 
@@ -144,36 +150,53 @@ namespace Npk
         }
 
         constexpr size_t MaxCalibRuns = 64;
-        const size_t calibRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.lapic_calibration_runs", 10), 1, MaxCalibRuns);
-        const size_t sampleFreq = sl::Clamp<size_t>(ReadConfigUint("npk.x86.lapic_sample_freq", 100), 10, 1000);
-        const size_t neededRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.lapic_needed_runs", 7), 1, calibRuns);
-        const size_t controlRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.lapic_control_runs", 5), 1, calibRuns);
-        const bool dumpCalibData = ReadConfigUint("npk.x86.lapic_dump_calibration", true);
+        const size_t calibRuns = sl::Clamp<size_t>(
+            ReadConfigUint("npk.x86.lapic_calibration_runs", 10), 1, MaxCalibRuns);
+        const size_t sampleFreq = sl::Clamp<size_t>(
+            ReadConfigUint("npk.x86.lapic_sample_freq", 100), 10, 1000);
+        const size_t neededRuns = sl::Clamp<size_t>(
+            ReadConfigUint("npk.x86.lapic_needed_runs", 7), 1, calibRuns);
+        const size_t controlRuns = sl::Clamp<size_t>(
+            ReadConfigUint("npk.x86.lapic_control_runs", 5), 1, calibRuns);
+        const bool dumpCalibData = 
+            ReadConfigUint("npk.x86.lapic_dump_calibration", true);
 
         size_t controlOffset = 0;
         uint64_t calibData[MaxCalibRuns];
-        uint64_t calibNanos = sl::TimeCount(sampleFreq, 1).Rebase(sl::Nanos).ticks;
-        Log("Calibrating LAPIC timer: sampling=%zu hz, runs=%zu (mulligans=%zu, control=%zu)", LogLevel::Trace,
-            sampleFreq, calibRuns, calibRuns - neededRuns, controlRuns);
+        auto calibNanos = sl::TimeCount(sampleFreq, 1).Rebase(sl::Nanos).ticks;
+        Log("Calibrating LAPIC timer: sampling=%zu hz, runs=%zu (mulligans=%zu,"
+            "control=%zu)", LogLevel::Trace, sampleFreq, calibRuns,
+            calibRuns - neededRuns, controlRuns);
 
-        //TODO: this is BS? we dont want to remove this time from the calibration
+        lapic->Write(LApicReg::LvtTimer, (0b00 << 17) | LvtMasked);
+        lapic->Write(LApicReg::TimerDivisor, 0);
+
         for (size_t i = 0; i < controlRuns; i++)
         {
-            const size_t timerBegin = ReadTsc();
-            ReferenceSleep(0);
-            const size_t timerEnd = ReadTsc();
+            constexpr uint32_t BeginValue = 0xFFFF'FFFF;
 
-            controlOffset += timerEnd - timerBegin;
+            lapic->Write(LApicReg::TimerInitCount, BeginValue);
+            ReferenceSleep(0);
+            const uint32_t endValue = lapic->Read(LApicReg::TimerCount);
+            lapic->Write(LApicReg::TimerInitCount, 0);
+
+            controlOffset += BeginValue - endValue;
         }
 
         controlOffset /= controlRuns;
-        Log("Control offset for reference timer: %zu lapic timer ticks", LogLevel::Trace, controlOffset);
+        Log("Control offset for reference timer: %zu lapic ticks", 
+            LogLevel::Trace, controlOffset);
 
         for (size_t i = 0; i < calibRuns; i++)
         {
-            const uint64_t timerBegin = ReadTsc();
+            constexpr uint32_t BeginValue = 0xFFFF'FFFF;
+
+            lapic->Write(LApicReg::TimerInitCount, BeginValue);
             const uint64_t realCalibNanos = ReferenceSleep(calibNanos);
-            const uint64_t timerEnd = ReadTsc();
+            const uint32_t stopValue = lapic->Read(LApicReg::TimerCount);
+
+            lapic->Write(LApicReg::TimerInitCount, 0);
+            NPK_CHECK(stopValue != 0, false);
 
             if (realCalibNanos == 0)
             {
@@ -181,22 +204,24 @@ namespace Npk
                 continue;
             }
 
-            calibData[i] = (timerEnd - timerBegin) - controlOffset;
-            calibData[i] = (calibData[i] * calibNanos) / realCalibNanos; //oversleep correction
+            calibData[i] = BeginValue - stopValue;
+            calibData[i] = (calibData[i] * calibNanos) / realCalibNanos;
             if (dumpCalibData)
             {
-                Log("LAPIC timer calibratun run: begin=%zu, end=%zu, adjusted=%zu, slept=%zuns", LogLevel::Verbose,
-                    timerBegin, timerEnd, calibData[i], realCalibNanos);
+                Log("LAPIC timer calibratun run: begin=%u, end=%u, adjusted=%zu"
+                    ", slept=%zuns", LogLevel::Verbose, BeginValue, stopValue, 
+                    calibData[i], realCalibNanos);
             }
         }
 
-        const auto maybePeriod = CoalesceTimerData({ calibData, calibRuns }, calibRuns - neededRuns);
+        sl::Span<uint64_t> runs { calibData, calibRuns };
+        const auto maybePeriod = CoalesceTimerData(runs, calibRuns - neededRuns);
         NPK_ASSERT(maybePeriod.HasValue());
 
         const uint64_t timerFreq = *maybePeriod * sampleFreq;
         const auto conv = sl::ConvertUnits(timerFreq, sl::UnitBase::Decimal);
-        Log("LAPIC timer calibrated as %zu Hz (%zu.%zu %sHz)", LogLevel::Info, timerFreq,
-            conv.major, conv.minor, conv.prefix);
+        Log("LAPIC timer calibrated as %zu Hz (%zu.%zu %sHz)", LogLevel::Info, 
+            timerFreq, conv.major, conv.minor, conv.prefix);
 
         lapic->timerFreq = timerFreq;
         return true;
@@ -254,7 +279,7 @@ namespace Npk
 
             if (source->type == MadtSourceType::LocalApicNmi)
             {
-                const auto nmi = static_cast<const MadtSources::LocalApicNmi*>(source);
+                auto nmi = static_cast<const MadtSources::LocalApicNmi*>(source);
 
                 targetAcpiId = nmi->acpiProcessorId;
                 if (targetAcpiId == 0xFF)
@@ -285,8 +310,9 @@ namespace Npk
                 | (levelTriggered ? LvtLevelTrigger : 0);
 
             lapic->Write(lvt, value);
-            Log("Applied lapic nmi override: lint%u, active-%s, %s-triggered.", LogLevel::Verbose,
-                inputNumber, activeLow ? "low" : "high", levelTriggered ? "level" : "edge");
+            Log("Applied lapic nmi override: lint%u, active-%s, %s-triggered.", 
+                LogLevel::Verbose, inputNumber, activeLow ? "low" : "high", 
+                levelTriggered ? "level" : "edge");
         }
     }
 
@@ -300,8 +326,9 @@ namespace Npk
         //kernel starts with a clean slate.
         for (size_t i = 8; i > 0; i--)
         {
-            const LApicReg reg = static_cast<LApicReg>(static_cast<unsigned>(LApicReg::Isr0) 
-                + (i - 1) * 0x10);
+            const LApicReg reg = static_cast<LApicReg>(
+                static_cast<unsigned>(LApicReg::Isr0) + (i - 1) * 0x10);
+
             while (lapic->Read(reg) != 0)
                 SignalEoi();
         }
@@ -384,6 +411,16 @@ namespace Npk
         return lapic->Read(LApicReg::Version) & 0xFF;
     }
 
+    static void ArmLapicTimer()
+    {
+        const uint64_t tscTicks = lapic->tscExpiry - ReadTsc();
+        const uint64_t lapicTicks = tscTicks * lapic->timerFreq / MyTscFrequency();
+        const uint32_t intrTicks = sl::Min<uint32_t>(0xFFFF'FFFF, lapicTicks);
+
+        lapic->Write(LApicReg::LvtTimer, (0b01 << 17) | LapicTimerVector);
+        lapic->Write(LApicReg::TimerInitCount, intrTicks);
+    }
+
     void ArmTscInterrupt(uint64_t expiry)
     {
         const bool restoreIntrs = IntrsOff();
@@ -395,8 +432,7 @@ namespace Npk
         else
         {
             lapic->tscExpiry = expiry;
-            NPK_UNREACHABLE();
-            //TODO: convert tsc ticks to lapic ticks, store in tscExpiry and chain lapic interrupts
+            ArmLapicTimer();
         }
 
         if (restoreIntrs)
@@ -406,17 +442,13 @@ namespace Npk
     void HandleLapicTimerInterrupt()
     {
         if (lapic->hasTscDeadline)
-        {
-            WriteMsr(Msr::TscDeadline, 0);
             return DispatchAlarm();
-        }
 
         //we're emulating the tsc, check if we dispatch the alarm now
         if (ReadTsc() >= lapic->tscExpiry)
             return DispatchAlarm();
 
-        //need to wait a bit longer, re-arm lapic timer
-        NPK_UNREACHABLE();
+        ArmLapicTimer();
     }
 
     void HandleLapicErrorInterrupt()
@@ -450,7 +482,10 @@ namespace Npk
         lapic->Write(LApicReg::ErrorStatus, 0);
 
         if (lapic->x2Mode)
-            WriteMsr(lapic->RegToMsr(LApicReg::IcrLow), ((uint64_t)dest << 32) | low);
+        {
+            const uint64_t value = ((uint64_t)dest << 32) | low;
+            WriteMsr(lapic->RegToMsr(LApicReg::IcrLow), value);
+        }
         else
         {
             //IPIs are sent upon writing to IcrLow, so set the destination first
