@@ -128,6 +128,14 @@ namespace Npk
         return AccessPage(LookupPagePaddr(page));
     }
 
+    void Yield();
+    void EnqueueThread(ThreadContext* thread);
+    void DequeueThread(ThreadContext* thread);
+
+    void SetThreadPriority(ThreadContext* thread, uint8_t value);
+    void SetThreadAffinity(ThreadContext* thread, CpuId who);
+    void ClearThreadAffinity(ThreadContext* thread);
+
     void CancelWait(ThreadContext* thread);
     WaitStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, sl::TimeCount timeout, sl::StringSpan reason = {});
     void SignalWaitable(Waitable* what);

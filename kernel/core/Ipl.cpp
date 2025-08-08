@@ -1,5 +1,5 @@
 #include <KernelApi.hpp>
-#include <Scheduler.hpp>
+#include <KernelApiPrivate.hpp>
 
 namespace Npk
 {
@@ -68,7 +68,7 @@ namespace Npk
             case Ipl::Passive: 
                 //there may be a pending context switch, let the scheduler
                 //know it can perform that now if it wants.
-                OnPassiveRunLevel();
+                Private::OnPassiveRunLevel();
                 break;
             }
 

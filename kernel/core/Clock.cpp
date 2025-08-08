@@ -1,5 +1,4 @@
 #include <KernelApi.hpp>
-#include <Scheduler.hpp>
 #include <hardware/Plat.hpp>
 #include <hardware/Entry.hpp>
 

@@ -7,7 +7,6 @@
 #include <hardware/x86_64/Tsc.hpp>
 #include <AcpiTypes.hpp>
 #include <KernelApi.hpp>
-#include <Scheduler.hpp>
 #include <Mmio.h>
 #include <Maths.h>
 #include <UnitConverter.h>

@@ -2,6 +2,7 @@
 
 #include <hardware/Arch.hpp>
 #include <hardware/Plat.hpp>
+#include <KernelConsts.hpp>
 #include <Span.h>
 #include <Time.h>
 #include <Flags.h>
@@ -355,6 +356,40 @@ namespace Npk
     };
 
     struct Sdt;
+
+    struct ThreadContext
+    {
+        struct 
+        {
+            sl::Atomic<uint64_t> userNs; //TODO: use TimePoint instead of raw nanos
+            sl::Atomic<uint64_t> kernelNs;
+        } accounting;
+
+        struct
+        {
+            IntrSpinLock lock;
+            ArchThreadContext* context;
+
+            SystemDomain* domain;
+            CpuId affinity;
+            uint8_t basePriority;
+            uint8_t dynPriority;
+            uint8_t score;
+            bool isPinned;
+            bool isActive;
+            bool isInteractive;
+        } scheduling;
+        sl::ListHook queueHook; //NOTE: protected by scheduling.lock
+
+        struct
+        {
+            IplSpinLock<Ipl::Dpc> lock;
+            sl::Span<WaitEntry> entries;
+            sl::StringSpan reason;
+        } waiting;
+    };
+
+    using ThreadQueue = sl::List<ThreadContext, &ThreadContext::queueHook>;
 }
 
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)

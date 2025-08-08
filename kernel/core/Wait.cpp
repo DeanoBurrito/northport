@@ -1,5 +1,4 @@
 #include <KernelApi.hpp>
-#include <Scheduler.hpp>
 #include <Maths.h>
 
 /* Big theory comment:
@@ -115,10 +114,11 @@ namespace Npk
     static WaitStatus TryCompleteWait(ThreadContext* thread)
     {
         WaitStatus result = WaitStatus::Success;
+        auto& entries = thread->waiting.entries;
 
-        for (size_t i = 0; i < thread->waitEntries.Size(); i++)
+        for (size_t i = 0; i < entries.Size(); i++)
         {
-            auto entry = &thread->waitEntries[i];
+            auto entry = &entries[i];
 
             if (entry->status.Load(sl::Acquire) == WaitStatus::Success)
             {
@@ -129,7 +129,7 @@ namespace Npk
                 }
             }
 
-            const auto status = (unsigned)thread->waitEntries[i].status.Load(sl::Acquire);
+            const auto status = (unsigned)entries[i].status.Load(sl::Acquire);
             result = (WaitStatus)sl::Max((unsigned)result, status);
         }
 
@@ -138,22 +138,24 @@ namespace Npk
 
     static void StopWait(ThreadContext* thread, WaitStatus why)
     {
-        thread->waitEntriesLock.Lock();
-        if (thread->waitEntries.Empty())
+        auto& waiter = thread->waiting;
+
+        waiter.lock.Lock();
+        if (waiter.entries.Empty())
         {
             //we dont requeue the thread here, since it should already be running if its wait
             //entries are empty.
-            thread->waitEntriesLock.Unlock();
+            waiter.lock.Unlock();
             return;
         }
 
-        LockWaitables(thread->waitEntries);
-        for (size_t i = 0; i < thread->waitEntries.Size(); i++)
-            thread->waitEntries[i].status.Store(why, sl::Release);
-        UnlockWaitables(thread->waitEntries);
-        thread->waitEntriesLock.Unlock();
+        LockWaitables(waiter.entries);
+        for (size_t i = 0; i < waiter.entries.Size(); i++)
+            waiter.entries[i].status.Store(why, sl::Release);
+        UnlockWaitables(waiter.entries);
+        waiter.lock.Unlock();
 
-        EnqueueThread(thread, 0);
+        EnqueueThread(thread);
     }
 
     static void DoTimeoutWait(Dpc* dpc, void* arg)
@@ -174,10 +176,10 @@ namespace Npk
     {
         auto ResetThreadWaitState = [=](ThreadContext* thread)
         {
-            UnlockWaitables(thread->waitEntries);
-            thread->waitEntries = {};
-            thread->waitReason = {};
-            thread->waitEntriesLock.Unlock();
+            UnlockWaitables(thread->waiting.entries);
+            thread->waiting.entries = {};
+            thread->waiting.reason = {};
+            thread->waiting.lock.Unlock();
         };
 
         if (what.Empty())
@@ -196,10 +198,11 @@ namespace Npk
             e.status = WaitStatus::Incomplete;
         }
 
-        thread->waitEntriesLock.Lock();
-        thread->waitEntries = { entries, what.Size() };
-        thread->waitReason = reason;
-        LockWaitables(thread->waitEntries);
+        auto& waiter = thread->waiting;
+        waiter.lock.Lock();
+        waiter.entries = { entries, what.Size() };
+        waiter.reason = reason;
+        LockWaitables(waiter.entries);
 
         //1. try to complete the wait now, before we've queued ourselves 
         if (TryCompleteWait(thread) == WaitStatus::Success)
@@ -226,9 +229,9 @@ namespace Npk
         AddClockEvent(&timeoutEvent);
 
         //3. prepare for wakeup: add wait entries to the queue of each waitable
-        for (size_t i = 0; i < thread->waitEntries.Size(); i++)
+        for (size_t i = 0; i < waiter.entries.Size(); i++)
         {
-            auto* entry = &thread->waitEntries[i];
+            auto* entry = &waiter.entries[i];
             entry->waitable->waiters.PushBack(entry);
         }
 
@@ -238,8 +241,8 @@ namespace Npk
             //4. prepare and enact sleeping. Once the final lock is dropped here, ipl is lowered to
             //passive and the pending rescheduler triggered by DequeueThread(self) happens.
             DequeueThread(thread);
-            UnlockWaitables(thread->waitEntries);
-            thread->waitEntriesLock.Unlock(); //ipl is lowered here; reschedule is triggered
+            UnlockWaitables(waiter.entries);
+            waiter.lock.Unlock(); //ipl is lowered here; reschedule is triggered
 
             //5. we've woken up: see what happened and if we can complete any of the waits.
             //Note that we dont do atomic handoff to avoid 'lock convoys' (thanks will/hyenasky for 
@@ -252,8 +255,8 @@ namespace Npk
             //must try to acquire the mutex or go back to sleep.
             result = WaitStatus::Incomplete;
 
-            thread->waitEntriesLock.Lock();
-            LockWaitables(thread->waitEntries);
+            waiter.lock.Lock();
+            LockWaitables(waiter.entries);
 
             result = TryCompleteWait(thread);
             if (result != WaitStatus::Incomplete)
@@ -263,9 +266,9 @@ namespace Npk
 
         //6. cleanup: successful wait entries are removed from their waitable's queue, we need to remove
         //the other wait entries though.
-        for (size_t i = 0; i < thread->waitEntries.Size(); i++)
+        for (size_t i = 0; i < waiter.entries.Size(); i++)
         {
-            auto entry = &thread->waitEntries[i];
+            auto entry = &waiter.entries[i];
             if (entry->status != WaitStatus::Success)
                 entry->waitable->waiters.Remove(entry);
         }
@@ -297,7 +300,7 @@ namespace Npk
                 break;
 
             waiter->status.Store(WaitStatus::Success, sl::Release);
-            EnqueueThread(waiter->thread, 0);
+            EnqueueThread(waiter->thread);
         }
         what->lock.Unlock();
         //TODO: we'll need figure out early completion, will need a per-thread atomic wait status
@@ -335,7 +338,7 @@ namespace Npk
         {
             auto waiter = what->waiters.PopFront();
             waiter->status.Store(WaitStatus::Reset, sl::Release);
-            EnqueueThread(waiter->thread, 0);
+            EnqueueThread(waiter->thread);
         }
 
         what->tickets = 0;
