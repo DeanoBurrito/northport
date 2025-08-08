@@ -45,7 +45,6 @@ include misc/cross/$(TARGET_ARCH).mk
 include kernel/$(ARCH_DIR)/Arch.mk
 include kernel/$(PLAT_DIR)/Plat.mk
 include libs/np-syslib/Local.mk
-include tests/Local.mk
 include kernel/Local.mk
 include initdisk/Local.mk
 
