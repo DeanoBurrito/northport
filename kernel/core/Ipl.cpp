@@ -1,5 +1,5 @@
-#include <KernelApi.hpp>
-#include <KernelApiPrivate.hpp>
+#include <CoreApi.hpp>
+#include <CoreApiPrivate.hpp>
 
 namespace Npk
 {

@@ -1,4 +1,4 @@
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 
 namespace Npk
 {

@@ -1,6 +1,6 @@
 #include <hardware/x86_64/Hpet.hpp>
 #include <AcpiTypes.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <Mmio.h>
 #include <UnitConverter.h>
 

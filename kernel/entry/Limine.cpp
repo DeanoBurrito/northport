@@ -1,5 +1,5 @@
 #include <Loader.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <Memory.h>
 #include "Limine.h"
 

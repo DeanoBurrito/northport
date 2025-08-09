@@ -3,7 +3,7 @@
 #include <hardware/x86_64/Hpet.hpp>
 #include <hardware/x86_64/Pit.hpp>
 #include <hardware/common/AcpiTimer.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <Maths.h>
 #include <UnitConverter.h>
 

@@ -1,6 +1,6 @@
 #include <hardware/common/AcpiTimer.hpp>
 #include <AcpiTypes.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <Mmio.h>
 
 #ifdef __x86_64

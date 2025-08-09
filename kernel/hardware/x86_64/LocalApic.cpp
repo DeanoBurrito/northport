@@ -5,7 +5,7 @@
 #include <hardware/x86_64/Tsc.hpp>
 #include <AcpiTypes.hpp>
 #include <hardware/Entry.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <Maths.h>
 #include <Mmio.h>
 #include <UnitConverter.h>

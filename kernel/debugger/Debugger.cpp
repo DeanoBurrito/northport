@@ -1,6 +1,6 @@
 #include <debugger/Debugger.hpp>
 #include <debugger/ProtocolGdb.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <containers/List.h>
 #include <Maths.h>
 

@@ -2,7 +2,7 @@
 
 #include <hardware/Arch.hpp>
 #include <hardware/Plat.hpp>
-#include <KernelConsts.hpp>
+#include <CoreConsts.hpp>
 #include <Span.h>
 #include <Time.h>
 #include <Flags.h>

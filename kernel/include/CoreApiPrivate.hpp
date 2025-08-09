@@ -1,6 +1,6 @@
 #pragma once
 
-#include <KernelTypes.hpp>
+#include <CoreTypes.hpp>
 
 /* This file (and the ::Private namespace) contains declarations only intended
  * for use by other components of the kernel core. No promises are made about

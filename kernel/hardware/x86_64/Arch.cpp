@@ -4,7 +4,7 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Mmu.hpp>
 #include <hardware/x86_64/LocalApic.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <Memory.h>
 #include <NanoPrintf.h>
 
@@ -93,37 +93,6 @@ namespace Npk
         if (!suppressEoi)
             SignalEoi();
         LowerIpl(prevIpl);
-    }
-
-    struct ArchSyscallFrame 
-    {
-        uint64_t args[6];
-
-        uint64_t userRbp;
-        uint64_t userFlags;
-        uint64_t userStack;
-        uint64_t userPc;
-    };
-
-    uintptr_t& SyscallFrame::Pc()
-    {
-        auto* arch = static_cast<ArchSyscallFrame*>(this->data);
-        return arch->userPc;
-    }
-
-    uintptr_t& SyscallFrame::Arg(size_t index)
-    {
-        return static_cast<ArchSyscallFrame*>(this->data)->args[index];
-    }
-
-    extern "C" void SyscallDispatch(ArchSyscallFrame* frame, bool sysEnter)
-    {
-        (void)sysEnter;
-
-        SyscallFrame scFrame(frame);
-        DispatchSyscall(scFrame);
-
-        //TODO: sanitize user flags + stack + pc before returning here
     }
 }
 

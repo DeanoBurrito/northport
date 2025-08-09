@@ -1,6 +1,6 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <debugger/Debugger.hpp>
 #include <NanoPrintf.h>
 #include <Maths.h>

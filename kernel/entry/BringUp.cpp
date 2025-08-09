@@ -1,8 +1,8 @@
 #include <AcpiTypes.hpp>
 #include <BakedConstants.hpp>
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
+#include <CoreApiPrivate.hpp>
 #include <Loader.hpp>
-#include <Scheduler.hpp>
 #include <debugger/Debugger.hpp>
 #include <Maths.h>
 #include <Memory.h>
@@ -15,8 +15,6 @@ namespace Npk
 {
     void DispatchInterrupt(size_t vector) { (void)vector; };
     void DispatchPageFault(PageFaultFrame* frame) { (void)frame; }
-    void DispatchSyscall(SyscallFrame frame) { (void)frame; }
-    void DispatchException(ExceptionFrame* frame) { (void)frame; }
 
     static Paddr configRootPtr;
     static sl::Opt<ConfigRootType> configRootType;
@@ -421,7 +419,7 @@ namespace Npk
     {
         localSystemDomain = &domain0; //TODO: multi-domain
 
-        InitLocalScheduler(idle);
+        Private::InitLocalScheduler(idle);
         SetCurrentThread(idle);
         Log("Cpu %zu is online and available to the system.", LogLevel::Info, MyCoreId());
 

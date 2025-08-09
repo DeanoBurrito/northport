@@ -1,4 +1,4 @@
-#include <KernelApi.hpp>
+#include <CoreApi.hpp>
 #include <Maths.h>
 
 /* Big theory comment:
