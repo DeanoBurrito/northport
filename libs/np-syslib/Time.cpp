@@ -7,11 +7,41 @@ namespace sl
         if (newFrequency == frequency)
             return *this;
         if (frequency == 0 || newFrequency == 0)
-            return { 0, 0 };
+            return { newFrequency, 0 };
 
-        return TimeCount(newFrequency, ticks * newFrequency / frequency); //TODO: we should check for saturation here
+        auto result = ticks * newFrequency;
+        if (result < ticks) //check for saturation via wraparound (TODO: portable?)
+            return sl::TimeCount(newFrequency, (decltype(ticks))~0);
+
+        result = result / frequency;
+        return TimeCount(newFrequency, result);
     }
 
+/* The following functions (CalendarPoint::From and CalendarPoint::ToTimePoint)
+ * use code adapted from mlibc (https://github.com/managarm/mlibc). License text
+ * is attached below.
+ *
+ * ----------------------------------------------------------------------------
+ * Copyright (C) 2015-2025 mlibc Contributors
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is furnished to do
+ * so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
     CalendarPoint CalendarPoint::From(TimePoint input)
     {
         CalendarPoint p {};

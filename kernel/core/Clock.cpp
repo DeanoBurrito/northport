@@ -28,7 +28,8 @@ namespace Npk
 
     //NOT a real queue! we need a magic value for some logic down below, that
     //is non-null.
-    static ClockQueue* const enqueuing = reinterpret_cast<ClockQueue*>(alignof(ClockQueue*));
+    static ClockQueue* const enqueuing = 
+        reinterpret_cast<ClockQueue*>(alignof(ClockQueue*));
 
     struct CycleAccounting
     {
@@ -67,6 +68,8 @@ namespace Npk
             accounting->user += period.epoch;
             break;
         case CycleAccount::Kernel:
+            if (currentThread != nullptr)
+                currentThread->accounting.kernelNs += period.epoch;
             accounting->kernel += period.epoch;
             break;
         case CycleAccount::KernelInterrupt:
