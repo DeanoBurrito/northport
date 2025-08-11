@@ -3,14 +3,13 @@
 #include <hardware/Arch.hpp>
 #include <hardware/Plat.hpp>
 #include <CoreConsts.hpp>
-#include <Span.h>
-#include <Time.h>
-#include <Flags.h>
-#include <Locks.h>
-#include <containers/List.h>
-#include <containers/Queue.h>
-#include <Compiler.h>
-#include <Time.h>
+#include <Span.hpp>
+#include <Time.hpp>
+#include <Flags.hpp>
+#include <Locks.hpp>
+#include <containers/List.hpp>
+#include <containers/Queue.hpp>
+#include <Compiler.hpp>
 
 extern "C" char KERNEL_CPULOCALS_BEGIN[];
 
@@ -370,8 +369,9 @@ namespace Npk
             IntrSpinLock lock;
             ArchThreadContext* context;
 
-            SystemDomain* domain;
             CpuId affinity;
+            uint32_t sleepTime;
+            uint32_t runTime;
             uint8_t basePriority;
             uint8_t dynPriority;
             uint8_t score;

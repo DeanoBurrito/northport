@@ -1,6 +1,6 @@
 #include <CoreApi.hpp>
-#include <Memory.h>
-#include <Maths.h>
+#include <Memory.hpp>
+#include <Maths.hpp>
 
 namespace Npk
 {

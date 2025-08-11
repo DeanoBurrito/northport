@@ -1,3 +1,3 @@
-LIB_SYSLIB_CXX_SRCS = Memory.cpp String.cpp UnitConverter.cpp Time.cpp Random.cpp NanoPrintf.cpp \
+LIB_SYSLIB_CXX_SRCS = Memory.cpp UnitConverter.cpp Time.cpp NanoPrintf.cpp \
 	Terminal.cpp \
-	formats/Tar.cpp formats/Url.cpp formats/Elf.cpp
+	formats/Elf.cpp

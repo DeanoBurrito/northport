@@ -29,3 +29,16 @@
 #endif
 
 #define SL_UNUSED_ARG(x) (void)(x)
+
+namespace sl
+{
+    SL_ALWAYS_INLINE
+    void HintSpinloop()
+    {
+#ifdef __x86_64__
+        asm("pause");
+#else
+    #error "Unsupported architecture"
+#endif
+    }
+}

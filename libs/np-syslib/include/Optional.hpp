@@ -1,8 +1,8 @@
 #pragma once
 
-#include <Types.h>
-#include <CppUtils.h>
-#include <PlacementNew.h>
+#include <Types.hpp>
+#include <CppUtils.hpp>
+#include <PlacementNew.hpp>
 
 namespace sl
 {

@@ -1,5 +1,5 @@
-#include <Memory.h>
-#include <Compiler.h>
+#include <Memory.hpp>
+#include <Compiler.hpp>
 
 /* The memcpy() and memset() templates were originally copied from the managarm
  * microkernel (see https://github.com/managarm/managarm), which also happens to

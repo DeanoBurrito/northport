@@ -1,5 +1,5 @@
 #include <CoreApi.hpp>
-#include <Maths.h>
+#include <Maths.hpp>
 
 /* Big theory comment:
  * The wait subsysem is one of the higher level parts of the kernel core. It operates almost

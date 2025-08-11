@@ -2,8 +2,8 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <CoreApi.hpp>
 #include <debugger/Debugger.hpp>
-#include <NanoPrintf.h>
-#include <Maths.h>
+#include <NanoPrintf.hpp>
+#include <Maths.hpp>
 
 namespace Npk
 {

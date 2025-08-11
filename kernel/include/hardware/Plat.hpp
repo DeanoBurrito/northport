@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Time.h>
-#include <Compiler.h>
+#include <Time.hpp>
+#include <Compiler.hpp>
 
 namespace Npk
 {

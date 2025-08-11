@@ -1,8 +1,8 @@
 #pragma once
 
-#include <Types.h>
-#include <Compiler.h>
-#include <Span.h>
+#include <Types.hpp>
+#include <Compiler.hpp>
+#include <Span.hpp>
 
 namespace Npk
 {

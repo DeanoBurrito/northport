@@ -27,7 +27,7 @@
 */
 #pragma once
 
-#include <Atomic.h>
+#include <Atomic.hpp>
 
 namespace sl
 {

@@ -2,8 +2,8 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Mmu.hpp>
 #include <CoreApi.hpp>
-#include <Memory.h>
-#include <Maths.h>
+#include <Memory.hpp>
+#include <Maths.hpp>
 
 extern "C"
 {

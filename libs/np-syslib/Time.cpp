@@ -1,7 +1,18 @@
-#include <Time.h>
+#include <Time.hpp>
+#include <HostApi.hpp>
 
 namespace sl
 {
+    TimePoint TimePoint::Now()
+    {
+        TimePoint tp {};
+
+        if (!SlHostGetCurrentTime(tp))
+            SL_EMIT_ERROR_HERE();
+
+        return tp;
+    }
+
     TimeCount TimeCount::Rebase(size_t newFrequency) const
     {
         if (newFrequency == frequency)
@@ -15,6 +26,16 @@ namespace sl
 
         result = result / frequency;
         return TimeCount(newFrequency, result);
+    }
+
+    CalendarPoint CalendarPoint::Now()
+    {
+        CalendarPoint cp {};
+
+        if (!SlHostGetCurrentDate(cp))
+            SL_EMIT_ERROR_HERE();
+
+        return cp;
     }
 
 /* The following functions (CalendarPoint::From and CalendarPoint::ToTimePoint)

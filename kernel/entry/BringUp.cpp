@@ -4,9 +4,9 @@
 #include <CoreApiPrivate.hpp>
 #include <Loader.hpp>
 #include <debugger/Debugger.hpp>
-#include <Maths.h>
-#include <Memory.h>
-#include <UnitConverter.h>
+#include <Maths.hpp>
+#include <Memory.hpp>
+#include <UnitConverter.hpp>
 
 //TODO: temporary, this is only needed for DispatchInterrupt/PageFault/Syscall/Exception below
 #include <hardware/Entry.hpp>

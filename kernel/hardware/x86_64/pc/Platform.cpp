@@ -7,9 +7,9 @@
 #include <hardware/x86_64/Tsc.hpp>
 #include <AcpiTypes.hpp>
 #include <CoreApi.hpp>
-#include <Mmio.h>
-#include <Maths.h>
-#include <UnitConverter.h>
+#include <Mmio.hpp>
+#include <Maths.hpp>
+#include <UnitConverter.hpp>
 
 extern "C"
 {

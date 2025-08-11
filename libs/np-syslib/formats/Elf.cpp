@@ -1,142 +1,69 @@
-#include <formats/Elf.h>
-#include <NativePtr.h>
-#include <PlacementNew.h>
+#include <formats/Elf.hpp>
 
 namespace sl
 {
-    bool ValidateElfHeader(const void* file, Elf_Half type)
+    Elf_UnsignedChar ElfCurrentClass()
     {
-#ifdef __x86_64__
-        constexpr Elf64_UnsignedChar elfClass = ELFCLASS64;
-        constexpr Elf64_UnsignedChar elfData = ELFDATA2LSB;
-        constexpr Elf64_Half elfMach = EM_X86_64;
-#elif __riscv_xlen == 64
-        constexpr Elf64_UnsignedChar elfClass = ELFCLASS64;
-        constexpr Elf64_UnsignedChar elfData = ELFDATA2LSB;
-        constexpr Elf64_Half elfMach = EM_RISCV;
-#elif __m68k__
-        constexpr Elf32_UnsignedChar elfClass = ELFCLASS32;
-        constexpr Elf32_UnsignedChar elfData = ELFDATA2MSB;
-        constexpr Elf32_Half elfMach = EM_68K;
-#else
-    #error "syslib/Elf.cpp: Unknown architecture"
-#endif
-
-        auto hdr = reinterpret_cast<const Elf_Ehdr*>(file);
-        if (MemCompare(hdr->e_ident, ExpectedMagic, 4) != 0)
-            return false;
-
-        if(hdr->e_ident[EI_CLASS] != elfClass)
-            return false;
-        if (hdr->e_ident[EI_DATA] != elfData)
-            return false;
-        if (hdr->e_machine != elfMach)
-            return false;
-        if (hdr->e_version != EV_CURRENT)
-            return false;
-        if (hdr->e_type != type)
-            return false;
-
-        return true;
+        if constexpr (sizeof(void*) == 4)
+            return ELFCLASS32;
+        else if constexpr (sizeof(void*) == 8)
+            return ELFCLASS64;
+        return ELFCLASSNONE;
     }
 
-    ComputedReloc ComputeRelocation(Elf_Word type, uintptr_t a, uintptr_t b, uintptr_t s)
+    Elf_UnsignedChar ElfCurrentData()
     {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return ELFDATA2LSB;
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return ELFDATA2MSB;
+#endif
+        return ELFDATANONE;
+    }
+
+    Elf_Half ElfCurrentMachine()
+    {
+#if defined(__x86_64__)
+        return EM_X86_64;
+#elif defined(__riscv__)
+        return EM_RISCV;
+#elif defined(__m68k__)
+        return EM_68K;
+#else
+        return EM_NONE;
+#endif
+    }
+
+    Elf_UnsignedChar ElfCurrentVersion()
+    {
+        return EV_CURRENT;
+    }
+
+    ComputedRelocation ComputeRuntimeRelocation(Elf_Word type, uintptr_t a, 
+        uintptr_t b, uintptr_t p, uintptr_t s, uintptr_t v, uintptr_t z)
+    {
+        //some archs may not use some of these, which is fine, but we mark them
+        //as unused to suppress compiler warnings.
+        (void)a;
+        (void)b;
+        (void)p;
+        (void)s;
+        (void)v;
+        (void)z;
+
         switch (type)
         {
 #ifdef __x86_64__
-        case R_X86_64_64: return { .value = a + s, .length = 8, .usedSymbol = true };
-        case R_X86_64_32: return { .value = a + s, .length = 4, .usedSymbol = true };
-        case R_X86_64_RELATIVE: return { .value = b + a, .length = sizeof(void*), .usedSymbol = false };
-        case R_X86_64_JUMP_SLOT: return { .value = s, .length = sizeof(void*), .usedSymbol = true };
-        case R_X86_64_GLOB_DAT: return { .value = s, .length = sizeof(void*), .usedSymbol = true };
-#elif __riscv_xlen == 64
-        case R_RISCV_64: return { .value = a + s, .length = 8, .usedSymbol = true };
-        case R_RISCV_32: return { .value = a + s, .length = 4, .usedSymbol = true };
-        case R_RISCV_RELATIVE: return { .value = b + a, .length = sizeof(void*), .usedSymbol = false };
-        case R_RISCV_JUMP_SLOT: return { .value = s, .length = sizeof(void*), .usedSymbol = true };
-#elif __m68k__
-        case R_68K_32: return { .value = s + a, .length = 4, .usedSymbol = true };
-        case R_68K_16: return { .value = s + a, .length = 2, .usedSymbol = true };
-        case R_68K_8: return { .value = s + a, .length = 1, .usedSymbol = true };
-        case R_68K_PC32: return { .value = s + a - p, .length = 4, .usedSymbol = true };
-        case R_68K_PC16: return { .value = s + a - p, .length = 2, .usedSymbol = true };
-        case R_68K_PC8: return { .value = s + a - p, .length = 1, .usedSymbol = true };
-        case R_68K_GLOB_DAT: return { .value = s, .length = 4, .usedSymbol = true };
-        case R_68K_JMP_SLOT: return { .value = s, .length = 4, .usedSymbol = true };
-        case R_68K_RELATIVE: return { .value = b + a, .length = 4, .usedSymbol = false };
+        case R_X86_64_64:           return { .value = a + s, .length = 8 };
+        case R_X86_64_32:           return { .value = a + s, .length = 4 };
+        case R_X86_64_RELATIVE:     return { .value = b + a, .length = sizeof(void*) };
+        case R_X86_64_JUMP_SLOT:    return { .value = s, .length = sizeof(void*) };
+        case R_X86_64_GLOB_DAT:     return { .value = s, .length = sizeof(void*) };
 #else
-    #error "syslib/Elf.cpp: unknown architecture"
+    #error "Unsupported architecture"
 #endif
+        default:
+            SL_UNREACHABLE();
         }
-        return { .value = 0, .length = 0, .usedSymbol = false };
-    }
-
-    Vector<const Elf_Phdr*> FindPhdrs(const Elf_Ehdr* hdr, Elf_Word type)
-    {
-        if (hdr == nullptr)
-            return {};
-
-        auto file = reinterpret_cast<const uint8_t*>(hdr);
-        Vector<const Elf_Phdr*> found {};
-
-        auto phdr = reinterpret_cast<const Elf_Phdr*>(file + hdr->e_phoff);
-        for (size_t i = 0; i < hdr->e_phnum; i++)
-        {
-            if (phdr->p_type == type)
-                found.PushBack(phdr);
-            phdr = reinterpret_cast<const Elf_Phdr*>((uintptr_t)phdr + hdr->e_phentsize);
-        }
-
-        return found;
-    }
-
-    const Elf_Shdr* FindShdr(const Elf_Ehdr* hdr, const char* name)
-    {
-        if (hdr == nullptr || name == nullptr)
-            return nullptr;
-
-        auto file = reinterpret_cast<const uint8_t*>(hdr);
-        const size_t nameLen = sl::MemFind(name, 0, NoLimit);
-
-        uintptr_t strtabOffset = hdr->e_shoff + (hdr->e_shstrndx * hdr->e_shentsize);
-        auto stringTable = reinterpret_cast<const Elf_Shdr*>(file + strtabOffset);
-        const char* strings = reinterpret_cast<const char*>(file + stringTable->sh_offset);
-        
-        auto scan = reinterpret_cast<const Elf_Shdr*>(file + hdr->e_shoff);
-        for (size_t i = 0; i < hdr->e_shnum; i++)
-        {
-            const char* scanName = strings + scan->sh_name;
-            const size_t scanLen = MemFind(scanName, 0, NoLimit);
-            if (scanLen != nameLen || MemCompare(scanName, name, scanLen) != 0)
-            {
-                scan = reinterpret_cast<const Elf_Shdr*>((uintptr_t)scan + hdr->e_shentsize);
-                continue;
-            }
-
-            return scan;
-        }
-
-        return nullptr;
-    }
-
-    sl::Vector<const Elf_Shdr*> FindShdrs(const Elf_Ehdr* hdr, Elf_Word type)
-    {
-        if (hdr == nullptr)
-            return {};
-
-        auto file = reinterpret_cast<const uint8_t*>(hdr);
-        Vector<const Elf_Shdr*> found {};
-
-        auto shdr = reinterpret_cast<const Elf_Shdr*>(file + hdr->e_shoff);
-        for (size_t i = 0; i < hdr->e_shnum; i++)
-        {
-            if (shdr->sh_type == type)
-                found.PushBack(shdr);
-            shdr = reinterpret_cast<const Elf_Shdr*>((uintptr_t)shdr + hdr->e_shentsize);
-        }
-
-        return found;
     }
 }
-

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <CoreTypes.hpp>
-#include <containers/LruCache.h>
+#include <containers/LruCache.hpp>
 
 namespace Npk
 {

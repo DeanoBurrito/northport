@@ -1,8 +1,6 @@
 #include <debugger/Debugger.hpp>
 #include <debugger/ProtocolGdb.hpp>
 #include <CoreApi.hpp>
-#include <containers/List.h>
-#include <Maths.h>
 
 /* Kernel Debugger:
  * There's three main moving parts here:

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <Types.h>
-#include <Span.h>
-#include <Optional.h>
-#include <Time.h>
+#include <Types.hpp>
+#include <Span.hpp>
+#include <Optional.hpp>
+#include <Time.hpp>
 
 namespace Npk::Loader
 {

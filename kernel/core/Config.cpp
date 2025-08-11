@@ -1,5 +1,5 @@
 #include <CoreApi.hpp>
-#include <Memory.h>
+#include <Memory.hpp>
 
 namespace Npk
 {

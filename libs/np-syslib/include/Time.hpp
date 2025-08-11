@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Types.h>
+#include <Types.hpp>
 
 namespace sl
 {
@@ -42,8 +42,7 @@ namespace sl
 
         uint64_t epoch;
 
-        static TimePoint Now()
-        { return {}; }
+        static TimePoint Now();
 
         constexpr TimePoint() : epoch {}
         {}
@@ -88,8 +87,7 @@ namespace sl
         uint8_t minute;
         uint8_t second;
 
-        static CalendarPoint Now()
-        { return {}; } //TODO: Implement this and TimePoint::Now()
+        static CalendarPoint Now();
 
         static CalendarPoint From(TimePoint input);
 

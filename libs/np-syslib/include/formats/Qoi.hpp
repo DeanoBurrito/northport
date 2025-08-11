@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Span.h>
-#include <Vectors.h>
+#include <Span.hpp>
+#include <Vectors.hpp>
 
 /* QOI is a very simple compressed image format, not quite as good as png
  * but far less complex in the requried logic.

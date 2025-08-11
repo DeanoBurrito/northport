@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Types.h>
-#include <Atomic.h>
+#include <Types.hpp>
+#include <Atomic.hpp>
 
 namespace sl
 {

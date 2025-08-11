@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Maths.h>
+#include <Maths.hpp>
 
 namespace sl
 {

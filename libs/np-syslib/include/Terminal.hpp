@@ -1,6 +1,6 @@
 #pragma once
 
-#include <formats/Qoi.h>
+#include <formats/Qoi.hpp>
 
 namespace sl
 {

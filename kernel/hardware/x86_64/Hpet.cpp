@@ -1,8 +1,8 @@
 #include <hardware/x86_64/Hpet.hpp>
 #include <AcpiTypes.hpp>
 #include <CoreApi.hpp>
-#include <Mmio.h>
-#include <UnitConverter.h>
+#include <Mmio.hpp>
+#include <UnitConverter.hpp>
 
 namespace Npk
 {

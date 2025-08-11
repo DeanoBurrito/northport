@@ -6,9 +6,9 @@
 #include <AcpiTypes.hpp>
 #include <hardware/Entry.hpp>
 #include <CoreApi.hpp>
-#include <Maths.h>
-#include <Mmio.h>
-#include <UnitConverter.h>
+#include <Maths.hpp>
+#include <Mmio.hpp>
+#include <UnitConverter.hpp>
 
 namespace Npk
 {

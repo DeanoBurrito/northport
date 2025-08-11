@@ -1,8 +1,8 @@
 #include <CoreApi.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Tsc.hpp>
-#include <Mmio.h>
-#include <Memory.h>
+#include <Mmio.hpp>
+#include <Memory.hpp>
 
 namespace Npk
 {

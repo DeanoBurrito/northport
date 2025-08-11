@@ -1,10 +1,10 @@
 #pragma once
 
-#include <Types.h>
-#include <Span.h>
-#include <RefCount.h>
-#include <containers/RBTree.h>
-#include <containers/List.h>
+#include <Types.hpp>
+#include <Span.hpp>
+#include <RefCount.hpp>
+#include <containers/RBTree.hpp>
+#include <containers/List.hpp>
 
 namespace sl
 {

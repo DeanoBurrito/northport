@@ -1,7 +1,6 @@
-#include <Terminal.h>
-#include <Maths.h>
-#include <CppUtils.h>
-#include <NativePtr.h>
+#include <Terminal.hpp>
+#include <Maths.hpp>
+#include <CppUtils.hpp>
 
 /* This code has been rewritten a few times, but it originally stems from
  * the limine bootloader's gterm (now moved into a separate project called flanterm).

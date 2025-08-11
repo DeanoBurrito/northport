@@ -5,8 +5,8 @@
 #include <hardware/x86_64/Mmu.hpp>
 #include <hardware/x86_64/LocalApic.hpp>
 #include <CoreApi.hpp>
-#include <Memory.h>
-#include <NanoPrintf.h>
+#include <Memory.hpp>
+#include <NanoPrintf.hpp>
 
 extern "C" char SysCallEntry[];
 extern "C" char SysEnterEntry[];
@@ -93,6 +93,11 @@ namespace Npk
         if (!suppressEoi)
             SignalEoi();
         LowerIpl(prevIpl);
+    }
+
+    extern "C" void SyscallDispatch()
+    {
+        NPK_UNREACHABLE();
     }
 }
 

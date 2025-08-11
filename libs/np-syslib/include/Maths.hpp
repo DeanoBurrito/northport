@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Types.h>
-#include <Span.h>
+#include <Types.hpp>
+#include <Span.hpp>
 
 constexpr inline size_t KiB = 1024;
 constexpr inline size_t MiB = KiB * KiB;

@@ -1,5 +1,5 @@
 #include <debugger/ProtocolGdb.hpp>
-#include <NanoPrintf.h>
+#include <NanoPrintf.hpp>
 
 namespace Npk::Debugger
 {

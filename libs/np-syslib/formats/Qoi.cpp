@@ -1,6 +1,6 @@
-#include <formats/Qoi.h>
-#include <Endian.h>
-#include <Memory.h>
+#include <formats/Qoi.hpp>
+#include <Endian.hpp>
+#include <Memory.hpp>
 
 namespace sl
 {

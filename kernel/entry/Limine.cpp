@@ -1,6 +1,6 @@
 #include <Loader.hpp>
 #include <CoreApi.hpp>
-#include <Memory.h>
+#include <Memory.hpp>
 #include "Limine.h"
 
 namespace Npk::Loader

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <CppUtils.h>
+#include <CppUtils.hpp>
 
 namespace sl
 {

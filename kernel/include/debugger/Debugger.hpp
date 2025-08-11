@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Types.h>
-#include <Span.h>
+#include <Types.hpp>
+#include <Span.hpp>
 
 namespace Npk::Debugger
 {

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <Compiler.hpp>
+
 #if __SIZEOF_POINTER__ == 8
-    #include <formats/Elf64.h>
+    #include <formats/Elf64.hpp>
 
     #define Elf_Addr Elf64_addr
     #define Elf_Off Elf64_Off
@@ -29,7 +31,7 @@
 
     #define PRIelfRelInfo PRIx64
 #elif __SIZEOF_POINTER__ == 4
-    #include <formats/Elf32.h>
+    #include <formats/Elf32.hpp>
 
     #define Elf_Addr Elf32_addr
     #define Elf_Off Elf32_Off
@@ -59,23 +61,43 @@
 #else
     #error "Unsupported ELF spec"
 #endif
-#include <containers/Vector.h>
 
 namespace sl
 {
-    bool ValidateElfHeader(const void* file, Elf_Half type);
+    Elf_UnsignedChar ElfCurrentClass();
+    Elf_UnsignedChar ElfCurrentData();
+    Elf_Half ElfCurrentMachine();
+    Elf_UnsignedChar ElfCurrentVersion();
 
-    struct ComputedReloc
+    SL_ALWAYS_INLINE
+    bool ValidElfForCurrentSystem(Elf_Ehdr* ehdr)
+    {
+        if (ehdr == nullptr)
+            return false;
+        for (size_t i = 0; i < 4; i++)
+        {
+            if (ehdr->e_ident[i] != ExpectedMagic[i])
+                return false;
+        }
+        if (ehdr->e_ident[EI_CLASS] != ElfCurrentClass())
+            return false;
+        if (ehdr->e_ident[EI_DATA] != ElfCurrentData())
+            return false;
+        if (ehdr->e_machine != ElfCurrentMachine())
+            return false;
+        if (ehdr->e_version != ElfCurrentVersion())
+            return false;
+
+        return true;
+    }
+
+    struct ComputedRelocation
     {
         uintptr_t value;
         size_t length;
-        bool usedSymbol;
     };
 
-    ComputedReloc ComputeRelocation(Elf_Word type, uintptr_t a, uintptr_t b, uintptr_t s);
-
-    sl::Vector<const Elf_Phdr*> FindPhdrs(const Elf_Ehdr* hdr, Elf_Word type); 
-    const Elf_Shdr* FindShdr(const Elf_Ehdr* hdr, const char* name);
-    sl::Vector<const Elf_Shdr*> FindShdrs(const Elf_Ehdr* hdr, Elf_Word type);
+    ComputedRelocation ComputeRuntimeRelocation(Elf_Word type, uintptr_t a, 
+        uintptr_t b, uintptr_t p, uintptr_t s, uintptr_t v, uintptr_t z);
 }
 

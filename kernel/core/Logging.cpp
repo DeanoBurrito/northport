@@ -1,7 +1,7 @@
 #include <CoreApi.hpp>
-#include <Memory.h>
-#include <NanoPrintf.h>
-#include <Maths.h>
+#include <Memory.hpp>
+#include <NanoPrintf.hpp>
+#include <Maths.hpp>
 
 /* Logging thoughts and implementation notes:
  * This logging subsystem is quite simple. Each log message ('item') is a fixed-sized

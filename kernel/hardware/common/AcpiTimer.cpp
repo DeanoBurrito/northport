@@ -1,7 +1,7 @@
 #include <hardware/common/AcpiTimer.hpp>
 #include <AcpiTypes.hpp>
 #include <CoreApi.hpp>
-#include <Mmio.h>
+#include <Mmio.hpp>
 
 #ifdef __x86_64
 #include <hardware/x86_64/PortIo.hpp>

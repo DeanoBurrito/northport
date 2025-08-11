@@ -4,8 +4,8 @@
 #include <hardware/x86_64/Pit.hpp>
 #include <hardware/common/AcpiTimer.hpp>
 #include <CoreApi.hpp>
-#include <Maths.h>
-#include <UnitConverter.h>
+#include <Maths.hpp>
+#include <UnitConverter.hpp>
 
 namespace Npk
 {

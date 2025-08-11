@@ -1,7 +1,7 @@
 #pragma once
 
-#include <ArchHints.h>
-#include <Atomic.h>
+#include <Atomic.hpp>
+#include <Compiler.hpp>
 
 namespace sl
 {
