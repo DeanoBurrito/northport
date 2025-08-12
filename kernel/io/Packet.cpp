@@ -263,8 +263,14 @@ namespace Npk
         Log("Someone is polling for completion on IOP %p", LogLevel::Warning,
             packet);
 
-        while (!packet->complete)
+        const auto now = GetMonotonicTime();
+        const auto end = timeout.Rebase(now.Frequency).ticks + now.epoch;
+
+        while (GetMonotonicTime().epoch < end && !packet->complete)
             sl::HintSpinloop();
+
+        if (GetMonotonicTime().epoch >= end)
+            return IoStatus::Timeout;
 
         return GetIopStatus(packet);
     }
