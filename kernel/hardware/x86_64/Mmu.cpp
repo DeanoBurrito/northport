@@ -1,7 +1,7 @@
 #include <hardware/Arch.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Mmu.hpp>
-#include <CoreApi.hpp>
+#include <Core.hpp>
 #include <Memory.hpp>
 #include <Maths.hpp>
 

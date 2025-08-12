@@ -1,5 +1,4 @@
-#include <CoreApi.hpp>
-#include <hardware/Plat.hpp>
+#include <Core.hpp>
 #include <hardware/Entry.hpp>
 
 /* Clock Subsystem:

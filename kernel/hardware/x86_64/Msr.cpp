@@ -1,5 +1,5 @@
 #include <hardware/x86_64/Msr.hpp>
-#include <CoreApi.hpp>
+#include <Core.hpp>
 
 namespace Npk
 {

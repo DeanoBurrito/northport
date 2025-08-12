@@ -4,7 +4,7 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Mmu.hpp>
 #include <hardware/x86_64/LocalApic.hpp>
-#include <CoreApi.hpp>
+#include <Core.hpp>
 #include <Memory.hpp>
 #include <NanoPrintf.hpp>
 

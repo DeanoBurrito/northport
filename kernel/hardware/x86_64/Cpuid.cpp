@@ -1,5 +1,5 @@
 #include <hardware/x86_64/Cpuid.hpp>
-#include <CoreApi.hpp>
+#include <Core.hpp>
 #include <NanoPrintf.hpp>
 
 namespace Npk

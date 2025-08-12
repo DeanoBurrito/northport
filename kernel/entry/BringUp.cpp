@@ -1,7 +1,6 @@
 #include <AcpiTypes.hpp>
 #include <BakedConstants.hpp>
-#include <CoreApi.hpp>
-#include <CoreApiPrivate.hpp>
+#include <CorePrivate.hpp>
 #include <Loader.hpp>
 #include <debugger/Debugger.hpp>
 #include <Maths.hpp>

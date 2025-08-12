@@ -1,6 +1,6 @@
 #pragma once
 
-#include <CoreTypes.hpp>
+#include <Types.hpp>
 
 namespace Npk
 {

@@ -6,7 +6,7 @@
 #include <hardware/x86_64/PvClock.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <AcpiTypes.hpp>
-#include <CoreApi.hpp>
+#include <Core.hpp>
 #include <Mmio.hpp>
 #include <Maths.hpp>
 #include <UnitConverter.hpp>

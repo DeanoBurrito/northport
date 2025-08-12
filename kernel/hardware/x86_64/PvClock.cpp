@@ -1,4 +1,4 @@
-#include <CoreApi.hpp>
+#include <Core.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <Mmio.hpp>

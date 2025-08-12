@@ -1,6 +1,6 @@
 #include <debugger/Debugger.hpp>
 #include <debugger/ProtocolGdb.hpp>
-#include <CoreApi.hpp>
+#include <Core.hpp>
 
 /* Kernel Debugger:
  * There's three main moving parts here:
@@ -31,11 +31,14 @@ namespace Npk::Debugger
     {
         if (!ReadConfigUint("npk.debugger.enable", false))
         {
-            Log("Debugger not initialized: not enabled in config", LogLevel::Info);
+            Log("Debugger not initialized: not enabled in config", 
+                LogLevel::Info);
             return DebugError::NotSupported;
         }
+        Log("Debugger enabled, initializing ...", LogLevel::Info);
 
-        const auto protocolChoice = ReadConfigString("npk.debugger.protocol", "gdb"_span);
+        const auto protocolChoice = ReadConfigString("npk.debugger.protocol", 
+            "gdb"_span);
         if (protocolChoice == "gdb"_span)
             activeProtocol = GetGdbProtocol();
         else
@@ -44,8 +47,14 @@ namespace Npk::Debugger
                 LogLevel::Error, (int)protocolChoice.Size(), protocolChoice.Begin());
             return DebugError::BadEnvironment;
         }
+
+        if (activeTransport == nullptr)
+        {
+            Log("Debugger not initialized: no transport available", 
+                LogLevel::Error);
+            return DebugError::BadEnvironment;
+        }
         activeProtocol->transport = activeTransport;
-        //TODO: ensure at least one transport is available
 
         cpuCount = numCpus;
         connected = false;

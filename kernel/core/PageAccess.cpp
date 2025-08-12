@@ -1,4 +1,4 @@
-#include <CoreApi.hpp>
+#include <Core.hpp>
 #include <Memory.hpp>
 #include <Maths.hpp>
 
@@ -6,7 +6,7 @@ namespace Npk
 {
     static PageAccessCache accessCache;
 
-    bool Internal::PmaCacheSetEntry(size_t slot, void** curVaddr, Paddr curPaddr, Paddr nextPaddr)
+    bool Private::PmaCacheSetEntry(size_t slot, void** curVaddr, Paddr curPaddr, Paddr nextPaddr)
     {
         (void)curPaddr;
 

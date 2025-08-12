@@ -1,5 +1,4 @@
-#include <CoreApi.hpp>
-#include <CoreApiPrivate.hpp>
+#include <CorePrivate.hpp>
 
 namespace Npk
 {
@@ -79,23 +78,6 @@ namespace Npk
                 IntrsOn();
         }
     }
-
-    sl::StringSpan IplStr(Ipl which)
-    {
-        constexpr sl::StringSpan iplStrs[] =
-        {
-            "Passive",
-            "Dpc",
-            "Interrupt"
-        };
-
-        if (static_cast<size_t>(which) > static_cast<size_t>(Ipl::Interrupt))
-            return "unknown ipl";
-        return iplStrs[static_cast<size_t>(which)];
-    }
-    static_assert(static_cast<Ipl>(0) == Ipl::Passive);
-    static_assert(static_cast<Ipl>(1) == Ipl::Dpc);
-    static_assert(static_cast<Ipl>(2) == Ipl::Interrupt);
 
     void QueueDpc(Dpc* dpc)
     {
