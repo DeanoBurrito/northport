@@ -1,4 +1,4 @@
-#include <Core.hpp>
+#include <CorePrivate.hpp>
 #include <Maths.hpp>
 
 /* Big theory comment:
@@ -73,15 +73,23 @@ namespace Npk
     static bool TryAcquireWaitable(WaitEntry* entry)
     {
         if (entry->waitable->tickets == 0)
+        {
+            if (entry->waitable->type == WaitableType::Condition)
+            {
+                entry->waitable->waiters.Remove(entry);
+                return true;
+            }
+
             return false;
+        }
 
         entry->waitable->waiters.Remove(entry);
 
         //perform any processing the waitable requires
         switch (entry->waitable->type)
         {
-        case WaitableType::Condition: break; //conditions and timers must be cleared manually
-        case WaitableType::Timer: break;
+        case WaitableType::Timer: 
+            break;
         case WaitableType::Mutex:
             entry->waitable->tickets = 0;
             entry->waitable->mutexHolder = entry->thread;
@@ -99,6 +107,8 @@ namespace Npk
         switch (what->type)
         {
         case WaitableType::Condition:
+            what->tickets--;
+            return static_cast<size_t>(~0);
         case WaitableType::Timer:
             what->tickets = 1;
             return static_cast<size_t>(~0);
@@ -155,7 +165,7 @@ namespace Npk
         UnlockWaitables(waiter.entries);
         waiter.lock.Unlock();
 
-        EnqueueThread(thread);
+        Private::EndWait(thread);
     }
 
     static void DoTimeoutWait(Dpc* dpc, void* arg)
@@ -240,7 +250,7 @@ namespace Npk
         {
             //4. prepare and enact sleeping. Once the final lock is dropped here, ipl is lowered to
             //passive and the pending rescheduler triggered by DequeueThread(self) happens.
-            DequeueThread(thread);
+            Private::BeginWait();
             UnlockWaitables(waiter.entries);
             waiter.lock.Unlock(); //ipl is lowered here; reschedule is triggered
 
@@ -300,13 +310,13 @@ namespace Npk
                 break;
 
             waiter->status.Store(WaitStatus::Success, sl::Release);
-            EnqueueThread(waiter->thread);
+            Private::EndWait(waiter->thread);
         }
         what->lock.Unlock();
         //TODO: we'll need figure out early completion, will need a per-thread atomic wait status
     }
 
-    void ResetWaitable(Waitable* what, WaitableType newType)
+    void ResetWaitable(Waitable* what, WaitableType newType, size_t tickets)
     {
         NPK_CHECK(what != nullptr, );
 
@@ -337,11 +347,14 @@ namespace Npk
         while (true)
         {
             auto waiter = what->waiters.PopFront();
+            if (waiter == nullptr)
+                break;
+
             waiter->status.Store(WaitStatus::Reset, sl::Release);
-            EnqueueThread(waiter->thread);
+            Private::EndWait(waiter->thread);
         }
 
-        what->tickets = 0;
+        what->tickets = tickets;
         what->type = newType;
         what->lock.Unlock();
     }

@@ -15,12 +15,14 @@ ArchSwitchThread:
     push %r12
     push %rbp
     push %rbx
+    push %rsi
     push %rdi
 
     mov %rsp, (%rdi)
 1:
     mov %rsi, %rsp
     pop %rdi
+    pop %rsi
     pop %rbx
     pop %rbp
     pop %r12

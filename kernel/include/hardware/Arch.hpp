@@ -29,6 +29,8 @@ namespace Npk
     void ArchSwitchThread(ArchThreadContext** current, ArchThreadContext* next) 
         asm("ArchSwitchThread");
 
+    void ArchPrimeThread(ArchThreadContext** store, uintptr_t stub, uintptr_t entry, uintptr_t arg, uintptr_t stack);
+
     SL_ALWAYS_INLINE
     void WaitForIntr();
 

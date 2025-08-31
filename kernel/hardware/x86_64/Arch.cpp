@@ -6,6 +6,7 @@
 #include <hardware/x86_64/LocalApic.hpp>
 #include <Core.hpp>
 #include <Memory.hpp>
+#include <Maths.hpp>
 #include <NanoPrintf.hpp>
 
 extern "C" char SysCallEntry[];
@@ -44,6 +45,19 @@ namespace Npk
             uint64_t rsp;
             uint64_t ss;
         } iret;
+    };
+
+    struct SwitchFrame
+    {
+        uint64_t rdi;
+        uint64_t rsi;
+        uint64_t rbx;
+        uint64_t rbp;
+        uint64_t r12;
+        uint64_t r13;
+        uint64_t r14;
+        uint64_t r15;
+        uint64_t flags;
     };
 
     extern "C" Debugger::DebugError DebugEventEntryNext(Debugger::EventType type, void* arg)
@@ -259,6 +273,28 @@ namespace Npk
 
     bool CheckForDebugcon();
     bool CheckForCom1(bool debuggerOnly);
+
+    void ArchPrimeThread(ArchThreadContext** store, uintptr_t stub, uintptr_t entry, uintptr_t arg, uintptr_t stack)
+    {
+        SwitchFrame frame {};
+        sl::MemSet(&frame, 0, sizeof(frame));
+        frame.flags = 0x202;
+        frame.rdi = reinterpret_cast<uint64_t>(arg);
+        frame.rsi = reinterpret_cast<uint64_t>(entry);
+
+        constexpr size_t NullLength = 16;
+
+        sl::MemSet(reinterpret_cast<void*>(stack - NullLength), 0, NullLength);
+        stack -= NullLength;
+        sl::MemCopy(reinterpret_cast<void*>(stack - sizeof(stub)), &stub, sizeof(stub));
+        stack -= sizeof(stub);
+
+        auto* dest = reinterpret_cast<SwitchFrame*>(sl::AlignDown(stack, alignof(SwitchFrame)));
+        dest--;
+        sl::MemCopy(dest, &frame, sizeof(frame));
+
+        *store = reinterpret_cast<ArchThreadContext*>(dest);
+    }
 
     void ArchInitEarly()
     {
