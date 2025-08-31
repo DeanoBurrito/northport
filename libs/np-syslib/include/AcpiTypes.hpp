@@ -4,7 +4,7 @@
 #include <Compiler.hpp>
 #include <Flags.hpp>
 
-namespace Npk
+namespace sl
 {
     template<typename Table, typename SubTable>
     inline const SubTable* NextSubtable(const Table* table, const SubTable* src = nullptr)
@@ -284,7 +284,7 @@ namespace Npk
     });
     static_assert(sizeof(Madt) == 44);
 
-#define NextMadtSubtable(x, ...) NextSubtable<Madt, MadtSource>(x, ##__VA_ARGS__)
+#define NextMadtSubtable(x, ...) NextSubtable<sl::Madt, sl::MadtSource>(x, ##__VA_ARGS__)
 
     struct SL_PACKED(Hpet : public Sdt
     {
@@ -395,7 +395,7 @@ namespace Npk
     });
     static_assert(sizeof(Srat) == 48);
 
-#define NextSratSubtable(x, ...) NextSubtable<Srat, Sras>(x, ##__VA_ARGS__)
+#define NextSratSubtable(x, ...) NextSubtable<sl::Srat, sl::Sras>(x, ##__VA_ARGS__)
 
     enum class RhctFlag
     {
@@ -436,7 +436,7 @@ namespace Npk
     });
     static_assert(sizeof(RhctNode) == 6);
 
-#define NextRhctSubtable(x, ...) NextSubtable<Rhct, RhctNode>(x, ##__VA_ARGS__)
+#define NextRhctSubtable(x, ...) NextSubtable<sl::Rhct, sl::RhctNode>(x, ##__VA_ARGS__)
 
     namespace RhctNodes
     {

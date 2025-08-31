@@ -19,23 +19,23 @@ namespace Npk
         if (ReadConfigUint("npk.ignore_acpi_pm_timer", false))
             return false;
 
-        auto maybeFadt = GetAcpiTable(SigFadt);
+        auto maybeFadt = GetAcpiTable(sl::SigFadt);
         if (!maybeFadt.HasValue())
             return false;
 
-        auto fadt = static_cast<Fadt*>(*maybeFadt);
-        if (fadt->flags.Has(FadtFlag::HwReducedAcpi))
+        auto fadt = static_cast<sl::Fadt*>(*maybeFadt);
+        if (fadt->flags.Has(sl::FadtFlag::HwReducedAcpi))
             return false;
 
 //yes, I'm doing something a bit dodge here.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
-        if (fadt->length >= offsetof(Fadt, xPmTimerBlock) && fadt->xPmTimerBlock.address != 0)
+        if (fadt->length >= offsetof(sl::Fadt, xPmTimerBlock) && fadt->xPmTimerBlock.address != 0)
         {
             acpiTimerAddress = fadt->xPmTimerBlock.address;
             const auto type = fadt->xPmTimerBlock.type;
-            NPK_CHECK(type == AcpiAddrSpace::IO || type == AcpiAddrSpace::Memory, false);
-            acpiTimerIsMmio = type == AcpiAddrSpace::Memory;
+            NPK_CHECK(type == sl::AcpiAddrSpace::IO || type == sl::AcpiAddrSpace::Memory, false);
+            acpiTimerIsMmio = type == sl::AcpiAddrSpace::Memory;
 
             if (acpiTimerIsMmio)
             {
@@ -47,7 +47,7 @@ namespace Npk
                 virtBase += PageSize();
             }
         }
-        else if (fadt->length >= offsetof(Fadt, pmTimerBlock) && fadt->pmTimerBlock != 0)
+        else if (fadt->length >= offsetof(sl::Fadt, pmTimerBlock) && fadt->pmTimerBlock != 0)
         {
             acpiTimerIsMmio = false;
             acpiTimerAddress = fadt->pmTimerBlock;

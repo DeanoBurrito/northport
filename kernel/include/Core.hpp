@@ -12,6 +12,11 @@
 
 extern "C" char KERNEL_CPULOCALS_BEGIN[];
 
+namespace sl
+{
+    struct Sdt;
+}
+
 namespace Npk
 {
     constexpr uint8_t MinPriority = 0;
@@ -365,8 +370,6 @@ namespace Npk
         } liveLists;
     };
 
-    struct Sdt;
-
     enum class ThreadState : uint8_t
     {
         Dead,
@@ -500,7 +503,7 @@ namespace Npk
         sl::StringSpan defaultValue);
 
     sl::Opt<Paddr> GetConfigRoot(ConfigRootType type);
-    sl::Opt<Sdt*> GetAcpiTable(sl::StringSpan signature);
+    sl::Opt<sl::Sdt*> GetAcpiTable(sl::StringSpan signature);
 
     SL_ALWAYS_INLINE
     PageInfo* LookupPageInfo(Paddr paddr)

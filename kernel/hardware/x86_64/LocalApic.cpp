@@ -227,7 +227,7 @@ namespace Npk
         return true;
     }
 
-    static void FinishLapicInit(Madt* madt)
+    static void FinishLapicInit(sl::Madt* madt)
     {
         lapic->Write(LApicReg::SpuriousVector, LapicSpuriousVector);
         lapic->Write(LApicReg::LvtTimer, LvtMasked | LapicSpuriousVector);
@@ -248,17 +248,17 @@ namespace Npk
 
         //first pass: find the acpi processor id assocaited with this lapic
         lapic->acpiId = -1;
-        for (auto source = NextMadtSubtable(madt); source != nullptr; source = NextMadtSubtable(madt, source))
+        for (auto source = sl::NextMadtSubtable(madt); source != nullptr; source = sl::NextMadtSubtable(madt, source))
         {
-            if (source->type == MadtSourceType::LocalApic)
+            if (source->type == sl::MadtSourceType::LocalApic)
             {
-                auto src = static_cast<const MadtSources::LocalApic*>(source);
+                auto src = static_cast<const sl::MadtSources::LocalApic*>(source);
                 if (src->apicId == myLapicId)
                     lapic->acpiId = src->acpiProcessorId;
             }
-            else if (source->type == MadtSourceType::LocalX2Apic)
+            else if (source->type == sl::MadtSourceType::LocalX2Apic)
             {
-                auto src = static_cast<const MadtSources::LocalX2Apic*>(source);
+                auto src = static_cast<const sl::MadtSources::LocalX2Apic*>(source);
                 if (src->apicId == myLapicId)
                     lapic->acpiId = src->acpiProcessorId;
             }
@@ -271,15 +271,15 @@ namespace Npk
         }
 
         //second pass: find any nmi entries that apply to this lapic
-        for (auto source = NextMadtSubtable(madt); source != nullptr; source = NextMadtSubtable(madt, source))
+        for (auto source = sl::NextMadtSubtable(madt); source != nullptr; source = sl::NextMadtSubtable(madt, source))
         {
             uint32_t targetAcpiId;
             uint16_t polarityModeFlags;
             uint8_t inputNumber;
 
-            if (source->type == MadtSourceType::LocalApicNmi)
+            if (source->type == sl::MadtSourceType::LocalApicNmi)
             {
-                auto nmi = static_cast<const MadtSources::LocalApicNmi*>(source);
+                auto nmi = static_cast<const sl::MadtSources::LocalApicNmi*>(source);
 
                 targetAcpiId = nmi->acpiProcessorId;
                 if (targetAcpiId == 0xFF)
@@ -287,9 +287,9 @@ namespace Npk
                 polarityModeFlags = nmi->polarityModeFlags;
                 inputNumber = nmi->lintNumber;
             }
-            else if (source->type == MadtSourceType::LocalX2ApicNmi)
+            else if (source->type == sl::MadtSourceType::LocalX2ApicNmi)
             {
-                auto nmi = static_cast<const MadtSources::LocalX2ApicNmi*>(source);
+                auto nmi = static_cast<const sl::MadtSources::LocalX2ApicNmi*>(source);
 
                 targetAcpiId = nmi->acpiProcessorId;
                 polarityModeFlags = nmi->polarityModeFlags;
@@ -303,8 +303,8 @@ namespace Npk
                 continue;
 
             const LApicReg lvt = inputNumber == 1 ? LApicReg::LvtLint1 : LApicReg::LvtLint0;
-            const bool activeLow = (polarityModeFlags & MadtSources::PolarityMask) == MadtSources::PolarityLow;
-            const bool levelTriggered = (polarityModeFlags & MadtSources::TriggerModeMask) == MadtSources::TriggerModeLevel;
+            const bool activeLow = (polarityModeFlags & sl::MadtSources::PolarityMask) == sl::MadtSources::PolarityLow;
+            const bool levelTriggered = (polarityModeFlags & sl::MadtSources::TriggerModeMask) == sl::MadtSources::TriggerModeLevel;
             const uint32_t value = LvtModeNmi 
                 | (activeLow ? LvtActiveLow : 0) 
                 | (levelTriggered ? LvtLevelTrigger : 0);
@@ -351,11 +351,11 @@ namespace Npk
             Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
         }
 
-        auto maybeMadt = GetAcpiTable(SigMadt);
-        Madt* madt = maybeMadt.HasValue() ? static_cast<Madt*>(*maybeMadt) : nullptr;
+        auto maybeMadt = GetAcpiTable(sl::SigMadt);
+        auto madt = maybeMadt.HasValue() ? static_cast<sl::Madt*>(*maybeMadt) : nullptr;
         FinishLapicInit(madt);
 
-        if (madt != nullptr && madt->flags.Has(MadtFlag::PcAtCompat))
+        if (madt != nullptr && madt->flags.Has(sl::MadtFlag::PcAtCompat))
         {
             //BSP should take care of initializing, remapping and masking the PICs.
             Out8(Port::Pic0Command, 0x11);
@@ -388,8 +388,8 @@ namespace Npk
             Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
         }
 
-        auto maybeMadt = GetAcpiTable(SigMadt);
-        Madt* madt = maybeMadt.HasValue() ? static_cast<Madt*>(*maybeMadt) : nullptr;
+        auto maybeMadt = GetAcpiTable(sl::SigMadt);
+        auto madt = maybeMadt.HasValue() ? static_cast<sl::Madt*>(*maybeMadt) : nullptr;
         FinishLapicInit(madt);
 
         EnableLocalApic();

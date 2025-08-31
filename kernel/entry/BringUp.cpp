@@ -1,7 +1,6 @@
 #include <AcpiTypes.hpp>
-#include <BakedConstants.hpp>
 #include <CorePrivate.hpp>
-#include <Loader.hpp>
+#include <EntryPrivate.hpp>
 #include <debugger/Debugger.hpp>
 #include <Maths.hpp>
 #include <Memory.hpp>
@@ -329,32 +328,32 @@ namespace Npk
         if (!rsdpPhys.HasValue())
             return;
 
-        char rsdpBuff[sizeof(Rsdp)];
-        NPK_CHECK(CopyFromPhysical(*rsdpPhys, rsdpBuff) == sizeof(Rsdp), );
-        Rsdp* rsdp = reinterpret_cast<Rsdp*>(rsdpBuff);
+        char rsdpBuff[sizeof(sl::Rsdp)];
+        NPK_CHECK(CopyFromPhysical(*rsdpPhys, rsdpBuff) == sizeof(sl::Rsdp), );
+        auto rsdp = reinterpret_cast<sl::Rsdp*>(rsdpBuff);
 
         Paddr ptrsBase;
         size_t ptrsCount;
         size_t ptrSize;
         if (rsdp->revision == 0 || rsdp->xsdt == 0)
         {
-            char rsdtBuff[sizeof(Rsdt)];
-            NPK_CHECK(sizeof(Rsdt) == CopyFromPhysical(rsdp->rsdt, rsdtBuff), );
-            Rsdt* rsdt = reinterpret_cast<Rsdt*>(rsdtBuff);
+            char rsdtBuff[sizeof(sl::Rsdt)];
+            NPK_CHECK(sizeof(sl::Rsdt) == CopyFromPhysical(rsdp->rsdt, rsdtBuff), );
+            auto rsdt = reinterpret_cast<sl::Rsdt*>(rsdtBuff);
 
-            ptrsCount = (rsdt->length - sizeof(Sdt)) / sizeof(uint32_t);
+            ptrsCount = (rsdt->length - sizeof(sl::Sdt)) / sizeof(uint32_t);
             ptrSize = 4;
-            ptrsBase = rsdp->rsdt + sizeof(Sdt);
+            ptrsBase = rsdp->rsdt + sizeof(sl::Sdt);
         }
         else
         {
-            char xsdtBuff[sizeof(Xsdt)];
-            NPK_CHECK(sizeof(Xsdt) == CopyFromPhysical(rsdp->xsdt, xsdtBuff), );
-            Xsdt* xsdt = reinterpret_cast<Xsdt*>(xsdtBuff);
+            char xsdtBuff[sizeof(sl::Xsdt)];
+            NPK_CHECK(sizeof(sl::Xsdt) == CopyFromPhysical(rsdp->xsdt, xsdtBuff), );
+            auto xsdt = reinterpret_cast<sl::Xsdt*>(xsdtBuff);
 
-            ptrsCount = (xsdt->length - sizeof(Sdt)) / sizeof(uint64_t);
+            ptrsCount = (xsdt->length - sizeof(sl::Sdt)) / sizeof(uint64_t);
             ptrSize = 8;
-            ptrsBase = rsdp->xsdt + sizeof(Sdt);
+            ptrsBase = rsdp->xsdt + sizeof(sl::Sdt);
         }
         Log("Acpi sdt config: %s has %zux %zu-byte addresses.", LogLevel::Verbose,
             ptrSize == 4 ? "rsdt" : "xsdt", ptrsCount, ptrSize);
@@ -371,16 +370,15 @@ namespace Npk
         {
             const Paddr ptrPaddr = ptrsBase + ptrSize * i;
 
-            Paddr sdtPaddr;
+            Paddr sdtPaddr = 0;
             sl::Span<char> sdtPtrBuff { reinterpret_cast<char*>(&sdtPaddr), ptrSize };
-            NPK_CHECK(CopyFromPhysical(ptrPaddr, sdtPtrBuff)
-                == sizeof(Paddr), );
+            CopyFromPhysical(ptrPaddr, sdtPtrBuff);
 
             acpiTables[i].paddr = sdtPaddr;
 
-            Sdt sdt;
+            sl::Sdt sdt;
             sl::Span<char> sdtBuff { reinterpret_cast<char*>(&sdt), sizeof(sdt) };
-            NPK_CHECK(CopyFromPhysical(sdtPaddr, sdtBuff) == sizeof(Sdt), );
+            NPK_CHECK(CopyFromPhysical(sdtPaddr, sdtBuff) == sizeof(sl::Sdt), );
             sl::MemCopy(acpiTables[i].signature, sdt.signature, 4);
 
             acpiTables[i].vaddr = reinterpret_cast<void*>(virtBase);
@@ -394,14 +392,14 @@ namespace Npk
         }
     }
 
-    sl::Opt<Sdt*> GetAcpiTable(sl::StringSpan signature)
+    sl::Opt<sl::Sdt*> GetAcpiTable(sl::StringSpan signature)
     {
         for (size_t i = 0; i < acpiTables.Size(); i++)
         {
             if (sl::MemCompare(acpiTables[i].signature, signature.Begin(), 4) != 0)
                 continue;
 
-            return static_cast<Sdt*>(acpiTables[i].vaddr);
+            return static_cast<sl::Sdt*>(acpiTables[i].vaddr);
         }
 
         return {};

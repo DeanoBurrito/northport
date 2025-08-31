@@ -27,14 +27,14 @@ namespace Npk
         if (ReadConfigUint("npk.x86.ignore_hpet", false))
             return false;
 
-        auto maybeHpet = GetAcpiTable(SigHpet);
+        auto maybeHpet = GetAcpiTable(sl::SigHpet);
         if (!maybeHpet.HasValue())
             return false;
-        auto hpet = static_cast<Hpet*>(*maybeHpet);
+        auto hpet = static_cast<sl::Hpet*>(*maybeHpet);
 
         //the spec *implies* the registers live in memory space, but its never
         //stated as such, so just assert it to be safe.
-        NPK_CHECK(hpet->baseAddress.type == AcpiAddrSpace::Memory, false);
+        NPK_CHECK(hpet->baseAddress.type == sl::AcpiAddrSpace::Memory, false);
 
         auto mapped = ArchAddMap(MyKernelMap(), virtBase, 
             hpet->baseAddress.address, MmuFlag::Write | MmuFlag::Mmio);

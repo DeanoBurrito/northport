@@ -1,8 +1,10 @@
 KERNEL_CXX_SRCS += core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
 	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp core/Panic.cpp \
-	core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
+	core/Scheduler.cpp core/Smp.cpp core/Str.cpp core/Wait.cpp \
 	debugger/Debugger.cpp debugger/ProtocolGdb.cpp \
 	entry/BringUp.cpp \
+	io/Continuation.cpp io/Packet.cpp io/Str.cpp \
+	Scrap.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support
@@ -50,7 +52,7 @@ $(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o: $(UNITY_SOURCE_FILE)
 kernel/$(BAKED_CONSTANTS_FILE):
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Creating source file for build-time kernel constants\n"
 	@mkdir -p $(@D)
-	@printf "#include <BakedConstants.hpp>\n \
+	@printf "#include <EntryPrivate.hpp>\n \
 		namespace Npk \n\
 		{ \n\
 			const char* gitHash = \"$(shell git rev-parse HEAD)\"; \n\

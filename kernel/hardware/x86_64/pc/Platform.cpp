@@ -138,7 +138,7 @@ namespace Npk
         NPK_ASSERT(kernelMap >> 32 == 0); //we can only load 32-bits into cr3 from the spinup code
         NPK_ASSERT(!savedMtrrs.Empty());
 
-        auto maybeMadt = GetAcpiTable(SigMadt);
+        auto maybeMadt = GetAcpiTable(sl::SigMadt);
         NPK_CHECK(maybeMadt.HasValue(), );
 
         const bool modernDelays = ReadConfigUint("npk.x86.lapic_modern_delays", false); //TODO: detect the default programatically
@@ -159,22 +159,22 @@ namespace Npk
 
         size_t idAlloc = 1; //id=0 is BSP (the currently executing core)
 
-        auto madt = static_cast<const Madt*>(*maybeMadt);
-        for (auto source = NextMadtSubtable(madt); source != nullptr; source = NextMadtSubtable(madt, source))
+        auto madt = static_cast<const sl::Madt*>(*maybeMadt);
+        for (auto source = sl::NextMadtSubtable(madt); source != nullptr; source = sl::NextMadtSubtable(madt, source))
         {
             uint32_t targetLapicId = MyLapicId();
-            if (source->type == MadtSourceType::LocalApic)
+            if (source->type == sl::MadtSourceType::LocalApic)
             {
-                auto src = static_cast<const MadtSources::LocalApic*>(source);
-                if (src->flags.Has(MadtSources::LocalApicFlag::Enabled) || 
-                    src->flags.Has(MadtSources::LocalApicFlag::OnlineCapable))
+                auto src = static_cast<const sl::MadtSources::LocalApic*>(source);
+                if (src->flags.Has(sl::MadtSources::LocalApicFlag::Enabled) || 
+                    src->flags.Has(sl::MadtSources::LocalApicFlag::OnlineCapable))
                     targetLapicId = src->apicId;
             }
-            else if (source->type == MadtSourceType::LocalX2Apic)
+            else if (source->type == sl::MadtSourceType::LocalX2Apic)
             {
-                auto src = static_cast<const MadtSources::LocalX2Apic*>(source);
-                if (src->flags.Has(MadtSources::LocalApicFlag::Enabled) || 
-                    src->flags.Has(MadtSources::LocalApicFlag::OnlineCapable))
+                auto src = static_cast<const sl::MadtSources::LocalX2Apic*>(source);
+                if (src->flags.Has(sl::MadtSources::LocalApicFlag::Enabled) || 
+                    src->flags.Has(sl::MadtSources::LocalApicFlag::OnlineCapable))
                     targetLapicId = src->apicId;
             }
             else
