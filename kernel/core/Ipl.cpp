@@ -33,15 +33,22 @@ namespace Npk
     {
         NPK_ASSERT(CurrentIpl() == Ipl::Dpc);
 
+        DpcQueue localQueue {};
+
         while (true)
         {
             dpcQueueLock->Lock();
-            Dpc* dpc = dpcQueue->PopFront();
+            dpcQueue->Exchange(localQueue);
             dpcQueueLock->Unlock();
 
-            if (dpc == nullptr)
+            if (localQueue.Empty())
                 break;
-            dpc->function(dpc, dpc->arg);
+
+            while (!localQueue.Empty())
+            {
+                auto dpc = localQueue.PopFront();
+                dpc->function(dpc, dpc->arg);
+            }
         }
     }
 
@@ -49,34 +56,33 @@ namespace Npk
     {
         while (true)
         {
-            const bool restoreIntrs = IntrsOff();
             const Ipl currentIpl = *localIpl;
-            if (restoreIntrs)
-                IntrsOn();
-
             if (currentIpl == target)
-                break; //reached the target level, we're done
+                break;
 
-            //complete any work pending for this level and then lower ipl by 1
+            //finish any pending work for this IPL, then decrement it to
+            //the next IPL.
+            const bool restoreIntrs = IntrsOff();
+
             switch (currentIpl)
             {
-            case Ipl::Interrupt: break; //no-op
+            case Ipl::Interrupt:
+                break;
             case Ipl::Dpc:
                 RunDpcs();
                 break;
-            case Ipl::Passive: 
-                //there may be a pending context switch, let the scheduler
-                //know it can perform that now if it wants.
-                Private::OnPassiveRunLevel();
+            case Ipl::Passive:
                 break;
             }
 
-            const Ipl nextIpl = static_cast<Ipl>(static_cast<unsigned>(currentIpl) - 1);
-            localIpl = nextIpl;
+            localIpl = (Ipl)((unsigned)currentIpl - 1);
 
             if (restoreIntrs)
                 IntrsOn();
         }
+
+        if (target == Ipl::Passive)
+            Private::OnPassiveRunLevel();
     }
 
     void QueueDpc(Dpc* dpc)

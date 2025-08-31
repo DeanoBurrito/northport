@@ -10,4 +10,6 @@ namespace Npk::Private
 {
     void InitLocalScheduler(ThreadContext* idle);
     void OnPassiveRunLevel();
+    void BeginWait();
+    void EndWait(ThreadContext* thread);
 }

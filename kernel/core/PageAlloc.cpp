@@ -3,16 +3,30 @@
 
 namespace Npk
 {
+    //NOTE: assumes dom.freeLists.lock is held
     static PageInfo* TakePage(SystemDomain& dom)
     {
         if (!dom.freeLists.zeroed.Empty())
+        {
+            dom.freeLists.pageCount--;
             return dom.freeLists.zeroed.PopFront();
+        }
+
         if (!dom.freeLists.free.Empty())
         {
             PageInfo* page = dom.freeLists.free.PopFront();
+
+            if (page->pm.count > 1)
+            {
+                PageInfo* next = page + 1;
+                next->pm.count = page->pm.count - 1;
+                dom.freeLists.free.PushBack(next);
+            }
+
             auto access = AccessPage(page);
             sl::MemSet(access->value, 0, PageSize());
 
+            dom.freeLists.pageCount--;
             return page;
         }
 

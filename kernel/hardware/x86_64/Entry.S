@@ -9,6 +9,7 @@
 .extern KernelEntry
 .extern InterruptDispatch
 .extern SyscallDispatch
+.extern DispatchDebugEvent
 
 .type RealEntry, @function
 .size RealEntry, (_EndOfRealEntry - RealEntry)
@@ -107,7 +108,7 @@ DebugEventEntry:
     push %r14
     push %r15
 
-    call DebugEventEntryNext
+    call DispatchDebugEvent
 
     pop %r15
     pop %r14

@@ -17,10 +17,13 @@ namespace Npk
     constexpr uint8_t MinPriority = 0;
     constexpr uint8_t MaxPriority = 255;
     constexpr uint8_t IdlePriority = 0;
-    constexpr uint8_t MinRtPriority = 0;
-    constexpr uint8_t MaxRtPriority = MaxPriority / 2;
+    constexpr uint8_t MinRtPriority = MaxPriority / 2;
+    constexpr uint8_t MaxRtPriority = MaxPriority;
     constexpr uint8_t MinTsPriority = IdlePriority + 1;
-    constexpr uint8_t MaxTsPriority = MaxRtPriority - 1;
+    constexpr uint8_t MaxTsPriority = MinRtPriority - 1;
+    constexpr uint8_t MinNiceness = 0;
+    constexpr uint8_t BaseNiceness = 20;
+    constexpr uint8_t MaxNiceness = 39;
 
     class IntrSpinLock
     {
@@ -66,7 +69,7 @@ namespace Npk
         Interrupt,
     };
 
-    template<Ipl min, Ipl max = min>
+    template<Ipl max, Ipl min = Ipl::Passive>
     class IplSpinLock
     {
     private:
@@ -257,7 +260,8 @@ namespace Npk
         size_t length;
         sl::Atomic<size_t> acknowledgements;
     };
-    using RemoteFlushRequest = ShootdownQueue::Item;
+
+    using FlushRequest = ShootdownQueue::Item;
 
     struct LocalScheduler;
 
@@ -363,6 +367,15 @@ namespace Npk
 
     struct Sdt;
 
+    enum class ThreadState : uint8_t
+    {
+        Dead,
+        Standby,
+        Ready,
+        Executing,
+        Waiting,
+    };
+
     struct ThreadContext
     {
         struct 
@@ -377,14 +390,16 @@ namespace Npk
             ArchThreadContext* context;
 
             CpuId affinity;
+            sl::TimePoint sleepBegin;
             uint32_t sleepTime;
             uint32_t runTime;
             uint8_t basePriority;
             uint8_t dynPriority;
             uint8_t score;
             bool isPinned;
-            bool isActive;
+            ThreadState state;
             bool isInteractive;
+            uint8_t niceness;
         } scheduling;
         sl::ListHook queueHook; //NOTE: protected by scheduling.lock
 
@@ -400,7 +415,8 @@ namespace Npk
 
     namespace Private
     {
-        bool PmaCacheSetEntry(size_t slot, void** curVaddr, Paddr curPaddr, Paddr nextPaddr);
+        bool PmaCacheSetEntry(size_t slot, void** curVaddr, Paddr curPaddr, 
+            Paddr nextPaddr);
     };
 
     extern SystemDomain domain0;
@@ -418,25 +434,27 @@ namespace Npk
     Ipl RaiseIpl(Ipl target);
     void LowerIpl(Ipl target);
 
-    template<Ipl min, Ipl max>
-    inline void IplSpinLock<min, max>::Lock()
+    template<Ipl max, Ipl min>
+    inline void IplSpinLock<max, min>::Lock()
     {
         prevIpl = CurrentIpl();
         if (prevIpl > max || min > prevIpl)
             Panic("Bad IPL when acquiring IplSpinLock");
 
-        RaiseIpl(max);
+        if (prevIpl < max)
+            RaiseIpl(max);
         lock.Lock();
     }
 
-    template<Ipl min, Ipl max>
-    inline bool IplSpinLock<min, max>::TryLock()
+    template<Ipl max, Ipl min>
+    inline bool IplSpinLock<max, min>::TryLock()
     {
         auto lastIpl = CurrentIpl();
         if (lastIpl > max || min > lastIpl)
             Panic("Bad IPL when trying to acquire IplSpinLock");
 
-        RaiseIpl(max);
+        if (lastIpl < max)
+            RaiseIpl(max);
         const bool success = lock.TryLock();
 
         if (success)
@@ -447,8 +465,8 @@ namespace Npk
         return success;
     }
 
-    template<Ipl min, Ipl max>
-    inline void IplSpinLock<min, max>::Unlock()
+    template<Ipl max, Ipl min>
+    inline void IplSpinLock<max, min>::Unlock()
     {
         if (prevIpl < max)
             LowerIpl(prevIpl);
@@ -458,7 +476,7 @@ namespace Npk
     void QueueDpc(Dpc* dpc);
     RemoteCpuStatus* RemoteStatus(CpuId who);
     void SendMail(CpuId who, SmpMail* mail);
-    void FlushRemoteTlbs(sl::Span<CpuId> who, RemoteFlushRequest* what, bool sync);
+    void FlushRemoteTlbs(sl::Span<CpuId> who, FlushRequest* what, bool sync);
     void SetMyIpiId(void* id);
     void* GetIpiId(CpuId id);
     void NudgeCpu(CpuId who);
@@ -478,7 +496,8 @@ namespace Npk
 
     void SetConfigStore(sl::StringSpan store, bool noLog);
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
-    sl::StringSpan ReadConfigString(sl::StringSpan key, sl::StringSpan defaultValue);
+    sl::StringSpan ReadConfigString(sl::StringSpan key, 
+        sl::StringSpan defaultValue);
 
     sl::Opt<Paddr> GetConfigRoot(ConfigRootType type);
     sl::Opt<Sdt*> GetAcpiTable(sl::StringSpan signature);
@@ -519,21 +538,30 @@ namespace Npk
         return AccessPage(LookupPagePaddr(page));
     }
 
+    bool ResetThread(ThreadContext* thread);
+    bool PrepareThread(ThreadContext* thread, uintptr_t entry, uintptr_t arg, 
+        uintptr_t stack, sl::Opt<CpuId> affinity);
+    void ExitThread(size_t code, void* data);
     void Yield();
     void EnqueueThread(ThreadContext* thread);
-    void DequeueThread(ThreadContext* thread);
 
+    void SetThreadNiceness(ThreadContext* thread, uint8_t value);
     void SetThreadPriority(ThreadContext* thread, uint8_t value);
     void SetThreadAffinity(ThreadContext* thread, CpuId who);
     void ClearThreadAffinity(ThreadContext* thread);
+    sl::Opt<uint8_t> GetThreadNiceness(ThreadContext* thread);
+    sl::Opt<uint8_t> GetThreadPriority(ThreadContext* thread);
+    sl::Opt<CpuId> GetThreadAffinity(ThreadContext* thread, bool& pinned);
 
     void CancelWait(ThreadContext* thread);
-    WaitStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, sl::TimeCount timeout, sl::StringSpan reason = {});
+    WaitStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, 
+        sl::TimeCount timeout, sl::StringSpan reason = {});
     void SignalWaitable(Waitable* what);
-    void ResetWaitable(Waitable* what, WaitableType newType);
+    void ResetWaitable(Waitable* what, WaitableType newType, size_t tickets);
 
     SL_ALWAYS_INLINE
-    WaitStatus WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout, sl::StringSpan reason = {})
+    WaitStatus WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout,
+        sl::StringSpan reason = {})
     {
         return WaitMany({ &what, 1 }, entry, timeout, reason);
     }
@@ -544,6 +572,7 @@ namespace Npk
     sl::StringSpan WaitStatusStr(WaitStatus which);
     sl::StringSpan WaitableTypeStr(WaitableType which);
     sl::StringSpan LogLevelStr(LogLevel which);
+    sl::StringSpan ThreadStateStr(ThreadState which);
 }
 
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)
@@ -554,7 +583,8 @@ namespace Npk
 #define NPK_ASSERT(cond) \
     if (SL_UNLIKELY(!(cond))) \
     { \
-        Npk::Panic("Assert failed (" SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__) "): " #cond); \
+        Npk::Panic("Assert failed (" SL_FILENAME_MACRO ":" \
+            NPK_ASSERT_STRINGIFY(__LINE__) "): " #cond); \
     }
 
 #define NPK_UNREACHABLE() \

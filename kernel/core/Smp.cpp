@@ -29,7 +29,7 @@ namespace Npk
                 SignalWaitable(mail->data.onComplete);
         }
 
-        RemoteFlushRequest* shootdown = nullptr;
+        FlushRequest* shootdown = nullptr;
         while ((shootdown = control->shootdowns.Pop()) != nullptr)
         {
             ArchFlushTlb(shootdown->data.base, shootdown->data.length);
@@ -58,7 +58,7 @@ namespace Npk
         NudgeCpu(who);
     }
 
-    void FlushRemoteTlbs(sl::Span<CpuId> who, RemoteFlushRequest* what, bool sync)
+    void FlushRemoteTlbs(sl::Span<CpuId> who, FlushRequest* what, bool sync)
     {
         NPK_CHECK(what != nullptr, );
 

@@ -17,9 +17,9 @@ namespace Npk
     {
         constexpr sl::StringSpan strs[] =
         {
-            "Passive",
-            "Dpc",
-            "Interrupt"
+            "passive",
+            "dpc",
+            "interrupt"
         };
 
         const size_t index = static_cast<size_t>(which);
@@ -126,7 +126,7 @@ namespace Npk
         };
 
         if (static_cast<size_t>(level) > static_cast<size_t>(LogLevel::Debug))
-            return "unknown level";
+            return "unknown";
         return levelStrs[static_cast<size_t>(level)];
     }
     static_assert(static_cast<LogLevel>(0) == LogLevel::Error);
@@ -135,4 +135,26 @@ namespace Npk
     static_assert(static_cast<LogLevel>(3) == LogLevel::Verbose);
     static_assert(static_cast<LogLevel>(4) == LogLevel::Trace);
     static_assert(static_cast<LogLevel>(5) == LogLevel::Debug);
+
+    sl::StringSpan ThreadStateStr(ThreadState which)
+    {
+        constexpr sl::StringSpan strs[] =
+        {
+            "dead",
+            "standby",
+            "ready",
+            "executing",
+            "waiting",
+        };
+
+        const size_t index = static_cast<size_t>(which);
+        if (index > static_cast<size_t>(ThreadState::Waiting))
+            return "unknown";
+        return strs[index];
+    }
+    static_assert(static_cast<ThreadState>(0) == ThreadState::Dead);
+    static_assert(static_cast<ThreadState>(1) == ThreadState::Standby);
+    static_assert(static_cast<ThreadState>(2) == ThreadState::Ready);
+    static_assert(static_cast<ThreadState>(3) == ThreadState::Executing);
+    static_assert(static_cast<ThreadState>(4) == ThreadState::Waiting);
 }
