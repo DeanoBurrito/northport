@@ -176,6 +176,12 @@ namespace sl
                     return InsertAfter(prev, value);
             }
         }
+
+        void Exchange(FwdList& other)
+        {
+            sl::Swap(other.head, head);
+            sl::Swap(other.tail, tail);
+        }
     };
 
     struct ListHook
@@ -398,5 +404,11 @@ namespace sl
 
         Iterator Remove(Iterator it)
         { return Remove(it.ptr); }
+
+        void Exchange(List& other)
+        {
+            sl::Swap(other.head, head);
+            sl::Swap(other.tail, tail);
+        }
     };
 }

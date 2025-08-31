@@ -2,6 +2,7 @@
 
 #include <Atomic.hpp>
 #include <Compiler.hpp>
+#include <Types.hpp>
 
 namespace sl
 {
@@ -35,6 +36,67 @@ namespace sl
             if (shouldUnlock)
                 lock.Unlock();
             shouldUnlock = false;
+        }
+    };
+
+    template<typename T, typename LockType, LockType& (*GetLock)(T*)>
+    class ScopedMultiLock
+    {
+    private:
+        T* objs;
+        size_t objCount;
+
+    public:
+        ScopedMultiLock(T* objects, size_t objectCount)
+        {
+            objs = objects;
+            objCount = objectCount;
+
+            if (objCount == 0)
+                return;
+
+            size_t lockedCount = 0;
+            uintptr_t lastLocked = 0;
+            while (lockedCount!= objCount - 1)
+            {
+                size_t candidate = 0;
+                auto candidateAddr = static_cast<uintptr_t>(~0);
+                for (size_t i = 0; i < objCount; i++)
+                {
+                    const auto addr = reinterpret_cast<uintptr_t>(&objs[i]);
+
+                    if (addr <= lastLocked)
+                        continue;
+                    if (addr > candidateAddr)
+                        continue;
+
+                    candidateAddr = addr;
+                    candidate = i;
+                }
+
+                GetLock(&objs[candidate]).Lock();
+                lastLocked = candidateAddr;
+                lockedCount++;
+            }
+        }
+
+        ~ScopedMultiLock()
+        {
+            Release();
+        }
+
+        ScopedMultiLock(const ScopedMultiLock&) = delete;
+        ScopedMultiLock& operator=(const ScopedMultiLock&) = delete;
+        ScopedMultiLock(ScopedMultiLock&&) = delete;
+        ScopedMultiLock& operator=(ScopedMultiLock&&) = delete;
+
+        inline void Release()
+        {
+            for (size_t i = 0; i < objCount; i++)
+                GetLock(&objs[i]).Unlock();
+
+            objCount = 0;
+            objs = nullptr;
         }
     };
 
