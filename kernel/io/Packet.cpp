@@ -1,6 +1,34 @@
-#include <Io.hpp>
-#include <CoreApi.hpp>
+#include <IoPrivate.hpp>
+#include <Core.hpp>
 
+/* I/O Packet (IOP) thoughts and theory:
+ *
+ * First things first, a lot of the IOP stuff is based on prior art by other
+ * kernels: 
+ * - Keyronex: https://github.com/Keyronex/Keyronex
+ * - Minoca: https://github.com/minoca/os
+ * No code was directly taken from those projects so I've left out the license,
+ * but I thought it important to mention them.
+ *
+ * IOPs are the beating heart of the io subsystem, each IOP represents a single
+ * operation and holds any state necessary to suspend and resume it. The obvious
+ * use for them is dealing with slow hardware, and chaining multiple operations
+ * together. They are also a good primitive for general async operations 
+ * throughout the kernel, which we *can* already do via c++ coroutines, but 
+ * thats not available across kernel/driver boundaries.
+ *
+ * Each operation requires a target, in northport we call these IoInterfaces
+ * (IOIs). IOIs can also have a parent IOI, useful for representing a stack
+ * of drivers (e.g. usb keyboard -> usb hid -> usb -> pci, in this case the
+ * usb keyboard is the initial target IOI).
+ *
+ * When running an IOP, each IOI has its `Begin()` function called. The result
+ * here determines if the IOP pauses and returns to the caller now, carries on
+ * to the next IOI in the stack. `Begin()` can also indicate the IOP is
+ * complete and the IOP will reverse direction, calling each IOIs `End()`
+ * function (if present), allowing IOIs to cleanup or request further
+ * action from target IOIs.
+ */
 namespace Npk
 {
     bool ResetIop(Iop* packet)
@@ -117,10 +145,12 @@ namespace Npk
     }
 
     IoStatus CancelIop(Iop* packet)
-    {} //TODO:
+    {
+        NPK_CHECK(packet != nullptr, IoStatus::Invalid);
 
-    static void QueueForContinuation(Iop* packet)
-    {} //TODO: we'll need WorkItems for this
+        NPK_UNREACHABLE();
+        //TODO: 
+    }
 
     IoStatus ProgressIop(Iop* packet)
     {
@@ -230,7 +260,7 @@ namespace Npk
                         if (packet->onComplete != nullptr)
                             SignalWaitable(packet->onComplete);
                         if (packet->Continuation != nullptr)
-                            QueueForContinuation(packet);
+                            Private::QueueContinuation(packet);
                         break;
                     }
                     else
@@ -255,19 +285,63 @@ namespace Npk
         }
     }
 
-    IoStatus PollUntilComplete(Iop* packet, sl::TimeCount timeout)
+    static IplSpinLock<Ipl::Dpc> pollingEntriesLock;
+    static sl::List<IoPollingEntry, &IoPollingEntry::hook> pollingEntries;
+
+    size_t GetIoPollEntries(size_t offset, sl::Span<IoPollingEntry> entries)
+    {
+        size_t head = 0;
+
+        sl::ScopedLock scopeLock(pollingEntriesLock);
+        for (auto it = pollingEntries.Begin(); it != pollingEntries.End(); ++it)
+        {
+            while (offset > 0)
+            {
+                offset--;
+                continue;
+            }
+
+            if (head == entries.Size())
+                break;
+
+            //TODO: if 'reason' isnt statically allocated we'll have bugs!!
+            entries[head++] = *it;
+            entries[head - 1].hook = {};
+        }
+
+        return head;
+    }
+
+    IoStatus PollUntilComplete(Iop* packet, sl::TimeCount timeout, 
+        sl::StringSpan reason)
     {
         NPK_CHECK(packet != nullptr, IoStatus::Invalid);
         NPK_CHECK(!packet->complete, packet->status);
-
-        Log("Someone is polling for completion on IOP %p", LogLevel::Warning,
-            packet);
+        NPK_CHECK(timeout.ticks != 0, IoStatus::Invalid);
 
         const auto now = GetMonotonicTime();
         const auto end = timeout.Rebase(now.Frequency).ticks + now.epoch;
 
+        IoPollingEntry entry {};
+        entry.packet = packet;
+        entry.callsite = reinterpret_cast<uintptr_t>(SL_RETURN_ADDR);
+        entry.expiry = end;
+        entry.reason = reason;
+
+        Log("%zu is polling for iop to complete: %p, reason=%.*s", 
+            LogLevel::Verbose, entry.callsite, entry.packet, 
+            (int)entry.reason.Size(), entry.reason.Begin());
+
+        pollingEntriesLock.Lock();
+        pollingEntries.PushBack(&entry);
+        pollingEntriesLock.Unlock();
+
         while (GetMonotonicTime().epoch < end && !packet->complete)
             sl::HintSpinloop();
+
+        pollingEntriesLock.Lock();
+        pollingEntries.Remove(&entry);
+        pollingEntriesLock.Unlock();
 
         if (GetMonotonicTime().epoch >= end)
             return IoStatus::Timeout;
@@ -275,14 +349,15 @@ namespace Npk
         return GetIopStatus(packet);
     }
 
-    IoStatus WaitUntilComplete(Iop* packet, sl::TimeCount timeout)
+    IoStatus WaitUntilComplete(Iop* packet, sl::TimeCount timeout, 
+        sl::StringSpan reason)
     {
         NPK_CHECK(packet != nullptr, IoStatus::Invalid);
         NPK_CHECK(packet->onComplete != nullptr, IoStatus::Invalid);
         NPK_CHECK(!packet->complete, packet->status);
 
         WaitEntry waitEntry {};
-        auto status = WaitOne(packet->onComplete, &waitEntry, timeout);
+        auto status = WaitOne(packet->onComplete, &waitEntry, timeout, reason);
         if (status != WaitStatus::Success)
             return IoStatus::Invalid;
 
