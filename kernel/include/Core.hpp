@@ -21,15 +21,44 @@ namespace Npk
 {
     constexpr uint8_t MinPriority = 0;
     constexpr uint8_t MaxPriority = 255;
-    constexpr uint8_t IdlePriority = 0;
+
+    /* Fixed priority of idle-class threads
+     */
+    constexpr uint8_t IdlePriority = MinPriority;
+
+    /* Minimum priority for realtime-class threads
+     */
     constexpr uint8_t MinRtPriority = MaxPriority / 2;
+
+    /* Maximum priority for realtime-class threads
+     */
     constexpr uint8_t MaxRtPriority = MaxPriority;
+
+    /* Minimum priority for timeshared-class (aka general purpose) threads
+     */
     constexpr uint8_t MinTsPriority = IdlePriority + 1;
+
+    /* Maximum priority for timeshared-class (aka general purpose) threads
+     */
     constexpr uint8_t MaxTsPriority = MinRtPriority - 1;
+
+    /* Lowest possible niceness value, in absolute form. This is interpreted
+     * as relative to `BaseNiceness`.
+     */
     constexpr uint8_t MinNiceness = 0;
+
+    /* Default niceness value, this value is also treated as the midpoint for
+     * nice values. Anything below this is considered a negative value.
+     */
     constexpr uint8_t BaseNiceness = 20;
+
+    /* Highest possible niceness value, in absolute form. This is interpreted
+     * as relative to `BaseNiceness`.
+     */
     constexpr uint8_t MaxNiceness = 39;
 
+    /* Spinlock which disables interrupts on the local cpu while held.
+     */
     class IntrSpinLock
     {
     private:
@@ -67,6 +96,15 @@ namespace Npk
         }
     };
 
+    /* Interrupt Priority Level. Higher IPLs will mask and preempt lower IPLs.
+     * This can be used to prevent behaviours which occur at specific IPLs,
+     * or ensure mutual exclusion within a single cpu core (locks are still
+     * required when multiple cores can be involved).
+     *
+     * E.g. thread preemption only occurs when the current IPL is passive,
+     * if kernel wants to prevent being preempted but leave interrupts enabled,
+     * it can raise the IPL > Passive.
+     */
     enum class Ipl : uint8_t
     {
         Passive,
@@ -74,6 +112,11 @@ namespace Npk
         Interrupt,
     };
 
+    /* Spinlock which can only be acquired when the `min <= current IPL <= max`.
+     * If unspecified, `min` is Ipl::Passive meaning the template param defines
+     * the maximum IPL the lock can be taken at. If required, holding this lock
+     * raises the local IPL to `max` level.
+     */
     template<Ipl max, Ipl min = Ipl::Passive>
     class IplSpinLock
     {
@@ -90,6 +133,7 @@ namespace Npk
         inline void Unlock();
     };
 
+    //TODO: fuck this off to EntryPrivate.hpp
     struct InitState
     {
         uintptr_t dmBase;
@@ -370,12 +414,38 @@ namespace Npk
         } liveLists;
     };
 
+    /* Possible states of existence for a thread.
+     */
     enum class ThreadState : uint8_t
     {
+        /* Thread has finished executing and its resources are pending cleanup.
+         * The only way for a thread to move away from this state is by calling
+         * `ResetThread()` and then `PrepareThread()`.
+         * Freshly created thread blocks also have this state.
+         */
         Dead,
+
+        /* Thread control block is in a valid state, but not pending execution
+         * anywhere. `EnqueueThread()` should be called to schedule the thread.
+         */
         Standby,
+
+        /* Thread is queued for execution on a core, either by being in its
+         * run queues or being placed in the `NextThread` slot. The
+         * `scheduling.affinity` field indicates which core the thread is
+         * readied on.
+         */
         Ready,
+
+        /* Thread is currently running the core indicated by
+         * `scheduling.affinity`. It may move to any of the other states.
+         */
         Executing,
+
+        /* Thread is currently waiting on an event/waitable. When the wait is
+         * completed (by satisfaction or by timing out) the thread will wake
+         * and be placed in a core's run queues and move to the `Ready` state.
+         */
         Waiting,
     };
 
@@ -412,6 +482,13 @@ namespace Npk
             sl::Span<WaitEntry> entries;
             sl::StringSpan reason;
         } waiting;
+
+        inline uint8_t Priority() const
+        {
+            if (scheduling.dynPriority != 0)
+                return scheduling.dynPriority;
+            return scheduling.basePriority;
+        }
     };
 
     using ThreadQueue = sl::List<ThreadContext, &ThreadContext::queueHook>;
@@ -483,6 +560,8 @@ namespace Npk
     void SetMyIpiId(void* id);
     void* GetIpiId(CpuId id);
     void NudgeCpu(CpuId who);
+    bool FreezeAllCpus(); //fails is freeze is already ongoing.
+    void ThawAllCpus();
     
     CycleAccount SetCycleAccount(CycleAccount who);
     void AddClockEvent(ClockEvent* event);
@@ -554,6 +633,7 @@ namespace Npk
     void ClearThreadAffinity(ThreadContext* thread);
     sl::Opt<uint8_t> GetThreadNiceness(ThreadContext* thread);
     sl::Opt<uint8_t> GetThreadPriority(ThreadContext* thread);
+    sl::Opt<uint8_t> GetThreadEffectivePriority(ThreadContext* thread);
     sl::Opt<CpuId> GetThreadAffinity(ThreadContext* thread, bool& pinned);
 
     void CancelWait(ThreadContext* thread);

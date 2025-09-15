@@ -3,6 +3,9 @@
 namespace Npk
 {
     constexpr sl::TimeCount IpiDebounceTime = 1_ms;
+    constexpr sl::TimeCount FreezePingTime = 10_ms;
+
+    static sl::Atomic<CpuId> freezeControl = 0;
 
     static inline SmpControl* GetControl(CpuId who)
     {
@@ -127,5 +130,51 @@ namespace Npk
         sl::TimePoint desired { PlatReadTimestamp().epoch + IpiDebounceTime.ticks };
         if (control->status.lastIpi.CompareExchange(expected, desired, sl::Acquire))
             PlatSendIpi(control->ipiId);
+    }
+
+    bool FreezeAllCpus()
+    {
+        //TODO: multi-domain support
+        const CpuId cpuCount = MySystemDomain().smpControls.Size();
+
+        CpuId expected = 0;
+        CpuId desired = cpuCount;
+
+        //if freezeControl is non-zero a freeze is already occuring, to prevent
+        //a deadlock from multiple cores trying to initiate a freeze we return
+        //a failure here and the caller should continue to back off and enable
+        //interrupts (allowing them to freeze), before thawing and retrying.
+        if (!freezeControl.CompareExchange(expected, desired))
+            return false;
+
+        auto startTime = GetMonotonicTime();
+        auto endTime = startTime.epoch;
+        do
+        {
+            if (GetMonotonicTime().epoch >= endTime)
+            {
+                for (size_t i = 0; i < cpuCount; i++)
+                    PlatSendIpi(GetIpiId(i));
+
+                startTime = GetMonotonicTime();
+                endTime = startTime.epoch;
+                endTime += FreezePingTime.Rebase(startTime.Frequency).ticks;
+            }
+            
+            sl::HintSpinloop();
+        }
+        while (freezeControl.Load() != 1);
+
+        return true;
+    }
+
+    void ThawAllCpus()
+    {
+        CpuId expected = 1;
+        CpuId desired = 0;
+
+        //an atomic store would suffice, but the cmpexchg is a nice sanity
+        //check.
+        NPK_ASSERT(freezeControl.CompareExchange(expected, desired));
     }
 }
