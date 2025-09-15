@@ -1,7 +1,7 @@
 KERNEL_CXX_SRCS += core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
 	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp core/Panic.cpp \
 	core/Scheduler.cpp core/Smp.cpp core/Str.cpp core/Wait.cpp \
-	debugger/Debugger.cpp debugger/ProtocolGdb.cpp \
+	debugger/Event.cpp debugger/GdbRemote.cpp debugger/LocalApi.cpp \
 	entry/BringUp.cpp \
 	io/Continuation.cpp io/Packet.cpp io/Str.cpp \
 	Scrap.cpp \

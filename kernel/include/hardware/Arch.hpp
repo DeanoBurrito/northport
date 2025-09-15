@@ -99,14 +99,11 @@ namespace Npk
         return reinterpret_cast<T>(addr & ~PageMask());
     }
 
-    namespace Debugger
-    {
-        enum class EventType;
-        enum class DebugError;
-    }
+    enum class DebugEventType;
+    enum class DebugError;
 
     SL_ALWAYS_INLINE
-    Debugger::DebugError ArchCallDebugger(Debugger::EventType type, void* data);
+    DebugError ArchCallDebugger(DebugEventType type, void* data);
 
     enum class MmuFlag
     {

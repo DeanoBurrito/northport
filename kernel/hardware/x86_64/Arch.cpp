@@ -60,11 +60,6 @@ namespace Npk
         uint64_t flags;
     };
 
-    extern "C" Debugger::DebugError DebugEventEntryNext(Debugger::EventType type, void* arg)
-    {
-        return DispatchDebugEvent(type, arg);
-    }
-    
     static void HandleException(TrapFrame* frame)
     {
         switch (frame->vector)

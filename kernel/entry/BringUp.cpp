@@ -1,7 +1,7 @@
 #include <AcpiTypes.hpp>
 #include <CorePrivate.hpp>
 #include <EntryPrivate.hpp>
-#include <debugger/Debugger.hpp>
+#include <Debugger.hpp>
 #include <Maths.hpp>
 #include <Memory.hpp>
 #include <UnitConverter.hpp>
@@ -469,7 +469,7 @@ extern "C"
         PlatInitFull(virtBase);
         PlatBootAps(setupInfo.apStacks, setupInfo.perCpuStores, setupInfo.perCpuStride);
 
-        Debugger::Initialize(domain0.smpControls.Size());
+        InitDebugger();
         //TODO: init vmm - virtBase serves as top of bump allocated region
 
         Log("BSP init thread done, becoming idle thread", LogLevel::Verbose);

@@ -79,9 +79,9 @@ namespace Npk
     constexpr uint8_t DebugEventVector = 0xFB;
 
     SL_ALWAYS_INLINE
-    Debugger::DebugError ArchCallDebugger(Debugger::EventType type, void* data)
+    DebugError ArchCallDebugger(DebugEventType type, void* data)
     {
-        Debugger::DebugError ret;
+        DebugError ret;
         asm("int $0xFB; mov %%eax, %0" : "=r"(ret) : "D"(type), "S"(data) : "memory", "rax");
         return ret;
     }

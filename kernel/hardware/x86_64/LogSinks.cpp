@@ -1,7 +1,7 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <Core.hpp>
-#include <debugger/Debugger.hpp>
+#include <Debugger.hpp>
 #include <NanoPrintf.hpp>
 #include <Maths.hpp>
 
@@ -162,7 +162,8 @@ namespace Npk
         WriteUartReg(UartReg::LineControl, 0x80);
         WriteUartReg(UartReg::DivisorLow, divisor);
         WriteUartReg(UartReg::DivisorHigh, 0);
-        const uint8_t lineSettings = (breakBits << 6) | (parityBits << 3) | (stopBits << 2) | dataBits;
+        const uint8_t lineSettings = (breakBits << 6) | (parityBits << 3) 
+            | (stopBits << 2) | dataBits;
         WriteUartReg(UartReg::LineControl, lineSettings);
 
         WriteUartReg(UartReg::IntrId, 0xC7); //enable FIFO, max threshoold (14 bytes)
@@ -172,7 +173,7 @@ namespace Npk
         Com1Putc('\r', nullptr);
     }
 
-    static bool Com1DebugSend(Debugger::DebugTransport* inst, sl::Span<const uint8_t> data)
+    static bool Com1DebugTransmit(DebugTransport* inst, sl::Span<const uint8_t> data)
     {
         (void)inst;
 
@@ -183,7 +184,7 @@ namespace Npk
         return true;
     }
 
-    static size_t Com1DebugReceive(Debugger::DebugTransport* inst, sl::Span<uint8_t> buffer)
+    static size_t Com1DebugReceive(DebugTransport* inst, sl::Span<uint8_t> buffer)
     {
         (void)inst;
 
@@ -205,11 +206,11 @@ namespace Npk
         .Write = Com1Write
     };
 
-    Debugger::DebugTransport com1Transport
+    DebugTransport com1Transport
     {
         .name = "com1",
         .opaque = nullptr,
-        .Send = Com1DebugSend,
+        .Transmit = Com1DebugTransmit,
         .Receive = Com1DebugReceive,
     };
 
@@ -221,7 +222,7 @@ namespace Npk
         if (ReadConfigUint("npk.x86.com1_for_debugger", false))
         {
             Com1Reset();
-            Debugger::AddTransport(&com1Transport);
+            AddDebugTransport(&com1Transport);
             return true;
         }
         if (debuggerOnly)
