@@ -92,4 +92,7 @@ namespace Npk
      */
     extern "C"
     DebugStatus DebugEventOccured(DebugEventType what, void* data);
+
+    sl::StringSpan DebugEventTypeStr(DebugEventType which);
+    sl::StringSpan DebugStatusStr(DebugStatus which);
 }
