@@ -12,9 +12,17 @@ namespace Npk
         auto prevCycleAccount = SetCycleAccount(CycleAccount::Debugger);
         FreezeAllCpus();
 
+        auto proto = Private::debugProtocol;
+
         auto result = DebugStatus::NotSupported;
         switch (what)
         {
+        case DebugEventType::Connect:
+            Private::debugTransportsLock.Lock();
+            result = proto->Connect(proto, &Private::debugTransports);
+            Private::debugTransportsLock.Unlock();
+            break;
+
         default:
             Log("Unknown debug event: %u", LogLevel::Error, what);
             break;

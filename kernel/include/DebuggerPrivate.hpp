@@ -13,5 +13,6 @@ namespace Npk::Private
     extern sl::SpinLock debugTransportsLock;
     extern DebugTransportList debugTransports;
 
+    extern DebugProtocol* debugProtocol;
     extern DebugProtocol gdbProtocol;
 }

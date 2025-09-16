@@ -65,7 +65,7 @@ namespace Npk
         const char* name;
         void* opaque;
 
-        DebugStatus (*Connect)(DebugProtocol* inst, DebugTransportList ports);
+        DebugStatus (*Connect)(DebugProtocol* inst, DebugTransportList* ports);
         void (*Disconnect)(DebugProtocol* inst);
     };
 

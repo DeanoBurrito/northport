@@ -9,10 +9,10 @@ namespace Npk
         sl::Flags<DebugEventType> enabledEvents {};
         sl::SpinLock debugTransportsLock;
         DebugTransportList debugTransports {};
+        DebugProtocol* debugProtocol;
     }
 
     static bool connected = false;
-    static DebugProtocol* protocol;
 
     void InitDebugger()
     {
@@ -29,7 +29,7 @@ namespace Npk
         const auto whichProto = ReadConfigString("npk.debugger.protocol",
             "gdb"_span);
         if (whichProto == "gdb"_span)
-            protocol = &Private::gdbProtocol;
+            Private::debugProtocol = &Private::gdbProtocol;
         else
         {
             Log("Unknown debugger protocol: %.*s. Aborting debugger init",
@@ -51,7 +51,7 @@ namespace Npk
         Private::debugTransportsLock.Unlock();
 
         Log("Debugger initialized: protocol=%s, transports=%zu", LogLevel::Info,
-            protocol->name, transportCount);
+            Private::debugProtocol->name, transportCount);
 
         if (ReadConfigUint("npk.debugger.auto_connect", true))
         {
@@ -68,7 +68,7 @@ namespace Npk
         if (!Private::enabledEvents.Has(DebugEventType::Connect))
             return DebugStatus::NotSupported;
 
-        ArchCallDebugger(DebugEventType::Connect, nullptr);
+        return ArchCallDebugger(DebugEventType::Connect, nullptr);
     }
 
     void DisconnectDebugger()
@@ -89,6 +89,8 @@ namespace Npk
         };
 
         NPK_ASSERT(transport != nullptr);
+        NPK_ASSERT(transport->Receive != nullptr);
+        NPK_ASSERT(transport->Transmit != nullptr);
 
         Private::debugTransportsLock.Lock();
         Private::debugTransports.InsertSorted(transport, predicate);

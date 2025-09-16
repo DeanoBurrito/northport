@@ -100,10 +100,10 @@ namespace Npk
     }
 
     enum class DebugEventType;
-    enum class DebugError;
+    enum class DebugStatus;
 
     SL_ALWAYS_INLINE
-    DebugError ArchCallDebugger(DebugEventType type, void* data);
+    DebugStatus ArchCallDebugger(DebugEventType type, void* data);
 
     enum class MmuFlag
     {

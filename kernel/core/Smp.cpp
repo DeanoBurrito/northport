@@ -20,6 +20,13 @@ namespace Npk
 
     void DispatchIpi()
     {
+        if (freezeControl.Load() != 0)
+        {
+            freezeControl.Sub(1);
+            while (freezeControl.Load() != 0)
+                sl::HintSpinloop();
+        }
+
         auto control = GetControl(MyCoreId());
         NPK_ASSERT(control != nullptr);
 
