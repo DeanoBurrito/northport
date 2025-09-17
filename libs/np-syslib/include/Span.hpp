@@ -123,3 +123,8 @@ constexpr inline sl::StringSpan operator""_span(const char* str, size_t len)
 {
     return sl::StringSpan(str, len);
 }
+
+constexpr inline sl::Span<const uint8_t> operator""_u8span(const char* str, size_t len)
+{
+    return sl::Span<const uint8_t>((const uint8_t*)str, len);
+}
