@@ -1,9 +1,18 @@
 #include <DebuggerPrivate.hpp>
 #include <Memory.hpp>
-
-#include <Core.hpp>
 #include <Maths.hpp>
+#include <NanoPrintf.hpp>
 
+/* This file implements support for driving the kernel debugger via the GDB
+ * remote protocol (sometimes called the GDB serial protocol).
+ *
+ * Resources used:
+ * - sourceware.org/gdb/current/onlinedocs/gdb.html/Remote-Protocol.html
+ * - https://github.com/bminor/binutils-gdb/tree/master/gdb/stubs
+ * - https://github.com/OBOS-dev/obos/tree/master/src/oboskrnl/arch/x86_64/gdbstub
+ * - GDB has an option (`debug remote`) that is very helpful for debugging this
+ *   from the GDB-side of things.
+ */
 namespace Npk::Private
 {
     constexpr size_t BuiltinBufferSize = 512;
@@ -13,7 +22,22 @@ namespace Npk::Private
         DebugTransport* transport;
         uint8_t builtinRecvBuff[BuiltinBufferSize];
         uint8_t builtinSendBuff[BuiltinBufferSize];
+        bool breakCommandLoop;
+
+        struct
+        {
+            bool swBreak;
+            bool hwBreak;
+            bool errorMsg;
+        } features;
     } gdbData;
+
+    struct GdbCommand
+    {
+        sl::StringSpan text;
+        bool (*Execute)(GdbData& inst, sl::Span<const uint8_t> data);
+    };
+
 
     static bool IsHexDigit(uint8_t test)
     {
@@ -38,7 +62,7 @@ namespace Npk::Private
     {
         constexpr char digits[] = "0123456789abcdef";
 
-        return digits[input] & 0xF;
+        return digits[input & 0xF];
     }
 
     static uint8_t ComputeChecksum(sl::Span<uint8_t> buffer)
@@ -57,9 +81,9 @@ namespace Npk::Private
         return sum;
     }
 
-    static size_t PutBytes(sl::Span<uint8_t> buffer, void* data, size_t dataLen)
+    static size_t PutBytes(sl::Span<uint8_t> buffer, const void* data, size_t dataLen)
     {
-        const uint8_t* store = static_cast<uint8_t*>(data);
+        const uint8_t* store = static_cast<const uint8_t*>(data);
 
         size_t bytesWritten = 0;
         while (bytesWritten < dataLen && bytesWritten * 2 + 1 < buffer.Size())
@@ -94,8 +118,29 @@ namespace Npk::Private
         return bytesRead * 2;
     }
 
-    static bool Send(GdbData& inst, sl::Span<uint8_t> buffer)
+    static bool Send(GdbData& inst, sl::Span<const uint8_t> buffer)
     {
+        if (!inst.transport->Transmit(inst.transport, buffer))
+            return false;
+
+        while (true)
+        {
+            uint8_t ack[1];
+            size_t ackLen = inst.transport->Receive(inst.transport, ack);
+            if (ackLen == 0)
+                continue;
+
+            return ack[0] == '+';
+        }
+    }
+
+    static bool CheckAndSend(GdbData& inst, sl::Span<uint8_t> buffer, size_t head)
+    {
+        auto checksum = ComputeChecksum(buffer.Subspan(0, head));
+        auto checkBuffer = buffer.Subspan(head, head + 2);
+        head += PutBytes(checkBuffer, &checksum, sizeof(checksum));
+
+        return Send(inst, buffer.Const());
     }
 
     static size_t Receive(GdbData& inst, sl::Span<uint8_t> buffer)
@@ -110,9 +155,6 @@ namespace Npk::Private
             auto localBuffer = buffer.Subspan(receivedLen, -1);
             size_t localLen = inst.transport->Receive(inst.transport,
                 localBuffer);
-
-            for (size_t i = 0; i < localLen; i += 80)
-                Log("gdbrev: %.*s", LogLevel::Debug, sl::Min<int>(localLen - i, 80), &localBuffer[i]);
 
             if (!hasStart)
             {
@@ -170,19 +212,92 @@ namespace Npk::Private
         return receivedLen;
     }
 
+    constexpr GdbCommand GdbCommands[] =
+    {
+        {
+            .text = "qSupported"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                inst.features.swBreak = data.Contains("swbreak+"_u8span);
+                inst.features.hwBreak = data.Contains("hwbreak+"_u8span);
+                inst.features.errorMsg = data.Contains("error-message+"_u8span);
+
+                const size_t len = npf_snprintf((char*)inst.builtinSendBuff,
+                    BuiltinBufferSize, "$swbreak+;hwbreak+;error-message+#");
+
+                return CheckAndSend(inst, inst.builtinSendBuff, len);
+            }
+        },
+        {
+            .text = "vCont?"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                const size_t len = npf_snprintf((char*)inst.builtinSendBuff,
+                    BuiltinBufferSize, "$vCont;c;s;r#");
+
+                return CheckAndSend(inst, inst.builtinSendBuff, len);
+            }
+        },
+    };
+
+    static bool ProcessPacket(GdbData& inst, sl::Span<const uint8_t> packet)
+    {
+        const size_t commands = sizeof(GdbCommands) / sizeof(GdbCommand);
+        for (size_t i = 0; i < commands; i++)
+        {
+            const auto cmd = GdbCommands[i];
+            const size_t length = sl::Min(packet.Size(), cmd.text.Size());
+
+            if (0 != sl::MemCompare(packet.Begin(), cmd.text.Begin(), length))
+                continue;
+
+            return cmd.Execute(inst, packet);
+        }
+
+        //unsupported command, as per the spec we should send back an empty
+        //packet. The host should understand this as 'not supported'.
+        Send(inst, "$#00"_u8span);
+        return false;
+    }
+
+    static void DoCommandLoop(GdbData& inst)
+    {
+        inst.breakCommandLoop = false;
+
+        while (!inst.breakCommandLoop)
+        {
+            const auto recvLen = Receive(inst, inst.builtinRecvBuff);
+            if (recvLen == 0)
+                continue;
+
+            ProcessPacket(inst, { gdbData.builtinRecvBuff + 1, recvLen - 4 });
+        }
+    }
+
+
     static DebugStatus GdbConnect(DebugProtocol* inst, DebugTransportList* ports)
     {
         for (auto it = ports->Begin(); it != ports->End(); ++it)
         {
             gdbData.transport = &*it;
 
-            if (Receive(gdbData, gdbData.builtinRecvBuff) != 0)
-                break;
-            gdbData.transport = nullptr;
+            const auto recvLen = Receive(gdbData, gdbData.builtinRecvBuff);
+            if (recvLen == 0)
+            {
+                gdbData.transport = nullptr;
+                continue;
+            }
+
+            //there's a debug host on the other end of this transport! It's
+            //sent us a command - we should process and respond.
+            ProcessPacket(gdbData, { gdbData.builtinRecvBuff + 1, recvLen - 4});
+            break;
         }
 
         if (gdbData.transport == nullptr)
             return DebugStatus::BadEnvironment;
+
+        DoCommandLoop(gdbData);
         return DebugStatus::Success;
     }
 
