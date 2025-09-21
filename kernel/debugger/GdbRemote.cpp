@@ -3,6 +3,8 @@
 #include <Maths.hpp>
 #include <NanoPrintf.hpp>
 
+#include <Core.hpp>
+
 /* This file implements support for driving the kernel debugger via the GDB
  * remote protocol (sometimes called the GDB serial protocol).
  *
@@ -16,12 +18,23 @@
 namespace Npk::Private
 {
     constexpr size_t BuiltinBufferSize = 512;
+    constexpr size_t ErrorBufferSize = 16;
+    constexpr CpuId AllThreads = -1;
+    constexpr CpuId AnyThread = -2;
+
+    enum ErrorValue
+    {
+        MissingArg = 1,
+        InvalidArg = 2,
+    };
 
     struct GdbData
     {
         DebugTransport* transport;
         uint8_t builtinRecvBuff[BuiltinBufferSize];
         uint8_t builtinSendBuff[BuiltinBufferSize];
+        CpuId selectedThread;
+        CpuId threadListHead;
         bool breakCommandLoop;
 
         struct
@@ -37,7 +50,6 @@ namespace Npk::Private
         sl::StringSpan text;
         bool (*Execute)(GdbData& inst, sl::Span<const uint8_t> data);
     };
-
 
     static bool IsHexDigit(uint8_t test)
     {
@@ -99,13 +111,71 @@ namespace Npk::Private
         return bytesWritten * 2;
     }
 
-    static size_t GetBytes(sl::Span<uint8_t> buffer, void* data, size_t dataLen)
+    static size_t PutThreadId(sl::Span<uint8_t> buffer, CpuId id)
+    {
+        id++; //gdb uses 1-based thread ids, we use 0-based
+
+        //thread ids are specifically encoded big-endian, this code
+        //should work regardless of the current machine's endianness.
+        size_t bytes = 0;
+        while (id != 0)
+        {
+            bytes++;
+            id >>= 8;
+        }
+
+        if (bytes * 2 >= buffer.Size())
+            return 0;
+
+        for (size_t i = 0; i < bytes; i++)
+        {
+            //const uint8_t byte = id >> (8 * (bytes - i - 1)); 
+            const uint8_t byte = 0x12;
+            PutBytes(buffer.Subspan(i * 2, -1), &byte, 1);
+        }
+
+        return bytes * 2;
+    }
+
+    static size_t PutThreadList(GdbData& inst, sl::Span<uint8_t> buffer)
+    {
+        const CpuId maxId = MySystemDomain().smpControls.Size();
+        const size_t maxBytesUsed = sizeof(CpuId) * 2 + 1;
+
+        size_t head = 0;
+        if (inst.threadListHead == maxId)
+            buffer[head++] = 'l';
+        else
+        {
+            buffer[head++] = 'm';
+
+            bool first = true;
+            for (CpuId i = inst.threadListHead; i < maxId; i++)
+            {
+                if (head + maxBytesUsed >= buffer.Size())
+                    break;
+
+                if (!first)
+                    buffer[head++] = ',';
+                first = false;
+
+                head += PutThreadId(buffer.Subspan(head, -1), i);
+                inst.threadListHead++;
+            }
+        }
+
+        return head;
+    }
+
+    static size_t GetBytes(sl::Span<const uint8_t> buffer, void* data, size_t dataLen)
     {
         //TODO: need to look into possible endianness issues here
         uint8_t* store = static_cast<uint8_t*>(data);
 
         size_t bytesRead = 0;
-        while (bytesRead < dataLen && bytesRead * 2 + 1 < buffer.Size())
+        while (bytesRead < dataLen && bytesRead * 2 + 1 < buffer.Size()
+            && IsHexDigit(buffer[bytesRead * 2]) 
+            && IsHexDigit(buffer[bytesRead * 2 + 1]))
         {
             const uint8_t high = FromHex(buffer[bytesRead * 2]);
             const uint8_t low = FromHex(buffer[bytesRead * 2 + 1]);
@@ -118,11 +188,42 @@ namespace Npk::Private
         return bytesRead * 2;
     }
 
+    static size_t GetThreadId(sl::Span<const uint8_t> buffer, CpuId& id)
+    {
+        if (buffer.Size() >= 2 && buffer[0] == '-' && buffer[1] == '1')
+        {
+            id = AllThreads;
+            return 2;
+        }
+        else if (buffer.Size() >= 1 && buffer[0] == '0')
+        {
+            id = AnyThread;
+            return 1;
+        }
+
+        id = 0;
+        size_t bytes = 0;
+        for (size_t i = 0; i < sizeof(id); i++)
+        {
+            uint8_t byte;
+            if (0 == GetBytes(buffer.Subspan(i * 2, -1), &byte, 1))
+                break;
+
+            id <<= 8;
+            id |= byte;
+        }
+
+        id--; //gdb uses 1-based thread ids, we use 0-based.
+
+        return bytes * 2;
+    }
+
     static bool Send(GdbData& inst, sl::Span<const uint8_t> buffer)
     {
         if (!inst.transport->Transmit(inst.transport, buffer))
             return false;
 
+        Log("Sending: %.*s", LogLevel::Debug, (int)buffer.Size(), buffer.Begin());
         while (true)
         {
             uint8_t ack[1];
@@ -140,7 +241,31 @@ namespace Npk::Private
         auto checkBuffer = buffer.Subspan(head, head + 2);
         head += PutBytes(checkBuffer, &checksum, sizeof(checksum));
 
-        return Send(inst, buffer.Const());
+        return Send(inst, buffer.Subspan(0, head).Const());
+    }
+
+    static bool SendError(GdbData& inst, ErrorValue which)
+    {
+        uint8_t buffer[ErrorBufferSize];
+        const auto value = static_cast<uint8_t>(which);
+
+        const size_t len = npf_snprintf((char*)buffer, ErrorBufferSize, 
+            "$E%01.1x%01.1x#", value >> 4, value & 0xF);
+
+        return CheckAndSend(inst, buffer, len);
+    }
+
+    static bool SendUnsupported(GdbData& inst)
+    {
+        return Send(inst, "$#00"_u8span);
+    }
+
+    static bool SendOk(GdbData& inst)
+    {
+        uint8_t buffer[6];
+        sl::MemCopy(buffer, "$OK#", 4);
+
+        return CheckAndSend(inst, buffer, 4);
     }
 
     static size_t Receive(GdbData& inst, sl::Span<uint8_t> buffer)
@@ -200,7 +325,7 @@ namespace Npk::Private
         }
 
         uint8_t checksum;
-        GetBytes(buffer.Subspan(receivedLen - 2, -1), &checksum, 1);
+        GetBytes(buffer.Subspan(receivedLen - 2, -1).Const(), &checksum, 1);
         if (checksum != ComputeChecksum(buffer.Subspan(0, receivedLen - 2)))
             sendAck = false;
 
@@ -209,6 +334,7 @@ namespace Npk::Private
         inst.transport->Transmit(inst.transport, { &ack, 1 });
         //TODO: error handling for Transmit()
 
+        Log("gdbrcv: %.*s", LogLevel::Debug, (int)receivedLen, buffer.Begin());
         return receivedLen;
     }
 
@@ -229,13 +355,119 @@ namespace Npk::Private
             }
         },
         {
+            .text = "qAttached"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                (void)data;
+
+                inst.builtinSendBuff[0] = '$';
+                inst.builtinSendBuff[1] = '1'; //1 = gdb attached to an existing
+                inst.builtinSendBuff[2] = '#'; //process.
+
+                return CheckAndSend(inst, inst.builtinSendBuff, 3);
+            }
+        },
+        {
+            .text = "qC"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                (void)data;
+
+                size_t len = 0;
+                inst.builtinSendBuff[len++] = '$';
+                inst.builtinSendBuff[len++] = 'Q';
+                inst.builtinSendBuff[len++] = 'C';
+
+                len += PutThreadId(
+                    { inst.builtinSendBuff + len, BuiltinBufferSize - len },
+                    inst.selectedThread);
+
+                inst.builtinSendBuff[len++] = '#';
+
+                return CheckAndSend(inst, inst.builtinSendBuff, len);
+            }
+        },
+        {
+            .text = "qfThreadInfo"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                inst.threadListHead = 0;
+
+                size_t head = 0;
+                inst.builtinSendBuff[head++] = '$';
+
+                sl::Span<uint8_t> buff = inst.builtinSendBuff;
+                buff = buff.Subspan(head, buff.Size() - head - 3);
+                head += PutThreadList(inst, buff);
+                inst.builtinSendBuff[head++] = '#';
+
+                return CheckAndSend(inst, inst.builtinSendBuff, head);
+            }
+        },
+        {
+            .text = "qsThreadInfo"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                size_t head = 0;
+                inst.builtinSendBuff[head++] = '$';
+
+                sl::Span<uint8_t> buff = inst.builtinSendBuff;
+                buff = buff.Subspan(head, buff.Size() - head - 3);
+                head += PutThreadList(inst, buff);
+                inst.builtinSendBuff[head++] = '#';
+
+                return CheckAndSend(inst, inst.builtinSendBuff, head);
+            }
+        },
+        {
             .text = "vCont?"_span,
             .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
             {
+                (void)data;
+
                 const size_t len = npf_snprintf((char*)inst.builtinSendBuff,
-                    BuiltinBufferSize, "$vCont;c;s;r#");
+                    BuiltinBufferSize, "$vCont;c;C;s;S;r#");
 
                 return CheckAndSend(inst, inst.builtinSendBuff, len);
+            }
+        },
+        {
+            .text = "?"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                (void)data;
+
+                size_t head = npf_snprintf((char*)inst.builtinSendBuff,
+                    BuiltinBufferSize, "$T05thread:");
+
+                head += PutThreadId({ inst.builtinSendBuff + head, 
+                    BuiltinBufferSize - head }, MyCoreId());
+
+                inst.builtinSendBuff[head++] = '#';
+
+                return CheckAndSend(inst, inst.builtinSendBuff, head);
+            }
+        },
+        {
+            .text = "H"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                if (data.Size() < 3)
+                    return SendError(inst, ErrorValue::MissingArg);
+
+                const uint8_t op = data[1];
+                if (op != 'g')
+                {
+                    if (op == 'c')
+                        return SendUnsupported(inst);
+                    return SendError(inst, ErrorValue::InvalidArg);
+                }
+
+                GetThreadId(data.Subspan(2, -1), inst.selectedThread);
+                if (inst.selectedThread == AnyThread)
+                    inst.selectedThread = MyCoreId();
+
+                return SendOk(inst);
             }
         },
     };
@@ -254,9 +486,7 @@ namespace Npk::Private
             return cmd.Execute(inst, packet);
         }
 
-        //unsupported command, as per the spec we should send back an empty
-        //packet. The host should understand this as 'not supported'.
-        Send(inst, "$#00"_u8span);
+        SendUnsupported(inst);
         return false;
     }
 
@@ -274,9 +504,10 @@ namespace Npk::Private
         }
     }
 
-
     static DebugStatus GdbConnect(DebugProtocol* inst, DebugTransportList* ports)
     {
+        gdbData.selectedThread = AllThreads;
+
         for (auto it = ports->Begin(); it != ports->End(); ++it)
         {
             gdbData.transport = &*it;
