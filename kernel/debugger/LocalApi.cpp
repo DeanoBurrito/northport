@@ -5,8 +5,10 @@ namespace Npk
 {
     namespace Private
     {
+        CpuId debugCpusCount = 0;
         bool debuggerInitialized = false;
         sl::Flags<DebugEventType> enabledEvents {};
+
         sl::SpinLock debugTransportsLock;
         DebugTransportList debugTransports {};
         DebugProtocol* debugProtocol;
@@ -41,7 +43,12 @@ namespace Npk
         Private::enabledEvents.Reset();
         Private::enabledEvents.Set(DebugEventType::Connect);
 
-        Private::debuggerInitialized = true;
+        auto initResult = ArchCallDebugger(DebugEventType::Init, nullptr);
+        if (initResult != DebugStatus::Success)
+        {
+            Log("Debugger not initialized: internal error", LogLevel::Error);
+            return;
+        }
 
         size_t transportCount = 0;
         Private::debugTransportsLock.Lock();

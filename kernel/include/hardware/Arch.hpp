@@ -4,6 +4,7 @@
 #include <Types.hpp>
 #include <Flags.hpp>
 #include <Optional.hpp>
+#include <Span.hpp>
 
 namespace Npk
 {
@@ -17,8 +18,11 @@ namespace Npk
 
     void SetMyLocals(uintptr_t where, CpuId softwareId);
 
+    struct TrapFrame;
     struct ArchThreadContext;
     struct ThreadContext;
+
+    uintptr_t ArchGetTrapReturnAddr(const TrapFrame* frame);
 
     SL_ALWAYS_INLINE
     ThreadContext* GetCurrentThread();
@@ -130,6 +134,18 @@ namespace Npk
     void* ArchSetTempMap(KernelMap* map, size_t index, Paddr paddr);
     MmuError ArchAddMap(KernelMap* map, uintptr_t vaddr, Paddr paddr, MmuFlags flags);
     void ArchFlushTlb(uintptr_t base, size_t length);
+
+    /* Initializes any architecture state related to hardware debugging. This
+     * runs on every cpu from within the debug event handler.
+     * This function returns if debugging hardware initialized successfully.
+     */
+    bool ArchInitDebugState();
+
+    /* Places a software breakpoint at the specified address, `backup` contains
+     * a buffer where the overwritten code is stored for later restoration.
+     * The number of bytes overwritten is returned, or 0 if an error occured.
+     */
+    size_t ArchSetBreakpoint(void* addr, sl::Span<uint8_t> backup);
 }
 
 #ifdef __x86_64__

@@ -2,11 +2,11 @@
 
 #include <Debugger.hpp>
 #include <Flags.hpp>
-#include <Atomic.hpp>
 #include <Locks.hpp>
 
 namespace Npk::Private
 {
+    extern CpuId debugCpusCount;
     extern bool debuggerInitialized;
     extern sl::Flags<DebugEventType> enabledEvents;
 
@@ -15,4 +15,13 @@ namespace Npk::Private
 
     extern DebugProtocol* debugProtocol;
     extern DebugProtocol gdbProtocol;
+
+    void DebuggerPerCpuInit(void* arg);
+
+    Breakpoint* AllocBreakpoint();
+    void FreeBreakpoint(Breakpoint** bp);
+    Breakpoint* GetBreakpointByAddr(uintptr_t addr);
+
+    bool ArmBreakpoint(Breakpoint& bp);
+    bool DisarmBreakpoint(Breakpoint& bp);
 }

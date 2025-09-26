@@ -6,25 +6,21 @@ namespace Npk
     {
         constexpr sl::StringSpan strs[] =
         {
+            "init",
             "connect",
             "disconnect",
-            "exception",
-            "interrupt",
-            "ipi",
-            "page-fault",
+            "breakpoint",
         };
 
         const size_t index = static_cast<size_t>(which);
-        if (index > static_cast<size_t>(DebugEventType::PageFault))
+        if (index > static_cast<size_t>(DebugEventType::Breakpoint))
             return "unknown";
         return strs[index];
     }
-    static_assert(static_cast<DebugEventType>(0) == DebugEventType::Connect);
-    static_assert(static_cast<DebugEventType>(1) == DebugEventType::Disconnect);
-    static_assert(static_cast<DebugEventType>(2) == DebugEventType::Exception);
-    static_assert(static_cast<DebugEventType>(3) == DebugEventType::Interrupt);
-    static_assert(static_cast<DebugEventType>(4) == DebugEventType::Ipi);
-    static_assert(static_cast<DebugEventType>(5) == DebugEventType::PageFault);
+    static_assert(static_cast<DebugEventType>(0) == DebugEventType::Init);
+    static_assert(static_cast<DebugEventType>(1) == DebugEventType::Connect);
+    static_assert(static_cast<DebugEventType>(2) == DebugEventType::Disconnect);
+    static_assert(static_cast<DebugEventType>(3) == DebugEventType::Breakpoint);
 
     sl::StringSpan DebugStatusStr(DebugStatus which)
     {

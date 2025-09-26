@@ -560,8 +560,15 @@ namespace Npk
     void SetMyIpiId(void* id);
     void* GetIpiId(CpuId id);
     void NudgeCpu(CpuId who);
-    bool FreezeAllCpus(); //fails is freeze is already ongoing.
+    size_t FreezeAllCpus(); //returns number of frozen cpus (0 if failed)
     void ThawAllCpus();
+
+    /* Sychronously runs a function on all frozen cpus. If no cpus are frozen
+     * (`FreezeAllCpus()` has not been called) this function does nothing.
+     * This function is not reentrant, and can practically only be called
+     * from the cpu that called `FreezeAllCpus()`.
+     */
+    void RunOnFrozenCpus(void (*What)(void* arg), void* arg, bool includeSelf);
     
     CycleAccount SetCycleAccount(CycleAccount who);
     void AddClockEvent(ClockEvent* event);

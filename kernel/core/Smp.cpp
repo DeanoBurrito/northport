@@ -1,4 +1,5 @@
 #include <Core.hpp>
+#include <Debugger.hpp>
 
 namespace Npk
 {
@@ -6,6 +7,9 @@ namespace Npk
     constexpr sl::TimeCount FreezePingTime = 10_ms;
 
     static sl::Atomic<CpuId> freezeControl = 0;
+    static sl::Atomic<CpuId> freezeCmdControl = 0;
+    static void* freezeArg;
+    static void (*freezeCommand)(void* arg);
 
     static inline SmpControl* GetControl(CpuId who)
     {
@@ -22,9 +26,26 @@ namespace Npk
     {
         if (freezeControl.Load() != 0)
         {
+            //acknowledge that this cpu has been frozen
             freezeControl.Sub(1);
+
+            //wait for the freeze-master (stage name potential?)
+            //to thaw all cpus, in the meantime check for any commands.
+            bool commandRun = false;
             while (freezeControl.Load() != 0)
-                sl::HintSpinloop();
+            {
+                if (freezeCmdControl.Load(sl::Acquire) == 0)
+                {
+                    commandRun = false;
+                    continue;
+                }
+                if (commandRun)
+                    continue;
+
+                freezeCommand(freezeArg);
+                freezeCmdControl.Sub(1, sl::Release);
+                commandRun = true;
+            }
         }
 
         auto control = GetControl(MyCoreId());
@@ -139,7 +160,7 @@ namespace Npk
             PlatSendIpi(control->ipiId);
     }
 
-    bool FreezeAllCpus()
+    size_t FreezeAllCpus()
     {
         //TODO: multi-domain support
         const CpuId cpuCount = MySystemDomain().smpControls.Size();
@@ -152,7 +173,7 @@ namespace Npk
         //a failure here and the caller should continue to back off and enable
         //interrupts (allowing them to freeze), before thawing and retrying.
         if (!freezeControl.CompareExchange(expected, desired))
-            return false;
+            return 0;
 
         auto startTime = GetMonotonicTime();
         auto endTime = startTime.epoch;
@@ -172,7 +193,7 @@ namespace Npk
         }
         while (freezeControl.Load() != 1);
 
-        return true;
+        return cpuCount;
     }
 
     void ThawAllCpus()
@@ -183,5 +204,25 @@ namespace Npk
         //an atomic store would suffice, but the cmpexchg is a nice sanity
         //check.
         NPK_ASSERT(freezeControl.CompareExchange(expected, desired));
+    }
+
+    void RunOnFrozenCpus(void (*What)(void* arg), void* arg, bool includeSelf)
+    {
+        NPK_ASSERT(freezeControl.Load(sl::Acquire) == 1);
+        NPK_ASSERT(freezeCmdControl.Load(sl::Acquire) == 0);
+
+        //TODO: multi-domain support
+        const CpuId cpuCount = MySystemDomain().smpControls.Size();
+
+        freezeArg = arg;
+        freezeCommand = What;
+        freezeCmdControl.Store(cpuCount, sl::Release);
+
+        while (freezeCmdControl.Load(sl::Acquire) != 1)
+            sl::HintSpinloop();
+        freezeCmdControl.Store(0, sl::Release);
+
+        if (includeSelf)
+            What(arg);
     }
 }

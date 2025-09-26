@@ -9,6 +9,8 @@
 #include <Maths.hpp>
 #include <NanoPrintf.hpp>
 
+constexpr uint8_t Int3Opcode = 0xCC;
+
 extern "C" char SysCallEntry[];
 extern "C" char SysEnterEntry[];
 extern "C" char BadSysCallEntry[];
@@ -253,6 +255,11 @@ namespace Npk
         //TODO: fixups: sse, xsave
     }
 
+    uintptr_t ArchGetTrapReturnAddr(const TrapFrame* frame)
+    {
+        return frame->iret.rip;
+    }
+
     SL_TAGGED(cpubase, CoreLocalHeader localHeader);
 
     void SetMyLocals(uintptr_t where, CpuId softwareId)
@@ -317,5 +324,36 @@ namespace Npk
         WRITE_CR(3, future);
 
         return prev;
+    }
+
+    bool ArchInitDebugState()
+    {
+        uint64_t dr7 = READ_DR(7);
+        if ((dr7 & (1 << 13)) != 0)
+            return false; //we need dr7.GD to be clear to continue
+
+        dr7 &= ~0xFF; //disable local and global matching of hw breakpoints.
+        dr7 |= (1 << 8) | (1 << 9); //enable exact matches for breakpoints.
+        dr7 &= (1 << 11); //disable RTM, we dont support TSX
+        WRITE_DR(7, dr7);
+
+        uint64_t dr6 = READ_DR(6);
+        dr6 |= 1 << 11; //cleared by the cpu when a bus lock is asserted,
+                        //software is expected to reset this bit.
+        dr6 &= ~((1 << 13) | (1 << 14)); //set BD and BS bits
+        WRITE_DR(6, dr6);
+
+        return true;
+    }
+
+    size_t ArchSetBreakpoint(void* addr, sl::Span<uint8_t> backup)
+    {
+        if (backup.Size() == 0)
+            return 0;
+
+        sl::MemCopy(backup.Begin(), addr, 1);
+        sl::MemCopy(addr, &Int3Opcode, 1);
+
+        return 1;
     }
 }

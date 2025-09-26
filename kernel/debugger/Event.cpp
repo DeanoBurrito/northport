@@ -3,15 +3,39 @@
 
 namespace Npk
 {
+    static DebugStatus HandleBreakpoint(DebugProtocol& proto, void* data)
+    {
+        auto* frame = static_cast<const TrapFrame*>(data);
+        const uintptr_t addr = ArchGetTrapReturnAddr(frame);
+
+        const auto bp = Private::GetBreakpointByAddr(addr);
+        if (bp == nullptr)
+            return DebugStatus::InvalidBreakpoint;
+
+        return proto.BreakpointHit(&proto, bp);
+    }
+
     extern "C" 
     DebugStatus DebugEventOccured(DebugEventType what, void* data)
     {
         if (!Private::debuggerInitialized)
-            return DebugStatus::NotSupported;
+        {
+            if (what != DebugEventType::Init)
+                return DebugStatus::NotSupported;
+
+            DebugStatus result = DebugStatus::Success;
+
+            FreezeAllCpus();
+            RunOnFrozenCpus(Private::DebuggerPerCpuInit, &result, true);
+            ThawAllCpus();
+
+            if (result == DebugStatus::Success)
+                Private::debuggerInitialized = true;
+            return result;
+        }
 
         auto prevCycleAccount = SetCycleAccount(CycleAccount::Debugger);
-        FreezeAllCpus();
-
+        Private::debugCpusCount = FreezeAllCpus();
         auto proto = Private::debugProtocol;
 
         auto result = DebugStatus::NotSupported;
@@ -21,6 +45,10 @@ namespace Npk
             Private::debugTransportsLock.Lock();
             result = proto->Connect(proto, &Private::debugTransports);
             Private::debugTransportsLock.Unlock();
+            break;
+
+        case DebugEventType::Breakpoint:
+            result = HandleBreakpoint(*proto, data);
             break;
 
         default:

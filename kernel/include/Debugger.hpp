@@ -6,15 +6,15 @@
 
 namespace Npk
 {
+    constexpr size_t MaxBreakpointDataSize = 8;
+
     enum class DebugEventType
     {
+        Init,
         Connect,
         Disconnect,
 
-        Exception,
-        Interrupt,
-        Ipi,
-        PageFault,
+        Breakpoint,
     };
 
     enum class DebugStatus
@@ -23,7 +23,29 @@ namespace Npk
         NotSupported,
         InvalidArgument,
         BadEnvironment,
+        InvalidBreakpoint,
     };
+
+    struct Breakpoint
+    {
+        sl::ListHook listHook;
+        uint8_t backupStore[MaxBreakpointDataSize];
+
+        uintptr_t addr;
+        union
+        {
+            uint8_t length;
+            uint8_t kind;
+        };
+
+        bool read;
+        bool write;
+        bool execute;
+        bool hardware;
+        uint8_t hwBind;
+    };
+
+    using BreakpointList = sl::List<Breakpoint, &Breakpoint::listHook>;
 
     struct DebugTransport
     {
@@ -67,6 +89,7 @@ namespace Npk
 
         DebugStatus (*Connect)(DebugProtocol* inst, DebugTransportList* ports);
         void (*Disconnect)(DebugProtocol* inst);
+        DebugStatus (*BreakpointHit)(DebugProtocol* inst, Breakpoint* bp);
     };
 
     /* Initializes the debugger subsystem, the kernel is **not self debuggable**

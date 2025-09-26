@@ -86,7 +86,9 @@ namespace Npk
         return ret;
     }
     static_assert(DebugEventVector == 0xFB);
+}
 
 #define READ_CR(num) ({ uint64_t val; asm("mov %%cr" #num ", %0" : "=r"(val)); val; })
 #define WRITE_CR(num, val) do { asm("mov %0, %%cr" #num :: "r"(val) : "memory"); } while (false)
-}
+#define READ_DR(num) ({ uint64_t val; asm("mov %%dr" #num", %0" : "=r"(val)); val; })
+#define WRITE_DR(num, val) do { asm("mov %0, %%dr" #num :: "r"(val) : "memory"); } while (false)
