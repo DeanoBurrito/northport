@@ -26,6 +26,7 @@ namespace Npk::Private
     {
         MissingArg = 1,
         InvalidArg = 2,
+        InternalError = 3,
     };
 
     struct GdbData
@@ -129,8 +130,8 @@ namespace Npk::Private
 
         for (size_t i = 0; i < bytes; i++)
         {
-            //const uint8_t byte = id >> (8 * (bytes - i - 1)); 
-            const uint8_t byte = 0x12;
+            const uint8_t byte = id >> (8 * (bytes - i - 1)); 
+            //TODO: why is this fucked?
             PutBytes(buffer.Subspan(i * 2, -1), &byte, 1);
         }
 
@@ -391,6 +392,8 @@ namespace Npk::Private
             .text = "qfThreadInfo"_span,
             .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
             {
+                (void)data;
+
                 inst.threadListHead = 0;
 
                 size_t head = 0;
@@ -408,6 +411,8 @@ namespace Npk::Private
             .text = "qsThreadInfo"_span,
             .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
             {
+                (void)data;
+
                 size_t head = 0;
                 inst.builtinSendBuff[head++] = '$';
 
@@ -466,6 +471,79 @@ namespace Npk::Private
                 GetThreadId(data.Subspan(2, -1), inst.selectedThread);
                 if (inst.selectedThread == AnyThread)
                     inst.selectedThread = MyCoreId();
+
+                return SendOk(inst);
+            }
+        },
+        {
+            .text = "Z"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                size_t head = 2;
+
+                const uint8_t type = data[1];
+                uintptr_t addr;
+                head += GetBytes(data.Subspan(head, -1), &addr, sizeof(addr));
+                uint8_t kind;
+                head += GetBytes(data.Subspan(head, -1), &kind, 1);
+
+                Breakpoint* bp = AllocBreakpoint();
+                if (bp == nullptr)
+                    return SendError(inst, ErrorValue::InternalError);
+
+                bp->kind = kind;
+
+                switch (type)
+                {
+                case 0: //software breakpoint
+                    bp->execute = true;
+                    bp->hardware = false;
+                    break;
+                case 1: //hardware breakpoint
+                    bp->execute = true;
+                    bp->hardware = true;
+                    break;
+                case 2: //write watchpoint
+                    bp->write = true;
+                    break;
+                case 3: //read watchpoint
+                    bp->read = true;
+                    break;
+                case 4: //access (read | write) watchpoint
+                    bp->read = true;
+                    bp->write = true;
+                    break;
+                }
+
+                if (!ArmBreakpoint(*bp))
+                {
+                    FreeBreakpoint(&bp);
+                    return SendError(inst, ErrorValue::InternalError);
+                }
+
+                return SendOk(inst);
+            },
+        },
+        {
+            .text = "z"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                size_t head = 2;
+
+                const uint8_t type = data[1];
+                uintptr_t addr;
+                head += GetBytes(data.Subspan(head, -1), &addr, sizeof(addr));
+                uint8_t kind;
+                head += GetBytes(data.Subspan(head, -1), &kind, 1);
+                (void)kind;
+
+                Breakpoint* bp = GetBreakpointByAddr(addr);
+                if (bp == nullptr)
+                    return SendError(inst, ErrorValue::InvalidArg);
+
+                if (DisarmBreakpoint(*bp))
+                    return SendError(inst, ErrorValue::InternalError);
+                FreeBreakpoint(&bp);
 
                 return SendOk(inst);
             }
@@ -534,6 +612,13 @@ namespace Npk::Private
 
     static void GdbDisconnect(DebugProtocol* inst)
     {
+        SL_UNREACHABLE(); (void)inst;
+    }
+
+    static DebugStatus GdbBreakpointHit(DebugProtocol* inst, Breakpoint* bp)
+    {
+        //TODO: send stop packet to host, let them know which breakpoint was hit.
+        //TODO: SendStopReason(5, swbreak, ...);
         SL_UNREACHABLE();
     }
 
@@ -543,5 +628,6 @@ namespace Npk::Private
         .opaque = &gdbData,
         .Connect = GdbConnect,
         .Disconnect = GdbDisconnect,
+        .BreakpointHit = GdbBreakpointHit,
     };
 }

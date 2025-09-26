@@ -3,6 +3,7 @@
 #include <Types.hpp>
 #include <Span.hpp>
 #include <containers/List.hpp>
+#include <hardware/Arch.hpp>
 
 namespace Npk
 {
@@ -29,20 +30,14 @@ namespace Npk
     struct Breakpoint
     {
         sl::ListHook listHook;
-        uint8_t backupStore[MaxBreakpointDataSize];
+        ArchBreakpoint arch;
 
         uintptr_t addr;
-        union
-        {
-            uint8_t length;
-            uint8_t kind;
-        };
-
+        uint8_t kind;
         bool read;
         bool write;
         bool execute;
         bool hardware;
-        uint8_t hwBind;
     };
 
     using BreakpointList = sl::List<Breakpoint, &Breakpoint::listHook>;

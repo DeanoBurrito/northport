@@ -141,11 +141,16 @@ namespace Npk
      */
     bool ArchInitDebugState();
 
-    /* Places a software breakpoint at the specified address, `backup` contains
-     * a buffer where the overwritten code is stored for later restoration.
-     * The number of bytes overwritten is returned, or 0 if an error occured.
-     */
-    size_t ArchSetBreakpoint(void* addr, sl::Span<uint8_t> backup);
+    struct ArchBreakpoint
+    {
+        uint8_t backup[6];
+        uint8_t backupLength;
+        uint8_t bind;
+    };
+
+    bool ArchEnableBreakpoint(ArchBreakpoint& bp, uintptr_t addr, size_t kind, bool read, bool write, bool exec, bool hardware);
+
+    bool ArchDisableBreakpoint(ArchBreakpoint& bp, uintptr_t addr, size_t kind);
 }
 
 #ifdef __x86_64__
