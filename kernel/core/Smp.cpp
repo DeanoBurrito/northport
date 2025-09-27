@@ -22,6 +22,12 @@ namespace Npk
         return &dom.smpControls[who];
     }
 
+    static CpuId TotalCpuCount()
+    {
+        //TODO: multi-domain support
+        return MySystemDomain().smpControls.Size();
+    }
+
     void DispatchIpi()
     {
         if (freezeControl.Load() != 0)
@@ -162,8 +168,7 @@ namespace Npk
 
     size_t FreezeAllCpus()
     {
-        //TODO: multi-domain support
-        const CpuId cpuCount = MySystemDomain().smpControls.Size();
+        const CpuId cpuCount = TotalCpuCount();
 
         CpuId expected = 0;
         CpuId desired = cpuCount;
@@ -211,12 +216,9 @@ namespace Npk
         NPK_ASSERT(freezeControl.Load(sl::Acquire) == 1);
         NPK_ASSERT(freezeCmdControl.Load(sl::Acquire) == 0);
 
-        //TODO: multi-domain support
-        const CpuId cpuCount = MySystemDomain().smpControls.Size();
-
         freezeArg = arg;
         freezeCommand = What;
-        freezeCmdControl.Store(cpuCount, sl::Release);
+        freezeCmdControl.Store(TotalCpuCount(), sl::Release);
 
         while (freezeCmdControl.Load(sl::Acquire) != 1)
             sl::HintSpinloop();

@@ -88,13 +88,13 @@ namespace Npk
     CPU_LOCAL(LocalApic, lapic);
     uintptr_t lapicMmioBase;
 
-    static void PrepareLocalApic()
+    static bool PrepareLocalApic()
     {
-        NPK_ASSERT(CpuHasFeature(CpuFeature::Apic));
-        NPK_ASSERT(CpuHasFeature(CpuFeature::Tsc));
+        NPK_CHECK(CpuHasFeature(CpuFeature::Apic), false);
+        NPK_CHECK(CpuHasFeature(CpuFeature::Tsc), false);
 
         const uint64_t baseMsr = ReadMsr(Msr::ApicBase);
-        NPK_ASSERT(baseMsr & (1 << 11)); //check lapic hasnt been disabled
+        NPK_CHECK(baseMsr & (1 << 11), false); //check lapic hasnt been disabled
 
         lapic->x2Mode = CpuHasFeature(CpuFeature::ApicX2);
         if (lapic->x2Mode)
@@ -105,6 +105,8 @@ namespace Npk
             lapic->hasTscDeadline = true;
             WriteMsr(Msr::TscDeadline, 0);
         }
+
+        return true;
     }
 
     static bool CalibrateLapicTimer()
@@ -175,11 +177,13 @@ namespace Npk
         {
             constexpr uint32_t BeginValue = 0xFFFF'FFFF;
 
+            AcquireReferenceTimerLock();
             lapic->Write(LApicReg::TimerInitCount, BeginValue);
             ReferenceSleep(0);
             const uint32_t endValue = lapic->Read(LApicReg::TimerCount);
-            lapic->Write(LApicReg::TimerInitCount, 0);
+            ReleaseReferenceTimerLock();
 
+            lapic->Write(LApicReg::TimerInitCount, 0);
             controlOffset += BeginValue - endValue;
         }
 
@@ -191,9 +195,11 @@ namespace Npk
         {
             constexpr uint32_t BeginValue = 0xFFFF'FFFF;
 
+            AcquireReferenceTimerLock();
             lapic->Write(LApicReg::TimerInitCount, BeginValue);
             const uint64_t realCalibNanos = ReferenceSleep(calibNanos);
             const uint32_t stopValue = lapic->Read(LApicReg::TimerCount);
+            ReleaseReferenceTimerLock();
 
             lapic->Write(LApicReg::TimerInitCount, 0);
             NPK_CHECK(stopValue != 0, false);
@@ -216,7 +222,7 @@ namespace Npk
 
         sl::Span<uint64_t> runs { calibData, calibRuns };
         const auto maybePeriod = CoalesceTimerData(runs, calibRuns - neededRuns);
-        NPK_ASSERT(maybePeriod.HasValue());
+        NPK_CHECK(maybePeriod.HasValue(), false);
 
         const uint64_t timerFreq = *maybePeriod * sampleFreq;
         const auto conv = sl::ConvertUnits(timerFreq, sl::UnitBase::Decimal);
@@ -334,9 +340,10 @@ namespace Npk
         }
     }
 
-    void InitBspLapic(uintptr_t& virtBase)
+    bool InitBspLapic(uintptr_t& virtBase)
     {
-        PrepareLocalApic();
+        if (!PrepareLocalApic())
+            return false;
 
         if (!lapic->x2Mode)
         {
@@ -372,15 +379,17 @@ namespace Npk
 
         EnableLocalApic();
         Log("BSP local APIC initialized.", LogLevel::Verbose);
+        return true;
     }
 
-    void InitApLapic()
+    bool InitApLapic()
     {
-        PrepareLocalApic();
+        if (!PrepareLocalApic())
+            return false;
 
         if (!lapic->x2Mode)
         {
-            NPK_ASSERT(lapicMmioBase != 0);
+            NPK_CHECK(lapicMmioBase != 0, false);
 
             lapic->mmio = lapicMmioBase + PageSize() * MyCoreId();
             const Paddr mmioAddr = ReadMsr(Msr::ApicBase) & ~0xFFFul;
@@ -394,6 +403,7 @@ namespace Npk
 
         EnableLocalApic();
         Log("AP local APIC initialized.", LogLevel::Verbose);
+        return true;
     }
 
     void SignalEoi()

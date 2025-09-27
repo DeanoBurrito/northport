@@ -313,7 +313,7 @@ namespace Npk
 
     void ArchInitFull(uintptr_t& virtBase)
     {
-        InitBspLapic(virtBase);
+        NPK_ASSERT(InitBspLapic(virtBase));
     }
 
     KernelMap ArchSetKernelMap(sl::Opt<KernelMap> next)

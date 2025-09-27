@@ -101,6 +101,11 @@ namespace Npk
      */
     void DisconnectDebugger();
 
+    /* Manual breakpoint, if the debugger is connected this will send a break
+     * notification and begin command processing.
+     */
+    void DebugBreakpoint();
+
     /* Makes a transport available for use by the kernel debugger.
      */
     void AddDebugTransport(DebugTransport* transport);

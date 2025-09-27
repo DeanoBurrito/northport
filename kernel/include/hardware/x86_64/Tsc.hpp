@@ -8,6 +8,8 @@
 namespace Npk
 {
     void InitReferenceTimers(uintptr_t& virtBase);
+    void AcquireReferenceTimerLock();
+    void ReleaseReferenceTimerLock();
     uint64_t ReferenceSleep(uint64_t nanos);
     sl::Opt<uint64_t> CoalesceTimerData(sl::Span<uint64_t> runs, size_t allowedOutliers);
 

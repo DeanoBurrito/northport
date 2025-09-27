@@ -29,6 +29,24 @@ namespace Npk
         Log("PIT selected as reference timer.", LogLevel::Trace);
     }
 
+    sl::SpinLock pitLock {};
+
+    void AcquireReferenceTimerLock()
+    {
+        if (AcpiTimerAvailable() || HpetAvailable())
+            return;
+
+        pitLock.Lock();
+    }
+
+    void ReleaseReferenceTimerLock()
+    {
+        if (AcpiTimerAvailable() || HpetAvailable())
+            return;
+
+        pitLock.Unlock();
+    }
+
     uint64_t ReferenceSleep(uint64_t nanos)
     {
         //TODO: maybe we should abstract this behind a `struct calib_timer_source`
@@ -172,9 +190,11 @@ namespace Npk
         //control runs, determine time taken to read reference timer
         for (size_t i = 0; i < controlRuns; i++)
         {
+            AcquireReferenceTimerLock();
             const size_t tscBegin = ReadTsc();
             ReferenceSleep(0);
             const size_t tscEnd = ReadTsc();
+            ReleaseReferenceTimerLock();
 
             controlOffset += tscEnd - tscBegin;
         }
@@ -184,9 +204,11 @@ namespace Npk
 
         for (size_t i = 0; i < calibRuns; i++)
         {
+            AcquireReferenceTimerLock();
             const uint64_t tscBegin = ReadTsc();
             const uint64_t realCalibNanos = ReferenceSleep(calibNanos);
             const uint64_t tscEnd = ReadTsc();
+            ReleaseReferenceTimerLock();
 
             if (realCalibNanos == 0)
             {
@@ -205,7 +227,7 @@ namespace Npk
         }
 
         const auto maybeTscPeriod = CoalesceTimerData({ calibData, calibRuns }, calibRuns - neededRuns);
-        NPK_ASSERT(maybeTscPeriod.HasValue());
+        NPK_CHECK(maybeTscPeriod.HasValue(), false);
 
         const uint64_t tscFreq = *maybeTscPeriod * sampleFreq;
         const auto conv = sl::ConvertUnits(tscFreq, sl::UnitBase::Decimal);

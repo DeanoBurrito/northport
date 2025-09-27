@@ -90,7 +90,7 @@ namespace Npk
         ThreadContext idleContext {};
         BringCpuOnline(&idleContext);
         NPK_ASSERT(CalibrateTsc());
-        InitApLapic();
+        NPK_ASSERT(InitApLapic());
 
         Log("AP init thread done, becoming idle thread.", LogLevel::Verbose);
         IntrsOn();

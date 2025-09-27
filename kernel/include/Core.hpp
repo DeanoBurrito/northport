@@ -504,7 +504,7 @@ namespace Npk
     SL_PRINTF_FUNC(1, 3)
     void Log(const char* msg, LogLevel level, ...);
     [[noreturn]]
-    void Panic(sl::StringSpan message);
+    void Panic(sl::StringSpan message, TrapFrame* frame);
 
     void AddLogSink(LogSink& sink);
     void RemoveLogSink(LogSink& sink);
@@ -519,7 +519,7 @@ namespace Npk
     {
         prevIpl = CurrentIpl();
         if (prevIpl > max || min > prevIpl)
-            Panic("Bad IPL when acquiring IplSpinLock");
+            Panic("Bad IPL when acquiring IplSpinLock", nullptr);
 
         if (prevIpl < max)
             RaiseIpl(max);
@@ -531,7 +531,7 @@ namespace Npk
     {
         auto lastIpl = CurrentIpl();
         if (lastIpl > max || min > lastIpl)
-            Panic("Bad IPL when trying to acquire IplSpinLock");
+            Panic("Bad IPL when trying to acquire IplSpinLock", nullptr);
 
         if (lastIpl < max)
             RaiseIpl(max);
@@ -674,7 +674,7 @@ namespace Npk
     if (SL_UNLIKELY(!(cond))) \
     { \
         Npk::Panic("Assert failed (" SL_FILENAME_MACRO ":" \
-            NPK_ASSERT_STRINGIFY(__LINE__) "): " #cond); \
+            NPK_ASSERT_STRINGIFY(__LINE__) "): " #cond, nullptr); \
     }
 
 #define NPK_UNREACHABLE() \

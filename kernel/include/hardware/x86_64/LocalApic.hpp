@@ -11,8 +11,8 @@ namespace Npk
     constexpr uint8_t LapicTimerVector = 0xFE;
     constexpr uint8_t LapicSpuriousVector = 0xFF;
 
-    void InitBspLapic(uintptr_t& virtBase);
-    void InitApLapic();
+    bool InitBspLapic(uintptr_t& virtBase);
+    bool InitApLapic();
     void SignalEoi();
     uint32_t MyLapicId();
     uint8_t MyLapicVersion();

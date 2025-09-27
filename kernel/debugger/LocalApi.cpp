@@ -88,6 +88,16 @@ namespace Npk
         ArchCallDebugger(DebugEventType::Disconnect, nullptr);
     }
 
+    void DebugBreakpoint()
+    {
+        if (!Private::debuggerInitialized)
+            return;
+        if (!Private::enabledEvents.Has(DebugEventType::Breakpoint))
+            return;
+
+        ArchCallDebugger(DebugEventType::Breakpoint, nullptr);
+    }
+
     void AddDebugTransport(DebugTransport* transport)
     {
         auto predicate = [](DebugTransport* a, DebugTransport* b) -> bool
