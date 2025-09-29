@@ -84,7 +84,7 @@ namespace Npk
 
         DebugStatus (*Connect)(DebugProtocol* inst, DebugTransportList* ports);
         void (*Disconnect)(DebugProtocol* inst);
-        DebugStatus (*BreakpointHit)(DebugProtocol* inst, Breakpoint* bp);
+        DebugStatus (*BreakpointHit)(DebugProtocol* inst, Breakpoint* bp, TrapFrame* frame);
     };
 
     /* Initializes the debugger subsystem, the kernel is **not self debuggable**

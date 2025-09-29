@@ -12,7 +12,7 @@ namespace Npk
         if (bp == nullptr)
             return DebugStatus::InvalidBreakpoint;
 
-        return proto.BreakpointHit(&proto, bp);
+        return proto.BreakpointHit(&proto, bp, static_cast<TrapFrame*>(data));
     }
 
     extern "C" 

@@ -36,6 +36,7 @@ namespace Npk::Private
         uint8_t builtinSendBuff[BuiltinBufferSize];
         CpuId selectedThread;
         CpuId threadListHead;
+        TrapFrame* stopFrame;
         bool breakCommandLoop;
 
         struct
@@ -94,7 +95,8 @@ namespace Npk::Private
         return sum;
     }
 
-    static size_t PutBytes(sl::Span<uint8_t> buffer, const void* data, size_t dataLen)
+    static size_t PutBytes(sl::Span<uint8_t> buffer, const void* data, 
+        size_t dataLen)
     {
         const uint8_t* store = static_cast<const uint8_t*>(data);
 
@@ -116,26 +118,13 @@ namespace Npk::Private
     {
         id++; //gdb uses 1-based thread ids, we use 0-based
 
-        //thread ids are specifically encoded big-endian, this code
-        //should work regardless of the current machine's endianness.
-        size_t bytes = 0;
-        while (id != 0)
-        {
+        CpuId be = sl::HostToBe(id);
+        size_t bytes = 1;
+        while (be << bytes * 8)
             bytes++;
-            id >>= 8;
-        }
 
-        if (bytes * 2 >= buffer.Size())
-            return 0;
-
-        for (size_t i = 0; i < bytes; i++)
-        {
-            const uint8_t byte = id >> (8 * (bytes - i - 1)); 
-            //TODO: why is this fucked?
-            PutBytes(buffer.Subspan(i * 2, -1), &byte, 1);
-        }
-
-        return bytes * 2;
+        return npf_snprintf((char*)buffer.Begin(), buffer.Size(), "%.*lx",
+            (int)bytes, be >> ((sizeof(be) - bytes)) * 8);
     }
 
     static size_t PutThreadList(GdbData& inst, sl::Span<uint8_t> buffer)
@@ -168,9 +157,31 @@ namespace Npk::Private
         return head;
     }
 
-    static size_t GetBytes(sl::Span<const uint8_t> buffer, void* data, size_t dataLen)
+    static size_t PutRegister(GdbData& inst, sl::Span<uint8_t> buffer, 
+        const void* reg, size_t regLen, size_t padBytes)
     {
-        //TODO: need to look into possible endianness issues here
+        if ((regLen + padBytes) * 2 + 3 >= buffer.Size())
+            return 0;
+
+        //NOTE: the spec states that registers are encoded in target byte order,
+        //this works nicely since we take the `reg` argument in memory.
+        for (size_t i = 0; i < regLen; i++)
+        {
+            char* buff = reinterpret_cast<char*>(&buffer[i * 2]);
+            size_t buffLen = buffer.Size() - (i * 2);
+            uint8_t data = static_cast<const uint8_t*>(reg)[i];
+
+            npf_snprintf(buff, buffLen, "%02.2x", data);
+        }
+
+        sl::MemSet(&buffer[regLen * 2], 'x', padBytes);
+
+        return (regLen + padBytes) * 2;
+    }
+
+    static size_t GetBytes(sl::Span<const uint8_t> buffer, void* data, 
+        size_t dataLen)
+    {
         uint8_t* store = static_cast<uint8_t*>(data);
 
         size_t bytesRead = 0;
@@ -224,7 +235,6 @@ namespace Npk::Private
         if (!inst.transport->Transmit(inst.transport, buffer))
             return false;
 
-        Log("Sending: %.*s", LogLevel::Debug, (int)buffer.Size(), buffer.Begin());
         while (true)
         {
             uint8_t ack[1];
@@ -236,7 +246,8 @@ namespace Npk::Private
         }
     }
 
-    static bool CheckAndSend(GdbData& inst, sl::Span<uint8_t> buffer, size_t head)
+    static bool CheckAndSend(GdbData& inst, sl::Span<uint8_t> buffer, 
+        size_t head)
     {
         auto checksum = ComputeChecksum(buffer.Subspan(0, head));
         auto checkBuffer = buffer.Subspan(head, head + 2);
@@ -267,6 +278,26 @@ namespace Npk::Private
         sl::MemCopy(buffer, "$OK#", 4);
 
         return CheckAndSend(inst, buffer, 4);
+    }
+
+    static bool SendStopReason(GdbData& inst, uint8_t signal, CpuId tid)
+    {
+        size_t head = npf_snprintf((char*)inst.builtinSendBuff,
+            BuiltinBufferSize, "$T%02.2xthread", signal);
+
+        head += PutThreadId(
+            { inst.builtinSendBuff + head, BuiltinBufferSize - head }, tid);
+        inst.builtinSendBuff[head++] = ';';
+
+        if (inst.features.swBreak)
+        {
+            head += npf_snprintf((char*)inst.builtinSendBuff + head,
+                BuiltinBufferSize - head, "swbreak:;");
+        }
+
+        inst.builtinSendBuff[head++] = '#';
+
+        return CheckAndSend(inst, inst.builtinSendBuff, head);
     }
 
     static size_t Receive(GdbData& inst, sl::Span<uint8_t> buffer)
@@ -335,7 +366,6 @@ namespace Npk::Private
         inst.transport->Transmit(inst.transport, { &ack, 1 });
         //TODO: error handling for Transmit()
 
-        Log("gdbrcv: %.*s", LogLevel::Debug, (int)receivedLen, buffer.Begin());
         return receivedLen;
     }
 
@@ -350,7 +380,12 @@ namespace Npk::Private
                 inst.features.errorMsg = data.Contains("error-message+"_u8span);
 
                 const size_t len = npf_snprintf((char*)inst.builtinSendBuff,
-                    BuiltinBufferSize, "$swbreak+;hwbreak+;error-message+#");
+                    BuiltinBufferSize, "$"
+                    "swbreak+;"
+                    "hwbreak+;"
+                    "error-message+;"
+                    "vContSupported+"
+                    "#");
 
                 return CheckAndSend(inst, inst.builtinSendBuff, len);
             }
@@ -425,6 +460,14 @@ namespace Npk::Private
             }
         },
         {
+            .text = "qRcmd"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                //TODO: local command interpreter
+                return SendUnsupported(inst);
+            }
+        },
+        {
             .text = "vCont?"_span,
             .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
             {
@@ -442,15 +485,7 @@ namespace Npk::Private
             {
                 (void)data;
 
-                size_t head = npf_snprintf((char*)inst.builtinSendBuff,
-                    BuiltinBufferSize, "$T05thread:");
-
-                head += PutThreadId({ inst.builtinSendBuff + head, 
-                    BuiltinBufferSize - head }, MyCoreId());
-
-                inst.builtinSendBuff[head++] = '#';
-
-                return CheckAndSend(inst, inst.builtinSendBuff, head);
+                return SendStopReason(inst, 5, MyCoreId());
             }
         },
         {
@@ -474,6 +509,19 @@ namespace Npk::Private
 
                 return SendOk(inst);
             }
+        },
+        {
+            .text = "g"_span,
+            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            {
+                if (inst.stopFrame == nullptr)
+                    return SendError(inst, ErrorValue::InternalError);
+
+                size_t head = 0;
+                //TODO: populate registers packet based on target desc
+
+                return CheckAndSend(inst, inst.builtinSendBuff, head);
+            },
         },
         {
             .text = "Z"_span,
@@ -615,11 +663,17 @@ namespace Npk::Private
         SL_UNREACHABLE(); (void)inst;
     }
 
-    static DebugStatus GdbBreakpointHit(DebugProtocol* inst, Breakpoint* bp)
+    static DebugStatus GdbBreakpointHit(DebugProtocol* inst, Breakpoint* bp, 
+        TrapFrame* frame)
     {
-        //TODO: send stop packet to host, let them know which breakpoint was hit.
-        //TODO: SendStopReason(5, swbreak, ...);
-        SL_UNREACHABLE();
+        auto gdbData = static_cast<GdbData*>(inst->opaque);
+        DebugStatus result = DebugStatus::Success;
+
+        gdbData->stopFrame = frame;
+        SendStopReason(*gdbData, 5, MyCoreId());
+
+        gdbData->stopFrame = nullptr;
+        return result;
     }
 
     DebugProtocol gdbProtocol
