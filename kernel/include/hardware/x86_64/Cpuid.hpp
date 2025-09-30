@@ -32,6 +32,8 @@ namespace Npk
         SysCall,
         SysEnter,
         DebugExtensions,
+        Mce,
+        Mca,
 
         Count
     };

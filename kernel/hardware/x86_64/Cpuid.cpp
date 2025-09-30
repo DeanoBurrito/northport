@@ -44,6 +44,8 @@ namespace Npk
         { .leaf {0x8000'0001, 0}, .index = 'd', .shift = 11, .name = "syscall" },
         { .leaf {1, 0}, .index = 'd', .shift = 11, .name = "sysenter" },
         { .leaf {1, 0}, .index = 'd', .shift = 2, .name = "dbg-exts" },
+        { .leaf {1, 0}, .index = 'd', .shift = 7, .name = "mce" },
+        { .leaf {1, 0}, .index = 'd', .shift = 14, .name = "mca" },
     };
 
     static_assert(sizeof(accessors) / sizeof(CpuFeatureAccessor) == static_cast<size_t>(CpuFeature::Count));

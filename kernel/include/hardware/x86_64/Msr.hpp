@@ -28,6 +28,13 @@ namespace Npk
         KernelGsBase = 0xC0000102,
         PvSystemTime = 0x4B564D01,
         PvWallClock = 0x4B564D00,
+        McgCap = 0x179,
+        McgStatus = 0x17A,
+        McgCtl = 0x17B,
+        MciCtl = 0x400,
+        MciStatus = 0x401,
+        MciAddr = 0x402,
+        MciMisc0 = 0x403,
     };
 
     SL_ALWAYS_INLINE
