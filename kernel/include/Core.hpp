@@ -468,7 +468,6 @@ namespace Npk
             uint32_t runTime;
             uint8_t basePriority;
             uint8_t dynPriority;
-            uint8_t score;
             bool isPinned;
             ThreadState state;
             bool isInteractive;
@@ -553,20 +552,65 @@ namespace Npk
         lock.Unlock();
     }
 
+    /* Queues a DPC for execution on the current cpu. This function can be
+     * called at any level: if run from below IPL::DPC, it will raise the local
+     * ipl and execute the DPC immediately.
+     */
     void QueueDpc(Dpc* dpc);
+
+    /* Get access to some cpu-local variables of another cpu. This can be an
+     * expensive operation, best used sparingly.
+     */
     RemoteCpuStatus* RemoteStatus(CpuId who);
+
+    /* Queue a function to run on a remote cpu, mail is processed at interrupt
+     * IPL and can be a heavy primitive to use. For less-than-urgent work
+     * consider using a work item.
+     */
     void SendMail(CpuId who, SmpMail* mail);
+
+    /* Order all the cpus in `who` to flush a range of vaddrs from their local
+     * TLBs. If `sync` is true, this function will spin until all cpus have
+     * completed acknowledged and completed the flush. If `sync` is false,
+     * the function returns after the work is queued on the remote cpus and no
+     * guarentee is made about when the TLB flushes will occur.
+     */
     void FlushRemoteTlbs(sl::Span<CpuId> who, FlushRequest* what, bool sync);
+
+    /* Set the hardware-specific id for the local cpu, usually the ID of the
+     * cpu-local interrupt controller.
+     */
     void SetMyIpiId(void* id);
+
+    /* Returns the value set by the latest call to `SetMyIpiId()`.
+     */
     void* GetIpiId(CpuId id);
+
+    /* Send an IPI to a remote cpu with no further instructions.
+     * This is useful as a building block of other operations, as it forces
+     * the remote cpu to run through an interrupt entry and exit cycle.
+     */
     void NudgeCpu(CpuId who);
-    size_t FreezeAllCpus(); //returns number of frozen cpus (0 if failed)
+
+    /* Attempts to freeze all other cpus in the system. Upon success it will
+     * return the number of frozen cpus +1 (read: total number of cpus in the
+     * system, since current cpu isnt classed as frozen).
+     * If another cpu has already begun a freeze, this function will return 0,
+     * and the caller should enable interrupts so the first freeze can complete,
+     * before consering trying again.
+     */
+    size_t FreezeAllCpus();
+
+    /* Unfreezes all other cpus in the system, enabling them to continue normal
+     * execution.
+     */
     void ThawAllCpus();
 
     /* Sychronously runs a function on all frozen cpus. If no cpus are frozen
      * (`FreezeAllCpus()` has not been called) this function does nothing.
-     * This function is not reentrant, and can practically only be called
+     * This function is not reentrant, but can practically only be called
      * from the cpu that called `FreezeAllCpus()`.
+     * If `includeSelf` is set, `What` will also run on the local cpu.
      */
     void RunOnFrozenCpus(void (*What)(void* arg), void* arg, bool includeSelf);
     

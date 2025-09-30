@@ -1,10 +1,12 @@
 #include <CorePrivate.hpp>
+#include <Maths.hpp>
 
 namespace Npk
 {
     constexpr CpuId NoAffinity = static_cast<CpuId>(~0);
     constexpr uint8_t NicenessBias = 20;
     constexpr size_t PriorityScale = 4;
+    constexpr size_t InteractivityThreshold = 30;
     constexpr size_t RtQueueCount = 
         ((MaxRtPriority - MinRtPriority) >> PriorityScale) + 1;
     constexpr size_t TsQueueCount = 
@@ -20,11 +22,13 @@ namespace Npk
             uint32_t isInteractive : 1;
         };
     };
-    
-    //TODO: topology
-    //TODO: calculate load
-    //TODO: work balancing
-    //TODO: determine interactivity status
+
+    /* TODO: list
+     * - calculate `load` for each local scheduler
+     * - topology stuff for thread selection and migration
+     * - balancing work between cpus
+     * - think about where to call UpdateInteractivity()
+     */
 
     struct LocalScheduler
     {
@@ -124,16 +128,16 @@ namespace Npk
 
         if (data.isInteractive)
             return sched.rtQueues[0];
-        else if (data.dynPriority >= MinRtPriority)
+        else if (thread->Priority() >= MinRtPriority)
         {
-            const uint8_t index = (data.dynPriority - MinRtPriority) 
+            const uint8_t index = (thread->Priority() - MinRtPriority) 
                 >> PriorityScale;
             NPK_ASSERT(index < RtQueueCount);
             return sched.rtQueues[index];
         }
-        else if (data.dynPriority >= MinTsPriority)
+        else if (thread->Priority() >= MinTsPriority)
         {
-            const uint8_t index = (data.dynPriority - MinTsPriority)
+            const uint8_t index = (thread->Priority() - MinTsPriority) 
                 >> PriorityScale;
             NPK_ASSERT(index < TsQueueCount);
             return sched.tsQueues[index];
@@ -142,37 +146,11 @@ namespace Npk
             return sched.idleQueue;
 
     }
-    
-    //NOTE: assumes thread->scheduling.lock is held!
-    static void PushThread(LocalScheduler& sched, ThreadContext* thread)
-    {
-        auto& queue = GetQueue(sched, thread);
-
-        sl::ScopedLock scopeLock(sched.queuesLock);
-        queue.PushBack(thread);
-    }
-
-    //NOTE: assumes thread->scheduling.lock is held!
-    static void RemoveThread(LocalScheduler& sched, ThreadContext* thread)
-    {
-        auto& queue = GetQueue(sched, thread);
-
-        sl::ScopedLock scopeLock(sched.queuesLock);
-        queue.Remove(thread);
-    }
-
-    static void SetNextThread(LocalScheduler& sched, ThreadContext* thread)
-    {
-        auto prev = sched.nextThread.Exchange(thread, sl::AcqRel);
-
-        if (prev != nullptr)
-            PushThread(sched, prev);
-    }
 
     //NOTE: assumes thread->scheduling.lock is held
     static size_t GenerateScore(ThreadContext* thread)
     {
-        constexpr size_t ScalingFactor = 30;
+        constexpr size_t ScalingFactor = 50;
 
         auto& data = thread->scheduling;
 
@@ -186,7 +164,7 @@ namespace Npk
             accum = ScalingFactor / (data.sleepTime / data.runTime);
         else
         {
-            accum = (ScalingFactor / (data.runTime / data.sleepTime));
+            accum = ScalingFactor / (data.runTime / data.sleepTime);
             accum += ScalingFactor;
         }
 
@@ -195,8 +173,71 @@ namespace Npk
     }
 
     //NOTE: assumes thread->scheduling.lock is held
-    static void ReassesThread(ThreadContext* context)
-    {} //TODO: 
+    static void UpdateInteractivity(ThreadContext* thread)
+    {
+        auto& data = thread->scheduling;
+
+        //decay time values to keep them within a reasonable range.
+        //thanks goes to abbix for the algorithm used here.
+
+        const auto theshold = (5000_ms).Rebase(data.sleepBegin.Frequency).ticks;
+        const auto sum = data.runTime + data.sleepTime;
+
+        if (sum > theshold * 2)
+        {
+            if (data.runTime > data.sleepTime)
+            {
+                data.runTime = theshold;
+                data.sleepTime = 1;
+            }
+            else
+            {
+                data.runTime = 1;
+                data.sleepTime = theshold;
+            }
+        }
+        else if (sum > ((theshold / 5) * 6))
+        {
+            data.runTime /= 2;
+            data.sleepTime /= 2;
+        }
+        else if (sum > theshold)
+        {
+            data.runTime = (data.runTime / 5) * 4;
+            data.sleepTime = (data.sleepTime / 5) * 4;
+        }
+
+        data.isInteractive = GenerateScore(thread) < InteractivityThreshold;
+    }
+    
+    //NOTE: assumes thread->scheduling.lock is held!
+    static void PushThread(LocalScheduler& sched, ThreadContext* thread)
+    {
+        UpdateInteractivity(thread);
+        auto& queue = GetQueue(sched, thread);
+
+        sl::ScopedLock scopeLock(sched.queuesLock);
+        queue.InsertSorted(thread, [](ThreadContext* a, ThreadContext* b)
+            { return a->Priority() > b->Priority(); });
+    }
+
+    //NOTE: assumes thread->scheduling.lock is held!
+    static void RemoveThread(LocalScheduler& sched, ThreadContext* thread)
+    {
+        auto& queue = GetQueue(sched, thread);
+
+        sl::ScopedLock scopeLock(sched.queuesLock);
+        queue.Remove(thread);
+    }
+
+    //NOTE: assumes thread->scheduling.lock is held!
+    static void SetNextThread(LocalScheduler& sched, ThreadContext* thread)
+    {
+        auto prev = sched.nextThread.Exchange(thread, sl::AcqRel);
+
+        if (prev != nullptr)
+            PushThread(sched, prev);
+    }
 
     //NOTE: assumes thread->scheduling.lock is held
     static bool WouldPreemptOn(ThreadContext* thread, LocalScheduler* sched)
@@ -221,15 +262,42 @@ namespace Npk
     {
         auto& data = thread->scheduling;
 
-        //TODO: *Actual* selection here, be topology aware.
-        //Wishlist of things to support:
-        //- hyperthreading (prefer to enqueue on physical, not logical duplicates)
-        //- clusters (group of X, default of 4, cpus sharing threads).
-        //- supercluster, basically a physical cpu package
+        if (data.affinity != NoAffinity && data.isPinned)
+            return data.affinity;
+
+        //TODO: topology-awareness
+        CpuId leastLoadedCpu = NoAffinity;
+        CpuId preemptsOnCpu = NoAffinity;
+        uint8_t leastLoadedLoad = 0xFF;
+        uint8_t preemptsOnLoad = 0xFF;
+
+        for (CpuId cpu = 0; cpu < MySystemDomain().smpControls.Size(); cpu++)
+        {
+            auto sched = RemoteSched(cpu);
+            if (sched == nullptr)
+                continue;
+
+            auto load = sched->status.Load(sl::Relaxed).load;
+            if (load < leastLoadedLoad)
+            {
+                leastLoadedLoad = load;
+                leastLoadedCpu = cpu;
+            }
+            if (WouldPreemptOn(thread, sched) && load < preemptsOnLoad)
+            {
+                preemptsOnCpu = cpu;
+                preemptsOnLoad = load;
+            }
+
+        }
+
+        if (preemptsOnCpu != NoAffinity)
+            return preemptsOnCpu;
+        if (leastLoadedCpu != NoAffinity)
+            return leastLoadedCpu;
         if (data.affinity != NoAffinity)
             return data.affinity;
         return MyCoreId();
-
     }
 
     static void EndYield()
@@ -241,7 +309,7 @@ namespace Npk
         //update scheduler's state field to represent the now-current thread
         SchedStatus nextStatus = localSched->status.Load(sl::Acquire);
         nextStatus.isInteractive = current->scheduling.isInteractive;
-        nextStatus.activePriority = current->scheduling.dynPriority;
+        nextStatus.activePriority = current->Priority();
         localSched->status.Store(nextStatus, sl::Release);
 
         GetCurrentThread()->scheduling.lock.Unlock();
@@ -282,6 +350,112 @@ namespace Npk
         NPK_UNREACHABLE();
     }
 
+    //NOTE: assumes thread->scheduling.lock is held
+    static void ThreadPriorityChanged(ThreadContext* thread, uint8_t oldBase,
+        uint8_t oldDyn)
+    {
+        const auto oldEffective = oldDyn == 0 ? oldBase : oldDyn;
+        const auto effective = thread->Priority();
+
+        switch (thread->scheduling.state)
+        {
+        case ThreadState::Dead:
+            NPK_UNREACHABLE();
+
+        case ThreadState::Standby:
+            return;
+
+        case ThreadState::Ready:
+            {
+                if (effective <= oldEffective)
+                    break;
+
+                //thread's priority increased, check if it would preempt
+                //anywhere.
+                auto sched = RemoteSched(thread->scheduling.affinity);
+                NPK_ASSERT(sched != nullptr);
+
+                if (sched->nextThread.Load(sl::Relaxed) == thread)
+                    sched->nextThread.Store(nullptr, sl::Release);
+                else
+                    RemoveThread(*sched, thread);
+
+                thread->scheduling.affinity = SelectScheduler(thread);
+                sched = RemoteSched(thread->scheduling.affinity);
+
+                if (WouldPreemptOn(thread, sched))
+                {
+                    SetNextThread(*sched, thread);
+                    sched->switchPending.Store(true, sl::Release);
+                    if (sched != &*localSched)
+                        NudgeCpu(thread->scheduling.affinity);
+                }
+                else
+                    PushThread(*sched, thread);
+                break;
+            }
+
+        case ThreadState::Executing:
+            {
+                if (effective >= oldEffective)
+                    break;
+
+                auto sched = RemoteSched(thread->scheduling.affinity);
+                NPK_ASSERT(sched != nullptr);
+
+                //check queues with a higher priority than the new effective
+                //priority for any threads, if one is found signal preemption.
+                bool shouldPreempt = false;
+
+                sched->queuesLock.Lock();
+                for (size_t i = oldEffective; 
+                    i >= sl::Max(MinRtPriority, effective); i--)
+                {
+                    const size_t index = (i - MinRtPriority) >> PriorityScale;
+                    if (sched->rtQueues[index].Empty())
+                        continue;
+
+                    shouldPreempt = true;
+                    break;
+                }
+
+                for (size_t i = sl::Min(oldEffective, MaxTsPriority);
+                    i >= sl::Max(MinTsPriority, effective); i--)
+                {
+                    const size_t index = (i - MinTsPriority) >> PriorityScale;
+                    if (sched->tsQueues[index].Empty())
+                        continue;
+
+                    shouldPreempt = true;
+                    break;
+                }
+
+                //also check the queue the thread would fall into for threads,
+                //this works because each queue is sorted by priority.
+                auto& queue = GetQueue(*sched, thread);
+                if (!queue.Empty() && queue.Front().Priority() > effective)
+                    shouldPreempt = true;
+                sched->queuesLock.Unlock();
+
+                if (shouldPreempt)
+                {
+                    sched->switchPending = true;
+                    if (sched != &*localSched)
+                        NudgeCpu(thread->scheduling.affinity);
+                }
+                break;
+            }
+
+        case ThreadState::Waiting:
+            break;
+            //TODO:
+            /* if the thread's effective priority is greater than the mutex
+             * holder's dynamic priority, we need to update that thread's
+             * dynPriority to match.
+             */
+        }
+    }
+
     bool ResetThread(ThreadContext* thread)
     {
         NPK_CHECK(thread != nullptr, false);
@@ -297,8 +471,7 @@ namespace Npk
         thread->scheduling.sleepTime = 0;
         thread->scheduling.runTime = 0;
         thread->scheduling.basePriority = IdlePriority;
-        thread->scheduling.dynPriority = thread->scheduling.basePriority;
-        thread->scheduling.score = 0;
+        thread->scheduling.dynPriority = 0;
         thread->scheduling.isPinned = false;
         thread->scheduling.isInteractive = false;
         thread->scheduling.niceness = NicenessBias;
@@ -384,9 +557,8 @@ namespace Npk
         NPK_CHECK(data.state == ThreadState::Standby, );
 
         data.affinity = SelectScheduler(thread);
-        data.dynPriority = data.basePriority;
-        data.score = GenerateScore(thread);
         data.state = ThreadState::Ready;
+        UpdateInteractivity(thread);
 
         auto targetSched = RemoteSched(data.affinity);
         NPK_ASSERT(targetSched != nullptr);
@@ -395,9 +567,8 @@ namespace Npk
         {
             SetNextThread(*targetSched, thread);
 
-            if (targetSched == &*localSched)
-                localSched->switchPending.Store(true, sl::Release);
-            else
+            targetSched->switchPending.Store(true, sl::Release);
+            if (targetSched != &*localSched)
                 NudgeCpu(data.affinity);
         }
         else
@@ -409,7 +580,23 @@ namespace Npk
     }
 
     void SetThreadNiceness(ThreadContext* thread, uint8_t value)
-    {} //TODO:
+    {
+        NPK_CHECK(thread != nullptr, );
+
+        value = sl::Clamp(value, MinNiceness, MaxNiceness);
+        Log("Setting thread %p niceness to %u", LogLevel::Verbose, 
+            thread, value);
+
+        auto& data = thread->scheduling;
+
+        sl::ScopedLock threadLock(data.lock);
+        data.niceness = value;
+        ThreadPriorityChanged(thread, data.basePriority, data.dynPriority);
+
+        threadLock.Release();
+        if (CurrentIpl() == Ipl::Passive)
+            Private::OnPassiveRunLevel();
+    }
 
     void SetThreadPriority(ThreadContext* thread, uint8_t value)
     {
@@ -420,32 +607,10 @@ namespace Npk
             thread, value);
 
         auto& data = thread->scheduling;
+
         sl::ScopedLock threadLock(data.lock);
-
-        const auto prevBasePrio = data.basePriority;
-        data.basePriority = value;
-        data.dynPriority = value; //TODO: smarter handling
-
-        if (data.state == ThreadState::Executing && prevBasePrio > value)
-        {} //TODO: check if thread should be preempted by another
-        else if (data.state == ThreadState::Standby && value > prevBasePrio
-            && data.affinity != NoAffinity)
-        {
-            //TODO: check nearby cpus (req: topology) for possible preemption
-            //there, in order to prioritize responsiveness
-
-            auto sched = RemoteSched(data.affinity);
-            NPK_ASSERT(sched != nullptr);
-            if (WouldPreemptOn(thread, sched))
-            {
-                SetNextThread(*sched, thread);
-                if (sched == &*localSched)
-                    localSched->switchPending.Store(true, sl::Release);
-                else
-                    NudgeCpu(data.affinity);
-            }
-        }
-        //TODO: state == ThreadState::Ready (i.e. on a runqueue)
+        sl::Swap(data.basePriority, value);
+        ThreadPriorityChanged(thread, value, thread->scheduling.dynPriority);
 
         threadLock.Release();
         if (CurrentIpl() == Ipl::Passive)
@@ -533,6 +698,14 @@ namespace Npk
         return thread->scheduling.basePriority;
     }
 
+    sl::Opt<uint8_t> GetThreadEffectivePriority(ThreadContext* thread)
+    {
+        NPK_CHECK(thread != nullptr, {});
+
+        sl::ScopedLock threadLock(thread->scheduling.lock);
+        return thread->Priority();
+    }
+
     sl::Opt<CpuId> GetThreadAffinity(ThreadContext* thread, bool& pinned)
     {
         NPK_CHECK(thread != nullptr, {});
@@ -592,7 +765,6 @@ namespace Npk
 
         data.lock.Lock();
         data.sleepTime = sleepEnd.epoch - data.sleepBegin.epoch;
-        ReassesThread(thread);
         data.state = ThreadState::Standby;
         data.lock.Unlock();
 
