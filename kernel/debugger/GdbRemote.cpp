@@ -160,6 +160,8 @@ namespace Npk::Private
     static size_t PutRegister(GdbData& inst, sl::Span<uint8_t> buffer, 
         const void* reg, size_t regLen, size_t padBytes)
     {
+        (void)inst;
+
         if ((regLen + padBytes) * 2 + 3 >= buffer.Size())
             return 0;
 
@@ -518,7 +520,48 @@ namespace Npk::Private
                     return SendError(inst, ErrorValue::InternalError);
 
                 size_t head = 0;
-                //TODO: populate registers packet based on target desc
+                size_t ret;
+                sl::Span<uint8_t> response = inst.builtinSendBuff;
+
+#ifdef __x86_64__
+                uint8_t buff[8];
+
+                //16 GPRs
+                for (size_t i = 0; i < 16; i++)
+                {
+                    ret = ArchAccessRegister(*inst.stopFrame, i, buff, true);
+                    head += PutRegister(inst, response.Subspan(head, -1),
+                        buff, ret, 8 - ret);
+                }
+
+                //rip + rflags
+                ret = ArchAccessRegister(*inst.stopFrame, 0x300, buff, true);
+                head += PutRegister(inst, response.Subspan(head, -1), buff, 
+                    ret, 8 - ret);
+                ret = ArchAccessRegister(*inst.stopFrame, 0x301, buff, true);
+                head += PutRegister(inst, response.Subspan(head, -1), buff,
+                    ret, 8 - ret);
+
+                //cs, ss, ds, es, fs, gs
+                ret = ArchAccessRegister(*inst.stopFrame, 0x302, buff, true);
+                head += PutRegister(inst, response.Subspan(head, -1), buff,
+                    ret, 8 - ret);
+                ret = ArchAccessRegister(*inst.stopFrame, 0x303, buff, true);
+                head += PutRegister(inst, response.Subspan(head, -1), buff,
+                    ret, 8 - ret);
+
+                //TODO: ds/es/fs/gs arent supported, so return unknown for them
+                head += PutRegister(inst, response.Subspan(head, -1), buff,
+                    0, 8);
+                head += PutRegister(inst, response.Subspan(head, -1), buff,
+                    0, 8);
+                head += PutRegister(inst, response.Subspan(head, -1), buff,
+                    0, 8);
+                head += PutRegister(inst, response.Subspan(head, -1), buff,
+                    0, 8);
+#else
+#error "The GDB remote stub lacks an implementation for the 'g' packet"
+#endif
 
                 return CheckAndSend(inst, inst.builtinSendBuff, head);
             },

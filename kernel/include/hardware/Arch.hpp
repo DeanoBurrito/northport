@@ -151,6 +151,8 @@ namespace Npk
     bool ArchEnableBreakpoint(ArchBreakpoint& bp, uintptr_t addr, size_t kind, bool read, bool write, bool exec, bool hardware);
 
     bool ArchDisableBreakpoint(ArchBreakpoint& bp, uintptr_t addr, size_t kind);
+    size_t ArchRegisterSize(size_t index);
+    size_t ArchAccessRegister(TrapFrame& frame, size_t index, sl::Span<uint8_t> buffer, bool get);
 }
 
 #ifdef __x86_64__

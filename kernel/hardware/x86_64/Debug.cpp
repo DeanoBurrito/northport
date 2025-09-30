@@ -1,8 +1,36 @@
-#include <hardware/Arch.hpp>
+#include <hardware/x86_64/Private.hpp>
+#include <Debugger.hpp>
+#include <Memory.hpp>
 
 namespace Npk
 {
-    constexpr uint8_t Int3Opcode = 0xCC;
+    constexpr uint8_t BindSwBreakpoint = 0xFF;
+    uint8_t drBitmap = 0;
+
+    void HandleDebugException(TrapFrame* frame, bool int3)
+    {
+        BreakpointEventArg arg {};
+        arg.frame = frame;
+
+        if (int3)
+        {
+            arg.addr = frame->iret.rip - 1;
+            DebugEventOccured(DebugEventType::Breakpoint, &arg);
+            return;
+        }
+
+        const uint64_t dr6 = READ_DR(6);
+        if (dr6 & 0b0001)
+            arg.addr = READ_DR(0);
+        else if (dr6 & 0b0010)
+            arg.addr = READ_DR(1);
+        else if (dr6 & 0b0100)
+            arg.addr = READ_DR(2);
+        else if (dr6 & 0b1000)
+            arg.addr = READ_DR(3);
+
+        DebugEventOccured(DebugEventType::Breakpoint, &arg);
+    }
 
     bool ArchInitDebugState()
     {
@@ -23,9 +51,6 @@ namespace Npk
 
         return true;
     }
-
-    constexpr uint8_t BindSwBreakpoint = 0xFF;
-    uint8_t drBitmap = 0;
 
     inline void WriteDr(uint8_t index, uint64_t value)
     {
@@ -113,5 +138,110 @@ namespace Npk
         drBitmap &= ~(1 << bp.bind);
 
         return true;
+    }
+
+    constexpr size_t GprBase = 0;
+    constexpr size_t FprBase = 0x100;
+    constexpr size_t VectorBase = 0x200;
+    constexpr size_t SpecialBase = 0x300;
+
+    size_t ArchRegisterSize(size_t index)
+    {} //TODO:
+
+    size_t ArchAccessRegister(TrapFrame& frame, size_t index, sl::Span<uint8_t> buffer, bool get)
+    {
+        void* reg = nullptr;
+        size_t regSize = 0;
+        bool readonly = false;
+        uint64_t stash;
+
+        if (index < GprBase + 16)
+        {
+            regSize = 8;
+
+            switch (index)
+            {
+            case 0: reg = &frame.rax; break;
+            case 1: reg = &frame.rbx; break;
+            case 2: reg = &frame.rcx; break;
+            case 3: reg = &frame.rdx; break;
+            case 4: reg = &frame.rsi; break;
+            case 5: reg = &frame.rdi; break;
+            case 6: reg = &frame.iret.rsp; break;
+            case 7: reg = &frame.rbp; break;
+            case 8: reg = &frame.r8; break;
+            case 9: reg = &frame.r9; break;
+            case 10: reg = &frame.r10; break;
+            case 11: reg = &frame.r11; break;
+            case 12: reg = &frame.r12; break;
+            case 13: reg = &frame.r13; break;
+            case 14: reg = &frame.r14; break;
+            case 15: reg = &frame.r15; break;
+            }
+        }
+        //TODO: fpu and vector regs
+        else if (index >= SpecialBase && index < SpecialBase + 11)
+        {
+            regSize = 8;
+            index -= SpecialBase;
+
+            switch (index)
+            {
+            case 0: reg = &frame.iret.rip; break;
+            case 1: reg = &frame.iret.flags; break;
+            case 2: reg = &frame.iret.cs; break;
+            case 3: reg = &frame.iret.ss; break;
+            case 4:
+                stash = READ_CR(0);
+                reg = &stash;
+                readonly = true;
+                break;
+            case 5:
+                stash = READ_CR(1);
+                reg = &stash;
+                readonly = true;
+                break;
+            case 6:
+                stash = READ_CR(2);
+                reg = &stash;
+                readonly = true;
+                break;
+            case 7:
+                stash = READ_CR(3);
+                reg = &stash;
+                readonly = true;
+                break;
+            case 8:
+                stash = READ_CR(4);
+                reg = &stash;
+                readonly = true;
+                break;
+            case 9:
+                stash = READ_CR(8);
+                reg = &stash;
+                readonly = true;
+                break;
+            case 10:
+                stash = ReadMsr(Msr::Efer);
+                reg = &stash;
+                readonly = true;
+                break;
+            //TODO: ds, es, fs, gs
+            }
+        }
+
+        if (reg == nullptr)
+            return 0; //unknown register
+        if (readonly && !get)
+            return 0; //trying to write a readonly register
+        if (buffer.Size() < regSize)
+            return 0; //not enough buffer space for read/write
+
+        if (get)
+            sl::MemCopy(buffer.Begin(), reg, regSize);
+        else
+            sl::MemCopy(reg, buffer.Begin(), regSize);
+
+        return regSize;
     }
 }

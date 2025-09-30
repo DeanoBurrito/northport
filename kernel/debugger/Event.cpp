@@ -5,14 +5,13 @@ namespace Npk
 {
     static DebugStatus HandleBreakpoint(DebugProtocol& proto, void* data)
     {
-        auto* frame = static_cast<const TrapFrame*>(data);
-        const uintptr_t addr = ArchGetTrapReturnAddr(frame);
+        auto arg = static_cast<BreakpointEventArg*>(data);
 
-        const auto bp = Private::GetBreakpointByAddr(addr);
+        const auto bp = Private::GetBreakpointByAddr(arg->addr);
         if (bp == nullptr)
             return DebugStatus::InvalidBreakpoint;
 
-        return proto.BreakpointHit(&proto, bp, static_cast<TrapFrame*>(data));
+        return proto.BreakpointHit(&proto, bp, arg->frame);
     }
 
     extern "C" 
