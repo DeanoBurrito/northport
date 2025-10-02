@@ -19,8 +19,10 @@ namespace Npk
         uintptr_t selfAddr;
         ThreadContext* currThread;
         void* syscallStack;
+        void (*UnsafeFailurePath)();
     };
     static_assert(offsetof(CoreLocalHeader, syscallStack) == 24);
+    static_assert(offsetof(CoreLocalHeader, UnsafeFailurePath) == 32);
 
     SL_ALWAYS_INLINE
     CpuId MyCoreId()

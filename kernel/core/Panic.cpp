@@ -169,7 +169,7 @@ namespace Npk
             PanicPrint("Bytes at program counter:\n");
             DumpBytesAt(ArchGetTrapReturnAddr(frame), 64);
             PanicPrint("Stack words:\n");
-            DumpBytesAt(ArchGetTrapStackPtr(frame), 8);
+            DumpWordsAt(ArchGetTrapStackPtr(frame), 8);
         }
 
         ConnectDebugger();

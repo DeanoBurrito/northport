@@ -20,6 +20,8 @@ namespace Npk
 {
     static void NotifyOfBadOp() { NPK_UNREACHABLE(); } //TODO: process + personas
 
+    SL_TAGGED(cpubase, CoreLocalHeader localHeader);
+
     extern "C" void InterruptDispatch(TrapFrame* frame)
     {
         if (frame->vector == 0x1 || frame->vector == 0x3)
@@ -67,14 +69,20 @@ namespace Npk
             break;
 
         case 0xD: //general protection fault
-            NotifyOfBadOp();
+            if (localHeader.UnsafeFailurePath != nullptr)
+                frame->iret.rip = (uint64_t)localHeader.UnsafeFailurePath;
+            else
+                NotifyOfBadOp();
             suppressEoi = true;
             break;
 
         case 0xE: //page fault
-            if (prevIpl != Ipl::Passive)
+            if (localHeader.UnsafeFailurePath != nullptr)
+                frame->iret.rip = (uint64_t)localHeader.UnsafeFailurePath;
+            else if (prevIpl != Ipl::Passive)
                 Panic("Page fault at non-passive IPL", frame);
-            DispatchPageFault(READ_CR(2), frame->ec & 0b10);
+            else
+                DispatchPageFault(READ_CR(2), frame->ec & 0b10);
             suppressEoi = true;
             break;
 
@@ -290,14 +298,13 @@ namespace Npk
         return frame->rbp;
     }
 
-    SL_TAGGED(cpubase, CoreLocalHeader localHeader);
-
     void SetMyLocals(uintptr_t where, CpuId softwareId)
     {
         auto tls = reinterpret_cast<CoreLocalHeader*>(where);
         tls->swId = softwareId;
         tls->selfAddr = where;
         tls->currThread = nullptr;
+        tls->UnsafeFailurePath = nullptr;
 
         WriteMsr(Msr::GsBase, where);
         Log("Cpu %zu locals at %p", LogLevel::Info, softwareId, tls);
