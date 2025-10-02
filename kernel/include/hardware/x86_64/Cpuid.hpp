@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Types.hpp>
+#include <Span.hpp>
 
 namespace Npk
 {
@@ -66,4 +67,5 @@ namespace Npk
 
     bool CpuHasFeature(CpuFeature feature);
     void LogCpuFeatures();
+    size_t GetBrandString(sl::Span<char> buffer);
 }

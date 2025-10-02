@@ -1,6 +1,7 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <Core.hpp>
 #include <NanoPrintf.hpp>
+#include <Memory.hpp>
 
 namespace Npk
 {
@@ -105,5 +106,21 @@ namespace Npk
 
         if (msgBuffLen != 0)
             Log("%.*s", LogLevel::Verbose, (int)msgBuffLen, msgBuff);
+    }
+
+    size_t GetBrandString(sl::Span<char> buffer)
+    {
+        if (buffer.Size() < 48)
+            return 0;
+
+        for (size_t i = 0; i < 3; i++)
+        {
+            CpuidLeaf data;
+            DoCpuid(0x8000'0002 + i, 0, data);
+            sl::MemCopy(&buffer[i * 16 + 0], &data.a, 4);
+            sl::MemCopy(&buffer[i * 16 + 4], &data.b, 4);
+            sl::MemCopy(&buffer[i * 16 + 8], &data.c, 4);
+            sl::MemCopy(&buffer[i * 16 + 12], &data.d, 4);
+        }
     }
 }

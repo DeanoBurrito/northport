@@ -8,6 +8,12 @@
 
 namespace Npk
 {
+    extern "C"
+    size_t UnsafeMemCopy(void* dest, const void* src, size_t len);
+
+    extern "C"
+    size_t UnsafeMemSet(void* dest, uint8_t value, size_t len);
+
     SL_ALWAYS_INLINE
     CpuId MyCoreId();
 
@@ -23,6 +29,8 @@ namespace Npk
     struct ThreadContext;
 
     uintptr_t ArchGetTrapReturnAddr(const TrapFrame* frame);
+    uintptr_t ArchGetTrapStackPtr(const TrapFrame* frame);
+    uintptr_t ArchGetTrapBasePtr(const TrapFrame* frame);
 
     SL_ALWAYS_INLINE
     ThreadContext* GetCurrentThread();
@@ -134,6 +142,9 @@ namespace Npk
     void* ArchSetTempMap(KernelMap* map, size_t index, Paddr paddr);
     MmuError ArchAddMap(KernelMap* map, uintptr_t vaddr, Paddr paddr, MmuFlags flags);
     void ArchFlushTlb(uintptr_t base, size_t length);
+
+    size_t GetCallstack(sl::Span<uintptr_t> store, uintptr_t start, size_t offset = 0);
+    void ArchDumpPanicInfo(size_t maxWidth, size_t (*Print)(const char* format, ...));
 
     /* Initializes any architecture state related to hardware debugging. This
      * runs on every cpu from within the debug event handler.

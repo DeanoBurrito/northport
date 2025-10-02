@@ -280,6 +280,16 @@ namespace Npk
         return frame->iret.rip;
     }
 
+    uintptr_t ArchGetTrapStackPtr(const TrapFrame* frame)
+    {
+        return frame->iret.rsp;
+    }
+
+    uintptr_t ArchGetTrapBasePtr(const TrapFrame* frame)
+    {
+        return frame->rbp;
+    }
+
     SL_TAGGED(cpubase, CoreLocalHeader localHeader);
 
     void SetMyLocals(uintptr_t where, CpuId softwareId)
@@ -341,5 +351,48 @@ namespace Npk
         WRITE_CR(3, future);
 
         return prev;
+    }
+
+    //NOTE: this function relies on rbp being used for the frame base
+    //pointer, i.e. being compiled with `-fno-omit-frame-pointer`.
+    size_t GetCallstack(sl::Span<uintptr_t> store, uintptr_t start, size_t offset)
+    {
+        struct Frame
+        {
+            Frame* next;
+            uintptr_t returnAddress;
+        };
+
+        size_t count = 0;
+        Frame* current = reinterpret_cast<Frame*>(start);
+        if (start == 0)
+            current = static_cast<Frame*>(__builtin_frame_address(0));
+
+        for (size_t i = 0; i < offset; i++)
+        {
+            if (current == nullptr)
+                return count;
+            current = current->next;
+        }
+
+        for (size_t i = 0; store.Size(); i++)
+        {
+            if (current == nullptr)
+                return count;
+
+            store[count++] = current->returnAddress;
+            current = current->next;
+        }
+
+        return count;
+    }
+
+    void ArchDumpPanicInfo(size_t maxWidth, size_t (*Print)(const char* format, ...))
+    {
+        char brandBuffer[48]; //4 bytes per reg, 4 regs per bank, 3 banks
+        size_t brandLen = GetBrandString(brandBuffer);
+
+        if (brandLen != 0)
+            Print("Brand: %.*s\n", (int)brandLen, brandBuffer);
     }
 }
