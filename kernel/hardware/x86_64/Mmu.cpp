@@ -1,111 +1,97 @@
-#include <hardware/Arch.hpp>
+#include <HardwarePrivate.hpp>
+#include <hardware/x86_64/Private.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
-#include <hardware/x86_64/Mmu.hpp>
 #include <Core.hpp>
+#include <EntryPrivate.hpp>
 #include <Memory.hpp>
 #include <Maths.hpp>
 
-extern "C"
-{
-    extern char SpinupBlob[];
-    extern char _EndOfSpinupBlob[];
-}
+#define INVLPG(vaddr) \
+    do \
+    { \
+        asm volatile("invlpg (%0)" :: "r"(vaddr) : "memory"); \
+    } while (false)
 
-#define INVLPG(vaddr) do { asm volatile("invlpg (%0)" :: "r"(vaddr) : "memory"); } while (false)
-#define SET_PTE(pte_ptr, value) do { asm volatile("mov %0, (%1)" :: "r"(value), "r"(pte_ptr)); } while (false)
+#define COPY_PTE(dest_ptr, src_ptr) \
+    do \
+    { \
+        asm volatile("movq (%1), %%rcx; movq %%rcx, (%0)" :: \
+            "r"(dest_ptr), "r"(src_ptr) : "memory"); \
+    } while (false)
 
 namespace Npk
 {
     constexpr size_t PtEntries = 512;
-    constexpr size_t MaxPtIndices = 6;
 
     constexpr uint64_t PresentFlag = 1 << 0;
     constexpr uint64_t WriteFlag = 1 << 1;
-    constexpr uint64_t GlobalFlag = 1 << 8;
     constexpr uint64_t UserFlag = 1 << 2;
-    constexpr uint64_t DirtyFlag = 1 << 5;
-    constexpr uint64_t AccessedFlag = 1 << 6;
     constexpr uint64_t NxFlag = 1ul << 63;
-    constexpr uint64_t PatUcFlag = (1 << 4) | (1 << 3); //(3) for strong uncachable
-    constexpr uint64_t PatWcFlag = (1 << 7) | (1 << 3); //(5) for write-combining
-
-    uint64_t addrMask;
-    size_t ptLevels;
-    bool nxSupport;
-    bool globalPageSupport;
-    bool patSupport;
-
-    Paddr kernelMap;
-    Paddr apBootPage;
-    uintptr_t tempMapBase;
-    sl::Span<uint64_t> tempMapAccess;
+    constexpr uint64_t PatBitsMask = (1 << 7) | (1 << 4) | (1 << 3);
+    constexpr uint64_t PatUcFlag = (1 << 4) | (1 << 3); //(3) for UC
+    constexpr uint64_t PatWcFlag = (1 << 7) | (1 << 3); //(5) for WC
 
     struct PageTable
     {
-        uint64_t ptes[PtEntries];
+        HwPte ptes[PtEntries];
     };
 
-    static inline void GetAddressIndices(uintptr_t vaddr, size_t* indices)
+    static uint64_t addrMask;
+    static size_t ptLevels;
+    static bool nxSupported;
+    static bool patSupported;
+
+    uintptr_t tempMapBase;
+    sl::Span<uint64_t> tempMapAccess;
+
+    Paddr kernelMap;
+    Paddr apBootPage;
+
+    static Paddr DoEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr,
+        MmuFlags flags)
     {
+        size_t indices[6];
         indices[5] = (vaddr >> 48) & 0x1FF;
         indices[4] = (vaddr >> 39) & 0x1FF;
         indices[3] = (vaddr >> 30) & 0x1FF;
         indices[2] = (vaddr >> 21) & 0x1FF;
         indices[1] = (vaddr >> 12) & 0x1FF;
-    }
-
-    static void ApplyFlagsToPte(uint64_t& pte, MmuFlags flags)
-    {
-        if (flags.Has(MmuFlag::Write))
-            pte |= WriteFlag;
-        if (!flags.Has(MmuFlag::Fetch) && nxSupport)
-            pte |= NxFlag;
-        if (patSupport)
-        {
-            if (flags.Has(MmuFlag::Framebuffer))
-                pte |= PatWcFlag;
-            else
-                pte |= flags.Has(MmuFlag::Mmio) ? PatUcFlag : 0;
-        }
-    }
-
-    //internal-use only, returns the paddr of the last-level page-table
-    static Paddr DoEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, MmuFlags flags)
-    {
-        size_t indices[MaxPtIndices];
-        GetAddressIndices(vaddr, indices);
+        indices[0] = 0;
 
         auto pt = reinterpret_cast<PageTable*>(kernelMap + state.dmBase);
         for (size_t i = ptLevels; i != 1; i--)
         {
-            uint64_t* pte = &pt->ptes[indices[i]];
-            if ((*pte & PresentFlag) == 0)
-                SET_PTE(pte, state.PmAlloc() | PresentFlag | WriteFlag);
+            auto pte = &pt->ptes[indices[i]];
+            if ((pte->value & PresentFlag) == 0)
+            {
+                HwPte localPte {};
+                localPte.value = state.PmAlloc() | PresentFlag | WriteFlag;
+                COPY_PTE(&pte->value, &localPte);
+            }
 
-            pt = reinterpret_cast<PageTable*>((*pte & addrMask) + state.dmBase);
+            pt = reinterpret_cast<PageTable*>((pte->value & addrMask)
+                + state.dmBase);
         }
 
-        uint64_t pte = (paddr & addrMask) | PresentFlag;
-        //if (vaddr >= (static_cast<uintptr_t>(~0) >> 1))
-            //pte |= GlobalFlag; //only set global flag for higher-half mappings
-
-        ApplyFlagsToPte(pte, flags);
-        SET_PTE(&pt->ptes[indices[1]], pte);
+        HwPte pte {};
+        HwPteFlags(&pte, flags);
+        pte.value |= (paddr & addrMask) | PresentFlag;
+        COPY_PTE(&pt->ptes[indices[1]].value, &pte.value);
 
         return reinterpret_cast<Paddr>(pt) - state.dmBase;
     }
 
-    uintptr_t ArchInitBspMmu(InitState& state, size_t tempMapCount)
+    uintptr_t HwInitBspMmu(InitState& state, size_t tempMapCount)
     {
         const uint64_t cr4 = READ_CR(4);
-        ptLevels = (cr4 & (1 << 12)) ? 5 : 4;
+        ptLevels = (cr4 & (1 << 1)) ? 5 : 4;
 
-        nxSupport = CpuHasFeature(CpuFeature::NoExecute);
-        globalPageSupport = CpuHasFeature(CpuFeature::GlobalPages);
-        patSupport = CpuHasFeature(CpuFeature::Pat);
+        nxSupported = CpuHasFeature(CpuFeature::NoExecute);
+        patSupported = CpuHasFeature(CpuFeature::Pat);
 
-        if (!patSupport)
+        if (!patSupported)
             Log("PAT not supported on this cpu.", LogLevel::Warning);
+        //TODO: support non-PAT systems properly
 
         addrMask = 1ull << (9 * ptLevels + 12);
         addrMask--;
@@ -113,14 +99,17 @@ namespace Npk
 
         kernelMap = state.PmAlloc();
         domain0.kernelSpace = kernelMap;
-        //TODO: map hhdm as pageaccess optimization
+        //TODO: software direct map as PageAccess optimization
 
         apBootPage = state.PmAlloc();
-        ArchEarlyMap(state, apBootPage, apBootPage, MmuFlag::Write | MmuFlag::Fetch);
-
-        const size_t blobLength = (uintptr_t)_EndOfSpinupBlob - (uintptr_t)SpinupBlob;
+        HwEarlyMap(state, apBootPage, apBootPage, 
+            MmuFlag::Write | MmuFlag::Fetch);
+        const size_t blobLength = 
+            (uintptr_t)_EndOfSpinupBlob - (uintptr_t)SpinupBlob;
         NPK_ASSERT(blobLength <= PageSize());
-        sl::MemCopy(reinterpret_cast<void*>(apBootPage + state.dmBase), SpinupBlob, blobLength);
+
+        sl::MemCopy(reinterpret_cast<void*>(apBootPage + state.dmBase), 
+            SpinupBlob, blobLength);
         Log("AP boot blob @ 0x%tx", LogLevel::Verbose, apBootPage);
 
         uintptr_t vmAllocHead = -(1ull << (9 * ptLevels + 11)); 
@@ -132,11 +121,12 @@ namespace Npk
 
         for (size_t i = 0; i < tempMapCount; i++)
         {
-            const Paddr pt = DoEarlyMap(state, 0, tempMapBase + (i << PfnShift()), MmuFlag::Write);
+            const Paddr pt = DoEarlyMap(state, 0, 
+                tempMapBase + (i << PfnShift()), MmuFlag::Write);
 
             if ((i & (PtEntries - 1)) == 0)
             {
-                DoEarlyMap(state, pt, vmAllocHead, MmuFlag::Write);
+                HwEarlyMap(state, pt, vmAllocHead, MmuFlag::Write);
                 vmAllocHead += PageSize();
             }
         }
@@ -146,118 +136,27 @@ namespace Npk
         return vmAllocHead;
     }
 
-    void ArchEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, MmuFlags flags)
+    void HwEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr,
+        MmuFlags flags)
     {
         DoEarlyMap(state, paddr, vaddr, flags);
     }
-
-    void* ArchSetTempMap(KernelMap* map, size_t index, Paddr paddr)
+    
+    void* HwSetTempMapSlot(size_t index, Paddr paddr)
     {
-        NPK_ASSERT(map != nullptr);
-        NPK_ASSERT(index < tempMapAccess.Size());
+        if (index >= tempMapAccess.Size())
+            return nullptr;
 
         const uintptr_t vaddr = (index << PfnShift()) + tempMapBase;
-
         const uint64_t pte = (paddr & addrMask) | PresentFlag | WriteFlag;
-        SET_PTE(&tempMapAccess[index], pte);
+
+        COPY_PTE(&tempMapAccess[index], &pte);
         INVLPG(vaddr);
 
         return reinterpret_cast<void*>(vaddr);
     }
 
-    struct WalkResult
-    {
-        PageAccessRef ptRef;
-        size_t level;
-        uint64_t* pte;
-        bool complete;
-        bool bad;
-    };
-
-    static WalkResult WalkTables(KernelMap* map, sl::Span<size_t> indices)
-    {
-        WalkResult result {};
-
-        PageAccessRef nextPtRef = AccessPage(*map);
-        for (size_t i = ptLevels; i > 0; i--)
-        {
-            if (!nextPtRef.Valid())
-            {
-                result.bad = true;
-                return result;
-            }
-
-            result.pte = &static_cast<PageTable*>(nextPtRef->value)->ptes[indices[i]];
-            result.level = i;
-            result.ptRef = nextPtRef;
-
-            if ((*result.pte & PresentFlag) == 0)
-            {
-                result.complete = false;
-                return result;
-            }
-
-            const uint64_t nextPt = *result.pte & addrMask;
-            nextPtRef = AccessPage(nextPt);
-        }
-
-        result.complete = *result.pte & PresentFlag;
-        return result;
-    }
-
-    MmuError ArchAddMap(KernelMap* map, uintptr_t vaddr, Paddr paddr, MmuFlags flags)
-    {
-        NPK_CHECK(map != nullptr, MmuError::InvalidArg);
-
-        const uint64_t intermediateFlags = PresentFlag | WriteFlag | 
-            (flags.Has(MmuFlag::User) ? UserFlag : 0);
-
-        size_t allocPageCount = 0;
-        PageInfo* allocPages[MaxPtIndices];
-
-        size_t indices[MaxPtIndices];
-        GetAddressIndices(vaddr, indices);
-
-        WalkResult path = WalkTables(map, indices);
-        NPK_CHECK(!path.bad, MmuError::InvalidArg);
-        NPK_CHECK(!path.complete, MmuError::MapAlreadyExits);
-
-        //allocate pages up front, so we know we have enough before make them
-        //visible to the mmu
-        while (allocPageCount < path.level - 1)
-        {
-            allocPages[allocPageCount++] = AllocPage(true);
-            if (allocPages[allocPageCount - 1] == nullptr)
-            {
-                //an allocation failed, free pages and abort
-                for (size_t i = 0; i < allocPageCount; i++)
-                    FreePage(allocPages[i]);
-                return MmuError::PageAllocFailed;
-            }
-        }
-
-        while (path.level != 1)
-        {
-            auto page = allocPages[path.level - 1];
-            page->mmu.validPtes = 0;
-
-            LookupPageInfo(path.ptRef->key)->mmu.validPtes++;
-            SET_PTE(path.pte, LookupPagePaddr(page) | intermediateFlags);
-
-            path.level--;
-            path.ptRef = AccessPage(page);
-            NPK_ASSERT(path.ptRef.Valid());
-            path.pte = &static_cast<PageTable*>(path.ptRef->value)->ptes[indices[path.level]];
-        }
-
-        uint64_t pte = (paddr & addrMask) | PresentFlag;
-        ApplyFlagsToPte(pte, flags);
-        SET_PTE(path.pte, pte);
-
-        return MmuError::Success;
-    }
-
-    void ArchFlushTlb(uintptr_t base, size_t length)
+    void HwFlushTlb(uintptr_t base, size_t length)
     {
         const uintptr_t top = base + length;
         base = AlignDownPage(base);
@@ -267,5 +166,217 @@ namespace Npk
             INVLPG(base);
             base += PageSize();
         }
+    }
+
+    HwMap HwKernelMap(sl::Opt<HwMap> next)
+    {
+        const Paddr prev = READ_CR(3);
+
+        if (next.HasValue())
+            WRITE_CR(3, *next);
+        else
+            WRITE_CR(3, kernelMap);
+
+        return prev;
+    }
+
+    HwMap HwUserMap(sl::Opt<HwMap> next)
+    {
+        const Paddr prev = READ_CR(3);
+
+        //TODO: ensure higher half is in sync: we should just map 
+        //pml4[256-511]in all addr spaces and then clone them.
+        if (next.HasValue())
+            WRITE_CR(3, *next);
+
+        return prev;
+    }
+
+    bool HwWalkMap(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
+        void* ptRef)
+    {
+        PageAccessRef ref = AccessPage(root);
+        result.level = ptLevels - 1;
+        result.complete = false;
+        result.pte = nullptr;
+
+        if (HwContinueWalk(root, vaddr, result, &ref))
+        {
+            *static_cast<PageAccessRef*>(ptRef) = ref;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool HwContinueWalk(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
+        void* ptRef)
+    {
+        (void)root;
+
+        if (result.complete || ptRef == nullptr)
+            return false;
+
+        size_t indices[6];
+        indices[5] = (vaddr >> 48) & 0x1FF;
+        indices[4] = (vaddr >> 39) & 0x1FF;
+        indices[3] = (vaddr >> 30) & 0x1FF;
+        indices[2] = (vaddr >> 21) & 0x1FF;
+        indices[1] = (vaddr >> 12) & 0x1FF;
+        indices[0] = 0;
+
+        size_t level = result.level + 1;
+        PageAccessRef nextPtRef = *static_cast<PageAccessRef*>(ptRef);
+        PageAccessRef localPtRef {};
+        HwPte* pte = result.pte;
+
+        while (level != 0)
+        {
+            if (!nextPtRef.Valid())
+                return false;
+
+            auto pt = static_cast<PageTable*>(nextPtRef->value);
+            pte = &pt->ptes[indices[level]];
+            level--;
+            localPtRef = nextPtRef;
+
+            if (level == 0)
+                break;
+
+            if ((pte->value & PresentFlag) == 0)
+            {
+                result.complete = false;
+                result.level = level;
+                result.pte = pte;
+                *static_cast<PageAccessRef*>(ptRef) = localPtRef;
+
+                return true;
+            }
+
+            const Paddr nextPt = pte->value & addrMask;
+            nextPtRef = AccessPage(nextPt);
+        }
+
+        if (level == result.level + 1)
+            return false;
+
+        result.complete = pte->value & PresentFlag;
+        result.pte = pte;
+        result.level = level;
+        *static_cast<PageAccessRef*>(ptRef) = localPtRef;
+
+        return true;
+    }
+
+    bool HwIntermediatePte(HwPte* pte, sl::Opt<Paddr> next, bool valid)
+    {
+        HwPte localPte {};
+
+        if (valid)
+            localPte.value |= PresentFlag | WriteFlag;
+        if (next.HasValue())
+            localPte.value |= *next;
+
+        COPY_PTE(pte, &localPte);
+
+        return true;
+    }
+
+    bool HwPteValid(HwPte* pte, sl::Opt<bool> set)
+    {
+        if (pte == nullptr)
+            return false;
+
+        const bool prev = pte->value & PresentFlag;
+
+        if (set.HasValue())
+        {
+            HwPte localPte;
+
+            COPY_PTE(&localPte, pte);
+            localPte.value |= PresentFlag;
+            COPY_PTE(pte, &localPte);
+        }
+
+        return prev;
+    }
+
+    MmuFlags HwPteFlags(HwPte* pte, sl::Opt<MmuFlags> set)
+    {
+        if (pte == nullptr)
+            return {};
+
+        MmuFlags current {};
+        if (pte->value & WriteFlag)
+            current |= MmuFlag::Write;
+        if (pte->value & UserFlag)
+            current |= MmuFlag::User;
+        if (!nxSupported || ((pte->value & NxFlag) == 0))
+            current |= MmuFlag::Fetch;
+        if (patSupported && ((pte->value & PatUcFlag) == PatUcFlag))
+            current |= MmuFlag::Mmio;
+        if (patSupported && ((pte->value & PatWcFlag) == PatWcFlag))
+            current |= MmuFlag::Framebuffer;
+
+        if (set.HasValue())
+        {
+            pte->value &= ~WriteFlag;
+            if (set->Has(MmuFlag::Write))
+                pte->value |= WriteFlag;
+
+            pte->value &= ~UserFlag;
+            if (set->Has(MmuFlag::User))
+                pte->value |= UserFlag;
+
+            if (nxSupported)
+            {
+                pte->value &= ~NxFlag;
+                if (!set->Has(MmuFlag::Fetch))
+                    pte->value |= NxFlag;
+            }
+
+            if (patSupported)
+            {
+                pte->value &= ~PatBitsMask;
+                if (set->Has(MmuFlag::Framebuffer))
+                    pte->value |= PatWcFlag;
+                else if (set->Has(MmuFlag::Mmio))
+                    pte->value |= PatUcFlag;
+            }
+        }
+
+        return current;
+    }
+
+    Paddr HwPteAddr(HwPte* pte, sl::Opt<Paddr> set)
+    {
+        if (pte == nullptr)
+            return 0;
+
+        const Paddr prev = pte->value & addrMask;
+
+        if (set.HasValue())
+        {
+            HwPte localPte;
+
+            COPY_PTE(&localPte, pte);
+            localPte.value = localPte.value & ~addrMask;
+            localPte.value |= *set;
+            COPY_PTE(pte, &localPte);
+        }
+
+        return prev;
+    }
+
+    void HwCopyPte(HwPte* dest, const HwPte* src)
+    {
+        COPY_PTE(dest, src);
+    }
+
+    size_t HwGetPageTableSize(size_t level)
+    {
+        (void)level;
+
+        return 0x1000;
     }
 }

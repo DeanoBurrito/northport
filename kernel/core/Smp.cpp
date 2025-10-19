@@ -69,7 +69,7 @@ namespace Npk
         FlushRequest* shootdown = nullptr;
         while ((shootdown = control->shootdowns.Pop()) != nullptr)
         {
-            ArchFlushTlb(shootdown->data.base, shootdown->data.length);
+            HwFlushTlb(shootdown->data.base, shootdown->data.length);
             shootdown->data.acknowledgements.Sub(1, sl::Release);
         }
 
@@ -157,13 +157,13 @@ namespace Npk
 
         const auto lastIpi = control->status.lastIpi.Load(sl::Relaxed);
         auto nextIpi = IpiDebounceTime.Rebase(lastIpi.Frequency).ticks + lastIpi.epoch;
-        if (nextIpi > PlatReadTimestamp().epoch)
+        if (nextIpi > GetMonotonicTime().epoch)
             return;
 
         sl::TimePoint expected { nextIpi };
-        sl::TimePoint desired { PlatReadTimestamp().epoch + IpiDebounceTime.ticks };
+        sl::TimePoint desired { GetMonotonicTime().epoch + IpiDebounceTime.ticks };
         if (control->status.lastIpi.CompareExchange(expected, desired, sl::Acquire))
-            PlatSendIpi(control->ipiId);
+            HwSendIpi(control->ipiId);
     }
 
     size_t FreezeAllCpus()
@@ -187,7 +187,7 @@ namespace Npk
             if (GetMonotonicTime().epoch >= endTime)
             {
                 for (size_t i = 0; i < cpuCount; i++)
-                    PlatSendIpi(GetIpiId(i));
+                    HwSendIpi(GetIpiId(i));
 
                 startTime = GetMonotonicTime();
                 endTime = startTime.epoch;

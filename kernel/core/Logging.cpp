@@ -103,7 +103,7 @@ namespace Npk
 
         auto& details = logItem->data.details;
         details.level = level;
-        details.when = PlatReadTimestamp();
+        details.when = GetMonotonicTime();
         details.who = "kernel";
         details.cpu = MyCoreId();
 

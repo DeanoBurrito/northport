@@ -1,6 +1,12 @@
 #pragma once
 
-#include <hardware/Arch.hpp>
+#include <HardwarePrivate.hpp>
+
+extern "C"
+{
+    extern char SpinupBlob[];
+    extern char _EndOfSpinupBlob[];
+}
 
 namespace Npk
 {
@@ -48,6 +54,8 @@ namespace Npk
         uint64_t r15;
         uint64_t flags;
     };
+
+    extern Paddr apBootPage;
 
     bool CheckForDebugcon();
     bool CheckForCom1(bool debuggerOnly);

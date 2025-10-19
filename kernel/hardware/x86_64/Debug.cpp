@@ -1,4 +1,5 @@
 #include <hardware/x86_64/Private.hpp>
+#include <hardware/x86_64/Msr.hpp>
 #include <Debugger.hpp>
 #include <Memory.hpp>
 
@@ -32,7 +33,7 @@ namespace Npk
         DebugEventOccured(DebugEventType::Breakpoint, &arg);
     }
 
-    bool ArchInitDebugState()
+    bool HwInitDebugState()
     {
         uint64_t dr7 = READ_DR(7);
         if ((dr7 & (1 << 13)) != 0)
@@ -63,8 +64,11 @@ namespace Npk
         }
     }
 
-    bool ArchEnableBreakpoint(ArchBreakpoint& bp, uintptr_t addr, size_t kind, bool read, bool write, bool exec, bool hardware)
+    bool HwEnableBreakpoint(HwBreakpoint& bp, uintptr_t addr, size_t kind, 
+        bool read, bool write, bool exec, bool hardware)
     {
+        (void)write;
+
         if (exec && !hardware)
         {} //TODO: software exec breakpoint
 
@@ -121,7 +125,7 @@ namespace Npk
         return true;
     }
 
-    bool ArchDisableBreakpoint(ArchBreakpoint& bp, uintptr_t addr, size_t kind)
+    bool HwDisableBreakpoint(HwBreakpoint& bp, uintptr_t addr, size_t kind)
     {
         (void)addr;
         (void)kind;
@@ -145,10 +149,8 @@ namespace Npk
     constexpr size_t VectorBase = 0x200;
     constexpr size_t SpecialBase = 0x300;
 
-    size_t ArchRegisterSize(size_t index)
-    {} //TODO:
-
-    size_t ArchAccessRegister(TrapFrame& frame, size_t index, sl::Span<uint8_t> buffer, bool get)
+    size_t AccessRegister(TrapFrame& frame, size_t index, 
+        sl::Span<uint8_t> buffer, bool get)
     {
         void* reg = nullptr;
         size_t regSize = 0;
@@ -234,6 +236,8 @@ namespace Npk
             return 0; //unknown register
         if (readonly && !get)
             return 0; //trying to write a readonly register
+        if (buffer.Empty())
+            return regSize;
         if (buffer.Size() < regSize)
             return 0; //not enough buffer space for read/write
 

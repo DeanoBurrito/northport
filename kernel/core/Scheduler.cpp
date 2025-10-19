@@ -494,7 +494,7 @@ namespace Npk
         }
 
         auto stub = reinterpret_cast<uintptr_t>(EnterNewThread);
-        ArchPrimeThread(&thread->scheduling.context, stub, entry, arg, stack);
+        HwPrimeThread(&thread->scheduling.context, stub, entry, arg, stack);
         thread->scheduling.state = ThreadState::Standby;
 
         return true;
@@ -544,7 +544,7 @@ namespace Npk
 
         next->scheduling.state = ThreadState::Executing;
         SetCurrentThread(next);
-        ArchSwitchThread(&current->scheduling.context, next->scheduling.context);
+        HwSwitchThread(&current->scheduling.context, next->scheduling.context);
         EndYield();
     }
 

@@ -1,6 +1,7 @@
 #include <hardware/common/AcpiTimer.hpp>
 #include <AcpiTypes.hpp>
 #include <Core.hpp>
+#include <Vm.hpp>
 #include <Mmio.hpp>
 
 #ifdef __x86_64
@@ -39,8 +40,8 @@ namespace Npk
 
             if (acpiTimerIsMmio)
             {
-                auto mapped = ArchAddMap(MyKernelMap(), virtBase, acpiTimerAddress, MmuFlag::Mmio);
-                if (mapped != MmuError::Success)
+                auto mapped = SetKernelMap(virtBase, acpiTimerAddress, VmFlag::Mmio);
+                if (mapped != VmStatus::Success)
                     return false;
 
                 acpiTimerAddress = virtBase;

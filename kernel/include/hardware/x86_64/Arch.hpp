@@ -1,10 +1,14 @@
 #pragma once
 
-#include <hardware/Arch.hpp>
-#include <hardware/x86_64/Msr.hpp>
+#include <Hardware.hpp>
 
 namespace Npk
 {
+    struct HwPte
+    {
+        uint64_t value;
+    };
+
     void CommonCpuSetup();
 
     SL_ALWAYS_INLINE
@@ -81,7 +85,7 @@ namespace Npk
     constexpr uint8_t DebugEventVector = 0xFB;
 
     SL_ALWAYS_INLINE
-    DebugStatus ArchCallDebugger(DebugEventType type, void* data)
+    DebugStatus HwCallDebugger(DebugEventType type, void* data)
     {
         DebugStatus ret;
         asm("int $0xFB; mov %%eax, %0" : "=r"(ret) : "D"(type), "S"(data) : "memory", "rax");

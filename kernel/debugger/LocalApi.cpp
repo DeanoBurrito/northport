@@ -43,7 +43,7 @@ namespace Npk
         Private::enabledEvents.Reset();
         Private::enabledEvents.Set(DebugEventType::Connect);
 
-        auto initResult = ArchCallDebugger(DebugEventType::Init, nullptr);
+        auto initResult = HwCallDebugger(DebugEventType::Init, nullptr);
         if (initResult != DebugStatus::Success)
         {
             Log("Debugger not initialized: internal error", LogLevel::Error);
@@ -75,7 +75,7 @@ namespace Npk
         if (!Private::enabledEvents.Has(DebugEventType::Connect))
             return DebugStatus::NotSupported;
 
-        return ArchCallDebugger(DebugEventType::Connect, nullptr);
+        return HwCallDebugger(DebugEventType::Connect, nullptr);
     }
 
     void DisconnectDebugger()
@@ -85,7 +85,7 @@ namespace Npk
         if (!Private::enabledEvents.Has(DebugEventType::Disconnect))
             return;
 
-        ArchCallDebugger(DebugEventType::Disconnect, nullptr);
+        HwCallDebugger(DebugEventType::Disconnect, nullptr);
     }
 
     void DebugBreakpoint()
@@ -95,7 +95,7 @@ namespace Npk
         if (!Private::enabledEvents.Has(DebugEventType::Breakpoint))
             return;
 
-        ArchCallDebugger(DebugEventType::Breakpoint, nullptr);
+        HwCallDebugger(DebugEventType::Breakpoint, nullptr);
     }
 
     void AddDebugTransport(DebugTransport* transport)

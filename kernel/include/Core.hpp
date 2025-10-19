@@ -1,14 +1,11 @@
 #pragma once
 
-#include <Types.hpp>
-#include <hardware/Arch.hpp>
-#include <hardware/Plat.hpp>
+#include <Hardware.hpp>
 #include <containers/List.hpp>
 #include <containers/LruCache.hpp>
 #include <containers/Queue.hpp>
 #include <Locks.hpp>
-#include <Span.hpp>
-#include <Flags.hpp>
+#include <Efi.hpp>
 
 extern "C" char KERNEL_CPULOCALS_BEGIN[];
 
@@ -131,28 +128,6 @@ namespace Npk
         inline void Lock();
         inline bool TryLock();
         inline void Unlock();
-    };
-
-    //TODO: fuck this off to EntryPrivate.hpp
-    struct InitState
-    {
-        uintptr_t dmBase;
-
-        uintptr_t vmAllocHead;
-        Paddr pmAllocHead;
-        size_t pmAllocIndex;
-        size_t usedPages;
-
-        inline char* VmAlloc(size_t length)
-        {
-            const uintptr_t ret = vmAllocHead;
-            vmAllocHead += AlignUpPage(length);
-
-            return reinterpret_cast<char*>(ret);
-        }
-
-        char* VmAllocAnon(size_t length);
-        Paddr PmAlloc();
     };
 
     enum class ConfigRootType
@@ -394,7 +369,7 @@ namespace Npk
         sl::Span<SmpControl> smpControls;
 
         uintptr_t pmaBase;
-        KernelMap kernelSpace;
+        HwMap kernelSpace;
         Paddr zeroPage;
         
         struct
@@ -460,7 +435,7 @@ namespace Npk
         struct
         {
             IntrSpinLock lock;
-            ArchThreadContext* context;
+            HwThreadContext* context;
 
             CpuId affinity;
             sl::TimePoint sleepBegin;
@@ -624,7 +599,7 @@ namespace Npk
     SL_ALWAYS_INLINE
     sl::TimePoint GetMonotonicTime()
     {
-        return PlatReadTimestamp();
+        return HwReadTimestamp();
     }
 
     void SetConfigStore(sl::StringSpan store, bool noLog);
@@ -634,6 +609,7 @@ namespace Npk
 
     sl::Opt<Paddr> GetConfigRoot(ConfigRootType type);
     sl::Opt<sl::Sdt*> GetAcpiTable(sl::StringSpan signature);
+    sl::Opt<sl::EfiRuntimeServices*> GetEfiRtServices();
 
     SL_ALWAYS_INLINE
     PageInfo* LookupPageInfo(Paddr paddr)
@@ -650,9 +626,9 @@ namespace Npk
     SystemDomain& MySystemDomain();
 
     SL_ALWAYS_INLINE
-    KernelMap* MyKernelMap()
+    HwMap MyKernelMap()
     {
-        return &MySystemDomain().kernelSpace;
+        return MySystemDomain().kernelSpace;
     }
 
     PageInfo* AllocPage(bool canFail);

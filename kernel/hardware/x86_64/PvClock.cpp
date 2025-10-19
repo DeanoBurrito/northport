@@ -1,6 +1,8 @@
 #include <Core.hpp>
+#include <Vm.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Tsc.hpp>
+#include <hardware/x86_64/Msr.hpp>
 #include <Mmio.hpp>
 #include <Memory.hpp>
 
@@ -31,10 +33,14 @@ namespace Npk
         NPK_CHECK(page != nullptr, false);
 
         const Paddr paddr = LookupPagePaddr(page);
-        WriteMsr(Msr::PvSystemTime, paddr | EnableBit);
+        if (SetKernelMap(virtBase, paddr, VmFlag::Mmio) != VmStatus::Success)
+        {
+            FreePage(page);
+            return false;
+        }
 
+        WriteMsr(Msr::PvSystemTime, paddr | EnableBit);
         systemTime = reinterpret_cast<PvSystemTime*>(virtBase);
-        ArchAddMap(MyKernelMap(), virtBase, paddr, MmuFlag::Mmio);
         virtBase += PageSize();
 
         Log("PvClock enabled, io at 0x%tx", LogLevel::Info, paddr);

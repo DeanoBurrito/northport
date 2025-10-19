@@ -529,24 +529,24 @@ namespace Npk::Private
                 //16 GPRs
                 for (size_t i = 0; i < 16; i++)
                 {
-                    ret = ArchAccessRegister(*inst.stopFrame, i, buff, true);
+                    ret = AccessRegister(*inst.stopFrame, i, buff, true);
                     head += PutRegister(inst, response.Subspan(head, -1),
                         buff, ret, 8 - ret);
                 }
 
                 //rip + rflags
-                ret = ArchAccessRegister(*inst.stopFrame, 0x300, buff, true);
+                ret = AccessRegister(*inst.stopFrame, 0x300, buff, true);
                 head += PutRegister(inst, response.Subspan(head, -1), buff, 
                     ret, 8 - ret);
-                ret = ArchAccessRegister(*inst.stopFrame, 0x301, buff, true);
+                ret = AccessRegister(*inst.stopFrame, 0x301, buff, true);
                 head += PutRegister(inst, response.Subspan(head, -1), buff,
                     ret, 8 - ret);
 
                 //cs, ss, ds, es, fs, gs
-                ret = ArchAccessRegister(*inst.stopFrame, 0x302, buff, true);
+                ret = AccessRegister(*inst.stopFrame, 0x302, buff, true);
                 head += PutRegister(inst, response.Subspan(head, -1), buff,
                     ret, 8 - ret);
-                ret = ArchAccessRegister(*inst.stopFrame, 0x303, buff, true);
+                ret = AccessRegister(*inst.stopFrame, 0x303, buff, true);
                 head += PutRegister(inst, response.Subspan(head, -1), buff,
                     ret, 8 - ret);
 

@@ -40,7 +40,7 @@ namespace Npk
     static void DumpCpuInfo()
     {
         PanicPrint("CPU info:\n");
-        ArchDumpPanicInfo(PanicPrintBufferSize, PanicPrint);
+        HwDumpPanicInfo(PanicPrintBufferSize, PanicPrint);
     }
 
     static void DumpBytesAt(uintptr_t addr, size_t count)
@@ -160,16 +160,16 @@ namespace Npk
         DumpBuildInfo();
         DumpCpuInfo();
         if (frame != nullptr)
-            DumpCallstack(ArchGetTrapBasePtr(frame));
+            DumpCallstack(GetTrapBasePtr(frame));
         else
             DumpCallstack(0);
         
         if (frame != nullptr)
         {
             PanicPrint("Bytes at program counter:\n");
-            DumpBytesAt(ArchGetTrapReturnAddr(frame), 64);
+            DumpBytesAt(GetTrapReturnAddr(frame), 64);
             PanicPrint("Stack words:\n");
-            DumpWordsAt(ArchGetTrapStackPtr(frame), 8);
+            DumpWordsAt(GetTrapStackPtr(frame), 8);
         }
 
         ConnectDebugger();

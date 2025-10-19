@@ -235,7 +235,7 @@ namespace Npk
 
         ClockEvent timeoutEvent {};
         timeoutEvent.dpc = &timeoutDpc;
-        timeoutEvent.expiry = PlatReadTimestamp() + timeout;
+        timeoutEvent.expiry = GetMonotonicTime() + timeout;
         AddClockEvent(&timeoutEvent);
 
         //3. prepare for wakeup: add wait entries to the queue of each waitable

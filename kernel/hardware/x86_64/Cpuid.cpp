@@ -122,5 +122,7 @@ namespace Npk
             sl::MemCopy(&buffer[i * 16 + 8], &data.c, 4);
             sl::MemCopy(&buffer[i * 16 + 12], &data.d, 4);
         }
+
+        return 48;
     }
 }

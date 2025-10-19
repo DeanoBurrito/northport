@@ -1,10 +1,10 @@
-.global ArchSwitchThread
+.global HwSwitchThread
 
-.type ArchSwitchThread, @function
-.size ArchSwitchThread, (_EndOfArchSwitchThread - ArchSwitchThread)
+.type HwSwitchThread, @function
+.size HwSwitchThread, (_EndOfHwSwitchThread - HwSwitchThread)
 
 .pushsection .text
-ArchSwitchThread:
+HwSwitchThread:
     test %rdi, %rdi
     jz 1f
 
@@ -31,5 +31,5 @@ ArchSwitchThread:
     pop %r15
     popfq
     ret
-_EndOfArchSwitchThread:
+_EndOfHwSwitchThread:
 .popsection

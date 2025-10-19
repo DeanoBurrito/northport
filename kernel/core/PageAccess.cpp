@@ -10,7 +10,7 @@ namespace Npk
     {
         (void)curPaddr;
 
-        *curVaddr = ArchSetTempMap(MyKernelMap(), slot, nextPaddr);
+        *curVaddr = HwSetTempMapSlot(slot, nextPaddr);
         return true;
     }
 

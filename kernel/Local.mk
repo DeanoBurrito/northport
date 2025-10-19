@@ -3,8 +3,10 @@ KERNEL_CXX_SRCS += core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
 	core/Scheduler.cpp core/Smp.cpp core/Str.cpp core/Wait.cpp \
 	debugger/Event.cpp debugger/GdbRemote.cpp debugger/InternalApi.cpp \
 	debugger/LocalApi.cpp debugger/Str.cpp \
-	entry/BringUp.cpp \
+	entry/Allocators.cpp entry/BringUp.cpp entry/ConfigRoot.cpp \
+	entry/EfiRuntime.cpp \
 	io/Continuation.cpp io/Packet.cpp io/Str.cpp \
+	vm/KernelMappings.cpp vm/PageTables.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support

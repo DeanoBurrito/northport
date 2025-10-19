@@ -1,5 +1,5 @@
 #include <DebuggerPrivate.hpp>
-#include <hardware/Arch.hpp>
+#include <Hardware.hpp>
 #include <Memory.hpp>
 
 namespace Npk::Private
@@ -11,7 +11,7 @@ namespace Npk::Private
     {
         auto* result = static_cast<sl::Atomic<DebugStatus>*>(arg);
 
-        if (!ArchInitDebugState())
+        if (!HwInitDebugState())
             result->Store(DebugStatus::NotSupported);
     }
 
@@ -55,12 +55,12 @@ namespace Npk::Private
 
     bool ArmBreakpoint(Breakpoint& bp)
     {
-        return ArchEnableBreakpoint(bp.arch, bp.addr, bp.kind, bp.read, 
+        return HwEnableBreakpoint(bp.arch, bp.addr, bp.kind, bp.read, 
             bp.write, bp.execute, bp.hardware);
     }
 
     bool DisarmBreakpoint(Breakpoint& bp)
     {
-        return ArchDisableBreakpoint(bp.arch, bp.addr, bp.kind);
+        return HwDisableBreakpoint(bp.arch, bp.addr, bp.kind);
     }
 }

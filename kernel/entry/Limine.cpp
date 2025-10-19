@@ -54,6 +54,13 @@ namespace Npk::Loader
         .response = nullptr
     };
 
+    limine_efi_system_table_request efiReq
+    {
+        .id = LIMINE_EFI_SYSTEM_TABLE_REQUEST,
+        .revision = 0,
+        .response = nullptr
+    };
+
     LoadState GetEntryState()
     {
         NPK_ASSERT(hhdmReq.response != nullptr);
@@ -84,6 +91,17 @@ namespace Npk::Loader
                 fdt = static_cast<Paddr>(addr);
         }
 
+        sl::Opt<Paddr> systemTable {};
+        if (efiReq.response != nullptr)
+        {
+            uintptr_t addr = reinterpret_cast<uintptr_t>(efiReq.response->address);
+            if (addr >= hhdm)
+                addr -= hhdm;
+
+            if (addr != 0)
+                systemTable = static_cast<Paddr>(addr);
+        }
+
         sl::Opt<sl::TimePoint> timeOffset {};
         if (timeReq.response != nullptr)
             timeOffset = sl::TimePoint(timeReq.response->boot_time * sl::TimePoint::Frequency);
@@ -102,6 +120,7 @@ namespace Npk::Loader
             .bspId = 0,
             .rsdp = rsdp,
             .fdt = fdt,
+            .efiTable = systemTable,
             .timeOffset = timeOffset,
             .commandLine = cmdline
         };

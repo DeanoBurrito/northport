@@ -1,9 +1,7 @@
 #pragma once
 
-#include <Types.hpp>
-#include <Span.hpp>
 #include <containers/List.hpp>
-#include <hardware/Arch.hpp>
+#include <Hardware.hpp>
 
 namespace Npk
 {
@@ -36,7 +34,7 @@ namespace Npk
     struct Breakpoint
     {
         sl::ListHook listHook;
-        ArchBreakpoint arch;
+        HwBreakpoint arch;
 
         uintptr_t addr;
         uint8_t kind;

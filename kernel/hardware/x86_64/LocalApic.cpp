@@ -3,9 +3,10 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Msr.hpp>
 #include <hardware/x86_64/Tsc.hpp>
+#include <HardwarePrivate.hpp>
 #include <AcpiTypes.hpp>
-#include <hardware/Entry.hpp>
 #include <Core.hpp>
+#include <Vm.hpp>
 #include <Maths.hpp>
 #include <Mmio.hpp>
 #include <UnitConverter.hpp>
@@ -354,7 +355,8 @@ namespace Npk
 
             lapic->mmio = lapicMmioBase;
             const Paddr mmioAddr = ReadMsr(Msr::ApicBase) & ~0xFFFul;
-            ArchAddMap(MyKernelMap(), lapic->mmio.BaseAddress(), mmioAddr, MmuFlag::Write | MmuFlag::Mmio);
+            SetKernelMap(lapic->mmio.BaseAddress(), mmioAddr, 
+                VmFlag::Write | VmFlag::Mmio);
             Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
         }
 
@@ -393,7 +395,8 @@ namespace Npk
 
             lapic->mmio = lapicMmioBase + PageSize() * MyCoreId();
             const Paddr mmioAddr = ReadMsr(Msr::ApicBase) & ~0xFFFul;
-            ArchAddMap(MyKernelMap(), lapic->mmio.BaseAddress(), mmioAddr, MmuFlag::Write | MmuFlag::Mmio);
+            SetKernelMap(lapic->mmio.BaseAddress(), mmioAddr,
+                VmFlag::Write | VmFlag::Mmio);
             Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
         }
 

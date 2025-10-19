@@ -1,6 +1,7 @@
 #include <hardware/x86_64/Hpet.hpp>
 #include <AcpiTypes.hpp>
 #include <Core.hpp>
+#include <Vm.hpp>
 #include <Mmio.hpp>
 #include <UnitConverter.hpp>
 
@@ -36,9 +37,9 @@ namespace Npk
         //stated as such, so just assert it to be safe.
         NPK_CHECK(hpet->baseAddress.type == sl::AcpiAddrSpace::Memory, false);
 
-        auto mapped = ArchAddMap(MyKernelMap(), virtBase, 
-            hpet->baseAddress.address, MmuFlag::Write | MmuFlag::Mmio);
-        if (mapped != MmuError::Success)
+        auto mapped = SetKernelMap(virtBase, hpet->baseAddress.address, 
+            VmFlag::Write | VmFlag::Mmio);
+        if (mapped != VmStatus::Success)
             return false;
 
         //ensure main counter is running, we dont care about any other state

@@ -1,5 +1,5 @@
 #include <Core.hpp>
-#include <hardware/Entry.hpp>
+#include <Hardware.hpp>
 
 /* Clock Subsystem:
  * There's a few things happening in this file:
@@ -55,7 +55,7 @@ namespace Npk
         sl::ScopedLock scopeLock(accounting->lock);
 
         auto currentThread = GetCurrentThread();
-        const auto now = PlatReadTimestamp();
+        const auto now = HwReadTimestamp();
         const auto period = accounting->periodBegin - now;
         NPK_ASSERT(period.Frequency == sl::Nanos);
 
@@ -99,11 +99,11 @@ namespace Npk
     static void ArmLocalAlarm()
     {
         if (!clockQueue->events.Empty())
-            return PlatSetAlarm(clockQueue->events.Front().expiry);
+            return HwSetAlarm(clockQueue->events.Front().expiry);
 
         Log("Empty clock queue, alarm set for free interval of %zums", 
             LogLevel::Info, AlarmFreeMs);
-        PlatSetAlarm(AlarmFreeInterval);
+        HwSetAlarm(AlarmFreeInterval);
     }
 
     static void UpdateClockQueue(Dpc* self, void* arg)
@@ -117,7 +117,7 @@ namespace Npk
         clockQueue->lock.Lock();
         while (!clockQueue->events.Empty())
         {
-            if (clockQueue->events.Front().expiry > PlatReadTimestamp())
+            if (clockQueue->events.Front().expiry > HwReadTimestamp())
                 break;
 
             auto expired = clockQueue->events.PopFront();
@@ -160,7 +160,7 @@ namespace Npk
         //be handled by hardware.
         //This allows the logic here to be simpler, and we dont have to decide on
         //an arbitary grace period.
-        if (event->expiry < (PlatReadTimestamp()))
+        if (event->expiry < (HwReadTimestamp()))
         {
             if (event->dpc != nullptr)
                 QueueDpc(event->dpc);
@@ -218,7 +218,7 @@ namespace Npk
 
     sl::TimePoint GetTime()
     {
-        return PlatReadTimestamp() + systemTimeOffset.Load(sl::Relaxed);
+        return HwReadTimestamp() + systemTimeOffset.Load(sl::Relaxed);
     }
 
     sl::TimePoint GetTimeOffset()
