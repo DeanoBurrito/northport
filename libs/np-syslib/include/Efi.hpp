@@ -11,6 +11,7 @@ namespace sl
     using EfiGuid = uint64_t[2];
     using EfiPhysicalAddress = uint64_t;
     using EfiVirtualAddress = uint64_t;
+    using EfiHandle = void*;
 
     enum class EfiDaylightFlag
     {
@@ -165,5 +166,37 @@ namespace sl
         EfiStatus (*QueryVariableInfo)(EfiVariableFlags attribs, 
             uint64_t maximumVariableStorage, uint64_t remainingVariableStorage,
             uint64_t* maximumVariable);
+    };
+
+    struct EfiSimpleTextInputProtocol
+    {};
+
+    struct EfiSimpleTextOutputProtocol
+    {};
+
+    struct EfiBootServices
+    {};
+
+    struct EfiConfigurationTable
+    {
+        EfiGuid vendorGuid;
+        void* vendorTable;
+    };
+
+    struct EfiSystemTable
+    {
+        EfiTableHeader hdr;
+        EfiChar16* firmwareVendor;
+        uint32_t firmwareRevision;
+        EfiHandle consoleInHandle;
+        EfiSimpleTextInputProtocol* conIn;
+        EfiHandle consoelOutHandle;
+        EfiSimpleTextOutputProtocol* conOut;
+        EfiHandle standardErrorHandle;
+        EfiSimpleTextOutputProtocol* stdErr;
+        EfiRuntimeServices* runtimeServices;
+        EfiBootServices* bootServices;
+        EfiUintN numberOfTableEntries;
+        EfiConfigurationTable* configTable;
     };
 }
