@@ -99,6 +99,7 @@ namespace Npk
     void SetConfigRoot(const Loader::LoadState& loaderState);
     void TryMapAcpiTables(uintptr_t& virtBase);
     void TryEnableEfiRtServices(Paddr systemTable, uintptr_t& virtBase);
+    void InitPageAccessCache(size_t entries, uintptr_t slots);
 
     void HwSetMyLocals(uintptr_t where, CpuId softwareId);
     void HwInitEarly();

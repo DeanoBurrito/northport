@@ -46,6 +46,10 @@ namespace Npk
 
     /* Default niceness value, this value is also treated as the midpoint for
      * nice values. Anything below this is considered a negative value.
+     * Niceness values are an additional input when computing thread priorities,
+     * the intent is that setting a thread's priority is a privileged operation
+     * while adjusting niceness can be less privileged.
+     * Niceness values are clamped by `MinNiceness` and `MaxNiceness`.
      */
     constexpr uint8_t BaseNiceness = 20;
 
@@ -623,24 +627,54 @@ namespace Npk
         return ((info - domain0.pfndb) << PfnShift()) + domain0.physOffset;
     }
 
+    /* Returns the system domain for the current cpu.
+     */
     SystemDomain& MySystemDomain();
 
+    /* Returns the kernel map (page table root) used by the current cpu.
+     */
     SL_ALWAYS_INLINE
     HwMap MyKernelMap()
     {
         return MySystemDomain().kernelSpace;
     }
 
+    /* Attempts to allocate a page of usable memory. The page is filled with
+     * zeroes before returning to the caller.
+     * If `canFail` is set, this function will return immediately if there
+     * are no pages available, and will return a nullptr. If `canFail` is false
+     * the function will block until a page can be allocated.
+     * Care should be taken when calling with `canFail = false`.
+     */
     PageInfo* AllocPage(bool canFail);
+
+    /* Marks a page (and its PageInfo metadata) as no longer in use and free for
+     * use by the rest of the system.
+     */
     void FreePage(PageInfo* page);
 
     using PageAccessCache = sl::LruCache<Paddr, void*, Private::PmaCacheSetEntry>;
     using PageAccessRef = PageAccessCache::CacheRef;
 
+    /* Attempts to copy `buffer.Size()` bytes into the memory specified by
+     * `buffer` from the physical memory range starting at `base`.
+     * Returns the number of bytes copied, which may be less than 
+     * `buffer.Size()`.
+     * This function is not safe to use on non-ram types of memory as access
+     * widths used are unspecified.
+     */
     size_t CopyFromPhysical(Paddr base, sl::Span<char> buffer);
-    void InitPageAccessCache(size_t entries, uintptr_t slots);
+
+    /* Attempts to create a temporary mapping to access the page at `paddr`.
+     * Returns a refcounted struct where `key` is equal to `paddr`, and
+     * `value` is the virtual address the page can be accessed at. While the
+     * refcount is non-zero the virtual address remains valid to access.
+     * The mapping is shared by all CPUs in the same system domain.
+     */
     PageAccessRef AccessPage(Paddr paddr);
 
+    /* Sugar function: Gets the paddr for `page` and calls `AccessPage(paddr)`.
+     */
     SL_ALWAYS_INLINE
     PageAccessRef AccessPage(PageInfo* page)
     {
@@ -654,13 +688,48 @@ namespace Npk
     void Yield();
     void EnqueueThread(ThreadContext* thread);
 
+    /* Sets the niceness value for a thread. See `MinNiceness`, `MaxNiceness`,
+     * and `BaseNiceness` for the meanings of nice values.
+     */
     void SetThreadNiceness(ThreadContext* thread, uint8_t value);
+
+    /* Sets the base priority of a thread, see `xyzPriority` values at the top
+     * of Core.hpp for related info.
+     */
     void SetThreadPriority(ThreadContext* thread, uint8_t value);
+
+    /* Pins a thread a thread to the specified cpu. Pinning may not take effect
+     * until the next time the thread is executed, e.g. if the thread is
+     * currently running and has disabled preemption it will not migrate cpus
+     * until it re-enables preemption.
+     */
     void SetThreadAffinity(ThreadContext* thread, CpuId who);
+
+    /* Removes the pinned status of `thread`, allowing it migrate cpus again.
+     */
     void ClearThreadAffinity(ThreadContext* thread);
+
+    /* Attempts to get the current niceness value of `thread`.
+     */
     sl::Opt<uint8_t> GetThreadNiceness(ThreadContext* thread);
+
+    /* Attempts to get the current base priority of `thread`. This is the value
+     * previously set by a call to `SetThreadPriority()` and may be lower
+     * than the thread's effective priority.
+     */
     sl::Opt<uint8_t> GetThreadPriority(ThreadContext* thread);
+
+    /* Attempts to get the current effective priority of `thread`. This may be
+     * base priority or a higher value based on priority boosts applied to
+     * the thread.
+     */
     sl::Opt<uint8_t> GetThreadEffectivePriority(ThreadContext* thread);
+
+    /* Attempts to get cpu affinity and pinned status for `thread`. The valid
+     * state of the return value also applies to `pinned`. If `pinned` is
+     * cleared upon return, the affinity value is a hint of where the thread
+     * may execute next, based on the last cpu it ran on.
+     */
     sl::Opt<CpuId> GetThreadAffinity(ThreadContext* thread, bool& pinned);
 
     void CancelWait(ThreadContext* thread);
@@ -676,12 +745,32 @@ namespace Npk
         return WaitMany({ &what, 1 }, entry, timeout, reason);
     }
 
+    /* Enum value to string function for `enum Ipl`.
+     */
     sl::StringSpan IplStr(Ipl which);
+
+    /* Enum value to string function for `enum ConfigRootType`.
+     */
     sl::StringSpan ConfigRootTypeStr(ConfigRootType which);
+
+    /* Enum value to string function for `enum CycleAccount`.
+     */
     sl::StringSpan CycleAccountStr(CycleAccount which);
+
+    /* Enum value to string function for `enum WaitStatus`.
+     */
     sl::StringSpan WaitStatusStr(WaitStatus which);
+
+    /* Enum value to string function for `enum WaitableType`.
+     */
     sl::StringSpan WaitableTypeStr(WaitableType which);
+
+    /* Enum value to string function for `enum LogLevel`.
+     */
     sl::StringSpan LogLevelStr(LogLevel which);
+
+    /* Enum value to string function for `enum ThreadState`.
+     */
     sl::StringSpan ThreadStateStr(ThreadState which);
 }
 
