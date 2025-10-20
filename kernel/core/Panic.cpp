@@ -145,13 +145,7 @@ namespace Npk
         Log("Panic pending on cpu %zu: %.*s, frame=%p", LogLevel::Error, 
             MyCoreId(), (int)message.Size(), message.Begin(), frame);
 
-        while (FreezeAllCpus() == 0)
-        {
-            IntrsOn();
-            for (size_t i = 0; i < 1234; i++)
-                asm volatile("");
-            IntrsOff();
-        }
+        FreezeAllCpus(true);
         //Only one cpu will be executing past this point
         
         //TODO: try to detach any storage devices (flushing caches where needed)

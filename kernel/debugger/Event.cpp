@@ -24,17 +24,18 @@ namespace Npk
 
             DebugStatus result = DebugStatus::Success;
 
-            FreezeAllCpus();
+            FreezeAllCpus(true);
             RunOnFrozenCpus(Private::DebuggerPerCpuInit, &result, true);
             ThawAllCpus();
 
+            //TODO: init memory for debugger allocators to use
             if (result == DebugStatus::Success)
                 Private::debuggerInitialized = true;
             return result;
         }
 
         auto prevCycleAccount = SetCycleAccount(CycleAccount::Debugger);
-        Private::debugCpusCount = FreezeAllCpus();
+        Private::debugCpusCount = FreezeAllCpus(true);
         auto proto = Private::debugProtocol;
 
         auto result = DebugStatus::NotSupported;

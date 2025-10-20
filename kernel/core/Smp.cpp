@@ -22,6 +22,33 @@ namespace Npk
         return &dom.smpControls[who];
     }
 
+    static void HandleFreezing()
+    {
+        if (freezeControl.Load() == 0)
+            return;
+
+        //acknowledge that this cpu has been frozen
+        freezeControl.Sub(1);
+
+        //wait for the freeze-master to set the control to 0 (meaning thaw all
+        //cpus). In the meantime check for any commands it wants us to run.
+        bool commandRun = false;
+        while (freezeControl.Load() != 0)
+        {
+            if (freezeCmdControl.Load(sl::Acquire) == 0)
+            {
+                commandRun = false;
+                continue;
+            }
+            if (commandRun)
+                continue;
+
+            freezeCommand(freezeArg);
+            freezeCmdControl.Sub(1, sl::Release);
+            commandRun = true;
+        }
+    }
+
     static CpuId TotalCpuCount()
     {
         //TODO: multi-domain support
@@ -30,29 +57,7 @@ namespace Npk
 
     void DispatchIpi()
     {
-        if (freezeControl.Load() != 0)
-        {
-            //acknowledge that this cpu has been frozen
-            freezeControl.Sub(1);
-
-            //wait for the freeze-master (stage name potential?)
-            //to thaw all cpus, in the meantime check for any commands.
-            bool commandRun = false;
-            while (freezeControl.Load() != 0)
-            {
-                if (freezeCmdControl.Load(sl::Acquire) == 0)
-                {
-                    commandRun = false;
-                    continue;
-                }
-                if (commandRun)
-                    continue;
-
-                freezeCommand(freezeArg);
-                freezeCmdControl.Sub(1, sl::Release);
-                commandRun = true;
-            }
-        }
+        HandleFreezing();
 
         auto control = GetControl(MyCoreId());
         NPK_ASSERT(control != nullptr);
@@ -123,8 +128,9 @@ namespace Npk
             count++;
             if (count == 123456)
             {
-                Log("Unusually long wait for tlb shootdown to complete: 0x%tx->0x%tx",
-                    LogLevel::Warning, what->data.base, what->data.base + what->data.length);
+                Log("TLB shootdown is taking a long time: 0x%tx->0x%tx",
+                    LogLevel::Warning, what->data.base, 
+                    what->data.base + what->data.length);
                 count = 0;
             }
 
@@ -166,19 +172,26 @@ namespace Npk
             HwSendIpi(control->ipiId);
     }
 
-    size_t FreezeAllCpus()
+    size_t FreezeAllCpus(bool allowDefer)
     {
         const CpuId cpuCount = TotalCpuCount();
 
         CpuId expected = 0;
         CpuId desired = cpuCount;
 
-        //if freezeControl is non-zero a freeze is already occuring, to prevent
-        //a deadlock from multiple cores trying to initiate a freeze we return
-        //a failure here and the caller should continue to back off and enable
-        //interrupts (allowing them to freeze), before thawing and retrying.
-        if (!freezeControl.CompareExchange(expected, desired))
-            return 0;
+        //try to become the freeze-master B)
+        while (!freezeControl.CompareExchange(expected, desired))
+        {
+            //`freezeControl` was non-zero meaning another cpu has already
+            //started a freeze. If `allowDefer` is set, we voluntarily freeze
+            //the current cpu and allow the other cpu to continue its operation.
+            //If `allowDefer` is cleared, we return 0 to the caller and it
+            //handles the conflict.
+            if (!allowDefer)
+                return 0;
+
+            HandleFreezing();
+        }
 
         auto startTime = GetMonotonicTime();
         auto endTime = startTime.epoch;

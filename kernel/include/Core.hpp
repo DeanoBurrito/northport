@@ -572,13 +572,20 @@ namespace Npk
     void NudgeCpu(CpuId who);
 
     /* Attempts to freeze all other cpus in the system. Upon success it will
-     * return the number of frozen cpus +1 (read: total number of cpus in the
-     * system, since current cpu isnt classed as frozen).
-     * If another cpu has already begun a freeze, this function will return 0,
-     * and the caller should enable interrupts so the first freeze can complete,
-     * before consering trying again.
+     * returns the number of frozen cpus +1 (read: total number of cpus in the
+     * system, since current cpu isnt counted as being frozen). Once frozen,
+     * `RunOnFrozenCpus()` can be used to execute commands across all cpus, and
+     * `ThawAllCpus()` must be called to resume normal system operation.
+     * Calling this function does not modify the local IPL.
+     * If another cpu has already begun a freeze, the behaviour depends on
+     * `allowDefer`. If `allowDefer` is set, this function will let the current
+     * cpu become frozen and will try to initiate a freeze again after becoming
+     * thawed. If `allowDefer` is cleared, this functions returns immediately
+     * with a value of 0, indicating no cpus were frozen. The caller should
+     * ensure that this cpu eventually ends up frozen (lowering IPL is often
+     * enough).
      */
-    size_t FreezeAllCpus();
+    size_t FreezeAllCpus(bool allowDefer);
 
     /* Unfreezes all other cpus in the system, enabling them to continue normal
      * execution.
@@ -590,6 +597,7 @@ namespace Npk
      * This function is not reentrant, but can practically only be called
      * from the cpu that called `FreezeAllCpus()`.
      * If `includeSelf` is set, `What` will also run on the local cpu.
+     * The callback function must not modify the current IPL or interrupt state.
      */
     void RunOnFrozenCpus(void (*What)(void* arg), void* arg, bool includeSelf);
     
