@@ -57,8 +57,7 @@ namespace Npk
 
     extern Paddr apBootPage;
 
-    bool CheckForDebugcon();
-    bool CheckForCom1(bool debuggerOnly);
+    void InitUarts();
     void InitMachineChecking();
 
     void HandleDebugException(TrapFrame* frame, bool int3);

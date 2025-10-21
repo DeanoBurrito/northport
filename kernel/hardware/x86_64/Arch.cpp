@@ -199,8 +199,7 @@ namespace Npk
         const uint64_t dummyLocals = reinterpret_cast<uint64_t>(KERNEL_CPULOCALS_BEGIN);
         HwSetMyLocals(dummyLocals, 0);
 
-        const bool e9Active = CheckForDebugcon();
-        CheckForCom1(e9Active); //if debugcon is active, com1 is only allowed to be used for the debugger
+        InitUarts();
         CommonCpuSetup();
     }
 

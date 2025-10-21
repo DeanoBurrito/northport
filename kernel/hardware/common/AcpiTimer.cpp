@@ -4,7 +4,7 @@
 #include <Vm.hpp>
 #include <Mmio.hpp>
 
-#ifdef __x86_64
+#ifdef __x86_64__
 #include <hardware/x86_64/PortIo.hpp>
 #endif
 
@@ -31,11 +31,13 @@ namespace Npk
 //yes, I'm doing something a bit dodge here.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
-        if (fadt->length >= offsetof(sl::Fadt, xPmTimerBlock) && fadt->xPmTimerBlock.address != 0)
+        if (fadt->length >= offsetof(sl::Fadt, xPmTimerBlock) 
+            && fadt->xPmTimerBlock.address != 0)
         {
             acpiTimerAddress = fadt->xPmTimerBlock.address;
             const auto type = fadt->xPmTimerBlock.type;
-            NPK_CHECK(type == sl::AcpiAddrSpace::IO || type == sl::AcpiAddrSpace::Memory, false);
+            NPK_CHECK(type == sl::AcpiAddrSpace::IO 
+                || type == sl::AcpiAddrSpace::Memory, false);
             acpiTimerIsMmio = type == sl::AcpiAddrSpace::Memory;
 
             if (acpiTimerIsMmio)
@@ -48,7 +50,8 @@ namespace Npk
                 virtBase += PageSize();
             }
         }
-        else if (fadt->length >= offsetof(sl::Fadt, pmTimerBlock) && fadt->pmTimerBlock != 0)
+        else if (fadt->length >= offsetof(sl::Fadt, pmTimerBlock) 
+            && fadt->pmTimerBlock != 0)
         {
             acpiTimerIsMmio = false;
             acpiTimerAddress = fadt->pmTimerBlock;
@@ -59,7 +62,8 @@ namespace Npk
 
         acpiTimerAvailable = true;
         Log("ACPI timer available: addr=0x%tx (%s), width=%s", LogLevel::Info, 
-            acpiTimerAddress, acpiTimerIsMmio ? "mmio" : "pio",  acpiTimerIs32Bit ? "32-bit" : "24-bit");
+            acpiTimerAddress, acpiTimerIsMmio ? "mmio" : "pio", 
+            acpiTimerIs32Bit ? "32-bit" : "24-bit");
 
         return true;
     }
