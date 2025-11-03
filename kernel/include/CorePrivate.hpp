@@ -12,4 +12,5 @@ namespace Npk::Private
     void OnPassiveRunLevel();
     void BeginWait();
     void EndWait(ThreadContext* thread);
+    void WorkThreadEntry(void* arg);
 }

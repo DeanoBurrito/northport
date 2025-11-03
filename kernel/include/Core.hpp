@@ -193,6 +193,19 @@ namespace Npk
 
     using DpcQueue = sl::FwdList<Dpc, &Dpc::hook>;
 
+    struct WorkItem;
+
+    using WorkItemEntry = void (*)(WorkItem* self, void* arg);
+
+    struct WorkItem
+    {
+        sl::FwdListHook hook;
+        WorkItemEntry function;
+        void* arg;
+    };
+
+    using WorkItemQueue = sl::FwdList<WorkItem, &WorkItem::hook>;
+
     enum class CycleAccount
     {
         User,
@@ -297,6 +310,8 @@ namespace Npk
     {
         sl::Atomic<sl::TimePoint> lastIpi;
         LocalScheduler* scheduler;
+        IplSpinLock<Ipl::Dpc> workItemsLock;
+        WorkItemQueue workItems;
     };
 
     struct SmpControl
@@ -536,6 +551,12 @@ namespace Npk
      * ipl and execute the DPC immediately.
      */
     void QueueDpc(Dpc* dpc);
+
+    /* Queues a work item to be run by a kernel worker thread, with an optional
+     * cpu affinity. This work item will be run at IPL::Passive but is not
+     * allowed to block.
+     */
+    void QueueWorkItem(WorkItem* item, sl::Opt<CpuId> who);
 
     /* Get access to some cpu-local variables of another cpu. This can be an
      * expensive operation, best used sparingly.
@@ -806,3 +827,6 @@ namespace Npk
             SL_FILENAME_MACRO, __LINE__, #cond, SL_RETURN_ADDR); \
         return ret; \
     }
+
+#define NPK_WAIT_LOCATION \
+    SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__)
