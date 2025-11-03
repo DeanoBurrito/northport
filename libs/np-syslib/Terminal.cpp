@@ -176,12 +176,8 @@ namespace sl
                 currBg = defaultBg;
                 continue;
             case 7:
-                {
-                    const uint32_t temp = currFg;
-                    currFg = currBg;
-                    currBg = temp;
-                    continue;
-                }
+                sl::Swap(currFg, currBg);
+                continue;
             case 39:
                 currFg = defaultFg;
                 continue;
@@ -197,7 +193,7 @@ namespace sl
                     currFg = brightColours[arg - 90];
                 else if (arg >= 100 && arg <= 107)
                     currFg = brightColours[arg - 100];
-                continue; //TODO: truecolour support?
+                continue;
             }
         }
     }

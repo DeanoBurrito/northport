@@ -36,6 +36,8 @@ namespace sl
         { return other.frequency != frequency || other.ticks != ticks; }
     };
 
+    constexpr static TimeCount NoTimeout { 1, -1ul };
+
     struct TimePoint
     {
         constexpr static sl::TimeScale Frequency = TimeScale::Nanos;
