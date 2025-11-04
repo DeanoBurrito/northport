@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Vm.hpp>
-#include <Core.hpp>
 #include <Hardware.hpp>
 
 namespace Npk::Private
@@ -11,7 +10,8 @@ namespace Npk::Private
     sl::Opt<Paddr> AllocatePageTable(size_t level);
     void FreePageTable(size_t level, Paddr paddr);
 
-    VmStatus PrimeMapping(HwMap map, uintptr_t vaddr, MmuWalkResult& result, PageAccessRef& ref);
-    VmStatus SetMap(HwMap map, uintptr_t vaddr, Paddr paddr, VmFlags flags);
-    VmStatus ClearMap(HwMap map, uintptr_t vaddr);
+    void InitPool(uintptr_t base, size_t length);
+    void* PoolAlloc(size_t len, HeapTag tag, sl::TimeCount timeout 
+        = sl::NoTimeout);
+    bool PoolFree(void* ptr, size_t len, sl::TimeCount timeout = sl::NoTimeout);
 }

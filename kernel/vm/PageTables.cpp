@@ -1,9 +1,9 @@
 #include <VmPrivate.hpp>
 #include <Core.hpp>
 
-namespace Npk::Private
+namespace Npk
 {
-    MmuFlags VmToMmuFlags(VmFlags flags, MmuFlags extra)
+    MmuFlags Private::VmToMmuFlags(VmFlags flags, MmuFlags extra)
     {
         MmuFlags outFlags = extra;
 
@@ -15,7 +15,7 @@ namespace Npk::Private
         return outFlags;
     }
 
-    sl::Opt<Paddr> AllocatePageTable(size_t level)
+    sl::Opt<Paddr> Private::AllocatePageTable(size_t level)
     {
         const size_t ptSize = HwGetPageTableSize(level);
 
@@ -28,11 +28,10 @@ namespace Npk::Private
             return LookupPagePaddr(page);
         }
 
-        //TODO: implement me!
-        NPK_UNREACHABLE();
+        Panic("Non-page sized page tables not currently implemented", nullptr);
     }
 
-    void FreePageTable(size_t level, Paddr paddr)
+    void Private::FreePageTable(size_t level, Paddr paddr)
     {
         const size_t ptSize = HwGetPageTableSize(level);
         
@@ -43,8 +42,7 @@ namespace Npk::Private
             return;
         }
 
-        //TODO:
-        NPK_UNREACHABLE();
+        Panic("Non-page sized page tables not currently implemented", nullptr);
     }
 
     VmStatus PrimeMapping(HwMap map, uintptr_t vaddr, MmuWalkResult& resultOut,
@@ -61,7 +59,7 @@ namespace Npk::Private
 
         while (result.level != 0)
         {
-            const auto nextPt = AllocatePageTable(result.level - 1);
+            const auto nextPt = Private::AllocatePageTable(result.level - 1);
             if (!nextPt.HasValue())
                 return VmStatus::Shortage;
 
@@ -89,7 +87,7 @@ namespace Npk::Private
         if (result.complete)
             return VmStatus::AlreadyMapped;
 
-        const auto mmuFlags = VmToMmuFlags(flags, {});
+        const auto mmuFlags = Private::VmToMmuFlags(flags, {});
 
         HwPte pte {};
         HwPteValid(&pte, true);
@@ -101,7 +99,7 @@ namespace Npk::Private
         return VmStatus::Success;
     }
 
-    VmStatus ClearMap(HwMap map, uintptr_t vaddr)
+    VmStatus ClearMap(HwMap map, uintptr_t vaddr, Paddr* paddr)
     {
         MmuWalkResult result {};
         PageAccessRef ptRef {};
@@ -113,11 +111,38 @@ namespace Npk::Private
             return VmStatus::BadVaddr;
 
         HwPte pte {};
+        HwCopyPte(&pte, result.pte);
         HwPteValid(&pte, false);
         HwCopyPte(result.pte, &pte);
-        //TODO: update valid PTE count in PT metadata
-        //TODO: invalidate here or leave for higher level functions?
+
+        Paddr ptePaddr = HwPteAddr(result.pte, {});
+        if (paddr != nullptr)
+            *paddr = ptePaddr;
+
+        auto info = LookupPageInfo(ptePaddr);
+        info->mmu.validPtes--;
+
+        if (info->mmu.validPtes == 0)
+            Log("Leaking empty PT page, TODO!", LogLevel::Error);
 
         return VmStatus::Success;
+    }
+
+    VmStatus PrimeKernelMap(uintptr_t vaddr)
+    {
+        MmuWalkResult result;
+        PageAccessRef ref;
+
+        return PrimeMapping(MyKernelMap(), vaddr, result, ref);
+    }
+
+    VmStatus SetKernelMap(uintptr_t vaddr, Paddr paddr, VmFlags flags)
+    {
+        return SetMap(MyKernelMap(), vaddr, paddr, flags);
+    }
+
+    VmStatus ClearKernelMap(uintptr_t vaddr, Paddr* paddr)
+    {
+        return ClearMap(MyKernelMap(), vaddr, paddr);
     }
 }
