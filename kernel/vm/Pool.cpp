@@ -20,12 +20,15 @@ namespace Npk::Private
 
     using PoolNodeList = sl::List<PoolNode, &PoolNode::hook>;
 
-    static uintptr_t poolBase = 0;
-    static size_t poolLength = 0;
+    struct Pool
+    {
+        Waitable mutex {};
+        PoolNodeList usedNodes;
+        PoolNodeList freeNodes[Level1Count];
+    };
 
-    static Waitable nodesMutex {};
-    static PoolNodeList freeNodes[Level1Count];
-    static PoolNodeList usedNodes;
+    static Pool wiredPool;
+    static Pool pagedPool;
 
     static size_t GetL1Index(size_t len)
     {
@@ -38,37 +41,38 @@ namespace Npk::Private
         return index;
     }
 
-    //NOTE: assumes `nodesMutex` is held
-    static void InsertNode(PoolNode* node)
+    //NOTE: assumes `pool->nodesMutex` is held
+    static void InsertNode(Pool& pool, PoolNode* node)
     {
         const size_t l1Index = GetL1Index(node->length);
+        auto& list = pool.freeNodes[l1Index];
 
-        auto& list = freeNodes[l1Index];
         list.InsertSorted(node, [](PoolNode* a, PoolNode* b) -> bool
             {
                 return a->length < b->length;
             });
     }
 
-    void* PoolAlloc(size_t len, HeapTag tag, sl::TimeCount timeout)
+    void* PoolAlloc(size_t len, HeapTag tag, bool paged, sl::TimeCount timeout)
     {
         NPK_CHECK(tag != 0, nullptr);
 
         //enforce minimum size we try to allocate and determine array indices.
         len = sl::Max(MinAllocSize, len);
-        size_t l1Index = GetL1Index(len);
+        const size_t l1Index = GetL1Index(len);
 
-        //try acquire the pool-space mutex
-        WaitEntry entry {};
-        auto status = WaitOne(&nodesMutex, &entry, timeout, NPK_WAIT_LOCATION);
-        if (status != WaitStatus::Success)
+        auto& pool = paged ? pagedPool : wiredPool;
+
+        //try acquire the mutex for this pool
+        if (!AcquireMutex(&pool.mutex, timeout, NPK_WAIT_LOCATION))
             return nullptr;
 
-        //1. try find a node of at least `len` bytes
+        //find a node with enough space
         PoolNode* selected = nullptr;
         for (size_t i = l1Index; i < Level1Count; i++)
         {
-            auto& level2 = freeNodes[i];
+            auto& level2 = pool.freeNodes[i];
+
             if (level2.Empty())
                 continue;
 
@@ -80,30 +84,26 @@ namespace Npk::Private
                 selected = &*it;
                 break;
             }
-            if (selected == nullptr)
-                continue;
 
-            level2.Remove(selected);
+            if (selected != nullptr)
+            {
+                level2.Remove(selected);
+                break;
+            }
         }
 
-        //2. if the node can hold at least `len + MinAllocSize` bytes, split
-        //it and make the remaining free space available for use again.
-        if (selected != nullptr 
+        //if node is too big, try split it and make unused free space available.
+        if (selected != nullptr
             && selected->length >= MinAllocSize + len + HeaderOffset)
         {
             const uintptr_t addr = (uintptr_t)selected + len + HeaderOffset;
             PoolNode* next = new((void*)addr) PoolNode {};
             next->length = selected->length - (HeaderOffset + len);
 
-            size_t index = (next->length >> MinAllocBits) & (Level1Count -1);
-            if (next->length > MaxBucketSize)
-                l1Index = Level1Count - 1;
-
-            freeNodes[index].PushFront(next);
+            InsertNode(pool, next);
         }
 
-        //release the pool-space mutex and we're done!
-        SignalWaitable(&nodesMutex);
+        ReleaseMutex(&pool.mutex);
 
         if (selected == nullptr)
             return nullptr;
@@ -111,47 +111,69 @@ namespace Npk::Private
         return reinterpret_cast<void*>(addr + HeaderOffset);
     }
 
-    bool PoolFree(void* ptr, size_t len, sl::TimeCount timeout)
+    bool PoolFree(void* ptr, size_t len, bool paged, sl::TimeCount timeout)
     {
         const auto addr = reinterpret_cast<uintptr_t>(ptr);
         NPK_CHECK((addr & (MinAllocSize - 1)) == 0, false);
 
         auto* node = reinterpret_cast<PoolNode*>(
             reinterpret_cast<uintptr_t>(ptr) - HeaderOffset);
-
         NPK_CHECK(len <= node->length, false);
 
-        WaitEntry entry {};
-        auto status = WaitOne(&nodesMutex, &entry, timeout, NPK_WAIT_LOCATION);
-        NPK_CHECK(status == WaitStatus::Success, false);
+        Pool& pool = paged ? pagedPool : wiredPool;
+
+        if (!AcquireMutex(&pool.mutex, timeout, NPK_WAIT_LOCATION))
+            return false;
 
         node->tag = 0;
-        InsertNode(node);
-        //TODO: try coalesce neighbouring free regions based on the new node
-
-        SignalWaitable(&nodesMutex);
+        InsertNode(pool, node);
+        //TODO: coalesce with adjacent blocks if possible
+        ReleaseMutex(&pool.mutex);
 
         return true;
     }
 
     void InitPool(uintptr_t base, size_t length)
     {
-        WaitEntry entry {};
-        auto status = WaitOne(&nodesMutex, &entry, {}, NPK_WAIT_LOCATION);
-        NPK_CHECK(status == WaitStatus::Success, );
+        ResetWaitable(&wiredPool.mutex, WaitableType::Mutex, 1);
+        ResetWaitable(&pagedPool.mutex, WaitableType::Mutex, 1);
 
-        poolBase = sl::AlignUp(base, MinAllocSize);
-        poolLength = length;
+        const uintptr_t top = base + length;
+        base = sl::AlignUp(base, MinAllocSize);
+        length = sl::AlignDown(top - base, MinAllocSize);
+
+        const uintptr_t wiredBase = base;
+        const size_t wiredLength = length / 4;
+        const uintptr_t pagedBase = wiredBase + wiredLength;
+        const size_t pagedLength = length - wiredLength;
+
+        //initialize non-paged/wired pool
+        NPK_ASSERT(AcquireMutex(&wiredPool.mutex, {}, NPK_WAIT_LOCATION));
 
         auto page = AllocPage(false);
-        auto ret = SetKernelMap(poolBase, LookupPagePaddr(page), VmFlag::Write);
-        NPK_CHECK(ret == VmStatus::Success, );
+        auto ret = SetKernelMap(wiredBase, LookupPagePaddr(page), 
+            VmFlag::Write);
+        NPK_ASSERT(ret == VmStatus::Success);
 
-        auto* node = new((void*)poolBase) PoolNode {};
-        node->length = length - HeaderOffset;
-        InsertNode(node);
+        auto* node = new((void*)wiredBase) PoolNode {};
+        node->length = wiredLength - HeaderOffset;
+        InsertNode(wiredPool, node);
 
-        SignalWaitable(&nodesMutex);
+        ReleaseMutex(&wiredPool.mutex);
+
+        //initialize pagable pool
+        NPK_ASSERT(AcquireMutex(&pagedPool.mutex, {}, NPK_WAIT_LOCATION));
+        
+        //TODO: add page to domain->listLists.active
+        page = AllocPage(false);
+        ret = SetKernelMap(pagedBase, LookupPagePaddr(page), VmFlag::Write);
+        NPK_ASSERT(ret == VmStatus::Success);
+
+        node = new((void*)pagedBase) PoolNode {};
+        node->length = pagedLength - HeaderOffset;
+        InsertNode(pagedPool, node);
+
+        ReleaseMutex(&pagedPool.mutex);
     }
 }
 
@@ -160,17 +182,21 @@ namespace Npk
     void* HeapAllocNonPaged(size_t len, HeapTag tag, sl::TimeCount timeout)
     {
         //TODO: slabs for small allocs and per-cpu caches (magazines)
-        return Private::PoolAlloc(len, tag, timeout);
+        return Private::PoolAlloc(len, tag, false, timeout);
     }
 
     bool HeapFreeNonPaged(void* ptr, size_t len, sl::TimeCount timeout)
     {
-        return Private::PoolFree(ptr, len, timeout);
+        return Private::PoolFree(ptr, len, false, timeout);
     }
 
     void* HeapAlloc(size_t len, HeapTag tag, sl::TimeCount timeout)
-    { NPK_UNREACHABLE(); }
+    {
+        return Private::PoolAlloc(len, tag, true, timeout);
+    }
 
     bool HeapFree(void* ptr, size_t len, sl::TimeCount timeout)
-    { NPK_UNREACHABLE(); }
+    {
+        return Private::PoolFree(ptr, len, true, timeout);
+    }
 }
