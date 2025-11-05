@@ -379,6 +379,8 @@ namespace Npk
 
     using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
 
+    struct VmSpace;
+
     struct SystemDomain
     {
         Paddr physOffset;
@@ -388,7 +390,8 @@ namespace Npk
         sl::Span<SmpControl> smpControls;
 
         uintptr_t pmaBase;
-        HwMap kernelSpace;
+        HwMap kernelMap;
+        VmSpace* kernelSpace;
         Paddr zeroPage;
         
         struct
@@ -406,6 +409,8 @@ namespace Npk
             PageList dirty;
             PageList standby;
         } liveLists;
+
+        //TODO: io + device linkage
     };
 
     /* Possible states of existence for a thread.
@@ -665,7 +670,7 @@ namespace Npk
     SL_ALWAYS_INLINE
     HwMap MyKernelMap()
     {
-        return MySystemDomain().kernelSpace;
+        return MySystemDomain().kernelMap;
     }
 
     /* Attempts to allocate a page of usable memory. The page is filled with
@@ -772,6 +777,22 @@ namespace Npk
         sl::StringSpan reason = {})
     {
         return WaitMany({ &what, 1 }, entry, timeout, reason);
+    }
+
+    SL_ALWAYS_INLINE
+    bool AcquireMutex(Waitable* mutex, sl::TimeCount timeout, 
+        sl::StringSpan reason = {})
+    {
+        WaitEntry entry {};
+        auto status = WaitOne(mutex, &entry, timeout, reason);
+
+        return status == WaitStatus::Success;
+    }
+
+    SL_ALWAYS_INLINE
+    void ReleaseMutex(Waitable* mutex)
+    {
+        SignalWaitable(mutex);
     }
 
     /* Enum value to string function for `enum Ipl`.
