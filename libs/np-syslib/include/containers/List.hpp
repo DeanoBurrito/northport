@@ -254,6 +254,18 @@ namespace sl
         Iterator End()
         { return nullptr; }
 
+        Iterator After(T* value)
+        { return static_cast<T*>(Hk(value)->next); }
+
+        Iterator Before(T* value)
+        { return static_cast<T*>(Hk(value)->prev); }
+
+        const Iterator After(T* value) const
+        { return static_cast<T*>(Hk(value)->next); }
+
+        const Iterator Before(T* value) const
+        { return static_cast<T*>(Hk(value)->prev); }
+
         const Iterator Begin() const
         { return head; }
 
