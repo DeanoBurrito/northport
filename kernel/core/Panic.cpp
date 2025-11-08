@@ -1,4 +1,4 @@
-#include <Core.hpp>
+#include <CorePrivate.hpp>
 #include <Debugger.hpp>
 #include <NanoPrintf.hpp>
 #include <Maths.hpp>
@@ -11,17 +11,31 @@ namespace Npk
     constexpr size_t PanicPrintBufferSize = 80;
     constexpr size_t CallstackDepth = 16;
 
+    static LogSinkList panicOutputs;
+
     static size_t PanicPrint(const char* format, ...)
     {
         char buffer[PanicPrintBufferSize];
         va_list args;
         va_start(args, format);
 
-        const size_t bufferLen = npf_vsnprintf(buffer, PanicPrintBufferSize, 
+        size_t bufferLen = npf_vsnprintf(buffer, PanicPrintBufferSize, 
             format, args);
+        bufferLen = sl::Min(bufferLen, PanicPrintBufferSize);
         va_end(args);
 
-        //TODO: panic ouputs
+        for (auto it = panicOutputs.Begin(); it != panicOutputs.End(); ++it)
+        {
+            if (it->Write == nullptr)
+                continue; //not sure how this happened, but too late to worry
+                          //about dealing with it.
+
+            LogSinkMessage msg {};
+            msg.text = { buffer, bufferLen };
+
+            it->Write(msg);
+        }
+
         return bufferLen;
     }
 
@@ -30,17 +44,21 @@ namespace Npk
     
     static void DumpBuildInfo()
     {
-        PanicPrint("Build info:\n");
+        PanicPrint("Build info:\r\n");
         PanicPrint("commit: %s%s", gitHash, gitDirty ? "-dirty" : "");
+        PanicPrint("\r\n");
         PanicPrint("kernel version: %u.%u.%u", versionMajor, versionMinor,
             versionRev);
+        PanicPrint("\r\n");
         PanicPrint("compiler flags: %s", compileFlags);
+        PanicPrint("\r\n\r\n");
     }
 
     static void DumpCpuInfo()
     {
-        PanicPrint("CPU info:\n");
+        PanicPrint("CPU info:\r\n");
         HwDumpPanicInfo(PanicPrintBufferSize, PanicPrint);
+        PanicPrint("\r\n");
     }
 
     static void DumpBytesAt(uintptr_t addr, size_t count)
@@ -50,7 +68,7 @@ namespace Npk
 
         for (size_t i = 0; i < count; i += 4)
         {
-            void* src = reinterpret_cast<void*>(addr + i * 4);
+            void* src = reinterpret_cast<void*>(addr + i);
 
             if (xPos == 0)
                 xPos = PanicPrint("%p: ", src);
@@ -58,7 +76,7 @@ namespace Npk
             size_t copied = UnsafeMemCopy(bytes, src, sl::Min(4ul, count - i));
 
             for (size_t j = 0; j < copied; j++)
-                PanicPrint("%02x ", bytes[i]);
+                PanicPrint("%02x ", bytes[j]);
             for (size_t j = copied; j < 4; j++)
                 PanicPrint("?? ");
             xPos += 13; //3 chars per byte, 4 bytes, 1 trailing space
@@ -66,13 +84,18 @@ namespace Npk
             if (xPos + 11 > PanicPrintBufferSize)
             {
                 xPos = 0;
-                PanicPrint("\n");
+                PanicPrint("\r\n");
+            }
+            else if ((i % 4) == 0)
+            {
+                xPos += 2;
+                PanicPrint("  ");
             }
         }
 
-        PanicPrint("\n");
+        PanicPrint("\r\n");
         if (xPos != 0)
-            PanicPrint("\n");
+            PanicPrint("\r\n");
     }
 
     static void DumpWordsAt(uintptr_t addr, size_t count)
@@ -93,26 +116,26 @@ namespace Npk
             size_t copied = UnsafeMemCopy(&word, src, sizeof(word));
 
             if (copied != sizeof(word))
-                PanicPrint("??");
+                PanicPrint("??%*.0s ", (int)wordWidth - 2, nullptr);
             else
-                PanicPrint("0x%0tx", word);
+                PanicPrint("0x%0*tx ", (int)wordWidth - 2, word);
             xPos += wordWidth + 1;
 
             if (xPos + wordWidth > PanicPrintBufferSize)
             {
                 xPos = 0;
-                PanicPrint("\n");
+                PanicPrint("\r\n");
             }
         }
 
-        PanicPrint("\n");
+        PanicPrint("\r\n");
         if (xPos != 0)
-            PanicPrint("\n");
+            PanicPrint("\r\n");
     }
 
     static void DumpCallstack(uintptr_t start)
     {
-        PanicPrint("Call stack (latest first):\n");
+        PanicPrint("Call stack (latest first):\r\n");
 
         uintptr_t stack[CallstackDepth];
         const size_t stackSize = GetCallstack(stack, start);
@@ -124,10 +147,10 @@ namespace Npk
                 break;
 
             //TODO: symbol and module name resolution
-            PanicPrint("%02u: 0x%0tx ??+0x0\n", i, stack[i]);
+            PanicPrint("%02u: 0x%0tx ??+0x0\r\n", i, stack[i]);
         }
 
-        PanicPrint("\n");
+        PanicPrint("\r\n");
     }
 
     [[noreturn]]
@@ -147,10 +170,17 @@ namespace Npk
 
         FreezeAllCpus(true);
         //Only one cpu will be executing past this point
-        
-        //TODO: try to detach any storage devices (flushing caches where needed)
 
+        Private::AcquirePanicOutputs(panicOutputs);
+        for (auto it = panicOutputs.Begin(); it != panicOutputs.End(); ++it)
+            it->BeginPanic();
+        
         DumpHeader();
+
+        PanicPrint("\r\n");
+        PanicPrint("%.*s", (int)message.Size(), message.Begin());
+        PanicPrint("\r\n\r\n");
+
         DumpBuildInfo();
         DumpCpuInfo();
         if (frame != nullptr)
@@ -160,9 +190,9 @@ namespace Npk
         
         if (frame != nullptr)
         {
-            PanicPrint("Bytes at program counter:\n");
+            PanicPrint("Bytes at program counter:\r\n");
             DumpBytesAt(GetTrapReturnAddr(frame), 64);
-            PanicPrint("Stack words:\n");
+            PanicPrint("Stack words:\r\n");
             DumpWordsAt(GetTrapStackPtr(frame), 8);
         }
 

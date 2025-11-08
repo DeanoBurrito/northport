@@ -11,6 +11,7 @@ namespace Npk
     constexpr Paddr Com1RegBase = 0x3F8;
 
     static bool debugconDoColour;
+    static bool inPanic;
 
     static void DebugconPutc(int c, void* ignored)
     {
@@ -35,14 +36,20 @@ namespace Npk
             }
         }(msg.level);
 
-        npf_pprintf(DebugconPutc, nullptr, format, colourStr, msg.cpu, 
-            levelStr.Begin(), ResetColourStr);
+        if (!inPanic)
+        {
+            npf_pprintf(DebugconPutc, nullptr, format, colourStr, msg.cpu, 
+                levelStr.Begin(), ResetColourStr);
+        }
 
         for (size_t i = 0; i < msg.text.Size(); i++)
             Out8(Port::Debugcon, msg.text[i]);
 
-        Out8(Port::Debugcon, '\n');
-        Out8(Port::Debugcon, '\r');
+        if (!inPanic)
+        {
+            Out8(Port::Debugcon, '\n');
+            Out8(Port::Debugcon, '\r');
+        }
     }
 
     static void DebugconReset()
@@ -51,11 +58,17 @@ namespace Npk
         Out8(Port::Debugcon, '\r');
     }
 
+    static void DebugconBeginPanic()
+    {
+        inPanic = true;
+    }
+
     LogSink debugconSink
     {
         .listHook = {},
         .Reset = DebugconReset,
-        .Write = DebugconWrite
+        .Write = DebugconWrite,
+        .BeginPanic = DebugconBeginPanic,
     };
 
     void InitUarts()

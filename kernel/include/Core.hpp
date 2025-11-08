@@ -347,7 +347,10 @@ namespace Npk
 
         void (*Reset)();
         void (*Write)(LogSinkMessage msg);
+        void (*BeginPanic)();
     };
+
+    using LogSinkList = sl::List<LogSink, &LogSink::listHook>;
 
     struct PageInfo
     {

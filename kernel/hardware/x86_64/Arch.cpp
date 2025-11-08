@@ -256,7 +256,7 @@ namespace Npk
         size_t brandLen = GetBrandString(brandBuffer);
 
         if (brandLen != 0)
-            Print("Brand: %.*s\n", (int)brandLen, brandBuffer);
+            Print("Brand: %.*s\r\n", (int)brandLen, brandBuffer);
     }
 
 

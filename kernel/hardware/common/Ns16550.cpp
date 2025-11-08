@@ -32,6 +32,7 @@ namespace Npk
         static bool doColour;
         static bool available;
         static bool isMmio;
+        static bool inPanic;
         static uintptr_t address;
 
         static inline void WriteReg(Reg reg, uint8_t value)
@@ -127,14 +128,25 @@ namespace Npk
                 }
             }(msg.level);
 
-            npf_pprintf(Putc, nullptr, format, colourStr, msg.cpu, 
-                levelStr.Begin(), ResetColourStr);
+            if (!inPanic)
+            {
+                npf_pprintf(Putc, nullptr, format, colourStr, msg.cpu, 
+                    levelStr.Begin(), ResetColourStr);
+            }
 
             for (size_t i = 0; i < msg.text.Size(); i++)
                 Putc(msg.text[i], nullptr);
 
-            Putc('\n', nullptr);
-            Putc('\r', nullptr);
+            if (!inPanic)
+            {
+                Putc('\n', nullptr);
+                Putc('\r', nullptr);
+            }
+        }
+
+        static inline void BeginPanic()
+        {
+            inPanic = true;
         }
 
         static bool Transmit(DebugTransport* inst, sl::Span<const uint8_t> data)
@@ -168,6 +180,7 @@ namespace Npk
         .listHook = {},
         .Reset = Ns16550::Reset,
         .Write = Ns16550::Write,
+        .BeginPanic = Ns16550::BeginPanic,
     };
 
     static DebugTransport ns16550transport
@@ -209,6 +222,7 @@ namespace Npk
 
         Ns16550::Reset();
         Ns16550::available = true;
+        Ns16550::inPanic = false;
 
         return true;
     }
