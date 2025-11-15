@@ -121,8 +121,8 @@ namespace Npk
      * true is returned on successful freeing. False can only be returned
      * when timeout != sl::NoTimeout.
      */
-    bool HeapFreeNonPaged(void* ptr, size_t len, sl::TimeCount timeout 
-        = sl::NoTimeout);
+    bool HeapFreeNonPaged(void* ptr, size_t len, HeapTag tag, 
+        sl::TimeCount timeout = sl::NoTimeout);
 
     /* Attempts to allocate `len` bytes from the paged heap. Allocations here
      * may only be accessed at Ipl::Passive, unless pinned or held by a MDL.
@@ -146,7 +146,8 @@ namespace Npk
      * true is returned on successful freeing. False can only be returned
      * when timeout != sl::NoTimeout.
      */
-    bool HeapFree(void* ptr, size_t len, sl::TimeCount timeout = sl::NoTimeout);
+    bool HeapFree(void* ptr, size_t len, HeapTag tag, 
+        sl::TimeCount timeout = sl::NoTimeout);
 
     /* Attempts to allocate a range of `length` bytes in address space `space`,
      * with the base address aligned to the value of `align`. If 
