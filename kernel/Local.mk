@@ -1,12 +1,13 @@
 KERNEL_CXX_SRCS += core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
-	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp core/Panic.cpp \
-	core/Scheduler.cpp core/Smp.cpp core/Str.cpp core/Wait.cpp \
+	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp \
+	core/Panic.cpp core/Scheduler.cpp core/Smp.cpp core/Str.cpp core/Wait.cpp \
+	core/Worker.cpp\
 	debugger/Event.cpp debugger/GdbRemote.cpp debugger/InternalApi.cpp \
 	debugger/LocalApi.cpp debugger/Str.cpp \
 	entry/Allocators.cpp entry/BringUp.cpp entry/ConfigRoot.cpp \
 	entry/EfiRuntime.cpp \
 	io/Continuation.cpp io/Packet.cpp io/Str.cpp \
-	vm/KernelMappings.cpp vm/PageTables.cpp \
+	vm/KernelStack.cpp vm/PageTables.cpp vm/Pool.cpp vm/Space.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support

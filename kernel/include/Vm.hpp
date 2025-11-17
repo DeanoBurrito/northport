@@ -20,6 +20,8 @@ namespace Npk
         InvalidArg,
         BadVaddr,
         AlreadyMapped,
+        InUse,
+        AlreadyAllocated,
         InternalError,
     };
 
@@ -50,6 +52,18 @@ namespace Npk
     };
 
     using VmFlags = sl::Flags<VmFlag>;
+
+    struct VmSpace;
+
+    /* Initializes the kernel's virtual memory space, which makes all virtual
+     * memory services available (kernel pool, file cache).
+     * The `base` and `len` params describe two regions of usable address space
+     * for VM services. There is no assumptions made about the two regions,
+     * but they after typically used to describe the space before and after
+     * the kernel image in memory.
+     */
+    void InitKernelVmSpace(uintptr_t lowBase, size_t lowLen, uintptr_t highBase,
+        size_t highLen);
 
     /* Allocates and emplaces all intermediate page tables required for mapping
      * a physical address at `vaddr` using `map`, but does not populate the last

@@ -421,6 +421,14 @@ R"(                                             888                      )"
         ThreadContext idleContext {};
         BringCpuOnline(&idleContext);
 
+        const uintptr_t lowBase = virtBase;
+        const uintptr_t lowTop = AlignDownPage((uintptr_t)KERNEL_BLOB_BEGIN 
+            - virtBase);
+        const uintptr_t highBase = AlignUpPage((uintptr_t)KERNEL_BLOB_END);
+        const uintptr_t highTop = AlignDownPage((uintptr_t)~0);
+        InitKernelVmSpace(lowBase, lowTop - lowBase, highBase, 
+            highTop - highBase);
+
         Log("BSP init done, entering idle thread.", LogLevel::Trace);
         IntrsOn();
         while (true)
