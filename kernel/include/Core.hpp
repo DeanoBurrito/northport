@@ -500,7 +500,7 @@ namespace Npk
             Paddr nextPaddr);
     };
 
-    extern SystemDomain domain0;
+    extern SystemDomain sysDomain0;
 
     SL_PRINTF_FUNC(1, 3)
     void Log(const char* msg, LogLevel level, ...);
@@ -655,13 +655,13 @@ namespace Npk
     SL_ALWAYS_INLINE
     PageInfo* LookupPageInfo(Paddr paddr)
     {
-        return &domain0.pfndb[((paddr - domain0.physOffset) >> PfnShift())];
+        return &sysDomain0.pfndb[((paddr - sysDomain0.physOffset) >> PfnShift())];
     }
 
     SL_ALWAYS_INLINE
     Paddr LookupPagePaddr(PageInfo* info)
     {
-        return ((info - domain0.pfndb) << PfnShift()) + domain0.physOffset;
+        return ((info - sysDomain0.pfndb) << PfnShift()) + sysDomain0.physOffset;
     }
 
     /* Returns the system domain for the current cpu.

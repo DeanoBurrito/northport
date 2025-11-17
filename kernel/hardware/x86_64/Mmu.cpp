@@ -98,7 +98,7 @@ namespace Npk
         addrMask &= ~0xFFFul;
 
         kernelMap = state.PmAlloc();
-        domain0.kernelMap = kernelMap;
+        sysDomain0.kernelMap = kernelMap;
         //TODO: software direct map as PageAccess optimization
 
         apBootPage = state.PmAlloc();

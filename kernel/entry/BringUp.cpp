@@ -16,7 +16,7 @@ namespace Npk
     void DispatchInterrupt(size_t vector) { (void)vector; };
     void DispatchPageFault(uintptr_t addr, bool write) {(void)addr; (void)write;}
 
-    SystemDomain domain0 {};
+    SystemDomain sysDomain0 {};
 
     void EarlyPanic(sl::StringSpan why)
     {
@@ -138,10 +138,10 @@ namespace Npk
 
         const size_t pfndbSize = ((maxUsablePaddr - minUsablePaddr) >> 
             PfnShift()) * sizeof(PageInfo);
-        domain0.physOffset = minUsablePaddr;
-        domain0.pfndb = reinterpret_cast<PageInfo*>(init.VmAlloc(pfndbSize));
+        sysDomain0.physOffset = minUsablePaddr;
+        sysDomain0.pfndb = reinterpret_cast<PageInfo*>(init.VmAlloc(pfndbSize));
 
-        const uintptr_t dbOffset = reinterpret_cast<uintptr_t>(domain0.pfndb);
+        const uintptr_t dbOffset = reinterpret_cast<uintptr_t>(sysDomain0.pfndb);
         rangesBase = 0;
         while (true)
         {
@@ -150,7 +150,7 @@ namespace Npk
 
             for (size_t i = 0; i < count; i++)
             {
-                Paddr base = ranges[i].base - domain0.physOffset;
+                Paddr base = ranges[i].base - sysDomain0.physOffset;
                 Paddr top = base + ranges[i].length;
 
                 base = AlignDownPage((base >> PfnShift()) * sizeof(PageInfo));
@@ -206,8 +206,8 @@ namespace Npk
 
                 PageInfo* info = LookupPageInfo(base);
                 info->pm.count = pageCount;
-                domain0.freeLists.free.PushBack(info);
-                domain0.freeLists.pageCount += pageCount;
+                sysDomain0.freeLists.free.PushBack(info);
+                sysDomain0.freeLists.pageCount += pageCount;
 
                 HwKernelMap(loaderMap);
             }
@@ -296,11 +296,11 @@ namespace Npk
             virtBase += PageSize();
         }
 
-        domain0.smpBase = 0;
-        domain0.smpControls = { reinterpret_cast<SmpControl*>(controlsBase), 
+        sysDomain0.smpBase = 0;
+        sysDomain0.smpControls = { reinterpret_cast<SmpControl*>(controlsBase), 
             cpus };
         for (size_t i = 0; i < cpus; i++)
-            new(&domain0.smpControls[i]) SmpControl();
+            new(&sysDomain0.smpControls[i]) SmpControl();
 
         return 
         {
@@ -363,7 +363,7 @@ R"(                                             888                      )"
 
     void BringCpuOnline(ThreadContext* idle)
     {
-        localSystemDomain = &domain0; //TODO: multi-domain
+        localSystemDomain = &sysDomain0; //TODO: multi-domain
 
         Private::InitLocalScheduler(idle);
         SetCurrentThread(idle);
@@ -391,24 +391,23 @@ R"(                                             888                      )"
         Log("Ran %zu global constructor%s.", LogLevel::Verbose, ctorCount,
             ctorCount == 1 ? "" : "s");
 
-        SetConfigRoot(loadState); //TODO: have this map config-tables/data, call it later (after BringCpuOnline)
-
         initState.dmBase = loadState.directMapBase;
         initState.usedPages = 0;
         initState.pmaCount = ReadConfigUint("npk.pm.temp_mapping_count", 512);
         initState.vmAllocHead = HwInitBspMmu(initState, initState.pmaCount);
-        domain0.zeroPage = initState.PmAlloc();
+        sysDomain0.zeroPage = initState.PmAlloc();
 
         SetupKernelAddressSpace(initState, loadState);
         HwKernelMap({});
 
         HwSetMyLocals((uintptr_t)KERNEL_CPULOCALS_BEGIN, loadState.bspId);
-        localSystemDomain = &domain0;
+        localSystemDomain = &sysDomain0;
         InitPageAccessCache(initState.pmaCount, initState.pmaSlots);
         SetConfigStore(initState.mappedCmdLine, false);
 
         uintptr_t virtBase = initState.vmAllocHead;
 
+        SetConfigRoot(loadState);
         TryMapAcpiTables(virtBase);
         if (loadState.efiTable.HasValue())
             TryEnableEfiRtServices(*loadState.efiTable, virtBase);
