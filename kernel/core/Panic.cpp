@@ -73,7 +73,9 @@ namespace Npk
             if (xPos == 0)
                 xPos = PanicPrint("%p: ", src);
 
-            size_t copied = UnsafeMemCopy(bytes, src, sl::Min(4ul, count - i));
+            size_t copied = sl::Min(4ul, count - i);
+            if (MemCopyExceptionAware(bytes, src, sl::Min(4ul, count - i)))
+                copied = 0;
 
             for (size_t j = 0; j < copied; j++)
                 PanicPrint("%02x ", bytes[j]);
@@ -113,7 +115,9 @@ namespace Npk
             if (xPos == 0)
                 xPos = PanicPrint("%p: ", src);
 
-            size_t copied = UnsafeMemCopy(&word, src, sizeof(word));
+            size_t copied = sizeof(word);
+            if (MemCopyExceptionAware(&word, src, sizeof(word)))
+                copied = 0;
 
             if (copied != sizeof(word))
                 PanicPrint("??%*.0s ", (int)wordWidth - 2, nullptr);

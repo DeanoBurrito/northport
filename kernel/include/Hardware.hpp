@@ -4,6 +4,7 @@
 #include <Span.hpp>
 #include <Flags.hpp>
 #include <Time.hpp>
+#include <Memory.hpp>
 
 namespace Npk
 {
@@ -90,21 +91,33 @@ namespace Npk
         uint8_t bind;
     };
 
-    /* Similar to sl::MemCopy(), but sensitive to page faults and other bad
-     * accesses. If a memory access during the copy triggers a synchronous
-     * fault, the copy is aborted and the number of bytes copied is returned.
-     * On full success, `len` is returned.
+    /* Calls `func` passing `a`/`b`/`c` as params to it, optionally placing
+     * the return value of `func` into `*r` if non-null. If a synchronous
+     * excepton (i.e. one occuring due to an instruction `func` executed)
+     * this function aborts further execution of `func` and returns true
+     * (an exception occured), the value of `*r` is left unchanged if non-null. 
+     * If `func` returned normally, this function returns false.
      */
     extern "C"
-    size_t UnsafeMemCopy(void* dest, const void* src, size_t len);
+    bool ExceptionAwareCall(void* a, void* b, void* c, void** r, 
+        void* (*func)(void* a, void* b, void* c));
 
-    /* Similar to sl::MemSet(), but sensitive to page faults and other bad
-     * accesses. If a memory write triggers a synchronous fault, the operation
-     * is aborted and the number of bytes copied is returned.
-     * On full success, `len` is returned.
+    /* Sugar function for calling `sl::MemCopy()` via `ExceptionAwareCall()`.
      */
-    extern "C"
-    size_t UnsafeMemSet(void* dest, uint8_t value, size_t len);
+    SL_ALWAYS_INLINE
+    bool MemCopyExceptionAware(void* dest, const void* src, size_t len)
+    {
+        using FuncType = void* (*)(void*, void*, void*);
+
+        void* inA = dest;
+        void* inB = const_cast<void*>(src);
+        void* inC = reinterpret_cast<void*>(len);
+
+        const auto addr = reinterpret_cast<uintptr_t>(sl::MemCopy);
+        auto func = reinterpret_cast<FuncType>(addr);
+
+        return ExceptionAwareCall(inA, inB, inC, nullptr, func);
+    }
 
     /* Returns the (kernel-assigned) unique id of the current cpu core.
      */

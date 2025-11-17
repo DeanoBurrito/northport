@@ -27,7 +27,7 @@ namespace Npk
                 accum++;
         }
 
-        NPK_ASSERT(accum > 1);
+        NPK_ASSERT(accum > 0);
         return accum;
     }
 

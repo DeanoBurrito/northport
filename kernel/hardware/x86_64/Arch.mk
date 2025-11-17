@@ -5,5 +5,5 @@ KERNEL_CXX_SRCS += $(ARCH_DIR)/ApBringup.cpp $(ARCH_DIR)/Arch.cpp \
 	$(ARCH_DIR)/PvClock.cpp $(ARCH_DIR)/TrapFrame.cpp $(ARCH_DIR)/Tsc.cpp \
 	hardware/common/AcpiTimer.cpp hardware/common/Ns16550.cpp
 
-KERNEL_AS_SRCS += $(ARCH_DIR)/Entry.S $(ARCH_DIR)/Spinup.S \
-	$(ARCH_DIR)/Switch.S $(ARCH_DIR)/Unsafe.S
+KERNEL_AS_SRCS += $(ARCH_DIR)/Entry.S $(ARCH_DIR)/ExceptionAwareCall.S \
+	$(ARCH_DIR)/Spinup.S $(ARCH_DIR)/Switch.S

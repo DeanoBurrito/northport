@@ -55,16 +55,22 @@ namespace Npk
             break;
 
         case 0xD: //general protection fault
-            if (localHeader.UnsafeFailurePath != nullptr)
-                frame->iret.rip = (uint64_t)localHeader.UnsafeFailurePath;
+            if (localHeader.ExceptRecoveryPc != nullptr)
+            {
+                frame->iret.rip = (uint64_t)localHeader.ExceptRecoveryPc;
+                frame->rdi = (uint64_t)localHeader.exceptRecoveryStack;
+            }
             else
                 NotifyOfBadOp();
             suppressEoi = true;
             break;
 
         case 0xE: //page fault
-            if (localHeader.UnsafeFailurePath != nullptr)
-                frame->iret.rip = (uint64_t)localHeader.UnsafeFailurePath;
+            if (localHeader.ExceptRecoveryPc != nullptr)
+            {
+                frame->iret.rip = (uint64_t)localHeader.ExceptRecoveryPc;
+                frame->rdi = (uint64_t)localHeader.exceptRecoveryStack;
+            }
             else if (prevIpl != Ipl::Passive)
                 Panic("Page fault at non-passive IPL", frame);
             else

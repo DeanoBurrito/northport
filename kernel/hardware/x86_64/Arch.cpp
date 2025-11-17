@@ -166,7 +166,7 @@ namespace Npk
         tls->swId = softwareId;
         tls->selfAddr = where;
         tls->currThread = nullptr;
-        tls->UnsafeFailurePath = nullptr;
+        tls->ExceptRecoveryPc = nullptr;
 
         WriteMsr(Msr::GsBase, where);
         Log("Cpu %zu locals at %p", LogLevel::Info, softwareId, tls);
