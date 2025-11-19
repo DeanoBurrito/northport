@@ -8,6 +8,7 @@
 #include <Efi.hpp>
 
 extern "C" char KERNEL_CPULOCALS_BEGIN[];
+extern "C" char KERNEL_NODELOCALS_BEGIN[];
 
 namespace sl
 {
@@ -155,6 +156,50 @@ namespace Npk
             const uintptr_t base = MyCpuLocals();
             const uintptr_t offset = reinterpret_cast<uintptr_t>(this) -
                 reinterpret_cast<uintptr_t>(KERNEL_CPULOCALS_BEGIN);
+
+            return reinterpret_cast<T*>(base + offset);
+        }
+
+        T* operator&()
+        {
+             return Get();
+        }
+
+        T* operator->()
+        {
+            return Get();
+        }
+
+        T& operator*()
+        {
+            return *Get();
+        }
+
+        void operator=(const T& latest)
+        {
+            *Get() = latest;
+        }
+    };
+
+    namespace Private
+    {
+        uintptr_t MyNodeLocals();
+    }
+
+    template<typename T>
+    class NodeLocal
+    {
+    private:
+        alignas(T) char store[sizeof(T)];
+
+    public:
+        constexpr NodeLocal() = default;
+
+        T* Get()
+        {
+            const uintptr_t base = Private::MyNodeLocals();
+            const uintptr_t offset = reinterpret_cast<uintptr_t>(this) -
+                reinterpret_cast<uintptr_t>(KERNEL_NODELOCALS_BEGIN);
 
             return reinterpret_cast<T*>(base + offset);
         }
@@ -828,6 +873,7 @@ namespace Npk
 }
 
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)
+#define NODE_LOCAL(T, id) SL_TAGGED(nodelocal, Npk::NodeLocal<T> id)
 
 #define NPK_ASSERT_STRINGIFY(x) NPK_ASSERT_STRINGIFY2(x)
 #define NPK_ASSERT_STRINGIFY2(x) #x

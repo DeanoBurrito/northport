@@ -241,3 +241,18 @@ namespace Npk
             What(arg);
     }
 }
+
+namespace Npk::Private
+{
+    CPU_LOCAL(uintptr_t, static myNodeLocals);
+
+    void SetMyNodePointer(uintptr_t addr)
+    {
+        myNodeLocals = addr;
+    }
+
+    uintptr_t MyNodeLocals()
+    {
+        return *myNodeLocals;
+    }
+}
