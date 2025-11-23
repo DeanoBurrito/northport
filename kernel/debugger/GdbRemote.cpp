@@ -465,7 +465,7 @@ namespace Npk::Private
             .text = "qRcmd"_span,
             .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
             {
-                //TODO: local command interpreter
+                (void)data; //TODO: local command interpreter
                 return SendUnsupported(inst);
             }
         },
@@ -516,6 +516,8 @@ namespace Npk::Private
             .text = "g"_span,
             .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
             {
+                (void)data;
+
                 if (inst.stopFrame == nullptr)
                     return SendError(inst, ErrorValue::InternalError);
 
@@ -524,6 +526,7 @@ namespace Npk::Private
                 sl::Span<uint8_t> response = inst.builtinSendBuff;
 
 #ifdef __x86_64__
+                //https://github.com/bminor/binutils-gdb/blob/master/gdb/features/i386/64bit-core.xml
                 uint8_t buff[8];
 
                 //16 GPRs
@@ -621,7 +624,6 @@ namespace Npk::Private
             {
                 size_t head = 2;
 
-                const uint8_t type = data[1];
                 uintptr_t addr;
                 head += GetBytes(data.Subspan(head, -1), &addr, sizeof(addr));
                 uint8_t kind;
@@ -675,6 +677,8 @@ namespace Npk::Private
 
     static DebugStatus GdbConnect(DebugProtocol* inst, DebugTransportList* ports)
     {
+        (void)inst;
+
         gdbData.selectedThread = AllThreads;
 
         for (auto it = ports->Begin(); it != ports->End(); ++it)
@@ -709,6 +713,8 @@ namespace Npk::Private
     static DebugStatus GdbBreakpointHit(DebugProtocol* inst, Breakpoint* bp, 
         TrapFrame* frame)
     {
+        (void)bp;
+
         auto gdbData = static_cast<GdbData*>(inst->opaque);
         DebugStatus result = DebugStatus::Success;
 
