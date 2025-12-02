@@ -1,4 +1,4 @@
-#include <Core.hpp>
+#include <CorePrivate.hpp>
 #include <Memory.hpp>
 #include <NanoPrintf.hpp>
 #include <Maths.hpp>
@@ -29,16 +29,16 @@ namespace Npk
     constexpr size_t MaxLogLength = 128;
     constexpr size_t MaxSelfDrainCount = 64;
 
-    struct QueuedLogData
+    struct LogEntry
     {
+        sl::QueueMpScHook hook;
         LogSinkMessage details;
         char data[MaxLogLength];
     };
 
-    using LogQueue = sl::QueueMpSc<QueuedLogData>;
-    using LogQueueItem = LogQueue::Item;
+    using LogQueue = sl::QueueMpSc<LogEntry, &LogEntry::hook>;
 
-    static LogQueueItem itemsStore[InitialLogItems];
+    static LogEntry itemsStore[InitialLogItems];
     static LogQueue pendingLogs;
 
     static sl::Atomic<bool> selfDrainLogs = true;
@@ -48,7 +48,7 @@ namespace Npk
     static sl::List<LogSink, &LogSink::listHook> logSinks; //protected by writeout lock
     static LogQueue freeLogs; //protected by writeout lock
 
-    static LogQueueItem* AllocLogItem()
+    static LogEntry* AllocLogItem()
     {
         sl::ScopedLock scopeLock(writeoutLock);
         if (!initialized)
@@ -64,13 +64,13 @@ namespace Npk
     }
 
     //NOTE: assumes writeoutLock is held
-    static void FreeLogItem(LogQueueItem* item)
+    static void FreeLogItem(LogEntry* item)
     {
         if (item != nullptr)
             freeLogs.Push(item);
     }
 
-    static void InsertLogItem(LogQueueItem* item)
+    static void InsertLogItem(LogEntry* item)
     {
         sl::AtomicThreadFence(sl::Release);
         pendingLogs.Push(item);
@@ -88,7 +88,7 @@ namespace Npk
                 break;
             
             for (auto it = logSinks.Begin(); it != logSinks.End(); ++it)
-                it->Write(item->data.details);
+                it->Write(item->details);
 
             FreeLogItem(item);
         }
@@ -101,7 +101,7 @@ namespace Npk
         auto logItem = AllocLogItem();
         NPK_ASSERT(logItem != nullptr);
 
-        auto& details = logItem->data.details;
+        auto& details = logItem->details;
         details.level = level;
         details.when = GetMonotonicTime();
         details.who = "kernel";
@@ -109,11 +109,11 @@ namespace Npk
 
         va_list args;
         va_start(args, level);
-        const size_t length = npf_vsnprintf(logItem->data.data, MaxLogLength, message, args);
+        const size_t length = npf_vsnprintf(logItem->data, MaxLogLength, message, args);
         va_end(args);
 
         const size_t realLength = sl::Min(length, MaxLogLength - 1);
-        details.text = sl::StringSpan(logItem->data.data, realLength);
+        details.text = sl::StringSpan(logItem->data, realLength);
 
         InsertLogItem(logItem);
         if (selfDrainLogs)
@@ -135,5 +135,14 @@ namespace Npk
         writeoutLock.Lock();
         logSinks.Remove(&sink);
         writeoutLock.Unlock();
+    }
+
+    void Private::AcquirePanicOutputs(LogSinkList& sinks)
+    {
+        while (!logSinks.Empty())
+        {
+            auto sink = logSinks.PopFront();
+            sinks.PushBack(sink);
+        }
     }
 }

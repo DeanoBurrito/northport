@@ -65,17 +65,17 @@ namespace Npk
         SmpMail* mail = nullptr;
         while ((mail = control->mail.Pop()) != nullptr)
         {
-            if (mail->data.function != nullptr)
-                mail->data.function(mail->data.arg);
-            if (mail->data.onComplete != nullptr)
-                SignalWaitable(mail->data.onComplete);
+            if (mail->function != nullptr)
+                mail->function(mail->arg);
+            if (mail->onComplete != nullptr)
+                SignalWaitable(mail->onComplete);
         }
 
         FlushRequest* shootdown = nullptr;
         while ((shootdown = control->shootdowns.Pop()) != nullptr)
         {
-            HwFlushTlb(shootdown->data.base, shootdown->data.length);
-            shootdown->data.acknowledgements.Sub(1, sl::Release);
+            HwFlushTlb(shootdown->base, shootdown->length);
+            shootdown->acknowledgements.Sub(1, sl::Release);
         }
 
         control->status.lastIpi.Store({}, sl::Release);
@@ -104,14 +104,14 @@ namespace Npk
     {
         NPK_CHECK(what != nullptr, );
 
-        what->data.acknowledgements.Store(who.Size(), sl::Acquire);
+        what->acknowledgements.Store(who.Size(), sl::Acquire);
 
         for (size_t i = 0; i < who.Size(); i++)
         {
             auto control = GetControl(who[i]);
             if (control == nullptr)
             {
-                what->data.acknowledgements.Sub(1, sl::Release);
+                what->acknowledgements.Sub(1, sl::Release);
                 continue;
             }
 
@@ -123,14 +123,13 @@ namespace Npk
             return;
 
         size_t count = 0;
-        while (what->data.acknowledgements.Load(sl::Relaxed))
+        while (what->acknowledgements.Load(sl::Relaxed))
         {
             count++;
             if (count == 123456)
             {
                 Log("TLB shootdown is taking a long time: 0x%tx->0x%tx",
-                    LogLevel::Warning, what->data.base, 
-                    what->data.base + what->data.length);
+                    LogLevel::Warning, what->base, what->base + what->length);
                 count = 0;
             }
 

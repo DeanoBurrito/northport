@@ -329,25 +329,27 @@ namespace Npk
     using MailQueue = sl::QueueMpSc<SmpMailData>;
     using MailFunction = void (*)(void* arg);
 
-    struct SmpMailData
+    struct SmpMail
     {
+        sl::QueueMpScHook mpscHook;
+
         MailFunction function;
         void* arg;
         Waitable* onComplete;
     };
-    using SmpMail = MailQueue::Item;
 
-    struct RemoteFlushData;
-    using ShootdownQueue = sl::QueueMpSc<RemoteFlushData>;
+    using MailQueue = sl::QueueMpSc<SmpMail, &SmpMail::mpscHook>;
 
-    struct RemoteFlushData
+    struct FlushRequest
     {
+        sl::QueueMpScHook hoook;
+
         uintptr_t base;
         size_t length;
         sl::Atomic<size_t> acknowledgements;
     };
 
-    using FlushRequest = ShootdownQueue::Item;
+    using FlushRequestQueue = sl::QueueMpSc<FlushRequest, &FlushRequest::hoook>;
 
     struct LocalScheduler;
 
@@ -363,7 +365,7 @@ namespace Npk
     {
         void* ipiId;
         MailQueue mail;
-        ShootdownQueue shootdowns;
+        FlushRequestQueue shootdowns;
         RemoteCpuStatus status;
     };
 

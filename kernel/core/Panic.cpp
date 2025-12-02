@@ -56,7 +56,10 @@ namespace Npk
 
     static void DumpCpuInfo()
     {
+        const CpuId myId = MyCoreId();
+
         PanicPrint("CPU info:\r\n");
+        PanicPrint("Id (sw, hw): %zu, %p\r\n", myId, GetIpiId(myId));
         HwDumpPanicInfo(PanicPrintBufferSize, PanicPrint);
         PanicPrint("\r\n");
     }
