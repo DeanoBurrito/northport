@@ -31,39 +31,37 @@
 
 namespace sl
 {
-    template<typename T>
+    struct QueueMpScHook
+    {
+        Atomic<void*> next;
+    };
+
+    template<typename T, QueueMpScHook T::*Hook>
     class QueueMpSc
     {
-    public:
-        struct Item
-        {
-            Atomic<Item*> next;
-            T data;
-
-            constexpr Item() : next(nullptr), data{}
-            {}
-        };
-    
     private:
-        Item stub;
-        Atomic<Item*> head;
-        Item* tail;
+        T stub;
+        Atomic<T*> head;
+        T* tail;
 
     public:
+        static QueueMpScHook* Hk(T* value)
+        { return &(value->*Hook); }
+
         constexpr QueueMpSc() : stub{}, head(&stub), tail(&stub)
         {}
 
-        void Push(Item* item)
+        void Push(T* item)
         {
-            item->next.Store(nullptr, Release);
-            Item* prev = head.Exchange(item, AcqRel);
-            prev->next.Store(item);
+            Hk(item)->next.Store(nullptr, Release);
+            auto* prev = head.Exchange(item, AcqRel);
+            Hk(prev)->next.Store(item);
         }
 
-        Item* Pop()
+        T* Pop()
         {
-            Item* end = tail;
-            Item* next = end->next.Load(Acquire);
+            T* end = tail;
+            T* next = static_cast<T*>(Hk(end)->next.Load(Acquire));
 
             if (end == &stub)
             {
@@ -72,7 +70,7 @@ namespace sl
                 
                 tail = next;
                 end = next;
-                next = next->next.Load(Acquire);
+                next = static_cast<T*>(Hk(next)->next.Load(Acquire));
             }
 
             if (next != nullptr)
@@ -81,12 +79,12 @@ namespace sl
                 return end;
             }
 
-            Item* begin = head.Load(Acquire);
+            T* begin = head.Load(Acquire);
             if (end != begin)
                 return nullptr;
 
             Push(&stub);
-            next = end->next.Load(Acquire);
+            next = static_cast<T*>(Hk(end)->next.Load(Acquire));
 
             if (next != nullptr)
             {
