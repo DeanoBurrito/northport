@@ -36,13 +36,12 @@ namespace sl
         
         constexpr static unsigned alignment = minAlignment > alignof(T) ? minAlignment : alignof(T);
 
-        alignas(alignment) T value {};
+        alignas(alignment) T value;
 
         static_assert(__is_trivially_copyable(T), "Bad atomic type, must be trivally copyable");
 
     public:
-        constexpr Atomic() noexcept : value{} 
-        {}
+        Atomic() = default;
 
         Atomic(const Atomic&) = delete;
         Atomic& operator=(const Atomic&) = delete;
