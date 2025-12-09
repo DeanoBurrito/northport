@@ -61,6 +61,19 @@ namespace sl
             return Span<const T>(data, size);
         }
 
+        size_t Find(T single) const
+        {
+            for (size_t i = 0; i < size; i++)
+            {
+                if (data[i] != single)
+                    continue;
+
+                return i;
+            }
+
+            return Size();
+        }
+
         Span Find(Span other) const
         {
             if (other.size > size || other.Empty())

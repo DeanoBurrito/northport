@@ -7,6 +7,37 @@ namespace sl
 {
     using RefCount = Atomic<size_t>;
 
+    template<typename T, RefCount T::*refs>
+    bool IncrementRefCount(T* ptr)
+    {
+        if (ptr == nullptr)
+            return false;
+
+        while (true)
+        {
+            auto expected = (ptr->*refs).Load(sl::Acquire);
+            if (expected == 0)
+                return false;
+
+            const auto desired = expected++;
+            if ((ptr->*refs).CompareExchange(expected, desired, sl::AcqRel))
+                return true;
+        }
+
+        return false;
+    }
+
+    template<typename T, RefCount T::*refs>
+    bool DecrementRefCount(T* ptr)
+    {
+        if (ptr == nullptr)
+            return false;
+
+        const bool last = (ptr->*refs).FetchSub(1) == 1;
+
+        return last;
+    }
+
     template<typename T, RefCount T::*refs, void (*WhenZero)(T*) = nullptr>
     class Ref
     {
@@ -19,8 +50,8 @@ namespace sl
 
         Ref(T* p) : ptr(p)
         {
-            if (ptr != nullptr)
-                (ptr->*refs)++;
+            if (!Acquire())
+                ptr = nullptr;
         }
 
         ~Ref()
@@ -31,8 +62,8 @@ namespace sl
         Ref(const Ref& other)
         {
             ptr = other.ptr;
-            if (ptr != nullptr)
-                (ptr->*refs)++;
+            if (!Acquire())
+                ptr = nullptr;
         }
 
         Ref& operator=(const Ref& other)
@@ -41,8 +72,9 @@ namespace sl
                 Release();
 
             ptr = other.ptr;
-            if (ptr != nullptr)
-                (ptr->*refs)++;
+            if (!Acquire())
+                ptr = nullptr;
+
             return *this;
         }
 
@@ -54,21 +86,24 @@ namespace sl
 
         Ref& operator=(Ref&& from)
         {
-            if (ptr != nullptr)
-                (ptr->*refs)--;
+            Release();
 
             ptr = from.ptr;
             from.ptr = nullptr;
             return *this;
         }
 
+        bool Acquire()
+        {
+            return IncrementRefCount<T, refs>(ptr);
+        }
+
         void Release()
         {
-            if (ptr == nullptr)
+            if (!DecrementRefCount<T, refs>(ptr))
                 return;
 
-            const bool zeroRefs = --(ptr->*refs) == 0;
-            if (zeroRefs && WhenZero != nullptr)
+            if (WhenZero != nullptr)
                 WhenZero(ptr);
             ptr = nullptr;
         }
