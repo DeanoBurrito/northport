@@ -12,9 +12,11 @@
     #define SL_UNREACHABLE()  __builtin_unreachable()
     #define SL_NO_PROFILE [[gnu::no_instrument_function]]
     #define SL_NO_KASAN [[gnu::no_sanitize_address]]
+    #define SL_USED [[gnu::used]]
 
     #ifdef __ELF__
         #define SL_TAGGED(id, variable) [[gnu::section(".sl_tagged." #id)]] variable
+        #define SL_SECTION(S, F) [[gnu::section(S)]] F
     #else
         #error "Unknown executable format"
     #endif
