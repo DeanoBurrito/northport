@@ -142,6 +142,8 @@ extern "C"
     extern char KERNEL_DATA_END[];
     extern void (*INIT_ARRAY_BEGIN[])();
     extern void (*INIT_ARRAY_END[])();
+    extern void (*PREINIT_ARRAY_BEGIN[])();
+    extern void (*PREINIT_ARRAY_END[])();
     extern char KERNEL_CPULOCALS_BEGIN[];
     extern char KERNEL_CPULOCALS_END[];
 

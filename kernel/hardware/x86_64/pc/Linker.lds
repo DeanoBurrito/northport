@@ -40,6 +40,13 @@ SECTIONS
         INIT_ARRAY_END = .;
     } :rodata
 
+    .preinit_array :
+    {
+        PREINIT_ARRAY_BEGIN = .;
+        KEEP(*(.preinit_array .preinit_array.*))
+        PREINIT_ARRAY_END = .;
+    } :rodata
+
     .limine_reqs :
     {
         KEEP(*(.limine_reqs))

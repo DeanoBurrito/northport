@@ -365,6 +365,18 @@ R"(                                             888                      )"
     {
         localSystemDomain = &sysDomain0; //TODO: multi-domain
 
+        if (MyCoreId() != 0)
+        {
+            size_t ctorCount = 0;
+            for (auto it = PREINIT_ARRAY_BEGIN; it != PREINIT_ARRAY_END; ++it)
+            {
+                it[0]();
+                ctorCount++;
+            }
+            Log("Ran %zu local constructor%s.", LogLevel::Verbose, ctorCount,
+                ctorCount == 1 ? "" : "s");
+        }
+
         Private::InitLocalScheduler(idle);
         SetCurrentThread(idle);
         Log("Cpu %zu is online and available.", LogLevel::Info, MyCoreId());
@@ -372,6 +384,8 @@ R"(                                             888                      )"
 
     extern "C" void KernelEntry()
     {
+        //1. Very early setup. There are some dependencies between the following
+        //portions of code, most of them cannot be moved.
         InitState initState {};
         auto loadState = Loader::GetEntryState();
 
@@ -391,17 +405,37 @@ R"(                                             888                      )"
         Log("Ran %zu global constructor%s.", LogLevel::Verbose, ctorCount,
             ctorCount == 1 ? "" : "s");
 
+        //2. Setup early allocators
         initState.dmBase = loadState.directMapBase;
         initState.usedPages = 0;
         initState.pmaCount = ReadConfigUint("npk.pm.temp_mapping_count", 512);
         initState.vmAllocHead = HwInitBspMmu(initState, initState.pmaCount);
         sysDomain0.zeroPage = initState.PmAlloc();
 
+        //3. Setup kernel virtual address space and switch to it.
         SetupKernelAddressSpace(initState, loadState);
         HwKernelMap({});
 
+        //4. Load cpu-local variables for the BSP. The storage used for these
+        //is the original copy of the cpu-locals in the kernel image. Other
+        //cpus will make a copy of this memory for their local variables but
+        //theirs will be zeroed before calling `HwSetMyLocals()`.
         HwSetMyLocals((uintptr_t)KERNEL_CPULOCALS_BEGIN, loadState.bspId);
         localSystemDomain = &sysDomain0;
+
+        ctorCount = 0;
+        for (auto it = PREINIT_ARRAY_BEGIN; it != PREINIT_ARRAY_END; ++it)
+        {
+            it[0]();
+            ctorCount++;
+        }
+        Log("Ran %zu local constructor%s.", LogLevel::Verbose, ctorCount,
+            ctorCount == 1 ? "" : "s");
+
+        //5. Begin initializing core infrastructure: page access, proper
+        //config store, configuration data (acpi/fdt).
+        //We also (boot if needed, and) take control of the other cpus here.
+        //This is where the system really starts to come alive.
         InitPageAccessCache(initState.pmaCount, initState.pmaSlots);
         SetConfigStore(initState.mappedCmdLine, false);
 

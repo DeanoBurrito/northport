@@ -877,6 +877,14 @@ namespace Npk
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)
 #define NODE_LOCAL(T, id) SL_TAGGED(nodelocal, Npk::NodeLocal<T> id)
 
+#define CPU_LOCAL_CTOR(BODY) CPU_LOCAL_CTOR2(BODY, __COUNTER__)
+#define CPU_LOCAL_CTOR2(BODY, ID) CPU_LOCAL_CTOR3(BODY, ID)
+#define CPU_LOCAL_CTOR3(BODY, ID) \
+    static void cpu_local_ctor_##ID() BODY \
+    SL_USED \
+    SL_SECTION(".preinit_array", static auto* cpu_local_ctor_ptr_##ID) \
+        = &cpu_local_ctor_##ID;
+
 #define NPK_ASSERT_STRINGIFY(x) NPK_ASSERT_STRINGIFY2(x)
 #define NPK_ASSERT_STRINGIFY2(x) #x
 
