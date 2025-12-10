@@ -19,7 +19,7 @@ namespace sl
             if (expected == 0)
                 return false;
 
-            const auto desired = expected++;
+            const auto desired = expected + 1;
             if ((ptr->*refs).CompareExchange(expected, desired, sl::AcqRel))
                 return true;
         }

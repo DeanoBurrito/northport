@@ -71,7 +71,12 @@ namespace sl
                 {
                     if (found->refs == 0)
                         freelist.Remove(found);
-                    return found;
+
+                    found->refs.Add(1);
+                    CacheRef ref = found;
+                    found->refs.Sub(1);
+
+                    return ref;
                 }
 
                 if (found->key > key)
@@ -92,7 +97,11 @@ namespace sl
             found->key = key;
             tree.Insert(found);
             
-            return found;
+            found->refs.Add(1);
+            CacheRef ref = found;
+            found->refs.Sub(1);
+
+            return ref;
         }
     };
 }
