@@ -2,6 +2,7 @@
 #include <CorePrivate.hpp>
 #include <Core.hpp>
 #include <Debugger.hpp>
+#include <NamespacePrivate.hpp>
 #include <Vm.hpp>
 #include <AcpiTypes.hpp>
 #include <Maths.hpp>
@@ -463,6 +464,9 @@ R"(                                             888                      )"
         InitKernelVmSpace(lowBase, lowTop - lowBase, highBase, 
             highTop - highBase);
 
+        Private::InitNamespace();
+
+        //6. BSP initialization is complete.
         Log("BSP init done, entering idle thread.", LogLevel::Trace);
         IntrsOn();
         while (true)

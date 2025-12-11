@@ -70,19 +70,21 @@ SECTIONS
     .bss :
     {
         *(COMMON)
+
+        KERNEL_CPULOCALS_BEGIN = .;
+        KEEP(*(.sl_tagged.cpubase .sl_tagged.cpubase.*))
+        KEEP(*(.sl_tagged.cpulocal .sl_tagged.cpulocal.*))
+        KERNEL_CPULOCALS_END = .;
+
+        KERNEL_NODELOCALS_BEGIN = .;
+        KEEP(*(.sl_tagged.nodelocal .sl_tagged.nodelocal.*))
+        KERNEL_NODELOCALS_END = .;
+
         *(.bss .bss.*)
         *(.lbss .lbss.*)
     } :data
 
     . += CONSTANT(MAXPAGESIZE);
-
-    .percpu (NOLOAD) :
-    {
-        KERNEL_CPULOCALS_BEGIN = .;
-        KEEP(*(.sl_tagged.cpubase .sl_tagged.cpubase.*))
-        KEEP(*(.sl_tagged.cpulocal .sl_tagged.cpulocal.*))
-        KERNEL_CPULOCALS_END = .;
-    }
 
     /DISCARD/ :
     {
