@@ -754,20 +754,26 @@ namespace Npk
         data.state = ThreadState::Waiting;
         data.sleepBegin = GetMonotonicTime();
         data.lock.Unlock();
+
+        localSched->switchPending.Store(true, sl::Release);
     }
 
-    void Private::EndWait(ThreadContext* thread)
+    void Private::EndWait()
     {
         AssertIpl(Ipl::Dpc);
 
         const auto sleepEnd = GetMonotonicTime();
+        auto thread = GetCurrentThread();
         auto& data = thread->scheduling;
 
         data.lock.Lock();
         data.sleepTime = sleepEnd.epoch - data.sleepBegin.epoch;
         data.state = ThreadState::Standby;
         data.lock.Unlock();
+    }
 
+    void Private::WakeThread(ThreadContext* thread)
+    {
         EnqueueThread(thread);
     }
 }

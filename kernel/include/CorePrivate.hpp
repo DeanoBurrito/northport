@@ -10,9 +10,11 @@ namespace Npk::Private
 {
     void SetMyNodePointer(uintptr_t addr);
     void InitLocalScheduler(ThreadContext* idle);
+    void PrePassiveRunLevel();
     void OnPassiveRunLevel();
     void BeginWait();
-    void EndWait(ThreadContext* thread);
+    void EndWait();
+    void WakeThread(ThreadContext* thread);
     void WorkThreadEntry(void* arg);
 
     void AcquirePanicOutputs(LogSinkList& sinks);

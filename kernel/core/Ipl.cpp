@@ -70,6 +70,8 @@ namespace Npk
                 break;
             case Ipl::Dpc:
                 RunDpcs();
+                if (target == Ipl::Passive)
+                    Private::PrePassiveRunLevel();
                 break;
             case Ipl::Passive:
                 break;

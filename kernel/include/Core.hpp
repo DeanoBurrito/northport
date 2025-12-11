@@ -290,6 +290,16 @@ namespace Npk
         Success,
     };
 
+    enum class WaitStage : uint8_t
+    {
+        Preparing,
+        Blocked,
+        Satisfied,
+        Timedout,
+        Cancelled,
+        Reset,
+    };
+
     enum class WaitableType : uint8_t
     {
         Condition,
@@ -307,15 +317,41 @@ namespace Npk
 
         ThreadContext* thread;
         Waitable* waitable;
-        sl::Atomic<WaitStatus> status;
+        bool satisfied;
     };
 
+    using WaitEntryList = sl::List<WaitEntry, &WaitEntry::waitableQueueHook>;
+
+    /* Represents an object that threads can block on, and resume execution
+     * when some condition is met. The exact behaviour of a waitable depends
+     * on its `type` and `ticket` count fields. A waitable must be reset
+     * via a call to `ResetWaitable()` before it can be used.
+     *
+     * `Condition` types act like reference count. Resetting them sets their
+     * ticket count to the requested value, signalling decrements the ticket
+     * count by one until it reaches zero. Once the ticket count is zero, all
+     * waits (current and future) are satisfied immediately until the object
+     * is reset. While it has a non-zero ticket count, any waits on this object
+     * will block.
+     *
+     * `Timer` types block all waiters until the integrated `ClockEvent`
+     * expires, after which it will satisfy all current and future waiters until
+     * reset again. This type of event is signalled by the clock subsystem,
+     * manually signalling it will cause it to act as if the `ClockEvent` fired.
+     *
+     * `Mutex` types are intended for use as blocking locks. The ticket count
+     * represents the number of locks available, typically this will be reset
+     * to just one, for a true mutex. Threads will block on mutexes with a 
+     * ticket count of 0, and will only be satisfied when they can successfully
+     * decrement the ticket count without it going below zero.
+     */
     struct Waitable
     {
         WaitableType type;
 
         IplSpinLock<Ipl::Dpc> lock;
-        sl::List<WaitEntry, &WaitEntry::waitableQueueHook> waiters;
+        WaitEntryList waiters;
+        sl::QueueMpScHook mpscHook;
 
         size_t tickets;
         union
@@ -325,8 +361,8 @@ namespace Npk
         };
     };
 
-    struct SmpMailData;
-    using MailQueue = sl::QueueMpSc<SmpMailData>;
+    using WaitableMpScQueue = sl::QueueMpSc<Waitable, &Waitable::mpscHook>;
+    
     using MailFunction = void (*)(void* arg);
 
     struct SmpMail
@@ -526,8 +562,8 @@ namespace Npk
 
         struct
         {
+            sl::Atomic<WaitStage> stage;
             IplSpinLock<Ipl::Dpc> lock;
-            sl::Span<WaitEntry> entries;
             sl::StringSpan reason;
         } waiting;
 
@@ -816,11 +852,26 @@ namespace Npk
      */
     sl::Opt<CpuId> GetThreadAffinity(ThreadContext* thread, bool& pinned);
 
-    void CancelWait(ThreadContext* thread);
+    /* Attempts to cancel a preparing or ongoing wait operation for a thread.
+     * Returns whether a wait was successfully cancelled or not.
+     */
+    bool CancelWait(ThreadContext* thread);
+
     WaitStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, 
         sl::TimeCount timeout, sl::StringSpan reason = {});
+
+    /* Marks a waitable object as able to satisfy a waiter. This can be called
+     * from any IPL but calls from > passive level may not satisfy waiters
+     * immediately.
+     */
     void SignalWaitable(Waitable* what);
-    void ResetWaitable(Waitable* what, WaitableType newType, size_t tickets);
+
+    /* Resets a waitable object to its a default state for `newType`, optionally
+     * setting the initial ticket count. Returns whether the reset was
+     * performed, as sometimes it may not be possible: e.g. `what` is a locked
+     * mutex.
+     */
+    bool ResetWaitable(Waitable* what, WaitableType newType, size_t tickets);
 
     SL_ALWAYS_INLINE
     WaitStatus WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout,
