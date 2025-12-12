@@ -171,6 +171,9 @@ namespace Npk::Private
             }
         }
 
+        if (selected != nullptr)
+            TrySplitNode(pool, selected, len);
+
         uintptr_t mapBegin = AlignDownPage(selected->base);
         uintptr_t mapEnd = AlignUpPage(selected->base + selected->length);
 
@@ -199,9 +202,6 @@ namespace Npk::Private
 
             //TODO: if paged pool, add this page to the active lists
         }
-
-        if (selected != nullptr)
-            TrySplitNode(pool, selected, len);
 
         ReleaseMutex(&pool.mutex);
 

@@ -25,6 +25,7 @@ namespace Npk
             return false;
         }
 
+        entry->satisfied = true;
         entry->waitable->waiters.Remove(entry);
 
         //perform any processing the waitable requires
@@ -39,8 +40,6 @@ namespace Npk
         default:
             NPK_UNREACHABLE();
         }
-
-        entry->satisfied = true;
 
         return true;
     }
@@ -150,7 +149,8 @@ namespace Npk
                 auto& e = entries[i];
 
                 e.waitable->lock.Lock();
-                e.waitable->waiters.Remove(&e);
+                if (!e.satisfied)
+                    e.waitable->waiters.Remove(&e);
                 e.waitable->lock.Unlock();
 
                 e.thread = nullptr;
@@ -251,7 +251,8 @@ namespace Npk
             auto& e = entries[i];
 
             e.waitable->lock.Lock();
-            e.waitable->waiters.Remove(&e);
+            if (!e.satisfied)
+                e.waitable->waiters.Remove(&e);
             e.waitable->lock.Unlock();
 
             e.thread = nullptr;
