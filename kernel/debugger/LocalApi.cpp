@@ -22,7 +22,7 @@ namespace Npk
 
         if (!ReadConfigUint("npk.debugger.enable", false))
         {
-            Log("Debugger not initialized: not enable in config",
+            Log("Debugger not initialized: not enabled in config",
                 LogLevel::Info);
             return;
         }
@@ -62,7 +62,7 @@ namespace Npk
 
         if (ReadConfigUint("npk.debugger.auto_connect", true))
         {
-            Log("Debugger auto-connected is enabled, waiting for host ...",
+            Log("Debugger auto-connect is enabled, waiting for host ...",
                 LogLevel::Info);
             ConnectDebugger();
         }
