@@ -8,15 +8,13 @@ namespace Npk
      */
     constexpr char PathDelimiter = '/';
 
-    using Handle = void*;
-    using HeapTag = uint8_t; //TODO: use original type definition
-
     enum class NsStatus
     {
         Success,
         InvalidArg,
         BadObject,
         InternalError,
+        Shortage,
     };
 
     enum class NsObjFlag
@@ -50,12 +48,12 @@ namespace Npk
         size_t length;
     };
 
+    using Handle = NsObject*;
+
     using NsObjRef = sl::Ref<NsObject, &NsObject::refcount>;
     using NsObjList = sl::List<NsObject, &NsObject::siblingHook>;
 
-    struct HandleTable
-    {
-    };
+    struct HandleTable;
 
     /* Returns a reference to the top-most object of the global namespace.
      */
@@ -99,10 +97,26 @@ namespace Npk
     NsStatus UnlinkObject(NsObject& parent, NsObject& child);
 
     NsStatus CreateHandleTable(HandleTable** table);
-    void DestroyHandleTable(HandleTable& table);
+    bool DestroyHandleTable(HandleTable& table);
     NsStatus DuplicateHandleTable(HandleTable** copy, HandleTable& source);
 
     NsStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj);
-    void DestroyHandle(Handle& handle, HandleTable& table);
-    NsObject& GetHandleValue(Handle& handle, HandleTable& table);
+    bool DestroyHandle(Handle& handle, HandleTable& table);
+
+    /* If `handle` is valid for the given handle table, this function looks up
+     * the namespace object associated with `handle` and places it in 
+     * `*object`. If the lookup was successful the object's refcount will be
+     * incremented before returning, it is the caller's responsiblity to
+     * decrement the refcount again when appropriate.
+     * This function will lock the handle table itself, if the mutex
+     * is already held by the caller: use `GetHandleValueLocked()` instead.
+     * Returns whether `*object` was modified.
+     */
+    bool GetHandleValue(NsObject** object, Handle& handle, HandleTable& table);
+
+    /* Similar to `GetHandleValue()` except this function assumes the caller
+     * is holding the table mutex.
+     */
+    bool GetHandleValueLocked(NsObject** object, Handle& handle,
+        HandleTable& table);
 }

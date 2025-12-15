@@ -6,7 +6,7 @@ namespace Npk
 
     void Private::InitNamespace()
     {
-        void* ptr = HeapAllocNonPaged(sizeof(NsObject), NamespaceHeapTag);
+        void* ptr = PoolAllocWired(sizeof(NsObject), NamespaceHeapTag);
         NPK_ASSERT(ptr != nullptr);
 
         rootObj = new(ptr) NsObject{};
@@ -114,43 +114,43 @@ namespace Npk
 
     void UnrefObject(NsObject& obj)
     {
-        if (!sl::DecrementRefCount<NsObject, &NsObject::refcount>(&obj))
-            return;
+        NsObject* target = &obj;
+        (void)obj;
 
-        //arbitrarily high value, just to check for any wraparound bugs.
-        NPK_ASSERT(obj.refcount.Load(sl::Relaxed) < 0x12345678); //TODO: make this non-fatal
-
-        if (&obj == rootObj)
+        while (true)
         {
-            Log("Root namespace object reached a refcount of 0!?", 
-                LogLevel::Error);
-            obj.refcount++;
-            return;
+            if (!sl::DecrementRefCount<NsObject, &NsObject::refcount>(target))
+                break;
+
+            if (target == rootObj)
+            {
+                Log("Root namespace object reached a refcount of 0?!", 
+                    LogLevel::Error);
+                target->refcount = 1;
+                break;
+            }
+            //TODO: remove from parent's children list
+
+            NsObject* parent = target->parent;
+            NPK_ASSERT(parent != nullptr);
+
+            if (target->dtor != nullptr)
+                target->dtor(target);
+
+            const bool wired = target->flags.Has(NsObjFlag::Wired);
+            if (!target->flags.Has(NsObjFlag::UseNameDirectly))
+            {
+                void* ptr = const_cast<char*>(target->name.Begin());
+                const size_t len = target->name.SizeBytes();
+
+                PoolFree(ptr, len, target->heapTag, wired);
+            }
+
+            target->name = {};
+            PoolFree(target, target->length, wired, target->heapTag);
+
+            target = parent;
         }
-
-        //TODO: unref parent, which may do this all over again. We should do this in a loop
-
-        const bool wired = obj.flags.Has(NsObjFlag::Wired);
-        if (obj.dtor != nullptr)
-            obj.dtor(&obj);
-
-        if (!obj.flags.Has(NsObjFlag::UseNameDirectly))
-        {
-            void* ptr = const_cast<char*>(obj.name.Begin());
-            const size_t len = obj.name.SizeBytes();
-
-            if (wired)
-                HeapFreeNonPaged(ptr, len, obj.heapTag);
-            else
-                HeapFree(ptr, len, obj.heapTag);
-        }
-        obj.name = {};
-
-        if (wired)
-            HeapFreeNonPaged(&obj, obj.length, obj.heapTag);
-        else
-            HeapFree(&obj, obj.length, obj.heapTag);
-        //TODO: dont bother syncing on the mutex, it canonly be accessed while this object is referenced.
     }
 
     NsObjRef GetObjectAutoref(NsObject& obj)
