@@ -93,7 +93,6 @@ namespace Npk
             const auto status = SetKernelMap(virtBase, LookupPagePaddr(page), 
                 VmFlag::Write);
 
-            //TODO: compact these allocations, dont waste a single page on each
             NPK_ASSERT(status == VmStatus::Success);
         }
 
@@ -112,7 +111,10 @@ namespace Npk
             NPK_CHECK(CopyFromPhysical(sdtPaddr, sdtBuff) == sizeof(sl::Sdt), );
             sl::MemCopy(acpiTables[i].signature, sdt.signature, 4);
 
-            acpiTables[i].vaddr = reinterpret_cast<void*>(virtBase);
+            const size_t offset = sdtPaddr & PageMask();
+            const uintptr_t sdtVaddr = virtBase + offset;
+            acpiTables[i].vaddr = reinterpret_cast<void*>(sdtVaddr);
+
             const Paddr sdtTop = sdtPaddr + sdt.length;
             for (size_t m = AlignDownPage(sdtPaddr); m < sdtTop; 
                 m += PageSize(), virtBase += PageSize())
