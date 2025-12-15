@@ -4,8 +4,6 @@
 
 namespace Npk
 {
-    using HeapTag = uint32_t;
-
 #define NPK_MAKE_HEAP_TAG(str) \
     ( (static_cast<HeapTag>(str[3]) << 24) \
     | (static_cast<HeapTag>(str[2]) << 16) \

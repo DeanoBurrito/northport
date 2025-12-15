@@ -17,6 +17,8 @@ namespace sl
 
 namespace Npk
 {
+    using HeapTag = uint32_t;
+
     constexpr uint8_t MinPriority = 0;
     constexpr uint8_t MaxPriority = 255;
 
