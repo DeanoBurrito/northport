@@ -48,10 +48,12 @@ namespace Npk
         size_t length;
     };
 
-    using Handle = NsObject*;
-
     using NsObjRef = sl::Ref<NsObject, &NsObject::refcount>;
     using NsObjList = sl::List<NsObject, &NsObject::siblingHook>;
+
+    using Handle = NsObject*;
+
+    constexpr Handle InvalidHandle = nullptr;
 
     struct HandleTable;
 
@@ -96,8 +98,20 @@ namespace Npk
     NsStatus LinkObject(NsObject& parent, NsObject& child);
     NsStatus UnlinkObject(NsObject& parent, NsObject& child);
 
+    /* Attempts to create a new empty handle table. If successful the result is
+     * placed in `*table`.
+     */
     NsStatus CreateHandleTable(HandleTable** table);
+
+    /* Destroys any remaining active handles in the table, then releases the
+     * table resources. Returns whether destruction was successful or not.
+     */
     bool DestroyHandleTable(HandleTable& table);
+
+    /* Creates a new handle table and copies any valid handles from `source`.
+     * Copied handles increment the refcount of the underlying object and 
+     * will be placed in the same slot they occupied in `source`.
+     */
     NsStatus DuplicateHandleTable(HandleTable** copy, HandleTable& source);
 
     NsStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj);

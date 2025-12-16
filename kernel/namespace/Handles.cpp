@@ -1,4 +1,5 @@
 #include <NamespacePrivate.hpp>
+#include <Maths.hpp>
 
 namespace Npk
 {
@@ -10,15 +11,17 @@ namespace Npk
         sl::Span<Handle> entries;
     };
 
-    NsStatus CreateHandleTable(HandleTable** table)
+    NsStatus CreateHandleTableSized(HandleTable** table, size_t entryCount)
     {
         using Private::HandleHeapTag;
+
+        entryCount = sl::AlignUp(entryCount, InitialTableEntries);
 
         void* ptr = PoolAllocPaged(sizeof(HandleTable), HandleHeapTag);
         if (ptr == nullptr)
             return NsStatus::Shortage;
 
-        void* entries = PoolAllocPaged(sizeof(Handle) * InitialTableEntries,
+        void* entries = PoolAllocPaged(sizeof(Handle) * entryCount, 
             HandleHeapTag);
         if (entries == nullptr)
         {
@@ -30,17 +33,22 @@ namespace Npk
 
         if (!ResetWaitable(&latest->mutex, WaitableType::Mutex, 1))
         {
-            PoolFreePaged(entries, sizeof(Handle) * InitialTableEntries, 
+            PoolFreePaged(entries, sizeof(Handle) * entryCount, 
                 HandleHeapTag);
             PoolFreePaged(ptr, sizeof(HandleTable), HandleHeapTag);
             return NsStatus::InternalError;
         }
 
         Handle* entryArray = static_cast<Handle*>(entries);
-        latest->entries = sl::Span<Handle>(entryArray, InitialTableEntries);
+        latest->entries = sl::Span<Handle>(entryArray, entryCount);
 
         *table = latest;
         return NsStatus::Success;
+    }
+
+    NsStatus CreateHandleTable(HandleTable** table)
+    {
+        return CreateHandleTableSized(table, InitialTableEntries);
     }
 
     bool DestroyHandleTable(HandleTable& table)
@@ -49,6 +57,22 @@ namespace Npk
 
         if (!ResetWaitable(&table.mutex, WaitableType::Mutex, 0))
             return false;
+
+        size_t leakedCount = 0;
+        for (size_t i = 0; i < table.entries.Size(); i++)
+        {
+            if (table.entries[i] == InvalidHandle)
+                continue;
+
+            UnrefObject(*table.entries[i]);
+            leakedCount++;
+        }
+
+        if (leakedCount != 0)
+        {
+            Log("Handle table %p had %zu open handles at destruction.",
+                LogLevel::Warning, &table, leakedCount);
+        }
 
         if (!PoolFreePaged(table.entries.Begin(), table.entries.SizeBytes(),
             HandleHeapTag))
@@ -66,13 +90,34 @@ namespace Npk
     {
         HandleTable* other = nullptr;
 
-        auto result = CreateHandleTable(&other);
+        auto result = CreateHandleTableSized(&other, source.entries.Size());
         if (result != NsStatus::Success)
             return result;
 
-        //TODO: copy contents
+        if (!AcquireMutex(&source.mutex, sl::NoTimeout, NPK_WAIT_LOCATION))
+        {
+            DestroyHandleTable(*other);
+            return NsStatus::InternalError;
+        }
 
+        for (size_t i = 0; i < source.entries.Size(); i++)
+        {
+            if (source.entries[i] == InvalidHandle)
+                continue;
+
+            //I dont like having an assert here (fatal failure path), but I'll
+            //justify it by saying a handle existing requires the object to
+            //have a non-zero refcount. If `RefObject()` fails here that means
+            //someone has called `UnrefObject()` twice elsewhere, so we have a
+            //bug.
+            NPK_ASSERT(RefObject(*source.entries[i]));
+
+            other->entries[i] = source.entries[i];
+        }
+
+        sl::AtomicThreadFence(sl::Release);
         *copy = other;
+
         return NsStatus::Success;
     }
 

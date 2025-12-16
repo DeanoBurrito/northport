@@ -7,6 +7,7 @@ KERNEL_CXX_SRCS += core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
 	entry/Allocators.cpp entry/BringUp.cpp entry/ConfigRoot.cpp \
 	entry/EfiRuntime.cpp \
 	io/Continuation.cpp io/Packet.cpp io/Str.cpp \
+	namespace/Handles.cpp namespace/Objects.cpp \
 	vm/KernelStack.cpp vm/PageTables.cpp vm/Pool.cpp vm/Space.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
