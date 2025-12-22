@@ -29,15 +29,39 @@ namespace Npk
      */
     struct HwThreadContext;
 
+    /* Opaque type. Represents arch-specific state required for a thread to
+     * enter user mode.
+     */
+    struct HwUserContext;
+
+    /* Describes the major reason for an exit from a user mode context.
+     */
+    enum class HwUserExitType
+    {
+        InvalidEntryState = 0,
+        Exit = 1,
+        CpuException = 2,
+        Syscall = 3,
+    };
+
+    /* Provides a complete description of why a user context returned to the 
+     * kernel.
+     */
+    struct HwUserExitInfo
+    {
+        HwUserExitType type;
+        size_t subtype;
+    };
+
     /* Forward declaration, see Core.hpp for the full description.
      */
     struct ThreadContext;
 
-    /* Forward delcation, see Debugger.hpp for the full description.
+    /* Forward declaration, see Debugger.hpp for the full description.
      */
     enum class DebugEventType;
 
-    /* Forward delcation, see Debugger.hpp for the full description.
+    /* Forward declaration, see Debugger.hpp for the full description.
      */
     enum class DebugStatus;
 
@@ -179,6 +203,32 @@ namespace Npk
      */
     void HwPrimeThread(HwThreadContext** store, uintptr_t stub, uintptr_t entry,
         uintptr_t arg, uintptr_t stack);
+
+    /* Initializes a user mode context, typically to be used for the current
+     * thread, but no such binding is enforced.
+     */
+    void HwPrimeUserContext(HwUserContext* context, uintptr_t entry, 
+        uintptr_t arg, uintptr_t stack);
+
+    /* Cleans up and releases any resources the harware layer may have attached
+     * to a user context. This function is destructive and renders the user 
+     * context unusable without another call to `HwPrimeUserContext()`.
+     */
+    void HwCleanupUserContext(HwUserContext* context);
+
+    /* This function places the current cpu in user mode and transfers control
+     * to the code specified in the user context. This function will eventually
+     * return when this thread's user code causes an event requiring the kernel
+     * to take action. Some events may not cause this function to return, and
+     * instead route to other subsystems, like a page fault. Page faults are
+     * routed to the virtual memory subsystem initially, and are only cause
+     * for a usermode exit (meaning this function returns) if the fault was bad.
+     *
+     * Other exit events include system calls and synchronous cpu exceptions.
+     * Asynchronous exceptions and device interrupts do not cause UM exits, as
+     * they have no relation to the currently executing code.
+     */
+    HwUserExitInfo HwEnterUserContext(HwUserContext* context);
 
     /* Halts (or at least stalls) the current cpu core until an interrupt
      * fires. This should ideally put the cpu into a low(er) power state.
@@ -346,6 +396,13 @@ namespace Npk
     /* Returns the size (in bytes) of a page table at a given level.
      */
     size_t HwGetPageTableSize(size_t level);
+
+    /* Checks if an address could be a valid user-space address. This function
+     * only checks platform constraints, it does not consult the virtual
+     * memory subsystem to see if anything is mapped or will be mapped at
+     * this address.
+     */
+    bool HwIsCanonicalUserAddress(uintptr_t addr);
 
     /* Places the stack of return addresses into `store`.
      * `start` is the frame base pointer to begin at, or `0` if wanting to use

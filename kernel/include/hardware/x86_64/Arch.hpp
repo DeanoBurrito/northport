@@ -9,6 +9,15 @@ namespace Npk
         uint64_t value;
     };
 
+    struct UserFrame;
+
+    struct HwUserContext
+    {
+        uint64_t resumePc;
+        uint64_t resumeSp;
+        UserFrame* frame;
+    };
+
     void CommonCpuSetup();
 
     SL_ALWAYS_INLINE
@@ -22,11 +31,11 @@ namespace Npk
         CpuId swId;
         uintptr_t selfAddr;
         ThreadContext* currThread;
-        void* syscallStack;
+        void* userExitStack;
         void (*ExceptRecoveryPc)(void* stack);
         void* exceptRecoveryStack;
     };
-    static_assert(offsetof(CoreLocalHeader, syscallStack) == 24);
+    static_assert(offsetof(CoreLocalHeader, userExitStack) == 24);
     static_assert(offsetof(CoreLocalHeader, ExceptRecoveryPc) == 32);
     static_assert(offsetof(CoreLocalHeader, exceptRecoveryStack) == 40);
 

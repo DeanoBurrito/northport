@@ -379,4 +379,26 @@ namespace Npk
 
         return 0x1000;
     }
+
+    bool HwIsCanonicalUserAddress(uintptr_t addr)
+    {
+        //Usually you leave the fist page unmapped, on 32-bit systems we'll do
+        //this but for 64-bit systems I'm choosing to leave the whole 32-bit
+        //range unmapped to help find bugs where software may use the wrong
+        //integer type for pointers (`int`).
+        constexpr uintptr_t Min = 4 * GiB;
+
+        //The only interesting thing here is we keep the highest page of the
+        //lower half as unmappable, since there can be bugs with placing a 
+        //`syscall` instruction at the end of the last page. On some cpus this
+        //can lead to a matching `sysret` faulting in the kernel while trying to
+        //return to userspace, allowing user mode software to trigger a kernel
+        //mode fault.
+        const uintptr_t Max = (1ull << (9 * ptLevels + 11))  - PageSize();
+
+        if (addr < Min || addr >= Max)
+            return false;
+
+        return true;
+    }
 }

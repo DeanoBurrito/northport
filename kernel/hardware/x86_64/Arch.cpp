@@ -10,7 +10,6 @@
 #include <Maths.hpp>
 
 extern "C" char SysCallEntry[];
-extern "C" char SysEnterEntry[];
 extern "C" char BadSysCallEntry[];
 extern "C" char InterruptStubsBegin[];
 extern "C" char DebugEventEntry[];
@@ -23,9 +22,9 @@ namespace Npk
         0x00AF'9B00'0000'FFFF, //0x08 - kernel code
         0x00AF'9300'0000'FFFF, //0x10 - kernel data
         0,                     //0x18 - user code 32 (unused)
-        0x00AF'FB00'0000'FFFF, //0x20 - user data (for sysret)
-        0x00AF'F300'0000'FFFF, //0x28 - user code 64
-        0x00AF'FB00'0000'FFFF, //0x30 - user data (for sysexit)
+        0x00AF'F300'0000'FFFF, //0x20 - user data (for sysret)
+        0x00AF'FB00'0000'FFFF, //0x28 - user code 64
+        0x00AF'F300'0000'FFFF, //0x30 - user data (for sysexit)
         0, 0                   //0x40-0x50 - TSS
     };
     
@@ -142,17 +141,6 @@ namespace Npk
             Log("Setup for syscall/sysret: star=0x%tx, lstar=0x%tx, cstar=0x%tx, sfmask=0x%tx",
                 LogLevel::Verbose, ReadMsr(Msr::Star), ReadMsr(Msr::LStar), 
                 ReadMsr(Msr::CStar), ReadMsr(Msr::SFMask));
-        }
-
-        if (CpuHasFeature(CpuFeature::SysEnter))
-        {
-            WriteMsr(Msr::SysenterCs, 0x8);
-            WriteMsr(Msr::SysenterRip, reinterpret_cast<uint64_t>(SysEnterEntry));
-            WriteMsr(Msr::SysenterRsp, 0);
-
-            Log("Setup for sysenter/sysexit: cs=0x%tx, rip=0x%tx, rsp=0x%tx",
-                LogLevel::Verbose, ReadMsr(Msr::SysenterCs), ReadMsr(Msr::SysenterRip),
-                ReadMsr(Msr::SysenterRsp));
         }
 
         //TODO: fixups: sse, xsave

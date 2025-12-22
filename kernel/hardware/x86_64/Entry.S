@@ -19,8 +19,6 @@
 .size DebugEventEntry, (_EndOfDebugEventEntry - DebugEventEntry)
 .type SysCallEntry, @function
 .size SysCallEntry, (_EndOfSysCallEntry - SysCallEntry)
-.type SysEnterEntry, @function
-.size SysEnterEntry, (_EndOfSysEnterEntry - SysEnterEntry)
 .type BadSysCallEntry, @function
 .size BadSysCallEntry, (_EndOfBadSysCallEntry - BadSysCallEntry)
 
@@ -126,109 +124,42 @@ DebugEventEntry:
     iretq
 _EndOfDebugEventEntry:
 
-## AMD have brought many great things to x86, but syscall is not one of them.
-## We enter the kernel without a valid stack set, and there is a race condition
-## with exceptions occuring before we can execute `swapgs`.
-## The solution is to assume the race condition is invisible in this codepath,
-## and from inside the DB/BP/NMI/MCE/etc handlers we need another mechanism
-## to verify which gs base msr is the kernel pointer. So for the purpose of
-## `syscall` entry, we're ignoring any racey exceptions.
-## Similar calling convention to `sysenter`: rcx=user pc, r11=user flags, rdx=unused,
-## rdi/rsi/rax/rbx/r12/r13 are arguments and return values.
 SysCallEntry:
+    ## get kernel values into segment registers (not necessary, but I like to
+    ## know what they contain). The `syscall` instruction does smush values into
+    ## the descriptor cache of %SS - see my previous comment.
     swapgs
+    mov $0x10, %rbp
+    mov %bp, %ss
+    mov %bp, %ds
+    mov %bp, %es
+    mov %bp, %fs
 
-    xchg %rsp, %gs:24
-    push %rcx
-    xor %rcx, %rcx
-    xchg %rcx, %gs:24
-    push %rcx
-    push %r11
-    push %rbp
+    mov %rsp, %r12 ## backup user sp
+    mov %gs:24, %rsp
+    pop %rbx ## previously saved return address
+    pop %rbp ## previously saved buffer for exit frame details
 
-    push %rdi
-    push %rsi
-    push %rax
+    ## Save syscall arguments
+    mov %rax, 0x08(%rbp)
+    mov %rdi, 0x10(%rbp)
+    mov %rsi, 0x18(%rbp)
+    mov %rdx, 0x20(%rbp)
+    mov %r10, 0x28(%rbp)
+    mov %r8,  0x30(%rbp)
+    mov %r9,  0x38(%rbp)
+
+    ## user pc, populated by `syscall` instruction
+    mov %rcx, 0x40(%rbp)
+    ## user sp, backed up earlier
+    mov %r12, 0x48(%rbp)
+    ## see `enum class HwUserExitType` for what this means
+    movq $3,  0x00(%rbp)
+    push %rsp
+
     push %rbx
-    push %r12
-    push %r13
-
-    mov $0x10, %ax
-    mov %ax, %ds
-    mov %ax, %es
-
-    mov %rsp, %rdi
-    mov $0, %rsi
-    call SyscallDispatch
-
-    mov $0x20, %ax
-    mov %ax, %ds
-    mov %ax, %es
-
-    pop %r13
-    pop %r12
-    pop %rbx
-    pop %rax
-    pop %rsi
-    pop %rdi
-
-    pop %rbp
-    pop %r11
-    pop %rcx
-    mov %rcx, %gs:24
-    pop %rcx
-    xchg %rsp, %gs:24
-
-    swapgs
-    sysretq
+    ret
 _EndOfSysCallEntry:
-
-## Entry via `sysenter` is significantly easier since we have a kernel-controlled
-## stack already. This instruction leaves the calling convention to the OS,
-## I've opted to use the following: rdx=user pc, rcx=user stack, r11=user flags,
-## rbp=user scratch reg, arguments and return values are passed in 
-## rdi/rsi/rax/rbx/r12/r13
-SysEnterEntry:
-    swapgs
-
-    push %rdx
-    push %rcx
-    push %r11
-    push %rbp
-
-    push %rdi
-    push %rsi
-    push %rax
-    push %rbx
-    push %r12
-    push %r13
-
-    mov $0x10, %ax
-    mov %ax, %ds
-    mov %ax, %es
-
-    mov %rsp, %rdi
-    mov $1, %rsi
-    cld
-    call SyscallDispatch
-
-    mov $0x20, %ax
-    mov %ax, %ds
-    mov %ax, %es
-
-    pop %r13
-    pop %r12
-    pop %rbx
-    pop %rax
-    pop %rsi
-    pop %rdi
-
-    pop %rbp
-    popf
-
-    swapgs
-    sysexitq
-_EndOfSysEnterEntry:
 
 BadSysCallEntry:
 ud2
