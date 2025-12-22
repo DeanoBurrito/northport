@@ -112,54 +112,38 @@ namespace Npk
      */
     void FreeKernelStack(void* stack);
 
-    /* Attempts to allocate `len` bytes from the non-paged heap. Returns a
-     * `nullptr` on failure to allocate or if `len` is 0, and a valid pointer 
-     * otherwise.
-     * If successful the allocation is tagged with the value of `tag`,
-     * and `timeout` can be used to specify the maximum amount of time this
-     * allocation should wait to acquire the lock, this timeout does not take
-     * into account time spent manipulating internal structures to perform
-     * the allocation.
-     */
-    void* HeapAllocNonPaged(size_t len, HeapTag tag, sl::TimeCount timeout 
+    void* PoolAlloc(size_t len, HeapTag tag, bool wired, sl::TimeCount timeout 
         = sl::NoTimeout);
-
-    /* Frees a previously allocated range of non-paged heap memory: `ptr`
-     * must be a value previously returned from `HeapAllocNonPaged()`, and
-     * `len` must be the same value passed to that function.
-     * The `timeout` can be used to specify how long this function should wait
-     * on any locks (at most one) in the freeing path. If the timeout passes
-     * and the memory couldn't be freed, this function returns false. Otherwise
-     * true is returned on successful freeing. False can only be returned
-     * when timeout != sl::NoTimeout.
-     */
-    bool HeapFreeNonPaged(void* ptr, size_t len, HeapTag tag, 
+    bool PoolFree(void* ptr, size_t len, HeapTag tag, bool wired, 
         sl::TimeCount timeout = sl::NoTimeout);
 
-    /* Attempts to allocate `len` bytes from the paged heap. Allocations here
-     * may only be accessed at Ipl::Passive, unless pinned or held by a MDL.
-     * If successful the allocation is tagged with the value of `tag`,
-     * and `timeout` can be used to specify the maximum amount of time this
-     * allocation should wait to acquire the lock, this timeout does not take
-     * into account time spent manipulating internal structures to perform
-     * the allocation.
-     * Returns `nullptr` on failure or if `len` is 0, and a valid pointer 
-     * otherwise.
-     */
-    void* HeapAlloc(size_t len, HeapTag tag, sl::TimeCount timeout 
-        = sl::NoTimeout);
+    SL_ALWAYS_INLINE
+    void* PoolAllocPaged(size_t len, HeapTag tag, sl::TimeCount timeout 
+        = sl::NoTimeout)
+    {
+        return PoolAlloc(len, tag, false, timeout);
+    }
 
-    /* Frees memory from the paged heap: `ptr` must have originated from an
-     * earlier call to `HeapAlloc()`, and `len` must be same value passed to
-     * the same call to `HeapAlloc()`.
-     * The `timeout` can be used to specify how long this function should wait
-     * on any locks (at most one) in the freeing path. If the timeout passes
-     * and the memory couldn't be freed, this function returns false. Otherwise
-     * true is returned on successful freeing. False can only be returned
-     * when timeout != sl::NoTimeout.
-     */
-    bool HeapFree(void* ptr, size_t len, HeapTag tag, 
-        sl::TimeCount timeout = sl::NoTimeout);
+    SL_ALWAYS_INLINE
+    void* PoolAllocWired(size_t len, HeapTag tag, sl::TimeCount timeout 
+        = sl::NoTimeout)
+    {
+        return PoolAlloc(len, tag, true, timeout);
+    }
+
+    SL_ALWAYS_INLINE
+    bool PoolFreePaged(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout
+        = sl::NoTimeout)
+    {
+        return PoolFree(ptr, len, tag, false, timeout);
+    }
+
+    SL_ALWAYS_INLINE
+    bool PoolFreeWired(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout
+        = sl::NoTimeout)
+    {
+        return PoolFree(ptr, len, tag, true, timeout);
+    }
 
     /* Attempts to allocate a range of `length` bytes in address space `space`,
      * with the base address aligned to the value of `align`. If 

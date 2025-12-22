@@ -6,7 +6,7 @@ namespace Npk
 
     VmStatus AllocKernelStack(void** stack)
     {
-        void* ptr = HeapAllocNonPaged(KernelStackSize(), KernelStackTag);
+        void* ptr = PoolAllocWired(KernelStackSize(), KernelStackTag);
         if (ptr == nullptr)
             return VmStatus::Shortage;
 
@@ -16,7 +16,7 @@ namespace Npk
 
     void FreeKernelStack(void* stack)
     {
-        auto succ = HeapFreeNonPaged(stack, KernelStackSize(), KernelStackTag);
+        auto succ = PoolFreeWired(stack, KernelStackSize(), KernelStackTag);
 
         NPK_ASSERT(succ);
     }

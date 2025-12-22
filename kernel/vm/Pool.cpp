@@ -380,25 +380,15 @@ namespace Npk::Private
 
 namespace Npk
 {
-    void* HeapAllocNonPaged(size_t len, HeapTag tag, sl::TimeCount timeout)
+    void* PoolAlloc(size_t len, HeapTag tag, bool wired, sl::TimeCount timeout)
     {
         //TODO: slabs for small allocs and per-cpu caches (magazines)
-        return Private::PoolAlloc(len, tag, false, timeout);
+        return Private::PoolAlloc(len, tag, !wired, timeout);
     }
-
-    bool HeapFreeNonPaged(void* ptr, size_t len, HeapTag tag, 
+    
+    bool PoolFree(void* ptr, size_t len, HeapTag tag, bool wired, 
         sl::TimeCount timeout)
     {
-        return Private::PoolFree(ptr, len, tag, false, timeout);
-    }
-
-    void* HeapAlloc(size_t len, HeapTag tag, sl::TimeCount timeout)
-    {
-        return Private::PoolAlloc(len, tag, true, timeout);
-    }
-
-    bool HeapFree(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout)
-    {
-        return Private::PoolFree(ptr, len, tag, true, timeout);
+        return Private::PoolFree(ptr, len, tag, !wired, timeout);
     }
 }
