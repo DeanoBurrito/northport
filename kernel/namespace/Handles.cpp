@@ -9,7 +9,13 @@ namespace Npk
     {
         Waitable mutex;
         sl::Span<Handle> entries;
+        size_t firstFreeEntry;
     };
+
+    static size_t GetExpandedHandleTableEntryCount(size_t entries)
+    {
+        return entries + (entries / 2);
+    }
 
     NsStatus CreateHandleTableSized(HandleTable** table, size_t entryCount)
     {
@@ -41,6 +47,7 @@ namespace Npk
 
         Handle* entryArray = static_cast<Handle*>(entries);
         latest->entries = sl::Span<Handle>(entryArray, entryCount);
+        latest->firstFreeEntry = 0;
 
         *table = latest;
         return NsStatus::Success;
@@ -115,6 +122,8 @@ namespace Npk
             other->entries[i] = source.entries[i];
         }
 
+        other->firstFreeEntry = source.firstFreeEntry;
+
         sl::AtomicThreadFence(sl::Release);
         *copy = other;
 
@@ -122,10 +131,82 @@ namespace Npk
     }
 
     NsStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj)
-    { NPK_UNREACHABLE(); }
+    {
+        constexpr size_t NoIndex = -1;
+
+        if (!AcquireMutex(&table.mutex, sl::NoTimeout, NPK_WAIT_LOCATION))
+            return NsStatus::InternalError;
+
+        if (!RefObject(obj))
+        {
+            ReleaseMutex(&table.mutex);
+            return NsStatus::BadObject;
+        }
+
+        //the object is valid and we've got the table's mutex, find or create
+        //a valid slot.
+        if (table.firstFreeEntry == table.entries.Size())
+        {
+            const size_t allocSize = sizeof(Handle) * 
+                GetExpandedHandleTableEntryCount(table.entries.Size());
+
+            void* latest = PoolAllocPaged(allocSize, Private::HandleHeapTag);
+            if (latest == nullptr)
+            {
+                ReleaseMutex(&table.mutex);
+                UnrefObject(obj);
+                
+                return NsStatus::Shortage;
+            }
+
+            Handle* newEntries = static_cast<Handle*>(latest);
+            for (size_t i = 0; i < table.entries.Size(); i++)
+                newEntries[i] = table.entries[i];
+
+            void* prevEntries = table.entries.Begin();
+            const size_t prevEntriesSize = table.entries.SizeBytes();
+            table.entries = { newEntries, allocSize / sizeof(Handle) };
+            PoolFreePaged(prevEntries, prevEntriesSize, Private::HandleHeapTag);
+        }
+        
+        NPK_ASSERT(table.entries[table.firstFreeEntry] == nullptr);
+
+        table.entries[table.firstFreeEntry] = &obj;
+        *handle = table.entries[table.firstFreeEntry];
+
+        while (table.entries[table.firstFreeEntry] != InvalidHandle
+            && table.firstFreeEntry < table.entries.Size())
+        {
+            table.firstFreeEntry++;
+        }
+
+        ReleaseMutex(&table.mutex);
+
+        return NsStatus::Success;
+    }
 
     bool DestroyHandle(Handle& handle, HandleTable& table)
-    { NPK_UNREACHABLE(); }
+    {
+        if (!AcquireMutex(&table.mutex, sl::NoTimeout, NPK_WAIT_LOCATION))
+            return false;
+
+        const size_t index = &handle - table.entries.Begin();
+
+        bool success = false;
+        if (index < table.entries.Size() 
+            && table.entries[index] != InvalidHandle)
+        {
+            Handle obj = table.entries[index];
+            table.entries[index] = InvalidHandle;
+            table.firstFreeEntry = sl::Min(table.firstFreeEntry, index);
+
+            UnrefObject(*obj);
+            success = true;
+        }
+
+        ReleaseMutex(&table.mutex);
+        return success;
+    }
 
     bool GetHandleValue(NsObject** object, Handle& handle, HandleTable& table)
     {
@@ -143,13 +224,14 @@ namespace Npk
     {
         const size_t index = &handle - table.entries.Begin();
 
+        bool success = false;
         if (index < table.entries.Size() && table.entries[index] != nullptr)
         {
             *object = table.entries[index];
             RefObject(**object);
-            return true;
+            success = true;
         }
 
-        return false;
+        return success;
     }
 }

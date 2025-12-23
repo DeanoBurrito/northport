@@ -114,7 +114,15 @@ namespace Npk
      */
     NsStatus DuplicateHandleTable(HandleTable** copy, HandleTable& source);
 
+    /* Finds a free slot in `table` and places a reference to `obj` in it.
+     * This reference internally calls `RefObject()` on `obj`, so as long
+     * as this handle exists the `obj` will be kept alive.
+     * Upon success, a handle referring to `obj` is placed in `*handle`.
+     */
     NsStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj);
+
+    /*
+     */
     bool DestroyHandle(Handle& handle, HandleTable& table);
 
     /* If `handle` is valid for the given handle table, this function looks up
