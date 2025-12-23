@@ -121,6 +121,9 @@ namespace Npk
      * this function aborts further execution of `func` and returns true
      * (an exception occured), the value of `*r` is left unchanged if non-null. 
      * If `func` returned normally, this function returns false.
+     *
+     * This function can be nested: an exception will causes only the innermost
+     * call to this function to return failure.
      */
     extern "C"
     bool ExceptionAwareCall(void* a, void* b, void* c, void** r, 
