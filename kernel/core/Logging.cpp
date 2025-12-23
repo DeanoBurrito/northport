@@ -145,4 +145,27 @@ namespace Npk
             sinks.PushBack(sink);
         }
     }
+
+    sl::StringSpan LogLevelStr(LogLevel level)
+    {
+        constexpr sl::StringSpan levelStrs[] =
+        {
+            "Error",
+            "Warning",
+            "Info",
+            "Verbose",
+            "Trace",
+            "Debug",
+        };
+
+        if (static_cast<size_t>(level) > static_cast<size_t>(LogLevel::Debug))
+            return "unknown";
+        return levelStrs[static_cast<size_t>(level)];
+    }
+    static_assert(static_cast<LogLevel>(0) == LogLevel::Error);
+    static_assert(static_cast<LogLevel>(1) == LogLevel::Warning);
+    static_assert(static_cast<LogLevel>(2) == LogLevel::Info);
+    static_assert(static_cast<LogLevel>(3) == LogLevel::Verbose);
+    static_assert(static_cast<LogLevel>(4) == LogLevel::Trace);
+    static_assert(static_cast<LogLevel>(5) == LogLevel::Debug);
 }

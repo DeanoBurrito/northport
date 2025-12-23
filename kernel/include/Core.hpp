@@ -595,6 +595,10 @@ namespace Npk
     void AddLogSink(LogSink& sink);
     void RemoveLogSink(LogSink& sink);
 
+    /* Enum value to string function for `enum LogLevel`.
+     */
+    sl::StringSpan LogLevelStr(LogLevel which);
+
     void AssertIpl(Ipl target);
     Ipl CurrentIpl();
     Ipl RaiseIpl(Ipl target);
@@ -898,33 +902,6 @@ namespace Npk
         SignalWaitable(mutex);
     }
 
-    /* Enum value to string function for `enum Ipl`.
-     */
-    sl::StringSpan IplStr(Ipl which);
-
-    /* Enum value to string function for `enum ConfigRootType`.
-     */
-    sl::StringSpan ConfigRootTypeStr(ConfigRootType which);
-
-    /* Enum value to string function for `enum CycleAccount`.
-     */
-    sl::StringSpan CycleAccountStr(CycleAccount which);
-
-    /* Enum value to string function for `enum WaitStatus`.
-     */
-    sl::StringSpan WaitStatusStr(WaitStatus which);
-
-    /* Enum value to string function for `enum WaitableType`.
-     */
-    sl::StringSpan WaitableTypeStr(WaitableType which);
-
-    /* Enum value to string function for `enum LogLevel`.
-     */
-    sl::StringSpan LogLevelStr(LogLevel which);
-
-    /* Enum value to string function for `enum ThreadState`.
-     */
-    sl::StringSpan ThreadStateStr(ThreadState which);
 }
 
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)

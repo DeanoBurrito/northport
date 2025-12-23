@@ -111,6 +111,4 @@ namespace Npk
     IoStatus WaitUntilComplete(Iop* packet, sl::TimeCount timeout,
         sl::StringSpan reason = {});
     size_t GetIoPollEntries(size_t offset, sl::Span<IoPollingEntry> entries);
-
-    sl::StringSpan IoStatusStr(IoStatus status);
 }
