@@ -132,8 +132,6 @@ namespace Npk
 
     NsStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj)
     {
-        constexpr size_t NoIndex = -1;
-
         if (!AcquireMutex(&table.mutex, sl::NoTimeout, NPK_WAIT_LOCATION))
             return NsStatus::InternalError;
 

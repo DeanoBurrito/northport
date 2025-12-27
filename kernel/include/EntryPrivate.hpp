@@ -146,6 +146,8 @@ extern "C"
     extern void (*PREINIT_ARRAY_END[])();
     extern char KERNEL_CPULOCALS_BEGIN[];
     extern char KERNEL_CPULOCALS_END[];
+    extern char KERNEL_NODELOCALS_BEGIN[];
+    extern char KERNEL_NODELOCALS_END[];
 
     extern char* BspStackTop;
 }

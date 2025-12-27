@@ -136,7 +136,9 @@ namespace Npk::Private
 
     void* PoolAlloc(size_t len, HeapTag tag, bool paged, sl::TimeCount timeout)
     {
+        NPK_CHECK(len != 0, nullptr);
         NPK_CHECK(tag != 0, nullptr);
+        NPK_CHECK(tag != FreeTag, nullptr);
 
         len = sl::AlignUp(len, MinAllocSize);
         const size_t l1Index = GetL1Index(len);
@@ -250,6 +252,9 @@ namespace Npk::Private
     bool PoolFree(void* ptr, size_t len, HeapTag tag, bool paged, 
         sl::TimeCount timeout)
     {
+        NPK_CHECK(ptr != nullptr, true);
+        NPK_CHECK(len != 0, true);
+
         (void)len;
 
         const auto addr = reinterpret_cast<uintptr_t>(ptr);
@@ -269,6 +274,8 @@ namespace Npk::Private
             if (addr >= it->base && addr < it->base + it->length)
             {
                 node = &*it;
+                sl::MemSet((void*)node->base, 0, node->length);
+
                 break;
             }
         }
