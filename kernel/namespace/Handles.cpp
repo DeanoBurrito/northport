@@ -7,7 +7,7 @@ namespace Npk
 
     struct HandleTable
     {
-        Waitable mutex;
+        Mutex mutex;
         sl::Span<Handle> entries;
         size_t firstFreeEntry;
     };
@@ -37,7 +37,7 @@ namespace Npk
 
         auto* latest = new(ptr) HandleTable {};
 
-        if (!ResetWaitable(&latest->mutex, WaitableType::Mutex, 1))
+        if (!ResetMutex(&latest->mutex, 1))
         {
             PoolFreePaged(entries, sizeof(Handle) * entryCount, 
                 HandleHeapTag);
@@ -62,7 +62,7 @@ namespace Npk
     {
         using Private::HandleHeapTag;
 
-        if (!ResetWaitable(&table.mutex, WaitableType::Mutex, 0))
+        if (!ResetMutex(&table.mutex, 0))
             return false;
 
         size_t leakedCount = 0;

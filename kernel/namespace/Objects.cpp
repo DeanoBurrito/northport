@@ -13,7 +13,7 @@ namespace Npk
         rootObj->heapTag = NamespaceHeapTag;
         rootObj->refcount = 1;
         rootObj->length = sizeof(NsObject);
-        ResetWaitable(&rootObj->mutex, WaitableType::Mutex, 1);
+        ResetMutex(&rootObj->mutex, 1);
 
         Log("Global namespace initialized.", LogLevel::Verbose);
     }
@@ -160,14 +160,14 @@ namespace Npk
 
     NsStatus CreateObject(void** ptr, size_t length, NsObjDtor dtor, 
         sl::StringSpan name , HeapTag tag)
-    {}
+    { NPK_UNREACHABLE(); }
 
     NsStatus RenameObject(NsObject& obj, sl::StringSpan name)
-    {}
+    { NPK_UNREACHABLE(); }
 
     NsStatus LinkObject(NsObject& parent, NsObject& child)
-    {}
+    { NPK_UNREACHABLE(); }
 
     NsStatus UnlinkObject(NsObject& parent, NsObject& child)
-    {}
+    { NPK_UNREACHABLE(); }
 }

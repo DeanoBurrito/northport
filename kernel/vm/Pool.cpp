@@ -29,7 +29,7 @@ namespace Npk::Private
 
     struct Pool
     {
-        Waitable mutex {};
+        Mutex mutex {};
         AddrNodeList nodesByAddr;
         PoolNodeList freeNodes[Level1Count];
 
@@ -356,8 +356,8 @@ namespace Npk::Private
 
     void InitPool(uintptr_t base, size_t length)
     {
-        ResetWaitable(&wiredPool.mutex, WaitableType::Mutex, 1);
-        ResetWaitable(&pagedPool.mutex, WaitableType::Mutex, 1);
+        ResetMutex(&wiredPool.mutex, 1);
+        ResetMutex(&pagedPool.mutex, 1);
 
         base = AlignUpPage(base);
         length = AlignDownPage(length);

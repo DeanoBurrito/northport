@@ -363,6 +363,10 @@ namespace Npk
         };
     };
 
+    using Condition = Waitable;
+    using Timer = Waitable;
+    using Mutex = Waitable;
+
     using WaitableMpScQueue = sl::QueueMpSc<Waitable, &Waitable::mpscHook>;
     
     using MailFunction = void (*)(void* arg);
@@ -492,7 +496,7 @@ namespace Npk
 
         struct 
         {
-            Waitable lock;
+            Mutex lock;
             PageList active;
             PageList dirty;
             PageList standby;
@@ -880,6 +884,32 @@ namespace Npk
     bool ResetWaitable(Waitable* what, WaitableType newType, size_t tickets);
 
     SL_ALWAYS_INLINE
+    bool ResetCondition(Condition* what, size_t tickets)
+    {
+        return ResetWaitable(what, WaitableType::Condition, tickets);
+    }
+
+    SL_ALWAYS_INLINE
+    bool ResetTimer(Condition* what, sl::TimePoint expiry, Dpc* dpc, 
+        Waitable* signalee)
+    {
+        if (!ResetWaitable(what, WaitableType::Timer, 0))
+            return false;
+
+        what->clockEvent.expiry = expiry;
+        what->clockEvent.dpc = dpc;
+        what->clockEvent.waitable = signalee;
+
+        return true;
+    };
+
+    SL_ALWAYS_INLINE
+    bool ResetMutex(Mutex* what, size_t tickets)
+    {
+        return ResetWaitable(what, WaitableType::Mutex, tickets);
+    }
+
+    SL_ALWAYS_INLINE
     WaitStatus WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout,
         sl::StringSpan reason = {})
     {
@@ -887,7 +917,7 @@ namespace Npk
     }
 
     SL_ALWAYS_INLINE
-    bool AcquireMutex(Waitable* mutex, sl::TimeCount timeout, 
+    bool AcquireMutex(Mutex* mutex, sl::TimeCount timeout, 
         sl::StringSpan reason = {})
     {
         WaitEntry entry {};
@@ -897,11 +927,18 @@ namespace Npk
     }
 
     SL_ALWAYS_INLINE
-    void ReleaseMutex(Waitable* mutex)
+    void ReleaseMutex(Mutex* mutex)
     {
         SignalWaitable(mutex);
     }
 
+    bool AcquireSxMutexShared(SxMutex* mutex, sl::TimeCount timeout, 
+        sl::StringSpan reason = {});
+    bool AcquireSxMutexExclusive(SxMutex* mutex, sl::TimeCount timeout,
+        sl::StringSpan reason = {});
+
+    void ReleaseSxMutexShared(SxMutex* mutex);
+    void ReleaseSxMutexExclusive(SxMutex* mutex);
 }
 
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)
