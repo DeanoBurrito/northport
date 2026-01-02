@@ -145,20 +145,22 @@ namespace Npk
         return PoolFree(ptr, len, tag, true, timeout);
     }
 
-    /* Attempts to allocate a range of `length` bytes in address space `space`,
-     * with the base address aligned to the value of `align`. If 
-     * VmStatus::Success is returned the allocated address is placed in `*addr`,
-     * otherwise `*addr` is unchanged. If `*addr` is non-null, it is taken
-     * as the requested base address, if this address is unavailable, this
-     * function returns VmStatus::InUse.
+    /* Attempts to allocate a range of `length` bytes in an address space. If
+     * successful the allocated address is placed in `*addr`, otherwise `*addr`
+     * is left unchanged.
+     * The `constraints` argument allows for fine-tuning how the address space
+     * should be selected, see the struct definition for details.
      */
-    VmStatus AllocateInSpace(VmSpace& space, void** addr, size_t length, 
-        size_t align);
+    VmStatus SpaceAlloc(VmSpace& space, uintptr_t* addr, size_t length, 
+        AllocConstraints constraints = {});
 
     /* Releases `length` bytes of address space from `base` in address space
      * `space`, making them available for future allocations. Note this
      * address space may not be immediately available for reuse. This function
      * does not take care of unmapping anything in this space.
      */
-    VmStatus FreeInSpace(VmSpace& space, void* base, size_t length);
+    VmStatus SpaceFree(VmSpace& space, uintptr_t base, size_t length, 
+        sl::TimeCount timeout = sl::NoTimeout);
+
+    VmStatus LookupRangeInSpace(VmRange** found, VmSpace& space, uintptr_t addr);
 }
