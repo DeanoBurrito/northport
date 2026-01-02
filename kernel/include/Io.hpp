@@ -86,15 +86,6 @@ namespace Npk
 
     using IopQueue = sl::List<Iop, &Iop::queueHook>;
 
-    struct IoPollingEntry
-    {
-        sl::ListHook hook;
-        sl::TimePoint expiry;
-        Iop* packet;
-        uintptr_t callsite;
-        sl::StringSpan reason;
-    };
-
     bool ResetIop(Iop* packet);
     bool PrepareIop(Iop* packet, IoType type, IoInterface* target, 
         void* address, size_t addressSize, IoFlags flags);
@@ -110,5 +101,4 @@ namespace Npk
         sl::StringSpan reason = {});
     IoStatus WaitUntilComplete(Iop* packet, sl::TimeCount timeout,
         sl::StringSpan reason = {});
-    size_t GetIoPollEntries(size_t offset, sl::Span<IoPollingEntry> entries);
 }

@@ -285,33 +285,6 @@ namespace Npk
         }
     }
 
-    static IplSpinLock<Ipl::Dpc> pollingEntriesLock;
-    static sl::List<IoPollingEntry, &IoPollingEntry::hook> pollingEntries;
-
-    size_t GetIoPollEntries(size_t offset, sl::Span<IoPollingEntry> entries)
-    {
-        size_t head = 0;
-
-        sl::ScopedLock scopeLock(pollingEntriesLock);
-        for (auto it = pollingEntries.Begin(); it != pollingEntries.End(); ++it)
-        {
-            while (offset > 0)
-            {
-                offset--;
-                continue;
-            }
-
-            if (head == entries.Size())
-                break;
-
-            //TODO: if 'reason' isnt statically allocated we'll have bugs!!
-            entries[head++] = *it;
-            entries[head - 1].hook = {};
-        }
-
-        return head;
-    }
-
     IoStatus PollUntilComplete(Iop* packet, sl::TimeCount timeout, 
         sl::StringSpan reason)
     {
@@ -322,26 +295,13 @@ namespace Npk
         const auto now = GetMonotonicTime();
         const auto end = timeout.Rebase(now.Frequency).ticks + now.epoch;
 
-        IoPollingEntry entry {};
-        entry.packet = packet;
-        entry.callsite = reinterpret_cast<uintptr_t>(SL_RETURN_ADDR);
-        entry.expiry = end;
-        entry.reason = reason;
-
+        const uintptr_t callsite = reinterpret_cast<uintptr_t>(SL_RETURN_ADDR);
         Log("%zu is polling for iop to complete: %p, reason=%.*s", 
-            LogLevel::Verbose, entry.callsite, entry.packet, 
-            (int)entry.reason.Size(), entry.reason.Begin());
-
-        pollingEntriesLock.Lock();
-        pollingEntries.PushBack(&entry);
-        pollingEntriesLock.Unlock();
+            LogLevel::Verbose, callsite, packet, (int)reason.Size(),
+            reason.Begin());
 
         while (GetMonotonicTime().epoch < end && !packet->complete)
             sl::HintSpinloop();
-
-        pollingEntriesLock.Lock();
-        pollingEntries.Remove(&entry);
-        pollingEntriesLock.Unlock();
 
         if (GetMonotonicTime().epoch >= end)
             return IoStatus::Timeout;
