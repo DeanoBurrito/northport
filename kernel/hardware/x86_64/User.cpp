@@ -1,5 +1,6 @@
 #include <Hardware.hpp>
 #include <Vm.hpp>
+#include <Maths.hpp>
 
 namespace Npk
 {
@@ -9,21 +10,28 @@ namespace Npk
     {
         uint64_t type;
 
-        union
+        struct
         {
-            struct
-            {
-                uint64_t function;
-                uint64_t arg0;
-                uint64_t arg1;
-                uint64_t arg2;
-                uint64_t arg3;
-                uint64_t arg4;
-                uint64_t arg5;
-                uint64_t userPc;
-                uint64_t userSp;
-            } syscall;
-        };
+            uint64_t errorCode;
+        } invalidState;
+
+        struct
+        {
+            uint64_t code;
+        } exit;
+
+        struct
+        {
+            uint64_t function;
+            uint64_t arg0;
+            uint64_t arg1;
+            uint64_t arg2;
+            uint64_t arg3;
+            uint64_t arg4;
+            uint64_t arg5;
+            uint64_t userPc;
+            uint64_t userSp;
+        } syscall;
     };
 
     void HwPrimeUserContext(HwUserContext* context, uintptr_t entry, 
@@ -59,13 +67,28 @@ namespace Npk
         exitInfo.type = HwUserExitType::InvalidEntryState;
 
         if (context == nullptr)
+        {
+            exitInfo.subtype = 0;
             return exitInfo;
+        }
+
         if (context->frame == nullptr)
+        {
+            exitInfo.subtype = 1;
             return exitInfo;
+        }
+
         if (!HwIsCanonicalUserAddress(context->resumePc))
+        {
+            exitInfo.subtype = 2;
             return exitInfo;
+        }
+
         if (!HwIsCanonicalUserAddress(context->resumeSp))
+        {
+            exitInfo.subtype = 3;
             return exitInfo;
+        }
 
         //TODO: also populate tss->rsp0
         const uint64_t targetPc = context->resumePc;
@@ -74,6 +97,7 @@ namespace Npk
 
         const bool prevIntrs = IntrsOff();
         asm volatile(R"(
+            pushf
             push %%rbx
             push %%rcx;
             push %%rdx;
@@ -143,6 +167,7 @@ namespace Npk
             pop %%rdx;
             pop %%rcx;
             pop %%rbx
+            popf
         )" 
             :
             : "m"(frameAddr), "m"(targetPc), "m"(targetSp)
@@ -151,8 +176,67 @@ namespace Npk
             IntrsOn();
 
         exitInfo.type = static_cast<HwUserExitType>(context->frame->type);
-        //TODO: process exit info
+
+        switch (exitInfo.type)
+        {
+        case HwUserExitType::InvalidEntryState:
+            exitInfo.subtype = context->frame->invalidState.errorCode;
+            break;
+
+        case HwUserExitType::Exit:
+            exitInfo.subtype = context->frame->exit.code;
+
+            if (context->feats.logExit)
+            {
+                Log("User thread %p (kernel=%p) exited with code %zu",
+                    LogLevel::Trace, context, GetCurrentThread(),
+                    exitInfo.subtype);
+            }
+            break;
+
+        case HwUserExitType::Syscall:
+            exitInfo.subtype = context->frame->syscall.function;
+
+            if (context->feats.logSyscallLevel > 0)
+            {
+                Log("Syscall from %p (kernel=%p), number=%zu", 
+                    LogLevel::Trace, context, GetCurrentThread(), 
+                    exitInfo.subtype);
+            }
+            if (context->feats.logSyscallLevel > 1)
+            {
+                Log("LogSyscallLevel == 2: TODO: dump arguments", 
+                    LogLevel::Error);
+            }
+            break;
+        }
 
         return exitInfo;
+    }
+
+    bool HwGetSetUserContextFeature(HwUserContext* context, HwUserFeature feat,
+        size_t* value, bool set)
+    {
+        NPK_CHECK(context != nullptr, false);
+        NPK_CHECK(value != nullptr, false);
+
+        switch (feat)
+        {
+        case HwUserFeature::LogExit:
+            if (set)
+                context->feats.logExit = *value;
+            else
+                *value = context->feats.logExit;
+            return true;
+
+        case HwUserFeature::LogSyscall:
+            if (set)
+                context->feats.logSyscallLevel = sl::Clamp(*value, 0ul, 2ul);
+            else
+                *value = context->feats.logSyscallLevel;
+            return true;
+        }
+
+        return false;
     }
 }

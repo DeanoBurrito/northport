@@ -16,6 +16,12 @@ namespace Npk
         uint64_t resumePc;
         uint64_t resumeSp;
         UserFrame* frame;
+
+        struct
+        {
+            bool logExit;
+            uint8_t logSyscallLevel;
+        } feats;
     };
 
     void CommonCpuSetup();

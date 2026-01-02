@@ -38,9 +38,23 @@ namespace Npk
      */
     enum class HwUserExitType
     {
+        /* The user context has been setup incorrectly or with bad values.
+         * The meaning of the subtype field is arch-specific, but generally
+         * higher values mean further progress to userspace. For specific
+         * meanings the source code should be consulted.
+         */
         InvalidEntryState = 0,
+
+        /* User context indicated it has finished. The subtype field contains
+         * an optional error code. The exact meaning of the error code is up
+         * to the user code and it's source code should be consulted for
+         * specific meanings.
+         */
         Exit = 1,
-        CpuException = 2,
+
+        /* The user context is requesting to run a privileged function.
+         * The subtype field indicates the function number.
+         */
         Syscall = 3,
     };
 
@@ -51,6 +65,20 @@ namespace Npk
     {
         HwUserExitType type;
         size_t subtype;
+    };
+
+    enum class HwUserFeature
+    {
+        /* Valid values: `0`/`1`.
+         * Set to emit a kernel log on the exit request of a user context.
+         */
+        LogExit,
+
+        /* Valid values: `0`/`1`/`2`.
+         * `0` to disable logging, `1` for logging syscall numbers (quick),
+         * `2` for logging syscall numbers and arguments (sooooo sloooow).
+         */
+        LogSyscall,
     };
 
     /* Forward declaration, see Core.hpp for the full description.
@@ -232,6 +260,15 @@ namespace Npk
      * they have no relation to the currently executing code.
      */
     HwUserExitInfo HwEnterUserContext(HwUserContext* context);
+
+    /* Allows for reading, and more importantly - setting, feature flags/values
+     * for a user context. Each feature has different semantics, most will be
+     * binary flags or limited-range intergers. See the comments of each value
+     * in the `HwUserFeature` enum for details of each feature.
+     * The return value is whether the get/set operation was successful.
+     */
+    bool HwGetSetUserContextFeature(HwUserContext* context, 
+        HwUserFeature feat, size_t* value, bool set);
 
     /* Halts (or at least stalls) the current cpu core until an interrupt
      * fires. This should ideally put the cpu into a low(er) power state.
