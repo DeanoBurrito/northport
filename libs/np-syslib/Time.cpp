@@ -20,12 +20,15 @@ namespace sl
         if (frequency == 0 || newFrequency == 0)
             return { newFrequency, 0 };
 
-        auto result = ticks * newFrequency;
-        if (result < ticks) //check for saturation via wraparound (TODO: portable?)
-            return sl::TimeCount(newFrequency, (decltype(ticks))~0);
+        const auto q = ticks / frequency;
+        const auto r = ticks % frequency;
 
-        result = result / frequency;
-        return TimeCount(newFrequency, result);
+        auto accum = r * newFrequency;
+        accum += frequency / 2;
+        accum /= frequency;
+        accum += (q * newFrequency);
+
+        return TimeCount(newFrequency, accum);
     }
 
     CalendarPoint CalendarPoint::Now()
