@@ -4,6 +4,14 @@
 #include <Compiler.hpp>
 #include <Flags.hpp>
 
+/* GCC will complain about packed struct fields not being correctly aligned.
+ * I totally get it, but I did not make the spec, so it is what it is.
+ */
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpacked-not-aligned"
+#endif
+
 namespace sl
 {
     template<typename Table, typename SubTable>
@@ -623,3 +631,10 @@ namespace sl
     });
     static_assert(sizeof(Facs) == 64);
 }
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#endif

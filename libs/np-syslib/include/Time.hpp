@@ -46,8 +46,7 @@ namespace sl
 
         static TimePoint Now();
 
-        constexpr TimePoint() : epoch {}
-        {}
+        TimePoint() = default;
 
         constexpr TimePoint(uint64_t value) : epoch(value)
         {}

@@ -52,7 +52,7 @@ namespace Npk
             break;
 
         default:
-            Log("Unknown debug event: %u", LogLevel::Error, what);
+            Log("Unknown debug event: %u", LogLevel::Error, (unsigned)what);
             break;
         }
 

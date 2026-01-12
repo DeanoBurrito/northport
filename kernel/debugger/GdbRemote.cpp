@@ -240,7 +240,7 @@ namespace Npk::Private
         while (true)
         {
             uint8_t ack[1];
-            size_t ackLen = inst.transport->Receive(inst.transport, ack);
+            size_t ackLen = inst.transport->Receive(inst.transport, { ack, 1 });
             if (ackLen == 0)
                 continue;
 

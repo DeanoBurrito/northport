@@ -90,7 +90,8 @@ namespace sl
         p.month = m;
         p.dayOfMonth = d;
 
-        p.dayOfWeek = accum >= -4 ? (accum + 4) % 7 : (accum + 5) % 7 + 6;
+        //p.dayOfWeek = accum >= -4 ? (accum + 4) % 7 : (accum + 5) % 7 + 6;
+        p.dayOfWeek = (accum + 4) % 7;
 
         const auto n1 = 275 * p.month / 9;
         const auto n2 = (p.month + 9) / 12;

@@ -104,7 +104,7 @@ namespace Npk
     {
         NPK_CHECK(what != nullptr, );
 
-        what->acknowledgements.Store(who.Size(), sl::Acquire);
+        what->acknowledgements.Store(who.Size(), sl::Release);
 
         for (size_t i = 0; i < who.Size(); i++)
         {

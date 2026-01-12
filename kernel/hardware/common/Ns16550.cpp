@@ -125,6 +125,7 @@ namespace Npk
                 case LogLevel::Verbose: return "\e[90m";
                 case LogLevel::Trace:   return "\e[37m";
                 case LogLevel::Debug:   return "\e[34m";
+                default: return "";
                 }
             }(msg.level);
 

@@ -16,7 +16,7 @@
     do \
     { \
         asm volatile("movq (%1), %%rcx; movq %%rcx, (%0)" :: \
-            "r"(dest_ptr), "r"(src_ptr) : "memory"); \
+            "r"(dest_ptr), "r"(src_ptr) : "memory", "rcx"); \
     } while (false)
 
 namespace Npk
@@ -257,7 +257,7 @@ namespace Npk
             nextPtRef = AccessPage(nextPt);
         }
 
-        if (level == result.level + 1)
+        if (level == result.level + 1u)
             return false;
 
         result.complete = pte->value & PresentFlag;
