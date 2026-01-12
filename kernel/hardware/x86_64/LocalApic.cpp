@@ -430,7 +430,7 @@ namespace Npk
         const uint64_t lapicTicks = tscTicks * lapic->timerFreq / MyTscFrequency();
         const uint32_t intrTicks = sl::Min<uint32_t>(0xFFFF'FFFF, lapicTicks);
 
-        lapic->Write(LApicReg::LvtTimer, (0b01 << 17) | LapicTimerVector);
+        lapic->Write(LApicReg::LvtTimer, LapicTimerVector);
         lapic->Write(LApicReg::TimerInitCount, intrTicks);
     }
 

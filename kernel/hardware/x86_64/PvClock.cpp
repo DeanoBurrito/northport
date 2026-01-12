@@ -54,7 +54,9 @@ namespace Npk
 
         PvSystemTime copy;
 
-        sl::MmioRegister<decltype(PvSystemTime::version)> versionReg = &systemTime->version;
+        sl::MmioRegister<decltype(PvSystemTime::version)> versionReg = 
+            &systemTime->version;
+
         while (true)
         {
             uint32_t version;
@@ -68,14 +70,17 @@ namespace Npk
                 break;
         }
         
-        uint64_t time = ReadTsc() - copy.tscReference;
+        //NOTE: __uint128_t is a gcc/clang compiler extension only present
+        //on some platforms. PvClock is only available on x86, so there are no
+        //portability concerns here.
+        __uint128_t time = ReadTsc() - copy.tscReference;
         if (copy.tscShift < 0)
-            time >>= copy.tscShift;
+            time >>= -copy.tscShift;
         else
             time <<= copy.tscShift;
         time = (time * copy.tscToSystemMul) >> 32;
         time += copy.systemTime;
 
-        return time;
+        return static_cast<uint64_t>(time);
     }
 }

@@ -103,7 +103,7 @@ namespace Npk
 
         Log("Empty clock queue, alarm set for free interval of %zums", 
             LogLevel::Info, AlarmFreeMs);
-        HwSetAlarm(AlarmFreeInterval);
+        HwSetAlarm(HwReadTimestamp() + AlarmFreeInterval);
     }
 
     static void UpdateClockQueue(Dpc* self, void* arg)
@@ -141,7 +141,7 @@ namespace Npk
 
     static void QueueClockDpc()
     {
-        if (!clockDpcPending->Exchange(true))
+        if (clockDpcPending->Exchange(true))
             return;
 
         clockDpc->function = UpdateClockQueue;
