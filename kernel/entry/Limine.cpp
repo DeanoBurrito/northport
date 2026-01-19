@@ -61,6 +61,13 @@ namespace Npk::Loader
         .response = nullptr
     };
 
+    limine_framebuffer_request fbReq
+    {
+        .id = LIMINE_FRAMEBUFFER_REQUEST,
+        .revision = 0,
+        .response = nullptr
+    };
+
     LoadState GetEntryState()
     {
         NPK_ASSERT(hhdmReq.response != nullptr);
@@ -148,6 +155,48 @@ namespace Npk::Loader
             auto& store = ranges[entryHead++];
             store.base = static_cast<Paddr>(entry->base);
             store.length = static_cast<size_t>(entry->length);
+        }
+
+        return entryHead;
+    }
+
+    size_t GetFramebuffers(sl::Span<Framebuffer> fbs, size_t offset)
+    {
+        if (fbReq.response == nullptr)
+            return 0;
+
+        const uintptr_t dmBase = hhdmReq.response->offset;
+        size_t entryHead = 0;
+
+        for (size_t i = 0; i < fbReq.response->framebuffer_count; i++)
+        {
+            const auto entry = fbReq.response->framebuffers[i];
+            if (entry->memory_model != LIMINE_FRAMEBUFFER_RGB)
+                continue;
+
+            if (offset > 0)
+            {
+                offset--;
+                continue;
+            }
+
+            if (entryHead == fbs.Size())
+                break;
+
+            auto& store = fbs[i];
+            store.base = (uintptr_t)entry->address;
+            if (store.base >= dmBase)
+                store.base -= dmBase;
+            store.width = static_cast<size_t>(entry->width);
+            store.height = static_cast<size_t>(entry->height);
+            store.pitch = static_cast<size_t>(entry->pitch);
+            store.bpp = static_cast<size_t>(entry->pitch);
+            store.rShift = entry->red_mask_shift;
+            store.rBits = entry->red_mask_size;
+            store.gShift = entry->green_mask_shift;
+            store.gBits = entry->green_mask_size;
+            store.bShift = entry->blue_mask_shift;
+            store.bBits = entry->blue_mask_size;
         }
 
         return entryHead;

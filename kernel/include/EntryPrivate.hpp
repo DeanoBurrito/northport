@@ -59,8 +59,44 @@ namespace Npk::Loader
         size_t length;
     };
 
+    struct Framebuffer
+    {
+        Paddr base;
+        size_t width;
+        size_t height;
+        size_t pitch;
+        size_t bpp;
+        uint8_t rShift;
+        uint8_t rBits;
+        uint8_t gShift;
+        uint8_t gBits;
+        uint8_t bShift;
+        uint8_t bBits;
+    };
+
+    /* This function is called exactly once during very early kernel init, while
+     * the bootloader page map is still active. It should populate and return a
+     * `LoadState` struct for the kernel to initialize from. Any field of the 
+     * struct not wrapped in an `sl::Opt<T>` type **must** be filled out or
+     * kernel init will abort.
+     */
     LoadState GetEntryState();
+
+    /* This function will convert memory map data from the bootloader's format
+     * to our own. It ignores the first `offset` number of usable entries, then
+     * copies the base and length values of each usable physical address range
+     * into the next unused slot in `ranges`. These values are in bytes but must
+     * be page aligned. This function never writes beyond `ranges.Size()`.
+     * The return value is the number of usable ranges written to `ranges`, if
+     * smaller than `ranges.Size()` there are likely more ranges after what was
+     * written.
+     */
     size_t GetUsableRanges(sl::Span<MemoryRange> ranges, size_t offset);
+
+    /* Similar to `GetUsableRanges()`, but for framebuffers provided by the
+     * boot protocol.
+     */
+    size_t GetFramebuffers(sl::Span<Framebuffer> fbs, size_t offset);
 }
 
 /* Types and functions related to kernel bringup.
