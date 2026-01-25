@@ -51,6 +51,36 @@ namespace Npk
 
     using VmFlags = sl::Flags<VmFlag>;
 
+    /* A memory descriptor list (borrowed term) is a primitive for managing
+     * buffers in virtual memory as a list of pages. An MDL references a number
+     * of discontiguous physical pages that may (not) be backing a region of 
+     * virtual memory.
+     * Physical pages referenced by an MDL are wired (cannot be paged out 
+     * or moved) and will have any pending copy-on-write actions resolved. 
+     * Because of these semantics, MDLs should be used with care.
+     */
+    struct Mdl
+    {
+        /* Length of referenced memory in bytes.
+         */
+        size_t length;
+
+        /* Offset of referenced memory into the first page (pages[0]), in bytes.
+         */
+        size_t offset;
+
+        /* If the MDL is mapped in the kernel address space, `window` points
+         * to the location. This field can be validated and populated by VM
+         * subsystem functions depending on need.
+         */
+        void* window;
+
+        /* Pointers to the backing pages for the buffer. This array is always
+         * `AlignUpPage(length) >> PageShift()` entries long.
+         */
+        PageInfo* pages[];
+    };
+
     struct VmSpace;
     struct VmSource;
 
