@@ -52,6 +52,162 @@ namespace Npk
     using VmFlags = sl::Flags<VmFlag>;
 
     struct VmSpace;
+    struct VmSource;
+
+    struct VmAnonPage
+    {
+        uintptr_t type : 1;
+        uintptr_t address : (sizeof(uintptr_t) * 8) - 1;
+    };
+
+    struct VmAnonMap
+    {
+        sl::RefCount refcount;
+        Mutex mutex;
+    };
+
+    using VmAnonMapRef = sl::Ref<VmAnonMap, &VmAnonMap::refcount>;
+
+    struct VmRange
+    {
+        /* Linkage for VmSpace management.
+         */
+        sl::RBTreeHook spaceHook;
+
+        /* Flags describing the behaviour of this range.
+         */
+        VmFlags flags;
+
+        /* Base address of this address range, relative to the parent
+         * address space. This can also be thought of as an offset,
+         * but that field name is used below for a different meaning.
+         */
+        size_t base;
+
+        /* Length of the address range.
+         */
+        size_t length;
+
+        VmAnonMapRef amapRef;
+        size_t amapOffset;
+
+        /* Source object (layer 2) providing physical pages for this range
+         * if not found in layer 1 (the amap). If `source` is null, this range
+         * is zero-fill area.
+         */
+        VmSource* source;
+
+        /* Offset within the source object that this range begins at.
+         */
+        size_t offset;
+
+        /* Hook field for source object usage. Used by sources to maintain a
+         * list of where they are mapped.
+         */
+        sl::FwdListHook sourceHook;
+    };
+
+    struct VmRangeLt
+    {
+        bool operator()(const VmRange& a, const VmRange& b)
+        {
+            return a.base < b.base;
+        }
+    };
+
+    using VmRangeTree = sl::RBTree<VmRange, &VmRange::spaceHook, VmRangeLt>;
+
+    struct VmFreeRange
+    {
+        sl::RBTreeHook hook;
+        size_t base;
+        size_t length;
+        size_t largestChild;
+    };
+
+    struct VmFreeRangeLt
+    {
+        bool operator()(const VmFreeRange& a, const VmFreeRange& b)
+        {
+            return a.base < b.base;
+        }
+    };
+
+    struct VmFreeRangeAggregator
+    {
+        static bool Aggregate(VmFreeRange* range);
+    };
+
+    using VmFreeRangeTree = sl::RBTree<VmFreeRange, &VmFreeRange::hook, 
+        VmFreeRangeLt, VmFreeRangeAggregator>;
+
+    struct VmSpace
+    {
+        Mutex freeRangesMutex;
+        VmFreeRangeTree freeRanges;
+
+        SxMutex rangesMutex;
+        VmRangeTree ranges;
+    };
+
+    struct VmPagerOps
+    {
+    };
+
+    struct VmSource
+    {
+        SxMutex mutex;
+        //TODO: refcount?
+        sl::FwdList<VmRange, &VmRange::sourceHook> maps;
+        sl::FwdList<PageInfo, &PageInfo::vmoList> pages;
+        VmPagerOps* ops;
+    };
+
+    /* Provides fine control over address space allocation. Each field has a
+     * sane default value and can be left untouched if the caller doesn't care
+     * to select values.
+     */
+    struct AllocConstraints
+    {
+        /* If non-zero, requests the a specific address for the allocation.
+         * If `hardPreference` is set allocation will fail if the preferred
+         * address is unavailable, otherwise the allocator will choose a nearby
+         * address. The `topDown` field indicates whether the nearby address
+         * should be above (`topDown=false`) or below (`topDown=true`).
+         * Note that this address can be outside the range specified by
+         * `minAddr` and `maxAddr`.
+         */
+        uintptr_t preferredAddr = 0;
+
+        /* Lowest address considered for allocation.
+         */
+        uintptr_t minAddr = 0;
+
+        /* Highest address considered for allocation.
+         */
+        uintptr_t maxAddr = static_cast<uintptr_t>(-1);
+
+        /* Minimum alignment for allocated address, can be zero.
+         */
+        size_t alignment = 0;
+
+        /* Affects interpretation of `preferredAddr`, see that field for
+         * specifics.
+         */
+        bool hardPreference = false;
+
+        /* If set the allocator will search for free address from the top
+         * of the address space, otherwise it will be begin searching from
+         * lower addresses.
+         * This field also interacts with `preferredAddr`, see that field's
+         * description for specifics.
+         */
+        bool topDown = false;
+
+        /* Timeout used to acquire the allocator mutex.
+         */
+        sl::TimeCount timeout = sl::NoTimeout;
+    };
 
     /* Initializes the kernel's virtual memory space, which makes all virtual
      * memory services available (kernel pool, file cache).
@@ -162,5 +318,19 @@ namespace Npk
     VmStatus SpaceFree(VmSpace& space, uintptr_t base, size_t length, 
         sl::TimeCount timeout = sl::NoTimeout);
 
-    VmStatus LookupRangeInSpace(VmRange** found, VmSpace& space, uintptr_t addr);
+    VmStatus LookupRangeInSpace(VmRange** found, VmSpace& space, 
+        uintptr_t addr);
+
+    VmStatus CreateMdlFromBuffer(Mdl** mdl, void* base, size_t length);
+    VmStatus CreateMdlFromInactiveBuffer(Mdl** mdl, VmSpace& space, void* base, 
+        size_t length);
+    VmStatus CreateMdlFromPageList(Mdl** mdl, sl::Span<Paddr> pages, 
+        size_t length, size_t offset);
+
+    VmStatus DestroyMdl(Mdl* mdl);
+
+    bool IsMdlWindowValid(Mdl* mdl);
+    bool EnsureMdlWindowIsValid(Mdl* mdl);
+    void MdlReleaseWindow(Mdl* mdl);
+    size_t MdlPageCount(Mdl* mdl);
 }

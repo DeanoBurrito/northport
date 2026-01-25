@@ -367,6 +367,9 @@ namespace Npk
     using Timer = Waitable;
     using Mutex = Waitable;
 
+    struct SxMutex
+    {};
+
     using WaitableMpScQueue = sl::QueueMpSc<Waitable, &Waitable::mpscHook>;
     
     using MailFunction = void (*)(void* arg);
