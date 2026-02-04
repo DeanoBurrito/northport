@@ -8,7 +8,8 @@ KERNEL_CXX_SRCS += core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
 	entry/EfiRuntime.cpp \
 	io/Continuation.cpp io/Packet.cpp \
 	namespace/Handles.cpp namespace/Objects.cpp \
-	vm/KernelStack.cpp vm/Mdl.cpp vm/PageTables.cpp vm/Pool.cpp vm/Space.cpp \
+	video/Video.cpp video/Text.cpp \
+	vm/KernelStack.cpp vm/PageTables.cpp vm/Pool.cpp vm/Space.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
 
 # TODO: ASAN support
