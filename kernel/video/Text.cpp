@@ -578,6 +578,7 @@ namespace Npk
         case '\b':
             if (engine->cursor.x > 0)
                 engine->cursor.x--;
+            break;
 
         default:
             QueueChar(engine, c);
