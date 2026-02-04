@@ -22,8 +22,6 @@ namespace Npk::Private
         size_t length;
     };
 
-    constexpr size_t HeaderOffset = sl::AlignUp(sizeof(Node), MinAllocSize);
-
     using PoolNodeList = sl::List<Node, &Node::hook>;
     using AddrNodeList = sl::List<Node, &Node::addrHook>;
 
@@ -173,8 +171,13 @@ namespace Npk::Private
             }
         }
 
-        if (selected != nullptr)
-            TrySplitNode(pool, selected, len);
+        if (selected == nullptr)
+        {
+            ReleaseMutex(&pool.mutex);
+            return nullptr;
+        }
+
+        TrySplitNode(pool, selected, len);
 
         uintptr_t mapBegin = AlignDownPage(selected->base);
         uintptr_t mapEnd = AlignUpPage(selected->base + selected->length);
@@ -206,14 +209,9 @@ namespace Npk::Private
         }
 
         ReleaseMutex(&pool.mutex);
-
-        if (selected == nullptr)
-            return nullptr;
-
         selected->tag = tag;
-        const uintptr_t addr = reinterpret_cast<uintptr_t>(selected);
 
-        return reinterpret_cast<void*>(addr + HeaderOffset);
+        return reinterpret_cast<void*>(selected->base);
     }
     
     static Node* TryCoalesce(Pool& pool, Node* node)
