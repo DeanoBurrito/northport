@@ -183,14 +183,14 @@ namespace Npk::Loader
             if (entryHead == fbs.Size())
                 break;
 
-            auto& store = fbs[i];
+            auto& store = fbs[entryHead++];
             store.base = (uintptr_t)entry->address;
             if (store.base >= dmBase)
                 store.base -= dmBase;
             store.width = static_cast<size_t>(entry->width);
             store.height = static_cast<size_t>(entry->height);
             store.pitch = static_cast<size_t>(entry->pitch);
-            store.bpp = static_cast<size_t>(entry->pitch);
+            store.bpp = static_cast<size_t>(entry->bpp);
             store.rShift = entry->red_mask_shift;
             store.rBits = entry->red_mask_size;
             store.gShift = entry->green_mask_shift;
