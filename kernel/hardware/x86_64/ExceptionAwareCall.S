@@ -15,6 +15,12 @@ ExceptionAwareCall:
     push %rbp
     push %rbx
 
+    ## Backup previously saved RIP and RSP
+    mov %gs:40, %r15
+    push %r15
+    mov %gs:32, %r15
+    push %r15
+
     ## Store RIP and RSP for later if we need them
     mov %rsp, %gs:40
     lea 1f(%rip), %rax
@@ -29,19 +35,31 @@ ExceptionAwareCall:
     mov %rax, (%rcx)
 2:
     ## Success path
-    xor %eax, %eax
-    mov %rax, %gs:40
-    mov %rax, %gs:32
-    add $(6 * 8), %rsp
 
+    ## Restore previously saved RIP + RSP values
+    pop %rax
+    mov %rax, %gs:32
+    pop %rax
+    mov %rax, %gs:40
+
+    pop %rbx
+    pop %rbp
+    pop %r12
+    pop %r13
+    pop %r14
+    pop %r15
+
+    xor %eax, %eax
     ret
 
 1: ## Failure path
-    xor %eax, %eax
-    mov %rax, %gs:40
-    mov %rax, %gs:32
-
     mov %rdi, %rsp
+
+    pop %r15
+    mov %r15, %gs:32
+    pop %r15
+    mov %rax, %gs:40
+
     pop %rbx
     pop %rbp
     pop %r12
