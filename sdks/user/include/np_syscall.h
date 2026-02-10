@@ -7,7 +7,7 @@
  * hardware.
  *
  * System Call ABI:
- * The full ABI is documented in the northport kernel manual, which can be build
+ * The full ABI is documented in the northport kernel manual, which can be built
  * from sources in the kernel repo. The wrapper function `np_do_syscall()` below
  * can be used as a portable alternative.
  * 
@@ -126,6 +126,15 @@ typedef struct
      */
     uint64_t timer_frequency;
 } np_shared_data;
+
+inline
+const np_shared_data*
+np_get_shared_data()
+{
+    const uintptr_t addr = 0x7FFE000;
+
+    return (const np_shared_data*)(void*)addr;
+}
 
 inline
 np_status
