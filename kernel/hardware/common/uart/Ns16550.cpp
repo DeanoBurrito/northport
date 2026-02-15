@@ -1,4 +1,4 @@
-#include <hardware/common/Ns16550.hpp>
+#include <hardware/common/uart/Ns16550.hpp>
 #include <Vm.hpp>
 #include <NanoPrintf.hpp>
 #include <Mmio.hpp>

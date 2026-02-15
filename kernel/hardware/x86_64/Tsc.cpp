@@ -2,7 +2,7 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Hpet.hpp>
 #include <hardware/x86_64/Pit.hpp>
-#include <hardware/common/AcpiTimer.hpp>
+#include <hardware/common/timer/AcpiTimer.hpp>
 #include <Core.hpp>
 #include <Maths.hpp>
 #include <UnitConverter.hpp>

@@ -1,4 +1,4 @@
-#include <hardware/common/GoldfishTimer.hpp>
+#include <hardware/common/timer/GoldfishTimer.hpp>
 #include <Vm.hpp>
 #include <Mmio.hpp>
 

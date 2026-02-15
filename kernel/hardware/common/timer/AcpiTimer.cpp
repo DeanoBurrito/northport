@@ -1,4 +1,4 @@
-#include <hardware/common/AcpiTimer.hpp>
+#include <hardware/common/timer/AcpiTimer.hpp>
 #include <AcpiTypes.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
