@@ -115,9 +115,9 @@ namespace Npk
      */
     void AddDebugTransport(DebugTransport* transport);
 
-    /* Used to notify the debug subsystem that an event has occured. This
+    /* Used to notify the debug subsystem that an event has occurred. This
      * function must be called with interrupts and preemption disabled.
      */
     extern "C"
-    DebugStatus DebugEventOccured(DebugEventType what, void* data);
+    DebugStatus DebugEventOccurred(DebugEventType what, void* data);
 }

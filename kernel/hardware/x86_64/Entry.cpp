@@ -111,7 +111,7 @@ namespace Npk
 
         default:
             if (frame->vector < 0x20)
-                Panic("Illegal exception occured", frame);
+                Panic("Illegal exception occurred", frame);
             DispatchInterrupt(frame->vector - 0x20);
             break;
         }

@@ -180,28 +180,28 @@ namespace Npk
         //decay time values to keep them within a reasonable range.
         //thanks goes to abbix for the algorithm used here.
 
-        const auto theshold = (5000_ms).Rebase(data.sleepBegin.Frequency).ticks;
+        const auto threshold = (5000_ms).Rebase(data.sleepBegin.Frequency).ticks;
         const auto sum = data.runTime + data.sleepTime;
 
-        if (sum > theshold * 2)
+        if (sum > threshold * 2)
         {
             if (data.runTime > data.sleepTime)
             {
-                data.runTime = theshold;
+                data.runTime = threshold;
                 data.sleepTime = 1;
             }
             else
             {
                 data.runTime = 1;
-                data.sleepTime = theshold;
+                data.sleepTime = threshold;
             }
         }
-        else if (sum > ((theshold / 5) * 6))
+        else if (sum > ((threshold / 5) * 6))
         {
             data.runTime /= 2;
             data.sleepTime /= 2;
         }
-        else if (sum > theshold)
+        else if (sum > threshold)
         {
             data.runTime = (data.runTime / 5) * 4;
             data.sleepTime = (data.sleepTime / 5) * 4;

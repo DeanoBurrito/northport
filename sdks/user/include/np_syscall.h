@@ -13,14 +13,14 @@
  * 
  * Portability:
  * This header contains architecture-specific assembly snippets to provide
- * convinient and portable wrappers for userspace software. However this means
+ * convenient and portable wrappers for userspace software. However this means
  * each of these functions must be updated for each new architecture supported.
  * If you're here because you're porting northport, please follow the example
  * of previous ports and keep the code below tidy and organised.
  *
  * Licensing:
  * This file is part of the northport user API. It falls under the same license
- * as the rest of the kernel, which is included below for convinience.
+ * as the rest of the kernel, which is included below for convenience.
  *
  *******************************************************************************
  * MIT License
@@ -131,7 +131,7 @@ inline
 const np_shared_data*
 np_get_shared_data()
 {
-    const uintptr_t addr = 0x7FFE000;
+    const uintptr_t addr = 0x7FFE0000;
 
     return (const np_shared_data*)(void*)addr;
 }

@@ -61,11 +61,11 @@ namespace Npk
      */
     NsObject& GetRootObject();
 
-    /* Attempts to find an object idenfied by `path`, relative to `root`. If
+    /* Attempts to find an object identified by `path`, relative to `root`. If
      * `path` begins with the path delimiter ('/'), `root` is set to the global
      * root object.
      * If this function returns success `*found` contains a pointer to the
-     * found node specified by `path`, wiht its reference count incremented.
+     * found node specified by `path`, with its reference count incremented.
      * It is up to the caller to decrement the reference count when it is 
      * finished with the object.
      */
@@ -128,7 +128,7 @@ namespace Npk
     /* If `handle` is valid for the given handle table, this function looks up
      * the namespace object associated with `handle` and places it in 
      * `*object`. If the lookup was successful the object's refcount will be
-     * incremented before returning, it is the caller's responsiblity to
+     * incremented before returning, it is the caller's responsibility to
      * decrement the refcount again when appropriate.
      * This function will lock the handle table itself, if the mutex
      * is already held by the caller: use `GetHandleValueLocked()` instead.

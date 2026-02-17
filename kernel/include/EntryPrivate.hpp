@@ -14,7 +14,7 @@ namespace Npk::Loader
     {
         /* The kernel expects the bootloader to provide a direct map, this
          * field contains the base address of the map. If 0, ram (usable
-         * memory) is identiy mapped.
+         * memory) is identity mapped.
          * Only memory marked as 'usable' will be accessed via the direct map.
          */
         uintptr_t directMapBase;

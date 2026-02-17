@@ -387,14 +387,14 @@ namespace Npk
 
     struct FlushRequest
     {
-        sl::QueueMpScHook hoook;
+        sl::QueueMpScHook hook;
 
         uintptr_t base;
         size_t length;
         sl::Atomic<size_t> acknowledgements;
     };
 
-    using FlushRequestQueue = sl::QueueMpSc<FlushRequest, &FlushRequest::hoook>;
+    using FlushRequestQueue = sl::QueueMpSc<FlushRequest, &FlushRequest::hook>;
 
     struct LocalScheduler;
 
@@ -677,7 +677,7 @@ namespace Npk
      * TLBs. If `sync` is true, this function will spin until all cpus have
      * completed acknowledged and completed the flush. If `sync` is false,
      * the function returns after the work is queued on the remote cpus and no
-     * guarentee is made about when the TLB flushes will occur.
+     * guarantee is made about when the TLB flushes will occur.
      */
     void FlushRemoteTlbs(sl::Span<CpuId> who, FlushRequest* what, bool sync);
 
@@ -698,7 +698,7 @@ namespace Npk
 
     /* Attempts to freeze all other cpus in the system. Upon success it will
      * returns the number of frozen cpus +1 (read: total number of cpus in the
-     * system, since current cpu isnt counted as being frozen). Once frozen,
+     * system, since current cpu isn't counted as being frozen). Once frozen,
      * `RunOnFrozenCpus()` can be used to execute commands across all cpus, and
      * `ThawAllCpus()` must be called to resume normal system operation.
      * Calling this function does not modify the local IPL.

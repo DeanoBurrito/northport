@@ -16,7 +16,7 @@ namespace Npk
         if (int3)
         {
             arg.addr = frame->iret.rip - 1;
-            DebugEventOccured(DebugEventType::Breakpoint, &arg);
+            DebugEventOccurred(DebugEventType::Breakpoint, &arg);
             return;
         }
 
@@ -30,7 +30,7 @@ namespace Npk
         else if (dr6 & 0b1000)
             arg.addr = READ_DR(3);
 
-        DebugEventOccured(DebugEventType::Breakpoint, &arg);
+        DebugEventOccurred(DebugEventType::Breakpoint, &arg);
     }
 
     bool HwInitDebugState()

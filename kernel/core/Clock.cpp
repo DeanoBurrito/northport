@@ -155,11 +155,11 @@ namespace Npk
 
         //NOTE: there's no grace period for this comparison, if the event expires
         //between now and the time of adding it to the queue and re-arming
-        //the alarm, the alarm code is guarenteed to handle this for us,
+        //the alarm, the alarm code is guaranteed to handle this for us,
         //and should call `DispatchAlarm()`. Most of this time can actually
         //be handled by hardware.
         //This allows the logic here to be simpler, and we dont have to decide on
-        //an arbitary grace period.
+        //an arbitrary grace period.
         if (event->expiry < (HwReadTimestamp()))
         {
             if (event->dpc != nullptr)

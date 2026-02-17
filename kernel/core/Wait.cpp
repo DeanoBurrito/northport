@@ -199,7 +199,7 @@ namespace Npk
                 earlySatisfaction = false;
                 //TODO: try spin for a bit and then yield() manually,
                 //instead of BeginWait() setting switchPending=true and
-                //LowerIpl() allowing the rescheduler to take place.
+                //LowerIpl() allowing the reschedule to take place.
                 LowerIpl(prevIpl); //allows preemption to take place
                 prevIpl = RaiseIpl(Ipl::Dpc);
             }

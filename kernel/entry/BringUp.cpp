@@ -23,7 +23,7 @@ namespace Npk
     {
         IntrsOff();
 
-        Log("Early panic occured: %.*s", LogLevel::Error, 
+        Log("Early panic occurred: %.*s", LogLevel::Error, 
             (int)why.Size(), why.Begin());
 
         while (true)
@@ -255,7 +255,7 @@ namespace Npk
             KernelStackSize());
 
         //1. allocate space for AP cpu-local storage
-        //The BSP doesnt need local storage allocated for it, since it
+        //The BSP doesn;t need local storage allocated for it, since it
         //uses the original storage thats part of the kernel image.
         const auto localsBegin = (uintptr_t)KERNEL_CPULOCALS_BEGIN;
         const auto localsEnd = (uintptr_t)KERNEL_CPULOCALS_END;

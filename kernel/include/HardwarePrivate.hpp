@@ -24,7 +24,7 @@ namespace Npk
     void DispatchInterrupt(size_t handle);
 
     /* Upcall into generic part of kernel, happens at interrupt IPL and with
-     * interrupts disabled. Informs the kernel that a page fault occured at
+     * interrupts disabled. Informs the kernel that a page fault occurred at
      * passive IPL.
      */
     void DispatchPageFault(uintptr_t addr, bool write);

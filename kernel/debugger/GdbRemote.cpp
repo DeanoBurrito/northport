@@ -83,7 +83,7 @@ namespace Npk::Private
     {
         uint8_t sum = 0;
 
-        //the start/end of packet markers arent included in the checksum
+        //the start/end of packet markers aren't included in the checksum
         if (buffer.Size() > 1 && buffer[0] == '$')
             buffer = buffer.Subspan(1, -1);
         if (buffer.Size() > 1 && *(buffer.End() - 1) == '#')
@@ -553,7 +553,7 @@ namespace Npk::Private
                 head += PutRegister(inst, response.Subspan(head, -1), buff,
                     ret, 8 - ret);
 
-                //TODO: ds/es/fs/gs arent supported, so return unknown for them
+                //TODO: ds/es/fs/gs aren't supported, so return unknown for them
                 head += PutRegister(inst, response.Subspan(head, -1), buff,
                     0, 8);
                 head += PutRegister(inst, response.Subspan(head, -1), buff,

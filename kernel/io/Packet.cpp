@@ -94,7 +94,7 @@ namespace Npk
 
     void SetIopContinuation(Iop* packet, void (*cont)(Iop*, void*), void* opaq)
     {
-        //NOTE: it's called 'opaq' instead of 'opaque' because I didnt want to
+        //NOTE: it's called 'opaq' instead of 'opaque' because I didn't want to
         //start a new line for the function declaration, and 'opaq' works.
         NPK_CHECK(packet != nullptr, );
         NPK_CHECK(!packet->started, );
@@ -202,7 +202,7 @@ namespace Npk
                     packet->directionDown = false;
                     continue;
 
-                /* Begin() couldnt allocate required resources, we abort the op
+                /* Begin() couldn't allocate required resources, we abort the op
                  * and return the status to the caller.
                  */
                 case IoStatus::Shortage:
@@ -227,7 +227,7 @@ namespace Npk
             }
             else /* !packet->directionDown */
             {
-                //End() is optional, if it doesnt exist assume the best result.
+                //End() is optional, if it doesn't exist assume the best result.
                 auto status = IoStatus::Complete;
                 if (iface->End != nullptr)
                     status = iface->End(packet, iface->opaque, frame.stash);

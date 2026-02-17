@@ -221,7 +221,7 @@ namespace Npk
             calibData[i] = (calibData[i] * calibNanos) / realCalibNanos; //oversleep correction
             if (dumpCalibData)
             {
-                Log("TSC calibratun run: begin=%zu, end=%zu, adjusted=%zu, slept=%zuns", LogLevel::Verbose,
+                Log("TSC calibration run: begin=%zu, end=%zu, adjusted=%zu, slept=%zuns", LogLevel::Verbose,
                     tscBegin, tscEnd, calibData[i], realCalibNanos);
             }
         }

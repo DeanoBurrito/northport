@@ -253,7 +253,7 @@ namespace Npk
 
         const uint32_t myLapicId = MyLapicId();
 
-        //first pass: find the acpi processor id assocaited with this lapic
+        //first pass: find the acpi processor id associated with this lapic
         lapic->acpiId = -1;
         for (auto source = sl::NextMadtSubtable(madt); source != nullptr; source = sl::NextMadtSubtable(madt, source))
         {

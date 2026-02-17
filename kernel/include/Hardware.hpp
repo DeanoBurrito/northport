@@ -145,9 +145,9 @@ namespace Npk
 
     /* Calls `func` passing `a`/`b`/`c` as params to it, optionally placing
      * the return value of `func` into `*r` if non-null. If a synchronous
-     * excepton (i.e. one occuring due to an instruction `func` executed)
+     * exception (i.e. one occurring due to an instruction `func` executed)
      * this function aborts further execution of `func` and returns true
-     * (an exception occured), the value of `*r` is left unchanged if non-null. 
+     * (an exception occurred), the value of `*r` is left unchanged if non-null. 
      * If `func` returned normally, this function returns false.
      *
      * This function can be nested: an exception will causes only the innermost
@@ -241,7 +241,7 @@ namespace Npk
     void HwPrimeUserContext(HwUserContext* context, uintptr_t entry, 
         uintptr_t arg, uintptr_t stack);
 
-    /* Cleans up and releases any resources the harware layer may have attached
+    /* Cleans up and releases any resources the hardware layer may have attached
      * to a user context. This function is destructive and renders the user 
      * context unusable without another call to `HwPrimeUserContext()`.
      */
@@ -290,7 +290,7 @@ namespace Npk
         return IntrsExchange(false);
     }
 
-    /* Enales interrupts, returns whether interrupts were previously enabled.
+    /* Enables interrupts, returns whether interrupts were previously enabled.
      */
     SL_ALWAYS_INLINE
     bool IntrsOn()
@@ -411,7 +411,7 @@ namespace Npk
      */
     bool HwIntermediatePte(HwPte* pte, sl::Opt<Paddr> next, bool valid);
 
-    /* Returns whether a PTE is considerd valid/present. If `set` is valid,
+    /* Returns whether a PTE is considered valid/present. If `set` is valid,
      * the valid/present state of a PTE is updated to `*set`.
      */
     bool HwPteValid(HwPte* pte, sl::Opt<bool> set);

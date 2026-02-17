@@ -15,7 +15,7 @@ namespace Npk
     }
 
     extern "C" 
-    DebugStatus DebugEventOccured(DebugEventType what, void* data)
+    DebugStatus DebugEventOccurred(DebugEventType what, void* data)
     {
         if (!Private::debuggerInitialized)
         {

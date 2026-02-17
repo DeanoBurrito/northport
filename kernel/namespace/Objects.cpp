@@ -69,7 +69,7 @@ namespace Npk
                 //will block on us until we release the mutex.
                 //If the deletion of the child has begun, the call to
                 //`RefObject()` below will fail, so we can abort here and 
-                //relase the parent's mutex.
+                //release the parent's mutex.
                 
                 if (it->name != childName)
                     continue;
