@@ -397,7 +397,7 @@ namespace Npk
 
     /* TODO:
      */
-    VmStatus SpaceDetach(VmSpace& space, VmRange& range, bool freeAddresses);
+    VmStatus SpaceDetach(VmSpace& space, VmRange* range, bool freeAddresses);
 
     /* TODO:
      */

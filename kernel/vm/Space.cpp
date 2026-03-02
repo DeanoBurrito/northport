@@ -407,9 +407,47 @@ namespace Npk
         return VmStatus::Success;
     }
 
-    VmStatus SpaceDetach(VmSpace& space, VmRange& range, bool freeAddresses)
+    VmStatus SpaceDetach(VmSpace& space, VmRange* range, bool freeAddresses)
     {
-        NPK_UNREACHABLE();
+        NPK_ASSERT(range != nullptr);
+
+        const uintptr_t base = range->base;
+        const size_t length = range->length;
+
+        if (!AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION))
+            return VmStatus::InternalError;
+
+        VmRange* check = nullptr;
+        auto result = SpaceLookupLocked(&check, space, range->base, 1);
+        if (result != VmStatus::Success && range == check)
+        {
+            ReleaseSxMutexExclusive(&space.rangesMutex);
+            return VmStatus::InvalidArg;
+        }
+        (void)check;
+
+        space.ranges.Remove(range);
+
+        if (range->amapRef.Valid())
+            range->amapRef.Release();
+
+        if (range->source != nullptr)
+        {
+            range->source->ops->UnrefObj(range->source);
+            range->source = nullptr;
+        }
+
+        PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
+        range = nullptr;
+        (void)range;
+
+        ReleaseSxMutexExclusive(&space.rangesMutex);
+
+        if (freeAddresses)
+            return SpaceFree(space, base, length);
+        else
+            return VmStatus::Success;
     }
 
     VmStatus SpaceSplit(VmSpace& space, VmRange& range, size_t offset)
@@ -419,7 +457,118 @@ namespace Npk
 
     VmStatus SpaceClone(VmSpace** clone, VmSpace& source)
     {
-        NPK_UNREACHABLE();
+        if (!AcquireMutex(&source.freeRangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION))
+            return VmStatus::InternalError;
+
+        if (!AcquireSxMutexExclusive(&source.rangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION))
+        {
+            ReleaseMutex(&source.freeRangesMutex);
+            return VmStatus::InternalError;
+        }
+
+        void* ptr = PoolAllocWired(sizeof(VmSpace), SpaceHeapTag);
+        if (ptr == nullptr)
+        {
+            ReleaseSxMutexExclusive(&source.rangesMutex);
+            ReleaseMutex(&source.freeRangesMutex);
+
+            return VmStatus::Shortage;
+        }
+
+        auto* newSpace = new(ptr) VmSpace {};
+        NPK_ASSERT(ResetMutex(&newSpace->freeRangesMutex, 1));
+        NPK_ASSERT(ResetSxMutex(&newSpace->rangesMutex, 1));
+
+        bool carryOn = true;
+        for (auto it = source.freeRanges.First(); it != nullptr; 
+            it = source.freeRanges.Successor(it))
+        {
+            ptr = PoolAllocWired(sizeof(VmFreeRange), SpaceHeapTag);
+            if (ptr == nullptr)
+            {
+                carryOn = false;
+                break;
+            }
+
+            auto* latest = new(ptr) VmFreeRange {};
+            latest->base = it->base;
+            latest->length = it->length;
+            latest->largestChild = it->largestChild;
+
+            newSpace->freeRanges.Insert(latest);
+        }
+
+        for (auto it = source.ranges.First(); it != nullptr && carryOn;
+            it = source.ranges.Successor(it))
+        {
+            ptr = PoolAllocWired(sizeof(VmRange), SpaceHeapTag);
+            if (ptr == nullptr)
+            {
+                carryOn = false;
+                break;
+            }
+
+            auto* latest = new(ptr) VmRange {};
+            latest->base = it->base;
+            latest->length = it->length;
+            latest->flags = it->flags;
+            latest->offset = it->offset;
+            latest->amapOffset = it->amapOffset;
+            latest->amapRef = it->amapRef;
+            latest->source = it->source;
+
+            if (latest->source != nullptr)
+            {
+                auto src = latest->source;
+                PagerFlags pagerFlags {};
+                if (it->flags.Has(VmFlag::Write))
+                    pagerFlags.Set(PagerFlag::Write);
+
+                NPK_ASSERT(src->ops->RefObj(src, pagerFlags));
+            }
+
+            newSpace->ranges.Insert(latest);
+
+            if (!it->source->ops->RefObj(it->source, {}))
+            {
+                carryOn = false;
+                break;
+            }
+            else
+                latest->source = it->source;
+        }
+
+        if (!carryOn)
+        {
+            while (newSpace->freeRanges.GetRoot() != nullptr)
+            {
+                auto range = newSpace->freeRanges.GetRoot();
+                newSpace->freeRanges.Remove(range);
+                PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
+            }
+
+            while (newSpace->ranges.GetRoot() != nullptr)
+            {
+                auto range = newSpace->ranges.GetRoot();
+                newSpace->ranges.Remove(range);
+                PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
+            }
+
+            PoolFreeWired(newSpace, sizeof(VmSpace), SpaceHeapTag);
+
+            ReleaseSxMutexExclusive(&source.rangesMutex);
+            ReleaseMutex(&source.freeRangesMutex);
+
+            return VmStatus::Shortage;
+        }
+
+        *clone = newSpace;
+        ReleaseSxMutexExclusive(&source.rangesMutex);
+        ReleaseMutex(&source.freeRangesMutex);
+
+        return VmStatus::Success;
     }
 
     VmStatus SpaceLookup(VmRange** found, VmSpace& space, uintptr_t addr)
