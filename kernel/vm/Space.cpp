@@ -313,37 +313,125 @@ namespace Npk
         return VmStatus::Success;
     }
 
-    VmStatus LookupRangeInSpace(VmRange** found, VmSpace& space, uintptr_t addr)
+    //NOTE: assumes space.rangesMutex is held (shared or exclusive)
+    static VmStatus SpaceLookupLocked(VmRange** found, VmSpace& space, 
+        uintptr_t addr, size_t length)
+    {
+        const uintptr_t end = AlignUpPage(addr + length);
+        addr = AlignDownPage(addr);
+
+        auto scan = space.ranges.GetRoot();
+        while (scan != nullptr)
+        {
+            const uintptr_t scanEnd = scan->base + scan->length;
+            if (addr < scanEnd && scan->base < end)
+            {
+                if (!found)
+                    *found = scan;
+                return VmStatus::Success;
+            }
+
+            if (addr < scan->base)
+                scan = space.ranges.GetLeft(scan);
+            else if (addr > scan->base)
+                scan = space.ranges.GetRight(scan);
+            else
+            {
+                if (found != nullptr)
+                    *found = scan;
+                return VmStatus::Success;
+            }
+        }
+
+        return VmStatus::BadVaddr;
+    }
+
+    VmStatus SpaceAttach(VmRange** range, VmSpace& space, uintptr_t base, 
+        size_t length, VmSource* source, size_t srcOffset, VmFlags flags)
+    {
+        if ((srcOffset & PageMask()) != (base & PageMask()))
+            return VmStatus::InvalidArg;
+
+        if (!AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION))
+            return VmStatus::InternalError;
+
+        auto result = SpaceLookupLocked(nullptr, space, base, length);
+        if (result != VmStatus::Success)
+        {
+            ReleaseSxMutexExclusive(&space.rangesMutex);
+            return VmStatus::BadVaddr;
+        }
+
+        void* ptr = PoolAllocWired(sizeof(VmRange), SpaceHeapTag);
+        if (ptr == nullptr)
+        {
+            ReleaseSxMutexExclusive(&space.rangesMutex);
+            return VmStatus::Shortage;
+        }
+
+        auto* vmr = new(ptr) VmRange {};
+        vmr->flags = flags;
+        vmr->base = base;
+        vmr->length = length;
+        vmr->amapRef = {};
+        vmr->amapOffset = 0;
+
+        if (source != nullptr)
+        {
+            PagerFlags pagerFlags {};
+            if (flags.Has(VmFlag::Write))
+                pagerFlags.Set(PagerFlag::Write);
+
+            if (!source->ops->RefObj(source, pagerFlags))
+            {
+                PoolFreeWired(vmr, sizeof(*vmr), SpaceHeapTag);
+                ReleaseSxMutexExclusive(&space.rangesMutex);
+                return VmStatus::ObjRefFailed;
+            }
+
+            vmr->source = source;
+            vmr->offset = srcOffset;
+        }
+        else
+        {
+            vmr->source = nullptr;
+            vmr->offset = 0;
+        }
+
+        space.ranges.Insert(vmr);
+        *range = vmr;
+
+        ReleaseSxMutexExclusive(&space.rangesMutex);
+
+        return VmStatus::Success;
+    }
+
+    VmStatus SpaceDetach(VmSpace& space, VmRange& range, bool freeAddresses)
+    {
+        NPK_UNREACHABLE();
+    }
+
+    VmStatus SpaceSplit(VmSpace& space, VmRange& range, size_t offset)
+    {
+        NPK_UNREACHABLE();
+    }
+
+    VmStatus SpaceClone(VmSpace** clone, VmSpace& source)
+    {
+        NPK_UNREACHABLE();
+    }
+
+    VmStatus SpaceLookup(VmRange** found, VmSpace& space, uintptr_t addr)
     {
         NPK_CHECK(found != nullptr, VmStatus::InvalidArg);
 
         if (!AcquireSxMutexShared(&space.rangesMutex, {}, NPK_WAIT_LOCATION))
             return VmStatus::InternalError;
 
-        auto scan = space.ranges.GetRoot();
-        while (scan != nullptr)
-        {
-            if (addr < scan->base)
-            {
-                scan = space.ranges.GetLeft(scan);
-                continue;
-            }
-
-            if (addr >= scan->base + scan->length)
-            {
-                scan = space.ranges.GetRight(scan);
-                continue;
-            }
-
-            *found = scan;
-            break;
-        }
-
+        auto status = SpaceLookupLocked(found, space, addr, 1);
         ReleaseSxMutexShared(&space.rangesMutex);
 
-        if (*found != nullptr)
-            return VmStatus::Success;
-        else
-            return VmStatus::BadVaddr;
+        return status;
     }
 }

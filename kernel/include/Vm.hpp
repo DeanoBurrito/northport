@@ -21,6 +21,7 @@ namespace Npk
         InUse,
         AlreadyAllocated,
         InternalError,
+        ObjRefFailed,
     };
 
     enum class VmFlag
@@ -39,14 +40,10 @@ namespace Npk
          */
         Mmio,
 
-        /* If set, memory will backed immediately and will not be paged out.
+        /* Indicates any writes to a block of memory are private to the address
+         * space, and therefore not propagated back to the original source.
          */
-        Bound,
-
-        /* If set, operations on this memory will fail if they need to allocate
-         * any resources.
-         */
-        NoAllocate,
+        CopyOnWrite,
     };
 
     using VmFlags = sl::Flags<VmFlag>;
@@ -70,8 +67,9 @@ namespace Npk
         size_t offset;
 
         /* If the MDL is mapped in the kernel address space, `window` points
-         * to the location. This field can be validated and populated by VM
-         * subsystem functions depending on need.
+         * to the location. This field is validated and populated by VM
+         * subsystem functions depending on need and should not be accessed
+         * without a prior successful call to `MdlAcquireWindow()` on this MDL.
          */
         void* window;
 
@@ -81,22 +79,45 @@ namespace Npk
         PageInfo* pages[];
     };
 
+    /* Forward declaration, see below.
+     */
     struct VmSpace;
+
+    /* Forward declaration, see below.
+     */
     struct VmSource;
 
-    struct VmAnonPage
+    struct AnonPage
     {
-        uintptr_t type : 1;
-        uintptr_t address : (sizeof(uintptr_t) * 8) - 1;
+        sl::SpinLock lock;
+        sl::RefCount refcount;
+        PageInfo* page;
+        void* swapSlot;
     };
 
-    struct VmAnonMap
+    namespace Private
+    {
+        void DestroyAnonPage(AnonPage* page);
+    }
+
+    using AnonPageRef = sl::Ref<AnonPage, &AnonPage::refcount,
+        Private::DestroyAnonPage>;
+
+    struct AnonMap
     {
         sl::RefCount refcount;
         Mutex mutex;
+        size_t slotCount;
+        void* slots;
     };
 
-    using VmAnonMapRef = sl::Ref<VmAnonMap, &VmAnonMap::refcount>;
+    namespace Private
+    {
+        void DestroyAnonMap(AnonMap* map);
+    }
+
+    using AnonMapRef = sl::Ref<AnonMap, &AnonMap::refcount,
+        Private::DestroyAnonMap>;
 
     struct VmRange
     {
@@ -118,7 +139,7 @@ namespace Npk
          */
         size_t length;
 
-        VmAnonMapRef amapRef;
+        AnonMapRef amapRef;
         size_t amapOffset;
 
         /* Source object (layer 2) providing physical pages for this range
@@ -130,11 +151,6 @@ namespace Npk
         /* Offset within the source object that this range begins at.
          */
         size_t offset;
-
-        /* Hook field for source object usage. Used by sources to maintain a
-         * list of where they are mapped.
-         */
-        sl::FwdListHook sourceHook;
     };
 
     struct VmRangeLt
@@ -180,17 +196,40 @@ namespace Npk
         VmRangeTree ranges;
     };
 
+    enum class PagerFlag
+    {
+        Write,
+        Locked,
+        AllPages,
+    };
+
+    using PagerFlags = sl::Flags<PagerFlag>;
+
+    enum class PagerStatus
+    {
+    };
+
     struct VmPagerOps
     {
+        bool (*RefObj)(VmSource* src, PagerFlags flags);
+        void (*UnrefObj)(VmSource* src);
+        PagerStatus (*Get)(VmSource* src, sl::Span<PageInfo> pages, 
+            size_t pagesOffset, size_t mainIndex, PagerFlags flags);
+        PagerStatus (*Fault)(VmSource* src, sl::Span<PageInfo> pages, 
+            size_t pagesOffset, size_t mainIndex, PagerFlags flags);
+        PagerStatus (*Put)(VmSource* src, sl::Span<PageInfo> pages, 
+            size_t pagesOffset, PagerFlags flags);
+        void (*Flush)(VmSource* src, size_t offsetPages, size_t lengthPages, 
+            PagerFlags flags);
+        void (*Release)(VmSource* src, PageInfo* page, size_t pageOffset);
     };
 
     struct VmSource
     {
+        const VmPagerOps* ops; //set before source is known to vm subsystem, readonly after - not protected by lock
+
         SxMutex mutex;
-        //TODO: refcount?
-        sl::FwdList<VmRange, &VmRange::sourceHook> maps;
-        sl::FwdList<PageInfo, &PageInfo::vmoList> pages;
-        VmPagerOps* ops;
+        sl::FwdList<PageInfo, &PageInfo::vmoList> pages; //current list of pages
     };
 
     /* Provides fine control over address space allocation. Each field has a
@@ -215,9 +254,10 @@ namespace Npk
 
         /* Highest address considered for allocation.
          */
-        uintptr_t maxAddr = static_cast<uintptr_t>(-1);
+        uintptr_t maxAddr = static_cast<decltype(maxAddr)>(-1);
 
-        /* Minimum alignment for allocated address, can be zero.
+        /* Minimum alignment for allocated address, can be zero for
+         * 'dont care'.
          */
         size_t alignment = 0;
 
@@ -259,7 +299,7 @@ namespace Npk
         PageAccessRef& ref);
 
     /* Sets the mapping for kernel translations at `vaddr` using `map` (direct
-     * or indiret translations) to `paddr`. A direct translation one performed 
+     * or indirect translations) to `paddr`. A direct translation one performed
      * by the hardware while the mapped is loaded and active, an indirect 
      * translation is performed by software. 
      * This is a low level function and skips some checks and features provided
@@ -348,19 +388,75 @@ namespace Npk
     VmStatus SpaceFree(VmSpace& space, uintptr_t base, size_t length, 
         sl::TimeCount timeout = sl::NoTimeout);
 
-    VmStatus LookupRangeInSpace(VmRange** found, VmSpace& space, 
+    /* TODO:
+     * - if `base` is not page-aligned, this function should allocate the base
+     *   address.
+     */
+    VmStatus SpaceAttach(VmRange** range, VmSpace& space, uintptr_t base, 
+        size_t length, VmSource* source, size_t srcOffset, VmFlags flags);
+
+    /* TODO:
+     */
+    VmStatus SpaceDetach(VmSpace& space, VmRange& range, bool freeAddresses);
+
+    /* TODO:
+     */
+    VmStatus SpaceSplit(VmSpace& space, VmRange& range, size_t offset);
+
+    /* TODO:
+     */
+    VmStatus SpaceLookup(VmRange** found, VmSpace& space, 
         uintptr_t addr);
 
+    /* TODO:
+     */
+    VmStatus SpaceClone(VmSpace** clone, VmSpace& source);
+
+    /* TODO:
+     */
     VmStatus CreateMdlFromBuffer(Mdl** mdl, void* base, size_t length);
+
+    /* TODO:
+     */
     VmStatus CreateMdlFromInactiveBuffer(Mdl** mdl, VmSpace& space, void* base, 
         size_t length);
+
+    /* TODO:
+     */
     VmStatus CreateMdlFromPageList(Mdl** mdl, sl::Span<Paddr> pages, 
         size_t length, size_t offset);
 
+    /* TODO:
+     */
     VmStatus DestroyMdl(Mdl* mdl);
 
+    /* Returns if the MDL has a window in kernel virtual memory. A window in
+     * this context meaning the pages pointed to by the MDL mapped as contiguous
+     * buffer in virtual memory.
+     * Note that this function's return value is typically useless as the status
+     * of the MDL's window may change as this function is returning. The return
+     * value is 'best effort' and as such no hard decisions should be made based
+     * on it.
+     */
     bool IsMdlWindowValid(Mdl* mdl);
-    bool EnsureMdlWindowIsValid(Mdl* mdl);
+
+    /* This function ensures the MDL has a valid window, and increments the ref
+     * count of it. A matching call to `MdlReleaseWindow()` is expected when the
+     * callee of this function has finished with the window. Note that MDL
+     * windows are exempt from typical page reclamation mechanisms so windows
+     * should only be used where necessary. They are also potentially expensive 
+     * to create and teardown.
+     * Returns whether the window was successfully acquired or not. If not it
+     * should not be accessed as it may not be mapped.
+     */
+    bool MdlAcquireWindow(Mdl* mdl);
+
+    /* TODO:
+     */
     void MdlReleaseWindow(Mdl* mdl);
+
+    /* Returns the number of physical pages described by a memory descriptor
+     * list.
+     */
     size_t MdlPageCount(Mdl* mdl);
 }
