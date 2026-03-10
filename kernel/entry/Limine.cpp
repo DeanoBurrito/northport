@@ -1,4 +1,4 @@
-#include <EntryPrivate.hpp>
+#include <private/Entry.hpp>
 #include <Core.hpp>
 #include <Memory.hpp>
 #include "Limine.h"

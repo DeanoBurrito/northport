@@ -5,7 +5,7 @@
 #include <hardware/x86_64/PvClock.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <Core.hpp>
-#include <EntryPrivate.hpp>
+#include <private/Entry.hpp>
 #include <Memory.hpp>
 #include <Maths.hpp>
 

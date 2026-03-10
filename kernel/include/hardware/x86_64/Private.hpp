@@ -1,6 +1,6 @@
 #pragma once
 
-#include <HardwarePrivate.hpp>
+#include <private/Hardware.hpp>
 
 extern "C"
 {

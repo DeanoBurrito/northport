@@ -1,4 +1,4 @@
-#include <NamespacePrivate.hpp>
+#include <private/Namespace.hpp>
 #include <Maths.hpp>
 
 namespace Npk

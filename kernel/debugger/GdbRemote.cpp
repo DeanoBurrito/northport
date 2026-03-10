@@ -1,4 +1,4 @@
-#include <DebuggerPrivate.hpp>
+#include <private/Debugger.hpp>
 #include <Memory.hpp>
 #include <Maths.hpp>
 #include <NanoPrintf.hpp>

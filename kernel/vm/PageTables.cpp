@@ -1,4 +1,4 @@
-#include <VmPrivate.hpp>
+#include <private/Vm.hpp>
 #include <Core.hpp>
 
 namespace Npk

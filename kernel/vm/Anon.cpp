@@ -1,4 +1,4 @@
-#include <VmPrivate.hpp>
+#include <private/Vm.hpp>
 
 namespace Npk::Private
 {

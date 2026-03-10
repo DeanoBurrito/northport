@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Status.hpp>
 #include <Optional.hpp>
 #include <Span.hpp>
 #include <Flags.hpp>

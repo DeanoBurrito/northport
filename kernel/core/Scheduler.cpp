@@ -1,4 +1,4 @@
-#include <CorePrivate.hpp>
+#include <private/Core.hpp>
 #include <Maths.hpp>
 
 namespace Npk

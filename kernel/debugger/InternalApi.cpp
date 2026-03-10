@@ -1,4 +1,4 @@
-#include <DebuggerPrivate.hpp>
+#include <private/Debugger.hpp>
 #include <Hardware.hpp>
 #include <Memory.hpp>
 

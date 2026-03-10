@@ -1,8 +1,8 @@
-#include <HardwarePrivate.hpp>
+#include <private/Hardware.hpp>
 #include <hardware/x86_64/Private.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <Core.hpp>
-#include <EntryPrivate.hpp>
+#include <private/Entry.hpp>
 #include <Memory.hpp>
 #include <Maths.hpp>
 

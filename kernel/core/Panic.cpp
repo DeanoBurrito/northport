@@ -1,10 +1,10 @@
-#include <CorePrivate.hpp>
+#include <private/Core.hpp>
 #include <Debugger.hpp>
 #include <NanoPrintf.hpp>
 #include <Maths.hpp>
 
 //NOTE: this is a bit dodge, but this gives us access to the build info
-#include <EntryPrivate.hpp>
+#include <private/Entry.hpp>
 
 namespace Npk
 {

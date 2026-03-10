@@ -3,7 +3,7 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Msr.hpp>
 #include <hardware/x86_64/Tsc.hpp>
-#include <HardwarePrivate.hpp>
+#include <private/Hardware.hpp>
 #include <AcpiTypes.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>

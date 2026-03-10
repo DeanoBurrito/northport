@@ -1,8 +1,9 @@
-#include <EntryPrivate.hpp>
-#include <CorePrivate.hpp>
+#include <private/Entry.hpp>
+#include <private/Entry.hpp>
 #include <Core.hpp>
 #include <Debugger.hpp>
-#include <NamespacePrivate.hpp>
+#include <private/Namespace.hpp>
+#include <Video.hpp>
 #include <Vm.hpp>
 #include <AcpiTypes.hpp>
 #include <Maths.hpp>
@@ -15,7 +16,6 @@
 namespace Npk
 {
     void DispatchInterrupt(size_t vector) { (void)vector; };
-    void DispatchPageFault(uintptr_t addr, bool write) {(void)addr; (void)write;}
 
     SystemDomain sysDomain0 {};
 

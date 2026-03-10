@@ -1,4 +1,4 @@
-#include <LoaderPrivate.hpp>
+#include <private/Loader.hpp>
 #include "ElfSpec.hpp"
 
 namespace Npk

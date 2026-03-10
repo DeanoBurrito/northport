@@ -1,4 +1,4 @@
-#include <EntryPrivate.hpp>
+#include <private/Entry.hpp>
 
 namespace Npk
 {

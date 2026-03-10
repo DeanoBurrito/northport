@@ -1,4 +1,4 @@
-#include <CorePrivate.hpp>
+#include <private/Core.hpp>
 #include <Memory.hpp>
 #include <NanoPrintf.hpp>
 #include <Maths.hpp>

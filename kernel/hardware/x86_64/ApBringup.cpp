@@ -1,4 +1,4 @@
-#include <EntryPrivate.hpp>
+#include <private/Entry.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/LocalApic.hpp>
 #include <hardware/x86_64/Private.hpp>

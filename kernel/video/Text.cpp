@@ -1,4 +1,4 @@
-#include <VideoPrivate.hpp>
+#include <private/Video.hpp>
 #include <Maths.hpp>
 
 namespace Npk

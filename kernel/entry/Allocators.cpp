@@ -1,4 +1,4 @@
-#include <EntryPrivate.hpp>
+#include <private/Entry.hpp>
 #include <Maths.hpp>
 #include <Memory.hpp>
 
