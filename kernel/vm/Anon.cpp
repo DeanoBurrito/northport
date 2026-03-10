@@ -68,19 +68,19 @@ namespace Npk::Private
         PoolFreeWired(table, sizeof(*table), AmapTag);
     }
 
-    VmStatus CreateAnonPage(AnonPage** page)
+    NpkStatus CreateAnonPage(AnonPage** page)
     {
         if (page == nullptr)
-            return VmStatus::InvalidArg;
+            return NpkStatus::InvalidArg;
 
         void* ptr = PoolAllocWired(sizeof(AnonPage), AnonPageTag);
         if (ptr == nullptr)
-            return VmStatus::Shortage;
+            return NpkStatus::Shortage;
 
         auto* newPage = new(ptr) AnonPage {};
         *page = newPage;
 
-        return VmStatus::Success;
+        return NpkStatus::Success;
     }
 
     void DestroyAnonPage(AnonPage* page)
@@ -96,21 +96,21 @@ namespace Npk::Private
         PoolFreeWired(page, sizeof(*page), AnonPageTag);
     }
 
-    VmStatus CreateAnonMap(AnonMap** map, size_t slotCount)
+    NpkStatus CreateAnonMap(AnonMap** map, size_t slotCount)
     {
         if (map == nullptr)
-            return VmStatus::InvalidArg;
+            return NpkStatus::InvalidArg;
 
         void* ptr = PoolAllocWired(sizeof(AnonMap), AmapTag);
         if (ptr == nullptr)
-            return VmStatus::Shortage;
+            return NpkStatus::Shortage;
         auto* newMap = new(ptr) AnonMap {};
 
         if (slotCount > 0)
         {
             auto status = ResizeAnonMap(*newMap, slotCount);
 
-            if (status != VmStatus::Success)
+            if (status != NpkStatus::Success)
             {
                 PoolFreeWired(newMap, sizeof(*newMap), AmapTag);
                 return status;
@@ -118,7 +118,7 @@ namespace Npk::Private
         }
 
         *map = newMap;
-        return VmStatus::Success;
+        return NpkStatus::Success;
     }
 
     void DestroyAnonMap(AnonMap* map)
@@ -136,17 +136,17 @@ namespace Npk::Private
         PoolFreeWired(map, sizeof(*map), AmapTag);
     }
 
-    VmStatus ResizeAnonMap(AnonMap& map, size_t newSlotCount)
+    NpkStatus ResizeAnonMap(AnonMap& map, size_t newSlotCount)
     {
         AnonMapRef mapRef = &map;
 
         if (!AcquireMutex(&map.mutex, sl::NoTimeout))
-            return VmStatus::InternalError;
+            return NpkStatus::InternalError;
 
         if (newSlotCount <= map.slotCount)
         {
             ReleaseMutex(&map.mutex);
-            return VmStatus::InvalidArg;
+            return NpkStatus::InvalidArg;
         }
 
         const size_t curLevels = AnonTableLevels(map.slotCount);
@@ -156,7 +156,7 @@ namespace Npk::Private
             //in this case we dont actually need to do anything, as the
             //number of levels stays the same. Return success.
             ReleaseMutex(&map.mutex);
-            return VmStatus::Success;
+            return NpkStatus::Success;
         }
 
         if (map.slots != nullptr)
@@ -180,7 +180,7 @@ namespace Npk::Private
                     map.slots = originalRoot;
 
                     ReleaseMutex(&map.mutex);
-                    return VmStatus::Shortage;
+                    return NpkStatus::Shortage;
                 }
 
                 auto* curRoot = static_cast<AnonTable*>(map.slots);
@@ -192,7 +192,7 @@ namespace Npk::Private
 
         ReleaseMutex(&map.mutex);
         
-        return VmStatus::Success;
+        return NpkStatus::Success;
     }
 
     AnonPageRef AnonMapLookup(AnonMap& map, size_t slot)

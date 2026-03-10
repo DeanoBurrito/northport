@@ -980,3 +980,7 @@ namespace Npk
 
 #define NPK_WAIT_LOCATION \
     SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__)
+
+#define NPK_UNEXPECTED_STATUS(status, lvl) \
+    Log("(" SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__) ") Unexpected status code %zu, %s", lvl, \
+    status, StatusStr(status)) \

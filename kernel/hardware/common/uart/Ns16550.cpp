@@ -202,7 +202,7 @@ namespace Npk
         {
             auto status = SetKernelMap(virtBase, regsBase, 
                 VmFlag::Write | VmFlag::Mmio);
-            if (status != VmStatus::Success)
+            if (status != NpkStatus::Success)
                 return false;
 
             Ns16550::address = virtBase;

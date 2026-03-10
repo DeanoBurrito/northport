@@ -4,14 +4,14 @@ namespace Npk
 {
     constexpr HeapTag KernelStackTag = NPK_MAKE_HEAP_TAG("Stck");
 
-    VmStatus AllocKernelStack(void** stack)
+    NpkStatus AllocKernelStack(void** stack)
     {
         void* ptr = PoolAllocWired(KernelStackSize(), KernelStackTag);
         if (ptr == nullptr)
-            return VmStatus::Shortage;
+            return NpkStatus::Shortage;
 
         *stack = ptr;
-        return VmStatus::Success;
+        return NpkStatus::Success;
     }
 
     void FreeKernelStack(void* stack)

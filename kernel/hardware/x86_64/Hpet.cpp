@@ -39,7 +39,7 @@ namespace Npk
 
         auto mapped = SetKernelMap(virtBase, hpet->baseAddress.address, 
             VmFlag::Write | VmFlag::Mmio);
-        if (mapped != VmStatus::Success)
+        if (mapped != NpkStatus::Success)
             return false;
 
         //ensure main counter is running, we dont care about any other state

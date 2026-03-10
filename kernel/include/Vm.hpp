@@ -11,19 +11,6 @@ namespace Npk
     | (static_cast<HeapTag>(str[0]) ) \
     )
 
-    enum class VmStatus
-    {
-        Success,
-        Shortage,
-        InvalidArg,
-        BadVaddr,
-        AlreadyMapped,
-        InUse,
-        AlreadyAllocated,
-        InternalError,
-        ObjRefFailed,
-    };
-
     enum class VmFlag
     {
         /* Set if memory is writable.
@@ -295,7 +282,7 @@ namespace Npk
      * access to allocators or other resources, by only manipulating the bits
      * of the final PTE.
      */
-    VmStatus PrimeMapping(HwMap map, uintptr_t vaddr, MmuWalkResult& result, 
+    NpkStatus PrimeMapping(HwMap map, uintptr_t vaddr, MmuWalkResult& result, 
         PageAccessRef& ref);
 
     /* Sets the mapping for kernel translations at `vaddr` using `map` (direct
@@ -305,7 +292,7 @@ namespace Npk
      * This is a low level function and skips some checks and features provided
      * at high levels in the virtual memory subsystem.
      */
-    VmStatus SetMap(HwMap map, uintptr_t vaddr, Paddr paddr, VmFlags flags);
+    NpkStatus SetMap(HwMap map, uintptr_t vaddr, Paddr paddr, VmFlags flags);
 
     /* Ensures that address translations for `vaddr` using `map` (directly or
      * indirectly) will fail, and returns whether a mapping was undone
@@ -313,24 +300,24 @@ namespace Npk
      * If this function returns success and `paddr` is non-null, the unmapped
      * physical address is placed in `*paddr`.
      */
-    VmStatus ClearMap(HwMap map, uintptr_t vaddr, Paddr* paddr);
+    NpkStatus ClearMap(HwMap map, uintptr_t vaddr, Paddr* paddr);
 
     /* Same as `PrimeMap()` but exclusively uses the current kernel map.
      */
-    VmStatus PrimeKernelMap(uintptr_t vaddr);
+    NpkStatus PrimeKernelMap(uintptr_t vaddr);
 
     /* Same as `SetMap()` but exclusively uses the current kernel map.
      */
-    VmStatus SetKernelMap(uintptr_t vaddr, Paddr paddr, VmFlags flags);
+    NpkStatus SetKernelMap(uintptr_t vaddr, Paddr paddr, VmFlags flags);
 
     /* Same as `ClearMap()` but exclusively uses the current kernel map.
      */
-    VmStatus ClearKernelMap(uintptr_t vaddr, Paddr* paddr);
+    NpkStatus ClearKernelMap(uintptr_t vaddr, Paddr* paddr);
 
     /* Attempts to allocate a kernel stack, the base (higher numerical) address
      * is placed into `*stack` on success. This memory is backed immediately.
      */
-    VmStatus AllocKernelStack(void** stack);
+    NpkStatus AllocKernelStack(void** stack);
 
     /* Immediately released memory used by a kernel stack, DO NOT call this
      * for the current stack (insert stick in bicycle spoke meme here) - instead
@@ -377,7 +364,7 @@ namespace Npk
      * The `constraints` argument allows for fine-tuning how the address space
      * should be selected, see the struct definition for details.
      */
-    VmStatus SpaceAlloc(VmSpace& space, uintptr_t* addr, size_t length, 
+    NpkStatus SpaceAlloc(VmSpace& space, uintptr_t* addr, size_t length, 
         AllocConstraints constraints = {});
 
     /* Releases `length` bytes of address space from `base` in address space
@@ -385,50 +372,50 @@ namespace Npk
      * address space may not be immediately available for reuse. This function
      * does not take care of unmapping anything in this space.
      */
-    VmStatus SpaceFree(VmSpace& space, uintptr_t base, size_t length, 
+    NpkStatus SpaceFree(VmSpace& space, uintptr_t base, size_t length, 
         sl::TimeCount timeout = sl::NoTimeout);
 
     /* TODO:
      * - if `base` is not page-aligned, this function should allocate the base
      *   address.
      */
-    VmStatus SpaceAttach(VmRange** range, VmSpace& space, uintptr_t base, 
+    NpkStatus SpaceAttach(VmRange** range, VmSpace& space, uintptr_t base, 
         size_t length, VmSource* source, size_t srcOffset, VmFlags flags);
 
     /* TODO:
      */
-    VmStatus SpaceDetach(VmSpace& space, VmRange* range, bool freeAddresses);
+    NpkStatus SpaceDetach(VmSpace& space, VmRange* range, bool freeAddresses);
 
     /* TODO:
      */
-    VmStatus SpaceSplit(VmSpace& space, VmRange& range, size_t offset);
+    NpkStatus SpaceSplit(VmSpace& space, VmRange& range, size_t offset);
 
     /* TODO:
      */
-    VmStatus SpaceLookup(VmRange** found, VmSpace& space, 
+    NpkStatus SpaceLookup(VmRange** found, VmSpace& space, 
         uintptr_t addr);
 
     /* TODO:
      */
-    VmStatus SpaceClone(VmSpace** clone, VmSpace& source);
+    NpkStatus SpaceClone(VmSpace** clone, VmSpace& source);
 
     /* TODO:
      */
-    VmStatus CreateMdlFromBuffer(Mdl** mdl, void* base, size_t length);
+    NpkStatus CreateMdlFromBuffer(Mdl** mdl, void* base, size_t length);
 
     /* TODO:
      */
-    VmStatus CreateMdlFromInactiveBuffer(Mdl** mdl, VmSpace& space, void* base, 
+    NpkStatus CreateMdlFromInactiveBuffer(Mdl** mdl, VmSpace& space, void* base, 
         size_t length);
 
     /* TODO:
      */
-    VmStatus CreateMdlFromPageList(Mdl** mdl, sl::Span<Paddr> pages, 
+    NpkStatus CreateMdlFromPageList(Mdl** mdl, sl::Span<Paddr> pages, 
         size_t length, size_t offset);
 
     /* TODO:
      */
-    VmStatus DestroyMdl(Mdl* mdl);
+    NpkStatus DestroyMdl(Mdl* mdl);
 
     /* Returns if the MDL has a window in kernel virtual memory. A window in
      * this context meaning the pages pointed to by the MDL mapped as contiguous

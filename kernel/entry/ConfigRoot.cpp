@@ -93,7 +93,7 @@ namespace Npk
             const auto status = SetKernelMap(virtBase, LookupPagePaddr(page), 
                 VmFlag::Write);
 
-            NPK_ASSERT(status == VmStatus::Success);
+            NPK_ASSERT(status == NpkStatus::Success);
         }
 
         for (size_t i = 0; i < ptrsCount; i++)
@@ -120,7 +120,7 @@ namespace Npk
                 m += PageSize(), virtBase += PageSize())
             {
                 const auto status = SetKernelMap(virtBase, m, {});
-                NPK_CHECK(status == VmStatus::Success, );
+                NPK_CHECK(status == NpkStatus::Success, );
             }
 
             const auto conv = sl::ConvertUnits(sdt.length);

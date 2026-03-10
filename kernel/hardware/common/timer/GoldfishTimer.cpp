@@ -32,7 +32,7 @@ namespace Npk
 
         auto status = SetKernelMap(virtBase, foundAt, 
             VmFlag::Write | VmFlag::Mmio);
-        if (status != VmStatus::Success)
+        if (status != NpkStatus::Success)
             return false;
 
         gfTimerRegs = virtBase + offset;

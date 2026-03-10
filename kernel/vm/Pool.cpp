@@ -70,7 +70,7 @@ namespace Npk::Private
         pool.spareNodesHead += PageSize();
 
         auto result = SetKernelMap(vbase, paddr, VmFlag::Write);
-        if (result != VmStatus::Success)
+        if (result != NpkStatus::Success)
         {
             FreePage(page);
             pool.spareNodesHead -= PageSize();
@@ -203,7 +203,7 @@ namespace Npk::Private
 
             auto paddr = LookupPagePaddr(page);
             auto result = SetKernelMap(i, paddr, VmFlag::Write);
-            NPK_ASSERT(result == VmStatus::Success);
+            NPK_ASSERT(result == NpkStatus::Success);
 
             //TODO: if paged pool, add this page to the active lists
         }
@@ -301,7 +301,7 @@ namespace Npk::Private
             {
                 Paddr paddr;
                 auto result = ClearKernelMap(i, &paddr);
-                NPK_ASSERT(result == VmStatus::Success);
+                NPK_ASSERT(result == NpkStatus::Success);
 
                 FreePage(LookupPageInfo(paddr));
             }

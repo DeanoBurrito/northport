@@ -14,12 +14,12 @@ namespace Npk::Private
 
     MmuFlags VmToMmuFlags(VmFlags flags, MmuFlags extra);
 
-    VmStatus CreateAnonPage(AnonPage** page);
+    NpkStatus CreateAnonPage(AnonPage** page);
     void DestroyAnonPage(AnonPage* page);
 
-    VmStatus CreateAnonMap(AnonMap** map, size_t slotCount);
+    NpkStatus CreateAnonMap(AnonMap** map, size_t slotCount);
     void DestroyAnonMap(AnonMap* map);
-    VmStatus ResizeAnonMap(AnonMap& map, size_t newSlotCount);
+    NpkStatus ResizeAnonMap(AnonMap& map, size_t newSlotCount);
     AnonPageRef AnonMapLookup(AnonMap& map, size_t slot);
     void AnonMapAdd(AnonMap& map, size_t slot, AnonPageRef& anon);
     AnonPageRef AnonMapRemove(AnonMap& map, size_t slot);

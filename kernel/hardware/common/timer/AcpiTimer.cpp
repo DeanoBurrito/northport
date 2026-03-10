@@ -43,7 +43,7 @@ namespace Npk
             if (acpiTimerIsMmio)
             {
                 auto mapped = SetKernelMap(virtBase, acpiTimerAddress, VmFlag::Mmio);
-                if (mapped != VmStatus::Success)
+                if (mapped != NpkStatus::Success)
                     return false;
 
                 acpiTimerAddress = virtBase;

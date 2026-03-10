@@ -45,47 +45,47 @@ namespace Npk
         Panic("Non-page sized page tables not currently implemented", nullptr);
     }
 
-    VmStatus PrimeMapping(HwMap map, uintptr_t vaddr, MmuWalkResult& resultOut,
+    NpkStatus PrimeMapping(HwMap map, uintptr_t vaddr, MmuWalkResult& resultOut,
         PageAccessRef& ptRefOut)
     {
         PageAccessRef ptRef;
         MmuWalkResult result {};
 
         if (!HwWalkMap(map, vaddr, result, &ptRef))
-            return VmStatus::InternalError;
+            return NpkStatus::InternalError;
 
         if (result.complete)
-            return VmStatus::AlreadyMapped;
+            return NpkStatus::AlreadyMapped;
 
         while (result.level != 0)
         {
             const auto nextPt = Private::AllocatePageTable(result.level - 1);
             if (!nextPt.HasValue())
-                return VmStatus::Shortage;
+                return NpkStatus::Shortage;
 
             if (!HwIntermediatePte(result.pte, *nextPt, true))
-                return VmStatus::InternalError;
+                return NpkStatus::InternalError;
 
             if (!HwContinueWalk(map, vaddr, result, &ptRef))
-                return VmStatus::InternalError;
+                return NpkStatus::InternalError;
         }
 
         resultOut = result;
         ptRefOut = ptRef;
-        return VmStatus::Success;
+        return NpkStatus::Success;
     }
 
-    VmStatus SetMap(HwMap map, uintptr_t vaddr, Paddr paddr, VmFlags flags)
+    NpkStatus SetMap(HwMap map, uintptr_t vaddr, Paddr paddr, VmFlags flags)
     {
         MmuWalkResult result {};
         PageAccessRef ptRef {};
 
         auto status = PrimeMapping(map, vaddr, result, ptRef);
-        if (status != VmStatus::Success)
+        if (status != NpkStatus::Success)
             return status;
 
         if (result.complete)
-            return VmStatus::AlreadyMapped;
+            return NpkStatus::AlreadyMapped;
 
         const auto mmuFlags = Private::VmToMmuFlags(flags, {});
 
@@ -96,19 +96,19 @@ namespace Npk
 
         HwCopyPte(result.pte, &pte);
         
-        return VmStatus::Success;
+        return NpkStatus::Success;
     }
 
-    VmStatus ClearMap(HwMap map, uintptr_t vaddr, Paddr* paddr)
+    NpkStatus ClearMap(HwMap map, uintptr_t vaddr, Paddr* paddr)
     {
         MmuWalkResult result {};
         PageAccessRef ptRef {};
 
         if (!HwWalkMap(map, vaddr, result, &ptRef))
-            return VmStatus::InternalError;
+            return NpkStatus::InternalError;
 
         if (!result.complete)
-            return VmStatus::BadVaddr;
+            return NpkStatus::BadVaddr;
 
         HwPte pte {};
         HwCopyPte(&pte, result.pte);
@@ -125,10 +125,10 @@ namespace Npk
         if (info->mmu.validPtes == 0)
             Log("Leaking empty PT page, TODO!", LogLevel::Error);
 
-        return VmStatus::Success;
+        return NpkStatus::Success;
     }
 
-    VmStatus PrimeKernelMap(uintptr_t vaddr)
+    NpkStatus PrimeKernelMap(uintptr_t vaddr)
     {
         MmuWalkResult result;
         PageAccessRef ref;
@@ -136,12 +136,12 @@ namespace Npk
         return PrimeMapping(MyKernelMap(), vaddr, result, ref);
     }
 
-    VmStatus SetKernelMap(uintptr_t vaddr, Paddr paddr, VmFlags flags)
+    NpkStatus SetKernelMap(uintptr_t vaddr, Paddr paddr, VmFlags flags)
     {
         return SetMap(MyKernelMap(), vaddr, paddr, flags);
     }
 
-    VmStatus ClearKernelMap(uintptr_t vaddr, Paddr* paddr)
+    NpkStatus ClearKernelMap(uintptr_t vaddr, Paddr* paddr)
     {
         return ClearMap(MyKernelMap(), vaddr, paddr);
     }

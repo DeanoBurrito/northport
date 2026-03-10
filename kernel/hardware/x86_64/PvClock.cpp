@@ -33,7 +33,7 @@ namespace Npk
         NPK_CHECK(page != nullptr, false);
 
         const Paddr paddr = LookupPagePaddr(page);
-        if (SetKernelMap(virtBase, paddr, VmFlag::Mmio) != VmStatus::Success)
+        if (SetKernelMap(virtBase, paddr, VmFlag::Mmio) != NpkStatus::Success)
         {
             FreePage(page);
             return false;
