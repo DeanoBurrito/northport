@@ -600,9 +600,11 @@ namespace Npk
     {
         NPK_ASSERT(engine != nullptr);
 
-        NPK_ASSERT(AcquireMutex(&engine->mutex, sl::NoTimeout));
+        if (!engine->panicMode)
+            NPK_ASSERT(AcquireMutex(&engine->mutex, sl::NoTimeout));
         FlushTextRendererLocked(engine);
-        ReleaseMutex(&engine->mutex);
+        if (!engine->panicMode)
+            ReleaseMutex(&engine->mutex);
     }
 
     void FullRefreshTextRenderer(TextRenderer* engine)

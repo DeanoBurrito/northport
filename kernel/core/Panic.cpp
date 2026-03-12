@@ -54,12 +54,19 @@ namespace Npk
         PanicPrint("\r\n\r\n");
     }
 
-    static void DumpCpuInfo()
+    static void DumpSystemInfo()
     {
         const CpuId myId = MyCoreId();
+        const auto realTime = GetTime();
+        const auto uptime = GetMonotonicTime();
+        const auto date = sl::CalendarPoint::From(realTime);
 
-        PanicPrint("CPU info:\r\n");
-        PanicPrint("Id (sw, hw): %zu, %p\r\n", myId, GetIpiId(myId));
+        PanicPrint("System info:\r\n");
+        PanicPrint("Panic CPU id (sw, hw): %zu, %p\r\n", myId, GetIpiId(myId));
+        PanicPrint("Time: up=%" PRIu64", real=%" PRIu64" (%02u:%02u.%02u "
+            "%02u/%02u/%u)\r\n", uptime.epoch, realTime.epoch, date.hour, 
+            date.minute, date.second, date.dayOfMonth, date.month, date.year);
+
         HwDumpPanicInfo(PanicPrintBufferSize, PanicPrint);
         PanicPrint("\r\n");
     }
@@ -180,7 +187,10 @@ namespace Npk
 
         Private::AcquirePanicOutputs(panicOutputs);
         for (auto it = panicOutputs.Begin(); it != panicOutputs.End(); ++it)
-            it->BeginPanic();
+        {
+            if (it->BeginPanic != nullptr)
+                it->BeginPanic();
+        }
         
         DumpHeader();
 
@@ -189,7 +199,7 @@ namespace Npk
         PanicPrint("\r\n\r\n");
 
         DumpBuildInfo();
-        DumpCpuInfo();
+        DumpSystemInfo();
         if (frame != nullptr)
             DumpCallstack(GetTrapBasePtr(frame));
         else

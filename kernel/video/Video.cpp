@@ -356,6 +356,12 @@ namespace Npk
         if (globalTextRenderer == nullptr)
             return;
 
+        if (globalTextRenderer->panicMode)
+        {
+            WriteText(globalTextRenderer, msg.text);
+            return;
+        }
+
         const auto levelStr = LogLevelStr(msg.level);
         const char* format = globalTextRendererDoColour 
             ? ColourFormatStr : FormatStr;
@@ -378,6 +384,12 @@ namespace Npk
 
         WriteText(globalTextRenderer, msg.text);
         WriteText(globalTextRenderer, "\n"_span);
+    }
+
+    static void BeginVideoPanic()
+    {
+        globalTextRenderer->panicMode = true;
+        //TODO: ensure renderer state is something sensible for printing info
     }
 
     static void InitializeVideo(sl::Vector2u initFbSize)
@@ -420,6 +432,7 @@ namespace Npk
         }
 
         globalTextRenderer->sink.Write = WriteVideoLog;
+        globalTextRenderer->sink.BeginPanic = BeginVideoPanic;
         AddLogSink(globalTextRenderer->sink);
 
         Log("Video subsystem initialized.", LogLevel::Info);
