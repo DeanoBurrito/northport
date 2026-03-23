@@ -18,6 +18,7 @@ namespace Npk
         {
             if (entry->waitable->type == WaitableType::Condition)
             {
+                entry->satisfied = true;
                 entry->waitable->waiters.Remove(entry);
                 return true;
             }
