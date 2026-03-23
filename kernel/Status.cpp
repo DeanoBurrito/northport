@@ -26,6 +26,12 @@ namespace Npk
             return "lock acquire failed";
         case NpkStatus::Unsupported:
             return "unsupported";
+        case NpkStatus::AlreadyMapped:
+            return "already mapped";
+        case NpkStatus::NotAvailable:
+            return "not available";
+        case NpkStatus::Busy:
+            return "busy";
         default:
             return "<>";
         }

@@ -16,6 +16,9 @@ namespace Npk
         ObjRefFailed,
         LockAcquireFailed,
         Unsupported,
+        AlreadyMapped,
+        NotAvailable,
+        Busy,
     };
 
     const char* StatusStr(NpkStatus what);

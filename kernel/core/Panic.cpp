@@ -8,7 +8,7 @@
 
 namespace Npk
 {
-    constexpr size_t PanicPrintBufferSize = 80;
+    constexpr size_t PanicPrintBufferSize = 128;
     constexpr size_t CallstackDepth = 16;
 
     static LogSinkList panicOutputs;
@@ -168,9 +168,16 @@ namespace Npk
     }
 
     [[noreturn]]
-    void Panic(sl::StringSpan message, TrapFrame* frame)
+    void Panic(sl::StringSpan message, TrapFrame* frame, ...)
     {
         IntrsOff();
+
+        char formattedMsgBuff[PanicPrintBufferSize];
+        va_list args;
+        va_start(args, frame);
+        size_t formattedMsgLen = npf_vsnprintf(formattedMsgBuff, 
+            PanicPrintBufferSize, message.Begin(), args);
+        va_end(args);
 
         //log that this core is starting the panic sequence, in case another 
         //core also panics and beats us to it. This can happen by the cores
@@ -180,7 +187,7 @@ namespace Npk
         //So to assist with debugging, we also log the panic message before
         //that point.
         Log("Panic pending on cpu %zu: %.*s, frame=%p", LogLevel::Error, 
-            MyCoreId(), (int)message.Size(), message.Begin(), frame);
+            MyCoreId(), (int)formattedMsgLen, formattedMsgBuff, frame);
 
         FreezeAllCpus(true);
         //Only one cpu will be executing past this point
@@ -195,7 +202,7 @@ namespace Npk
         DumpHeader();
 
         PanicPrint("\r\n");
-        PanicPrint("%.*s", (int)message.Size(), message.Begin());
+        PanicPrint("%.*s", (int)formattedMsgLen, formattedMsgBuff);
         PanicPrint("\r\n\r\n");
 
         DumpBuildInfo();

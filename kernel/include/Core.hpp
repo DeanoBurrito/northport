@@ -597,7 +597,7 @@ namespace Npk
     SL_PRINTF_FUNC(1, 3)
     void Log(const char* msg, LogLevel level, ...);
     [[noreturn]]
-    void Panic(sl::StringSpan message, TrapFrame* frame);
+    void Panic(sl::StringSpan message, TrapFrame* frame, ...);
 
     void AddLogSink(LogSink& sink);
     void RemoveLogSink(LogSink& sink);
@@ -955,21 +955,21 @@ namespace Npk
     SL_SECTION(".preinit_array", static auto* cpu_local_ctor_ptr_##ID) \
         = &cpu_local_ctor_##ID;
 
-#define NPK_ASSERT_STRINGIFY(x) NPK_ASSERT_STRINGIFY2(x)
-#define NPK_ASSERT_STRINGIFY2(x) #x
-
 #define NPK_ASSERT(cond) \
     if (SL_UNLIKELY(!(cond))) \
     { \
-        Npk::Panic("Assert failed (" SL_FILENAME_MACRO ":" \
-            NPK_ASSERT_STRINGIFY(__LINE__) "): " #cond, nullptr); \
+        Npk::Panic("Assert failed %s:%i: %s, caller=%p", nullptr, \
+            SL_FILENAME_MACRO, __LINE__, #cond, SL_RETURN_ADDR); \
     }
 
 #define NPK_UNREACHABLE() \
+    do \
+    { \
     NPK_ASSERT(!"Unreachable code reached."); \
-    SL_UNREACHABLE()
+        SL_UNREACHABLE(); \
+    } \
+    while (false)
 
-//TODO: print a backtrace of where the check failed?
 #define NPK_CHECK(cond, ret) \
     if (SL_UNLIKELY(!(cond))) \
     { \
@@ -978,6 +978,8 @@ namespace Npk
         return ret; \
     }
 
+#define NPK_ASSERT_STRINGIFY2(x) #x
+#define NPK_ASSERT_STRINGIFY(x) NPK_ASSERT_STRINGIFY2(x)
 #define NPK_WAIT_LOCATION \
     SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__)
 
