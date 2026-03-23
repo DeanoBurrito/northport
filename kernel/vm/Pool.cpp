@@ -182,18 +182,34 @@ namespace Npk::Private
         uintptr_t mapBegin = AlignDownPage(selected->base);
         uintptr_t mapEnd = AlignUpPage(selected->base + selected->length);
 
-        const auto prev = pool.nodesByAddr.Before(selected);
-        if (prev != pool.nodesByAddr.End() && prev->tag != FreeTag)
+        auto prev = pool.nodesByAddr.Before(selected);
+        while (prev != pool.nodesByAddr.End() 
+            && AlignUpPage(prev->base + prev->length) >= mapBegin)
         {
+            if (prev->tag == FreeTag)
+            {
+                prev = pool.nodesByAddr.Before(&*prev);
+                continue;
+            }
+
             mapBegin = sl::Max(mapBegin, prev->base + prev->length);
             mapBegin = AlignUpPage(mapBegin);
+            break;
         }
 
-        const auto next = pool.nodesByAddr.After(selected);
-        if (next != pool.nodesByAddr.End() && next->tag != FreeTag)
+        auto next = pool.nodesByAddr.After(selected);
+        while (next != pool.nodesByAddr.End() && 
+            AlignDownPage(next->base) < mapEnd)
         {
+            if (next->tag == FreeTag)
+            {
+                next = pool.nodesByAddr.After(&*next);
+                continue;
+            }
+
             mapEnd = sl::Min(mapEnd, next->base);
             mapEnd = AlignDownPage(mapEnd);
+            break;
         }
 
         for (uintptr_t i = mapBegin; i < mapEnd; i += PageSize())

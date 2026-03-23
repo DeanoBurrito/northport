@@ -45,6 +45,7 @@ namespace Npk
         NPK_ASSERT(ptr != nullptr);
         MySystemDomain().kernelSpace = new(ptr) VmSpace {};
         auto mySpace = MySystemDomain().kernelSpace;
+        mySpace->map = MySystemDomain().kernelMap;
 
         ResetMutex(&mySpace->freeRangesMutex, 1);
         ResetSxMutex(&mySpace->rangesMutex, 1);
@@ -350,7 +351,7 @@ namespace Npk
             const uintptr_t scanEnd = scan->base + scan->length;
             if (addr < scanEnd && scan->base < end)
             {
-                if (!found)
+                if (found != nullptr)
                     *found = scan;
                 return NpkStatus::Success;
             }
@@ -373,15 +374,29 @@ namespace Npk
     NpkStatus SpaceAttach(VmRange** range, VmSpace& space, uintptr_t base, 
         size_t length, VmSource* source, size_t srcOffset, VmFlags flags)
     {
-        if ((srcOffset & PageMask()) != (base & PageMask()))
-            return NpkStatus::InvalidArg;
+        length = AlignUpPage(length);
+
+        if ((base & PageMask()) != 0)
+        {
+            auto result = SpaceAlloc(space, &base, length);
+            if (result != NpkStatus::Success)
+                return result;
+        }
+
+        if (flags.Has(VmFlag::Fetch))
+        {
+            if (flags.Has(VmFlag::Write))
+                return NpkStatus::InvalidArg;
+            if (flags.Has(VmFlag::Mmio))
+                return NpkStatus::InvalidArg;
+        }
 
         if (!AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
             NPK_WAIT_LOCATION))
             return NpkStatus::InternalError;
 
         auto result = SpaceLookupLocked(nullptr, space, base, length);
-        if (result != NpkStatus::Success)
+        if (result == NpkStatus::Success)
         {
             ReleaseSxMutexExclusive(&space.rangesMutex);
             return NpkStatus::BadVaddr;

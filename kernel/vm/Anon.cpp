@@ -105,6 +105,7 @@ namespace Npk::Private
         if (ptr == nullptr)
             return NpkStatus::Shortage;
         auto* newMap = new(ptr) AnonMap {};
+        NPK_ASSERT(ResetMutex(&newMap->mutex, 1));
 
         if (slotCount > 0)
         {
