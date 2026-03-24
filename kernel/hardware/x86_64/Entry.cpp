@@ -74,7 +74,11 @@ namespace Npk
             else if (prevIpl != Ipl::Passive)
                 Panic("Page fault at non-passive IPL", frame);
             else
-                DispatchPageFault(READ_CR(2), frame->ec & 0b10);
+            {
+                const bool write = frame->ec & 0b10;
+                const bool user = frame->ec & 0b100;
+                DispatchPageFault(READ_CR(2), write, user);
+            }
             suppressEoi = true;
             break;
 

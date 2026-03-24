@@ -294,7 +294,10 @@ namespace Npk
             HwPte localPte;
 
             COPY_PTE(&localPte, pte);
-            localPte.value |= PresentFlag;
+            if (*set)
+                localPte.value |= PresentFlag;
+            else
+                localPte.value &= ~PresentFlag;
             COPY_PTE(pte, &localPte);
         }
 

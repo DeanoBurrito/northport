@@ -27,7 +27,7 @@ namespace Npk
      * interrupts disabled. Informs the kernel that a page fault occurred at
      * passive IPL.
      */
-    void DispatchPageFault(uintptr_t addr, bool write);
+    void DispatchPageFault(uintptr_t addr, bool write, bool user);
 
     /* This should be called after hardware-specific code has brought-up a
      * new (from the system's perspective) cpu. It allows the rest of the
