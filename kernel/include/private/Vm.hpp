@@ -16,13 +16,15 @@ namespace Npk::Private
 
     NpkStatus CreateAnonPage(AnonPage** page);
     void DestroyAnonPage(AnonPage* page);
+    NpkStatus AnonPageGetPage(PageInfo** info, AnonPageRef page);
 
     NpkStatus CreateAnonMap(AnonMap** map, size_t slotCount);
     void DestroyAnonMap(AnonMap* map);
     NpkStatus ResizeAnonMap(AnonMap& map, size_t newSlotCount);
     AnonPageRef AnonMapLookup(AnonMap& map, size_t slot);
-    void AnonMapAdd(AnonMap& map, size_t slot, AnonPageRef& anon);
+    NpkStatus AnonMapAdd(AnonMap& map, size_t slot, AnonPageRef& anon);
     AnonPageRef AnonMapRemove(AnonMap& map, size_t slot);
+    NpkStatus AnonMapClone(AnonMapRef* clone, AnonMap& source);
 
     VmSource* AnonSourceAttach(size_t size);
     VmSource* NamedSourceAttach(NsObject& obj);

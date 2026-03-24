@@ -31,6 +31,10 @@ namespace Npk
          * space, and therefore not propagated back to the original source.
          */
         CopyOnWrite,
+
+        /* Internal flag: indicates if a range is borrowing the amap of another.
+         */
+        AmapNeedsCopy,
     };
 
     using VmFlags = sl::Flags<VmFlag>;
@@ -108,6 +112,8 @@ namespace Npk
 
     struct VmRange
     {
+        Mutex mutex;
+
         /* Linkage for VmSpace management.
          */
         sl::RBTreeHook spaceHook;
@@ -176,6 +182,8 @@ namespace Npk
 
     struct VmSpace
     {
+        HwMap map;
+
         Mutex freeRangesMutex;
         VmFreeRangeTree freeRanges;
 

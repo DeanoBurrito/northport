@@ -376,12 +376,8 @@ namespace Npk
     {
         length = AlignUpPage(length);
 
-        if ((base & PageMask()) != 0)
-        {
-            auto result = SpaceAlloc(space, &base, length);
-            if (result != NpkStatus::Success)
-                return result;
-        }
+        if (flags.Has(VmFlag::AmapNeedsCopy))
+            return NpkStatus::InvalidArg;
 
         if (flags.Has(VmFlag::Fetch))
         {
@@ -391,14 +387,31 @@ namespace Npk
                 return NpkStatus::InvalidArg;
         }
 
+        bool allocatedVaddrs = false;
+        if ((base & PageMask()) != 0)
+        {
+            auto result = SpaceAlloc(space, &base, length);
+            if (result != NpkStatus::Success)
+                return result;
+
+            allocatedVaddrs = true;
+        }
+
         if (!AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
             NPK_WAIT_LOCATION))
+        {
+            if (allocatedVaddrs)
+                SpaceFree(space, base, length);
             return NpkStatus::InternalError;
+        }
 
         auto result = SpaceLookupLocked(nullptr, space, base, length);
         if (result == NpkStatus::Success)
         {
             ReleaseSxMutexExclusive(&space.rangesMutex);
+            if (allocatedVaddrs)
+                SpaceFree(space, base, length);
+
             return NpkStatus::BadVaddr;
         }
 
@@ -406,6 +419,9 @@ namespace Npk
         if (ptr == nullptr)
         {
             ReleaseSxMutexExclusive(&space.rangesMutex);
+            if (allocatedVaddrs)
+                SpaceFree(space, base, length);
+
             return NpkStatus::Shortage;
         }
 
@@ -426,6 +442,9 @@ namespace Npk
             {
                 PoolFreeWired(vmr, sizeof(*vmr), SpaceHeapTag);
                 ReleaseSxMutexExclusive(&space.rangesMutex);
+                if (allocatedVaddrs)
+                    SpaceFree(space, base, length);
+
                 return NpkStatus::ObjRefFailed;
             }
 
@@ -491,7 +510,8 @@ namespace Npk
 
     NpkStatus SpaceSplit(VmSpace& space, VmRange& range, size_t offset)
     {
-        NPK_UNREACHABLE();
+        (void)space; (void)range; (void)offset;
+        return NpkStatus::Unsupported; //TODO: not this lol
     }
 
     NpkStatus SpaceClone(VmSpace** clone, VmSpace& source)

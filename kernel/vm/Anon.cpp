@@ -78,6 +78,7 @@ namespace Npk::Private
             return NpkStatus::Shortage;
 
         auto* newPage = new(ptr) AnonPage {};
+        newPage->refcount = 1;
         *page = newPage;
 
         return NpkStatus::Success;
@@ -106,6 +107,7 @@ namespace Npk::Private
             return NpkStatus::Shortage;
         auto* newMap = new(ptr) AnonMap {};
         NPK_ASSERT(ResetMutex(&newMap->mutex, 1));
+        newMap->refcount = 1;
 
         if (slotCount > 0)
         {
@@ -156,7 +158,9 @@ namespace Npk::Private
         {
             //in this case we dont actually need to do anything, as the
             //number of levels stays the same. Return success.
+            map.slotCount = newSlotCount;
             ReleaseMutex(&map.mutex);
+
             return NpkStatus::Success;
         }
 
@@ -191,6 +195,7 @@ namespace Npk::Private
         }
         //else: no existing tables, we'll do it lazily.
 
+        map.slotCount = newSlotCount;
         ReleaseMutex(&map.mutex);
         
         return NpkStatus::Success;
@@ -227,23 +232,28 @@ namespace Npk::Private
         return ref;
     }
 
-    void AnonMapAdd(AnonMap& map, size_t slot, AnonPageRef& anon)
+    NpkStatus AnonMapAdd(AnonMap& map, size_t slot, AnonPageRef& anon)
     {
         AnonMapRef mapRef = &map;
 
         if (!AcquireMutex(&map.mutex, sl::NoTimeout))
-            return;
+            return NpkStatus::LockAcquireFailed;
 
         if (slot >= map.slotCount)
         {
             ReleaseMutex(&map.mutex);
-            return;
+            return NpkStatus::InvalidArg;
         }
 
         if (map.slots == nullptr)
         {
             map.slots = AllocAnonTable();
-            NPK_ASSERT(map.slots != nullptr); //TODO: non-fatal handling
+
+            if (map.slots == nullptr)
+            {
+                ReleaseMutex(&map.mutex);
+                return NpkStatus::Shortage;
+            }
         }
 
         const size_t levels = AnonTableLevels(map.slotCount);
@@ -273,6 +283,8 @@ namespace Npk::Private
         }
 
         ReleaseMutex(&map.mutex);
+
+        return NpkStatus::Success;
     }
 
     AnonPageRef AnonMapRemove(AnonMap& map, size_t slot)
@@ -314,5 +326,11 @@ namespace Npk::Private
         ReleaseMutex(&map.mutex);
 
         return ref;
+    }
+
+    NpkStatus AnonMapClone(AnonMapRef* clone, AnonMap& source)
+    {
+        (void)clone; (void)source;
+        return NpkStatus::Unsupported; //TODO: implement
     }
 }
