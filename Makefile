@@ -26,7 +26,6 @@ VENDOR_CACHE_DIR = .cache
 ARCH_DIR = hardware/$(TARGET_ARCH)
 PLAT_DIR = hardware/$(TARGET_ARCH)/$(TARGET_PLAT)
 KERNEL_TARGET = $(BUILD_DIR)/npk.elf
-BUILD_TARGETS = $(KERNEL_TARGET) $(INITDISK_TARGET)
 ISO_BUILD_DIR = $(BUILD_DIR)/iso
 ISO_TARGET = $(BUILD_DIR)/northport-live-$(TARGET_ARCH)-$(TARGET_PLAT).iso
 
@@ -46,7 +45,6 @@ include kernel/$(ARCH_DIR)/Arch.mk
 include kernel/$(PLAT_DIR)/Plat.mk
 include libs/np-syslib/Local.mk
 include kernel/Local.mk
-include initdisk/Local.mk
 
 all: $(ARCH_DEFAULT_TARGET)
 
@@ -97,7 +95,7 @@ debug-headless: $(ARCH_DEFAULT_TARGET) $(QEMU_FW_FILE)
 attach:
 	$(LOUD)gdb $(KERNEL_TARGET) -ex "target remote :1234"
 
-binaries: options $(BUILD_TARGETS)
+binaries: options $(KERNEL_TARGET)
 
 $(BUILD_DIR)/limine.conf: Config.mk misc/loader-config/limine.conf
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -xc++ -E -P misc/loader-config/limine.conf -o $@
@@ -108,7 +106,6 @@ limine-iso-prep: binaries $(LIMINE_BINARIES) $(BUILD_DIR)/limine.conf
 	$(LOUD)cp $(LIMINE_BINARIES)/limine-uefi-cd.bin $(ISO_BUILD_DIR)
 	$(LOUD)mkdir -p $(ISO_BUILD_DIR)/EFI/BOOT
 	$(LOUD)cp $(LIMINE_BINARIES)/$(UEFI_BOOT_NAME) $(ISO_BUILD_DIR)/EFI/BOOT/
-	$(LOUD)cp $(INITDISK_TARGET) $(ISO_BUILD_DIR)
 	$(LOUD)cp $(KERNEL_TARGET) $(ISO_BUILD_DIR)
 
 limine-iso: limine-iso-prep

@@ -103,7 +103,7 @@ namespace sl
             if (!DecrementRefCount<T, refs>(ptr))
                 return;
 
-            if (WhenZero != nullptr)
+            if (ptr != nullptr && WhenZero != nullptr)
                 WhenZero(ptr);
             ptr = nullptr;
         }
