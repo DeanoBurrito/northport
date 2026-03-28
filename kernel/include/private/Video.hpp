@@ -81,5 +81,7 @@ namespace Npk
             bool inControlSeq;
             bool inEscArg;
         } parser;
+
+        bool panicMode;
     };
 }

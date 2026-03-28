@@ -19,6 +19,7 @@ namespace Npk
         AlreadyMapped,
         NotAvailable,
         Busy,
+        NotWritable,
     };
 
     const char* StatusStr(NpkStatus what);

@@ -32,6 +32,8 @@ namespace Npk
             return "not available";
         case NpkStatus::Busy:
             return "busy";
+        case NpkStatus::NotWritable:
+            return "not writable";
         default:
             return "<>";
         }

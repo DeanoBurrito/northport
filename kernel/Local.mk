@@ -1,4 +1,5 @@
-KERNEL_CXX_SRCS += core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
+KERNEL_CXX_SRCS += Status.cpp \
+	core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
 	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp \
 	core/Panic.cpp core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
 	core/Worker.cpp\
@@ -55,7 +56,7 @@ $(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o: $(UNITY_SOURCE_FILE)
 kernel/$(BAKED_CONSTANTS_FILE):
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Creating source file for build-time kernel constants\n"
 	@mkdir -p $(@D)
-	@printf "#include <EntryPrivate.hpp>\n \
+	@printf "#include <private/Entry.hpp>\n \
 		namespace Npk \n\
 		{ \n\
 			const char* gitHash = \"$(shell git rev-parse HEAD)\"; \n\
