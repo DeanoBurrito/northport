@@ -17,7 +17,7 @@ namespace Npk
         return entries + (entries / 2);
     }
 
-    NsStatus CreateHandleTableSized(HandleTable** table, size_t entryCount)
+    NpkStatus CreateHandleTableSized(HandleTable** table, size_t entryCount)
     {
         using Private::HandleHeapTag;
 
@@ -25,14 +25,14 @@ namespace Npk
 
         void* ptr = PoolAllocPaged(sizeof(HandleTable), HandleHeapTag);
         if (ptr == nullptr)
-            return NsStatus::Shortage;
+            return NpkStatus::Shortage;
 
         void* entries = PoolAllocPaged(sizeof(Handle) * entryCount, 
             HandleHeapTag);
         if (entries == nullptr)
         {
             PoolFreePaged(ptr, sizeof(HandleTable), HandleHeapTag);
-            return NsStatus::Shortage;
+            return NpkStatus::Shortage;
         }
 
         auto* latest = new(ptr) HandleTable {};
@@ -42,7 +42,7 @@ namespace Npk
             PoolFreePaged(entries, sizeof(Handle) * entryCount, 
                 HandleHeapTag);
             PoolFreePaged(ptr, sizeof(HandleTable), HandleHeapTag);
-            return NsStatus::InternalError;
+            return NpkStatus::InternalError;
         }
 
         Handle* entryArray = static_cast<Handle*>(entries);
@@ -50,10 +50,10 @@ namespace Npk
         latest->firstFreeEntry = 0;
 
         *table = latest;
-        return NsStatus::Success;
+        return NpkStatus::Success;
     }
 
-    NsStatus CreateHandleTable(HandleTable** table)
+    NpkStatus CreateHandleTable(HandleTable** table)
     {
         return CreateHandleTableSized(table, InitialTableEntries);
     }
@@ -93,18 +93,18 @@ namespace Npk
         return true;
     }
 
-    NsStatus DuplicateHandleTable(HandleTable** copy, HandleTable& source)
+    NpkStatus DuplicateHandleTable(HandleTable** copy, HandleTable& source)
     {
         HandleTable* other = nullptr;
 
         auto result = CreateHandleTableSized(&other, source.entries.Size());
-        if (result != NsStatus::Success)
+        if (result != NpkStatus::Success)
             return result;
 
         if (!AcquireMutex(&source.mutex, sl::NoTimeout, NPK_WAIT_LOCATION))
         {
             DestroyHandleTable(*other);
-            return NsStatus::InternalError;
+            return NpkStatus::InternalError;
         }
 
         for (size_t i = 0; i < source.entries.Size(); i++)
@@ -127,18 +127,18 @@ namespace Npk
         sl::AtomicThreadFence(sl::Release);
         *copy = other;
 
-        return NsStatus::Success;
+        return NpkStatus::Success;
     }
 
-    NsStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj)
+    NpkStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj)
     {
         if (!AcquireMutex(&table.mutex, sl::NoTimeout, NPK_WAIT_LOCATION))
-            return NsStatus::InternalError;
+            return NpkStatus::InternalError;
 
         if (!RefObject(obj))
         {
             ReleaseMutex(&table.mutex);
-            return NsStatus::BadObject;
+            return NpkStatus::BadObject;
         }
 
         //the object is valid and we've got the table's mutex, find or create
@@ -154,7 +154,7 @@ namespace Npk
                 ReleaseMutex(&table.mutex);
                 UnrefObject(obj);
                 
-                return NsStatus::Shortage;
+                return NpkStatus::Shortage;
             }
 
             Handle* newEntries = static_cast<Handle*>(latest);
@@ -180,7 +180,7 @@ namespace Npk
 
         ReleaseMutex(&table.mutex);
 
-        return NsStatus::Success;
+        return NpkStatus::Success;
     }
 
     bool DestroyHandle(Handle& handle, HandleTable& table)

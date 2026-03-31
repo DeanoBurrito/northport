@@ -34,6 +34,8 @@ namespace Npk
             return "busy";
         case NpkStatus::NotWritable:
             return "not writable";
+        case NpkStatus::BadConfig:
+            return "bad config";
         default:
             return "<>";
         }

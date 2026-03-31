@@ -9,7 +9,7 @@ namespace Npk
             return NpkStatus::InvalidArg;
 
         NsObject* obj;
-        if (FindObject(&obj, root, path) != NsStatus::Success)
+        if (FindObject(&obj, root, path) != NpkStatus::Success)
             return NpkStatus::InvalidArg;
 
         auto status = LoadDriverFromNsObj(*obj);
@@ -61,11 +61,13 @@ namespace Npk
             NPK_UNEXPECTED_STATUS(result, LogLevel::Error);
 
         if (sl::MemCompare(&magic, ExpectedMagic, 4) == 0)
-            result = Private::LoadElf(kernelSpace, uintptr_t loadBase, obj);
+            result = Private::LoadElf(kernelSpace, 0, obj);
         else if (sl::MemCompare(&magic, "MZ", 2) == 0)
-            result = Private::LoadPe(kernelSpace, uintptr_t loadBase, obj);
+            result = Private::LoadPe(kernelSpace, 0, obj);
         else
             result = NpkStatus::Unsupported;
+
+        //TODO: binfmt_misc + script/shebang integration, but only for userspace
 
         if (result != NpkStatus::Success)
         {

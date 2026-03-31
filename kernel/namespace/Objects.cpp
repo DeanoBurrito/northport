@@ -25,9 +25,9 @@ namespace Npk
         return *rootObj;
     }
 
-    NsStatus FindObject(NsObject** found, NsObject* root, sl::StringSpan path)
+    NpkStatus FindObject(NsObject** found, NsObject* root, sl::StringSpan path)
     {
-        NPK_CHECK(!path.Empty(), NsStatus::InvalidArg);
+        NPK_CHECK(!path.Empty(), NpkStatus::InvalidArg);
 
         if (path[0] == PathDelimiter)
         {
@@ -37,14 +37,14 @@ namespace Npk
         else if (root == nullptr)
             root = rootObj;
 
-        NPK_CHECK(root != nullptr, NsStatus::InternalError);
+        NPK_CHECK(root != nullptr, NpkStatus::InternalError);
 
         if (!RefObject(*root))
-            return NsStatus::BadObject;
+            return NpkStatus::BadObject;
         if (!AcquireMutex(&root->mutex, sl::NoTimeout))
         {
             UnrefObject(*root);
-            return NsStatus::InternalError;
+            return NpkStatus::InternalError;
         }
 
         while (true)
@@ -100,11 +100,11 @@ namespace Npk
         if (!path.Empty())
         {
             UnrefObject(*root);
-            return NsStatus::InvalidArg;
+            return NpkStatus::InvalidArg;
         }
 
         *found = root;
-        return NsStatus::Success;
+        return NpkStatus::Success;
     }
 
     bool RefObject(NsObject& obj)
@@ -158,16 +158,16 @@ namespace Npk
         return &obj;
     }
 
-    NsStatus CreateObject(void** ptr, size_t length, NsObjDtor dtor, 
+    NpkStatus CreateObject(void** ptr, size_t length, NsObjDtor dtor, 
         sl::StringSpan name , HeapTag tag)
     { NPK_UNREACHABLE(); }
 
-    NsStatus RenameObject(NsObject& obj, sl::StringSpan name)
+    NpkStatus RenameObject(NsObject& obj, sl::StringSpan name)
     { NPK_UNREACHABLE(); }
 
-    NsStatus LinkObject(NsObject& parent, NsObject& child)
+    NpkStatus LinkObject(NsObject& parent, NsObject& child)
     { NPK_UNREACHABLE(); }
 
-    NsStatus UnlinkObject(NsObject& parent, NsObject& child)
+    NpkStatus UnlinkObject(NsObject& parent, NsObject& child)
     { NPK_UNREACHABLE(); }
 }

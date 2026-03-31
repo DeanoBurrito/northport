@@ -8,15 +8,6 @@ namespace Npk
      */
     constexpr char PathDelimiter = '/';
 
-    enum class NsStatus
-    {
-        Success,
-        InvalidArg,
-        BadObject,
-        InternalError,
-        Shortage,
-    };
-
     enum class NsObjFlag
     {
         UseNameDirectly,
@@ -30,6 +21,10 @@ namespace Npk
         Invalid,
         Directory,
         File,
+        Session,
+        Job,
+        Process,
+        Thread,
     };
 
     using NsObjDtor = void(*)(void* obj);
@@ -69,7 +64,7 @@ namespace Npk
      * It is up to the caller to decrement the reference count when it is 
      * finished with the object.
      */
-    NsStatus FindObject(NsObject** found, NsObject* root, sl::StringSpan path);
+    NpkStatus FindObject(NsObject** found, NsObject* root, sl::StringSpan path);
 
     /* Increments an object's refcount if it already non-zero. If the refcount
      * is zero, it remains unchanged as it is already being freed. This
@@ -92,16 +87,16 @@ namespace Npk
      */
     NsObjRef GetObjectAutoref(NsObject& obj);
 
-    NsStatus CreateObject(void** ptr, size_t length, NsObjDtor dtor, 
+    NpkStatus CreateObject(void** ptr, size_t length, NsObjDtor dtor, 
         sl::StringSpan name, HeapTag tag);
-    NsStatus RenameObject(NsObject& obj, sl::StringSpan name);
-    NsStatus LinkObject(NsObject& parent, NsObject& child);
-    NsStatus UnlinkObject(NsObject& parent, NsObject& child);
+    NpkStatus RenameObject(NsObject& obj, sl::StringSpan name);
+    NpkStatus LinkObject(NsObject& parent, NsObject& child);
+    NpkStatus UnlinkObject(NsObject& parent, NsObject& child);
 
     /* Attempts to create a new empty handle table. If successful the result is
      * placed in `*table`.
      */
-    NsStatus CreateHandleTable(HandleTable** table);
+    NpkStatus CreateHandleTable(HandleTable** table);
 
     /* Destroys any remaining active handles in the table, then releases the
      * table resources. Returns whether destruction was successful or not.
@@ -112,14 +107,14 @@ namespace Npk
      * Copied handles increment the refcount of the underlying object and 
      * will be placed in the same slot they occupied in `source`.
      */
-    NsStatus DuplicateHandleTable(HandleTable** copy, HandleTable& source);
+    NpkStatus DuplicateHandleTable(HandleTable** copy, HandleTable& source);
 
     /* Finds a free slot in `table` and places a reference to `obj` in it.
      * This reference internally calls `RefObject()` on `obj`, so as long
      * as this handle exists the `obj` will be kept alive.
      * Upon success, a handle referring to `obj` is placed in `*handle`.
      */
-    NsStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj);
+    NpkStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj);
 
     /*
      */

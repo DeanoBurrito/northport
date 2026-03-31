@@ -200,19 +200,16 @@ namespace Npk
 
     using PagerFlags = sl::Flags<PagerFlag>;
 
-    enum class PagerStatus
-    {
-    };
-
     struct VmPagerOps
     {
         bool (*RefObj)(VmSource* src, PagerFlags flags);
         void (*UnrefObj)(VmSource* src);
-        PagerStatus (*Get)(VmSource* src, sl::Span<PageInfo> pages, 
+        NpkStatus (*Get)(VmSource* src, sl::Span<PageInfo> pages, 
             size_t pagesOffset, size_t mainIndex, PagerFlags flags);
-        PagerStatus (*Fault)(VmSource* src, sl::Span<PageInfo> pages, 
-            size_t pagesOffset, size_t mainIndex, PagerFlags flags);
-        PagerStatus (*Put)(VmSource* src, sl::Span<PageInfo> pages, 
+        NpkStatus (*Fault)(VmSource* src, VmSpace& space, uintptr_t vaddr, 
+            sl::Span<PageInfo> pages, size_t pagesOffset, size_t mainIndex, 
+            PagerFlags flags);
+        NpkStatus (*Put)(VmSource* src, sl::Span<PageInfo> pages, 
             size_t pagesOffset, PagerFlags flags);
         void (*Flush)(VmSource* src, size_t offsetPages, size_t lengthPages, 
             PagerFlags flags);
