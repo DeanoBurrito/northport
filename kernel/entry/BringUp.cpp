@@ -1,6 +1,5 @@
 #include <private/Entry.hpp>
-#include <private/Entry.hpp>
-#include <Core.hpp>
+#include <private/Core.hpp>
 #include <Debugger.hpp>
 #include <private/Namespace.hpp>
 #include <Video.hpp>
@@ -467,8 +466,18 @@ R"(                                             888                      )"
         Private::InitNamespace();
 
         //6. BSP initialization is complete.
-        Log("BSP init done, entering idle thread.", LogLevel::Trace);
+        Log("BSP init done, loading init program.", LogLevel::Trace);
         IntrsOn();
+
+        //7. Load userspace init program.
+        auto result = LoadInitProgram();
+        if (result != NpkStatus::Success)
+        {
+            Panic("Failed to load init program, status=%u %s", nullptr,
+                result, StatusStr(result));
+        }
+
+        Log("Init program loaded, entering idle thread.", LogLevel::Trace);
         while (true)
             WaitForIntr();
     }

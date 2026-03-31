@@ -6,9 +6,12 @@ KERNEL_CXX_SRCS += Status.cpp \
 	debugger/Event.cpp debugger/GdbRemote.cpp debugger/InternalApi.cpp \
 	debugger/LocalApi.cpp \
 	entry/Allocators.cpp entry/BringUp.cpp entry/ConfigRoot.cpp \
-	entry/EfiRuntime.cpp \
+	entry/EfiRuntime.cpp entry/InitProgram.cpp \
 	io/Continuation.cpp io/Packet.cpp \
+	loader/Elf.cpp loader/Filter.cpp \
 	namespace/Handles.cpp namespace/Objects.cpp \
+	process/Job.cpp process/Process.cpp process/Signals.cpp \
+	process/Thread.cpp \
 	video/Video.cpp video/Text.cpp \
 	vm/KernelStack.cpp vm/PageTables.cpp vm/Pool.cpp vm/Space.cpp \
 	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
