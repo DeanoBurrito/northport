@@ -18,13 +18,15 @@ namespace Npk
 
     enum class NsObjType
     {
-        Invalid,
-        Directory,
-        File,
-        Session,
-        Job,
-        Process,
-        Thread,
+        Invalid = 0,
+        Directory = 1,
+        File = 2,
+        Session = 3,
+        Job = 4,
+        Process = 5,
+        Thread = 6,
+
+        VendorBase = 0x1000,
     };
 
     using NsObjDtor = void(*)(void* obj);
@@ -32,15 +34,14 @@ namespace Npk
     struct NsObject
     {
         sl::RefCount refcount;
-        NsObjDtor dtor;
+        NsObjType type;
 
         Waitable mutex;
         NsObject* parent;
         sl::ListHook siblingHook;
         sl::StringSpan name;
         NsObjFlags flags;
-        HeapTag heapTag;
-        size_t length;
+        uint32_t extraLength;
     };
 
     using NsObjRef = sl::Ref<NsObject, &NsObject::refcount>;
@@ -51,6 +52,26 @@ namespace Npk
     constexpr Handle InvalidHandle = nullptr;
 
     struct HandleTable;
+
+    /* Sets type info for an object type usable by the namespace. This is mostly
+     * for internal use but may also be used by vendor-defined types.
+     * This function can be called multiple times for a type and will overwrite
+     * previously set values, it is the caller's responsibility to avoid that
+     * situation if this is undesired behaviour.
+     */
+    NpkStatus SetNsObjTypeInfo(NsObjType type, NsObjDtor dtor, 
+        size_t length, HeapTag tag);
+
+    /* Attempts to remove type info for a vendor type, which may be required for
+     * unloading a driver module. If `wait` is set, the function only returns
+     * successfully purging the type info (this requires all NsObjects using
+     * the type to be destroyed). If `wait` is clear but `force` is set this
+     * function flags the type info as pending cleanup and unlinks the dtor
+     * function (ensuring any reference to external code is broken). This can
+     * leak resources but allows the type's external references to be severed
+     * while allowing this function to return immediately.
+     */
+    NpkStatus RemoveVendorNsObjType(NsObjType type, bool wait, bool force);
 
     /* Returns a reference to the top-most object of the global namespace.
      */
@@ -87,8 +108,15 @@ namespace Npk
      */
     NsObjRef GetObjectAutoref(NsObject& obj);
 
-    NpkStatus CreateObject(void** ptr, size_t length, NsObjDtor dtor, 
-        sl::StringSpan name, HeapTag tag);
+    /*
+     */
+    NpkStatus CreateObject(void** ptr, NsObjType type, NsObjFlags flags, 
+        sl::StringSpan name, size_t extraLength);
+    /*
+     */
+    NpkStatus CreateObjectWithId(void** ptr, NsObjType type, NsObjFlags flags, 
+        sl::StringSpan name, size_t id, size_t extraLength);
+
     NpkStatus RenameObject(NsObject& obj, sl::StringSpan name);
     NpkStatus LinkObject(NsObject& parent, NsObject& child);
     NpkStatus UnlinkObject(NsObject& parent, NsObject& child);

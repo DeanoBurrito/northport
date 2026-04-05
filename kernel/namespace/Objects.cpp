@@ -1,21 +1,151 @@
 #include <private/Namespace.hpp>
+#include <NanoPrintf.hpp>
 
 namespace Npk
 {
+    constexpr size_t FixedTypeDescCount = 16;
+
+    struct NsTypeDesc
+    {
+        sl::ListHook listHook;
+        sl::RefCount refcount;
+
+        NsObjType type;
+        NsObjDtor destructor;
+        size_t baseLength;
+        HeapTag heapTag;
+    };
+
+    using NsTypeDescList = sl::List<NsTypeDesc, &NsTypeDesc::listHook>;
+    using TypeDescRef = sl::Ref<NsTypeDesc, &NsTypeDesc::refcount, nullptr>;
+
     static NsObject* rootObj;
+    static IplSpinLock<Ipl::Passive> typeDescsLock;
+    static NsTypeDesc fixedTypeDescs[FixedTypeDescCount];
+    static NsTypeDescList vendorTypeDescs;
+
+    static bool IsVendorType(NsObjType type)
+    {
+        return static_cast<size_t>(type) 
+            >= static_cast<size_t>(NsObjType::VendorBase);
+    }
+
+    static TypeDescRef AcquireTypeDesc(NsObjType type)
+    {
+        TypeDescRef ref {};
+
+        typeDescsLock.Lock();
+        if (IsVendorType(type))
+        {
+            for (auto it = vendorTypeDescs.Begin(); 
+                it != vendorTypeDescs.End(); ++it)
+            {
+                if (it->type != type)
+                    continue;
+
+                ref = &*it;
+                break;
+            }
+        }
+        else
+        {
+            const size_t index = static_cast<size_t>(type);
+            if (index < FixedTypeDescCount 
+                && fixedTypeDescs[index].type == type)
+                ref = &fixedTypeDescs[index];
+        }
+        typeDescsLock.Unlock();
+
+        return ref;
+    }
+
+    static void DirectoryObjDtor(void* obj)
+    {
+        (void)obj;
+    }
+
+    static void FileObjDtor(void* obj)
+    {
+        (void)obj;
+    }
 
     void Private::InitNamespace()
     {
-        void* ptr = PoolAllocWired(sizeof(NsObject), NamespaceHeapTag);
-        NPK_ASSERT(ptr != nullptr);
+        SetNsObjTypeInfo(NsObjType::Directory, DirectoryObjDtor, 
+            sizeof(NsObject), NamespaceHeapTag);
+        SetNsObjTypeInfo(NsObjType::File, FileObjDtor, sizeof(NsObject),
+            NamespaceHeapTag); //TODO: this should be a hook for the VFS
 
-        rootObj = new(ptr) NsObject{};
-        rootObj->heapTag = NamespaceHeapTag;
-        rootObj->refcount = 1;
-        rootObj->length = sizeof(NsObject);
-        ResetMutex(&rootObj->mutex, 1);
+        NsObjFlags flags = NsObjFlag::Wired;
+        void* ptr;
+        auto result = CreateObject(&ptr, NsObjType::Directory, flags, 
+            "/"_span, 0);
+        if (result != NpkStatus::Success)
+        {
+            auto str = StatusStr(result);
+            Panic("Namespace init failed, root CreateObject() returned %u (%s)",
+                nullptr, result, str);
+        }
+
+        rootObj = static_cast<NsObject*>(ptr);
+        rootObj->refcount++; //ensure root obj never reaches refcount of 0.
 
         Log("Global namespace initialized.", LogLevel::Verbose);
+    }
+
+    NpkStatus SetNsObjTypeInfo(NsObjType type, NsObjDtor dtor, 
+        size_t length, HeapTag tag)
+    {
+        if (dtor == nullptr)
+            return NpkStatus::InvalidArg;
+        if (length < sizeof(NsObject))
+            return NpkStatus::InvalidArg;
+
+        NsTypeDesc* desc;
+        if (IsVendorType(type))
+        {
+            using namespace Private;
+
+            void* ptr = PoolAllocWired(sizeof(NsTypeDesc), NamespaceHeapTag);
+            if (ptr == nullptr)
+                return NpkStatus::Shortage;
+            desc = new(ptr) NsTypeDesc {};
+
+            typeDescsLock.Lock();
+            vendorTypeDescs.PushBack(desc);
+        }
+        else
+        {
+            const size_t index = static_cast<size_t>(type);
+            if (index >= FixedTypeDescCount)
+                return NpkStatus::InvalidArg;
+
+            typeDescsLock.Lock();
+            desc = &fixedTypeDescs[index];
+            if (desc->refcount == 0)
+                desc->refcount = 1;
+        }
+
+        desc->type = type;
+        desc->destructor = dtor;
+        desc->baseLength = length;
+        desc->heapTag = tag;
+        typeDescsLock.Unlock();
+
+        Log("Set NsObjType 0x%x info: dtor=%p, baseLen=%zu", LogLevel::Verbose,
+            type, dtor, length);
+
+        return NpkStatus::Success;
+    }
+
+    NpkStatus RemoveVendorNsObjType(NsObjType type, bool wait, bool force)
+    {
+        if (!IsVendorType(type))
+            return NpkStatus::InvalidArg;
+
+        (void)wait;
+        (void)force;
+        NPK_UNREACHABLE();
     }
 
     NsObject& GetRootObject()
@@ -117,6 +247,7 @@ namespace Npk
         NsObject* target = &obj;
         (void)obj;
 
+        /*
         while (true)
         {
             if (!sl::DecrementRefCount<NsObject, &NsObject::refcount>(target))
@@ -151,6 +282,7 @@ namespace Npk
 
             target = parent;
         }
+        */
     }
 
     NsObjRef GetObjectAutoref(NsObject& obj)
@@ -158,9 +290,85 @@ namespace Npk
         return &obj;
     }
 
-    NpkStatus CreateObject(void** ptr, size_t length, NsObjDtor dtor, 
-        sl::StringSpan name , HeapTag tag)
-    { NPK_UNREACHABLE(); }
+    NpkStatus CreateObject(void** ptr, NsObjType type, NsObjFlags flags, 
+        sl::StringSpan name, size_t extraLength)
+    {
+        using namespace Private;
+
+        if (ptr == nullptr)
+            return NpkStatus::InvalidArg;
+        if (name.Empty())
+            return NpkStatus::InvalidArg;
+
+        auto typeDesc = AcquireTypeDesc(type);
+        if (!typeDesc.Valid())
+            return NpkStatus::InvalidArg;
+
+        const bool isWired = flags.Has(NsObjFlag::Wired);
+        const size_t realLen = extraLength + typeDesc->baseLength;
+        void* poolPtr = PoolAlloc(realLen, typeDesc->heapTag, isWired);
+        if (poolPtr == nullptr)
+            return NpkStatus::Shortage;
+
+        auto* obj = new(poolPtr) NsObject {};
+        if (!ResetMutex(&obj->mutex, 1))
+        {
+            PoolFree(poolPtr, realLen, typeDesc->heapTag, isWired);
+            
+            return NpkStatus::InternalError;
+        }
+
+        obj->type = type;
+        obj->refcount = 1;
+        obj->parent = nullptr;
+        obj->flags = flags;
+        obj->extraLength = extraLength;
+
+        if (flags.Has(NsObjFlag::BorrowedName))
+            obj->name = name;
+        else
+        {
+            void* namePtr = PoolAlloc(name.Size(), NamespaceHeapTag, isWired);
+            if (namePtr == nullptr)
+            {
+                PoolFree(poolPtr, realLen, typeDesc->heapTag, isWired);
+
+                return NpkStatus::Shortage;
+            }
+
+            sl::MemCopy(namePtr, name.Begin(), name.Size());
+            obj->name = sl::StringSpan((char*)namePtr, name.Size());
+        }
+
+        typeDesc.Acquire(); //extra ref that is held by the 'obj' instance
+        *ptr = obj;
+
+        return NpkStatus::Success;
+    }
+
+    NpkStatus CreateObjectWithId(void** ptr, NsObjType type, NsObjFlags flags, 
+        sl::StringSpan name, size_t id, size_t extraLength)
+    {
+        using namespace Private;
+
+        if (flags.Has(NsObjFlag::BorrowedName))
+            flags.Clear(NsObjFlag::BorrowedName);
+
+        const char* Format = "%.*s%zu";
+        const size_t nameLen = npf_snprintf(nullptr, 0, Format,
+            (int)name.Size(), name.Begin(), id);
+
+        const bool isWired = flags.Has(NsObjFlag::Wired);
+        void* namePtr = PoolAlloc(nameLen + 1, NamespaceHeapTag, isWired);
+        if (namePtr == nullptr)
+            return NpkStatus::Shortage;
+
+        npf_snprintf((char*)namePtr, nameLen + 1, Format, (int)name.Size(), 
+            name.Begin(), id);
+        sl::StringSpan realName((char*)namePtr, nameLen);
+
+        return CreateObject(ptr, type, flags, realName, extraLength);
+    }
 
     NpkStatus RenameObject(NsObject& obj, sl::StringSpan name)
     { NPK_UNREACHABLE(); }
