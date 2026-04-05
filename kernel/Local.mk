@@ -10,7 +10,7 @@ KERNEL_CXX_SRCS += Status.cpp \
 	io/Continuation.cpp io/Packet.cpp \
 	loader/Elf.cpp loader/Filter.cpp \
 	namespace/Handles.cpp namespace/Objects.cpp \
-	process/Job.cpp process/Process.cpp process/Signals.cpp \
+	process/Init.cpp process/Job.cpp process/Process.cpp process/Signals.cpp \
 	process/Thread.cpp \
 	video/Video.cpp video/Text.cpp \
 	vm/KernelStack.cpp vm/PageTables.cpp vm/Pool.cpp vm/Space.cpp \

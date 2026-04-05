@@ -2,21 +2,24 @@
 
 namespace Npk
 {
-    static void SessionDtor(void* obj)
-    { NPK_UNREACHABLE(); }
+    void SessionDtor(void* obj)
+    {
+        NPK_UNREACHABLE(); (void)obj;
+    }
 
-    static void JobDtor(void* obj)
-    { NPK_UNREACHABLE(); }
+    void JobDtor(void* obj)
+    {
+        NPK_UNREACHABLE(); (void)obj;
+    }
 
     NpkStatus CreateSession(Session** sesh)
     {
         if (sesh == nullptr)
             return NpkStatus::InvalidArg;
 
-        //TODO: encode session id into name
         void* ptr;
-        auto result = CreateObject(&ptr, sizeof(Session), SessionDtor, 
-            "session", ProcTreeTag);
+        auto result = CreateObjectWithId(&ptr, NsObjType::Session, {},
+            "session", 0, 0);
         if (result != NpkStatus::Success)
             return result;
 
@@ -35,12 +38,14 @@ namespace Npk
         if (!RefObject(parent.nsObj))
             return NpkStatus::ObjRefFailed;
 
-        //TODO: encode job id into name
         void* ptr;
-        auto result = CreateObject(&ptr, sizeof(Job), JobDtor, 
-            "job", ProcTreeTag);
+        auto result = CreateObjectWithId(&ptr, NsObjType::Job, {}, "job", 0, 0);
         if (result != NpkStatus::Success)
+        {
+            UnrefSession(parent);
+
             return result;
+        }
 
         auto* jobPtr = static_cast<Job*>(ptr);
         ResetMutex(&jobPtr->processesMutex, 1);
@@ -48,7 +53,7 @@ namespace Npk
         if (!AcquireMutex(&parent.jobsMutex, sl::NoTimeout))
         {
             UnrefSession(parent);
-            UnrefObject(jobPtr->nsObj);
+            UnrefJob(*jobPtr);
 
             return NpkStatus::LockAcquireFailed;
         }
@@ -73,7 +78,4 @@ namespace Npk
         UnrefObject(job.nsObj);
     }
     static_assert(offsetof(Job, nsObj) == 0);
-
-    VmSpace& GetProcessVmSpace(Process& proc)
-    { NPK_UNREACHABLE(); }
 }

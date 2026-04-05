@@ -51,7 +51,7 @@ namespace Npk
     void UnrefProcess(Process& proc);
     void UnrefThread(Thread& thread);
 
-    VmSpace& GetProcessVmSpace(Process& proc);
+    NpkStatus GetProcessVmSpace(VmSpace** space, Process& proc);
 
     NpkStatus SendSignal(SignalTargetType type, void* target, uint8_t priority,
         size_t signalId, void* arg);

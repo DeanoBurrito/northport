@@ -53,6 +53,7 @@ namespace Npk
     struct Process
     {
         NsObject nsObj;
+        VmSpace vmSpace;
 
         Mutex threadsMutex;
         ThreadList threads;
@@ -91,4 +92,11 @@ namespace Npk
         JobList jobs;
         Credentials credentials;
     };
+
+    void InitProcessSubsystem();
+
+    void SessionDtor(void* obj);
+    void JobDtor(void* obj);
+    void ProcessDtor(void* obj);
+    void ThreadDtor(void*);
 }

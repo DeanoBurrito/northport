@@ -2,6 +2,7 @@
 #include <private/Core.hpp>
 #include <Debugger.hpp>
 #include <private/Namespace.hpp>
+#include <private/Process.hpp>
 #include <Video.hpp>
 #include <Vm.hpp>
 #include <AcpiTypes.hpp>
@@ -464,6 +465,7 @@ R"(                                             888                      )"
             highTop - highBase);
 
         Private::InitNamespace();
+        InitProcessSubsystem();
 
         //6. BSP initialization is complete.
         Log("BSP init done, loading init program.", LogLevel::Trace);
