@@ -1,4 +1,5 @@
 #include <private/Namespace.hpp>
+#include <Maths.hpp>
 #include <NanoPrintf.hpp>
 
 namespace Npk
@@ -83,8 +84,7 @@ namespace Npk
             NamespaceHeapTag); //TODO: this should be a hook for the VFS
 
         NsObjFlags flags = NsObjFlag::Wired;
-        void* ptr;
-        auto result = CreateObject(&ptr, NsObjType::Directory, flags, 
+        auto result = CreateObject(&rootObj, NsObjType::Directory, flags, 
             "/"_span, 0);
         if (result != NpkStatus::Success)
         {
@@ -93,7 +93,6 @@ namespace Npk
                 nullptr, result, str);
         }
 
-        rootObj = static_cast<NsObject*>(ptr);
         rootObj->refcount++; //ensure root obj never reaches refcount of 0.
 
         Log("Global namespace initialized.", LogLevel::Verbose);
@@ -303,9 +302,31 @@ namespace Npk
         */
     }
 
-    NsObjRef GetObjectAutoref(NsObject& obj)
+    NsObjType GetObjectType(NsObject& obj)
     {
-        return &obj;
+        if (obj.refcount.Load(sl::Relaxed) == 0)
+            return NsObjType::Invalid;
+
+        return obj.type;
+    }
+
+    size_t GetObjectName(sl::Span<char>& buffer, NsObject& obj)
+    {
+        if (!RefObject(obj))
+            return 0;
+        if (!AcquireMutex(&obj.mutex, sl::NoTimeout))
+            return 0;
+
+        size_t copyLen = sl::Min(buffer.Size(), obj.name.Size());
+        if (buffer.Size() == 0)
+            copyLen = obj.name.Size();
+        else
+        sl::MemCopy(buffer.Begin(), obj.name.Begin(), copyLen);
+
+        ReleaseMutex(&obj.mutex);
+        UnrefObject(obj);
+
+        return copyLen;
     }
 
     NpkStatus CreateObject(void** ptr, NsObjType type, NsObjFlags flags, 
@@ -364,8 +385,8 @@ namespace Npk
         return NpkStatus::Success;
     }
 
-    NpkStatus CreateObjectWithId(void** ptr, NsObjType type, NsObjFlags flags, 
-        sl::StringSpan name, size_t id, size_t extraLength)
+    NpkStatus CreateObjectWithId(NsObject** ptr, NsObjType type, 
+        NsObjFlags flags, sl::StringSpan name, size_t id, size_t extraLength)
     {
         using namespace Private;
 

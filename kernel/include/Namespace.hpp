@@ -58,6 +58,8 @@ namespace Npk
      * This function can be called multiple times for a type and will overwrite
      * previously set values, it is the caller's responsibility to avoid that
      * situation if this is undesired behaviour.
+     * Recommended practice is to only call this function for types the current
+     * module has made available to the system.
      */
     NpkStatus SetObjectTypeInfo(NsObjType type, NsObjDtor dtor, 
         size_t length, HeapTag tag);
@@ -101,38 +103,58 @@ namespace Npk
      */
     void UnrefObject(NsObject& obj);
 
-    /* Wraps a call to `RefObject()` and returns a RAII type that automatically
-     * calls `UnrefObject()` when it is destroyed. This function is really only
-     * for kernel internal use, since we can't propagate C++ type details across
-     * ABI boundaries (e.g. to modules or userspace).
-     */
-    NsObjRef GetObjectAutoref(NsObject& obj);
-
-    /* TODO:
+    /* If `obj` is a valid object this function returns it's type.
      */
     NsObjType GetObjectType(NsObject& obj);
 
-    /* TODO:
+    /* If `obj` is a valid object this function will copy the object's name into
+     * `buffer`, limited by `buffer.Size()`. If the buffer is zero sized this
+     * function just returns the length the objects name without copying 
+     * anything.
+     * This function otherwise returns the number of characters copied into
+     * `buffer`, if it returns `buffer.Size()` there is possibly more to the
+     * object name.
      */
     size_t GetObjectName(sl::StringSpan& buffer, NsObject& obj);
 
     /* TODO:
      */
-    size_t GetObjectPath(sl::StringSpan& buffer, NsObject& obj);
-
-    /* TODO:
-     */
     NpkStatus GetFileObjectVmSource(VmSource** vsrc, NsObject& obj);
 
-    /* TODO:
+    /* Creates a new namespace object with the values of `name`, `flags` and
+     * extra length after the object struct header specified by `extraLength`.
+     * The extra length is in addition to the length specified by NsObjType
+     * length field (which was previously set by a call to SetObjectTypeInfo).
+     *
+     * If the `BorrowedName` flag is set this node will not make a copy of
+     * `name` internally, and will reference the memory pointed at by `name`.
+     * It is the caller's responsibility to ensure this memory is not freed 
+     * before the object struct is. If this flag is clear, a copy of the name
+     * is kept alongside the node struct, meaning the caller only needs to
+     * keep `name` allocated until this function returns.
+     *
+     * The `Wired` flag indicates whether the node (and optionally the name
+     * buffer) should be allocated from wired or paged memory. If this flag is
+     * clear paged memory is used.
+     *
+     * If success is returned, the constructed object is placed into `*ptr`. 
+     * Note that this object is not inserted into the namespace tree, it is
+     * freestanding. The caller should call `LinkObject()` on the newly created
+     * object at some point.
      */
-    NpkStatus CreateObject(void** ptr, NsObjType type, NsObjFlags flags, 
+    NpkStatus CreateObject(NsObject** ptr, NsObjType type, NsObjFlags flags, 
         sl::StringSpan name, size_t extraLength);
 
-    /* TODO:
+    /* Wrapper function for `CreateObject()`. This function passes through all
+     * arguments except `name` and `id`, the `id` is appended (in text form)
+     * to `name` with an optional separator (the value of `ObjidSeparator`).
+     * The flag `BorrowedName` is cleared by this function since it allocates
+     * a buffer for the formatted name. The new name buffer is the same type of
+     * memory (wired/paged) as the object struct itself, which is determined by
+     * the `Wired` flag.
      */
-    NpkStatus CreateObjectWithId(void** ptr, NsObjType type, NsObjFlags flags, 
-        sl::StringSpan name, size_t id, size_t extraLength);
+    NpkStatus CreateObjectWithId(NsObject** ptr, NsObjType type, 
+        NsObjFlags flags, sl::StringSpan name, size_t id, size_t extraLength);
 
     /* TODO:
      */

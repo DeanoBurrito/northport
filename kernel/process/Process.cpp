@@ -20,7 +20,7 @@ namespace Npk
         if (!RefObject(parent.nsObj))
             return NpkStatus::ObjRefFailed;
 
-        void* ptr;
+        NsObject* ptr;
         auto result = CreateObjectWithId(&ptr, NsObjType::Process, {}, "proc", 
             0, 0);
         if (result != NpkStatus::Success)
@@ -30,7 +30,7 @@ namespace Npk
             return result;
         }
 
-        auto* procPtr = static_cast<Process*>(ptr);
+        auto* procPtr = reinterpret_cast<Process*>(ptr);
         ResetMutex(&procPtr->threadsMutex, 1);
         ResetMutex(&procPtr->signalsMutex, 1);
 
