@@ -10,7 +10,7 @@ namespace Npk
 
     enum class NsObjFlag
     {
-        UseNameDirectly,
+        BorrowedName,
         Wired,
     };
 
@@ -59,7 +59,7 @@ namespace Npk
      * previously set values, it is the caller's responsibility to avoid that
      * situation if this is undesired behaviour.
      */
-    NpkStatus SetNsObjTypeInfo(NsObjType type, NsObjDtor dtor, 
+    NpkStatus SetObjectTypeInfo(NsObjType type, NsObjDtor dtor, 
         size_t length, HeapTag tag);
 
     /* Attempts to remove type info for a vendor type, which may be required for
@@ -71,7 +71,7 @@ namespace Npk
      * leak resources but allows the type's external references to be severed
      * while allowing this function to return immediately.
      */
-    NpkStatus RemoveVendorNsObjType(NsObjType type, bool wait, bool force);
+    NpkStatus RemoveVendorObjectType(NsObjType type, bool wait, bool force);
 
     /* Returns a reference to the top-most object of the global namespace.
      */
@@ -108,17 +108,42 @@ namespace Npk
      */
     NsObjRef GetObjectAutoref(NsObject& obj);
 
-    /*
+    /* TODO:
+     */
+    NsObjType GetObjectType(NsObject& obj);
+
+    /* TODO:
+     */
+    size_t GetObjectName(sl::StringSpan& buffer, NsObject& obj);
+
+    /* TODO:
+     */
+    size_t GetObjectPath(sl::StringSpan& buffer, NsObject& obj);
+
+    /* TODO:
+     */
+    NpkStatus GetFileObjectVmSource(VmSource** vsrc, NsObject& obj);
+
+    /* TODO:
      */
     NpkStatus CreateObject(void** ptr, NsObjType type, NsObjFlags flags, 
         sl::StringSpan name, size_t extraLength);
-    /*
+
+    /* TODO:
      */
     NpkStatus CreateObjectWithId(void** ptr, NsObjType type, NsObjFlags flags, 
         sl::StringSpan name, size_t id, size_t extraLength);
 
+    /* TODO:
+     */
     NpkStatus RenameObject(NsObject& obj, sl::StringSpan name);
+
+    /* TODO:
+     */
     NpkStatus LinkObject(NsObject& parent, NsObject& child);
+
+    /* TODO:
+     */
     NpkStatus UnlinkObject(NsObject& parent, NsObject& child);
 
     /* Attempts to create a new empty handle table. If successful the result is
@@ -144,7 +169,7 @@ namespace Npk
      */
     NpkStatus CreateHandle(Handle* handle, HandleTable& table, NsObject& obj);
 
-    /*
+    /* TODO:
      */
     bool DestroyHandle(Handle& handle, HandleTable& table);
 

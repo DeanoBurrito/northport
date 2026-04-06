@@ -36,6 +36,8 @@ namespace Npk
             return "not writable";
         case NpkStatus::BadConfig:
             return "bad config";
+        case NpkStatus::NotFound:
+            return "not found";
         default:
             return "<>";
         }

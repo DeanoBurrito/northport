@@ -21,6 +21,7 @@ namespace Npk
         Busy,
         NotWritable,
         BadConfig,
+        NotFound,
     };
 
     const char* StatusStr(NpkStatus what);

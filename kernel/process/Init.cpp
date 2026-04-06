@@ -5,12 +5,12 @@ namespace Npk
 {
     void InitProcessSubsystem()
     {
-        SetNsObjTypeInfo(NsObjType::Session, SessionDtor, sizeof(Session), 
+        SetObjectTypeInfo(NsObjType::Session, SessionDtor, sizeof(Session), 
             ProcTreeTag);
-        SetNsObjTypeInfo(NsObjType::Job, JobDtor, sizeof(Job), ProcTreeTag);
-        SetNsObjTypeInfo(NsObjType::Process, ProcessDtor, sizeof(Process), 
+        SetObjectTypeInfo(NsObjType::Job, JobDtor, sizeof(Job), ProcTreeTag);
+        SetObjectTypeInfo(NsObjType::Process, ProcessDtor, sizeof(Process), 
             ProcTreeTag);
-        SetNsObjTypeInfo(NsObjType::Thread, ThreadDtor, sizeof(Thread), 
+        SetObjectTypeInfo(NsObjType::Thread, ThreadDtor, sizeof(Thread), 
             ProcTreeTag);
     }
 }

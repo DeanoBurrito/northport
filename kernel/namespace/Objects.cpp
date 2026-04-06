@@ -3,6 +3,7 @@
 
 namespace Npk
 {
+    constexpr char ObjIdSeparator[] = "";
     constexpr size_t FixedTypeDescCount = 16;
 
     struct NsTypeDesc
@@ -18,6 +19,11 @@ namespace Npk
 
     using NsTypeDescList = sl::List<NsTypeDesc, &NsTypeDesc::listHook>;
     using TypeDescRef = sl::Ref<NsTypeDesc, &NsTypeDesc::refcount, nullptr>;
+
+    struct NsDirectory : public NsObject
+    {
+        NsObjList children;
+    };
 
     static NsObject* rootObj;
     static IplSpinLock<Ipl::Passive> typeDescsLock;
@@ -71,9 +77,9 @@ namespace Npk
 
     void Private::InitNamespace()
     {
-        SetNsObjTypeInfo(NsObjType::Directory, DirectoryObjDtor, 
-            sizeof(NsObject), NamespaceHeapTag);
-        SetNsObjTypeInfo(NsObjType::File, FileObjDtor, sizeof(NsObject),
+        SetObjectTypeInfo(NsObjType::Directory, DirectoryObjDtor, 
+            sizeof(NsDirectory), NamespaceHeapTag);
+        SetObjectTypeInfo(NsObjType::File, FileObjDtor, sizeof(NsObject),
             NamespaceHeapTag); //TODO: this should be a hook for the VFS
 
         NsObjFlags flags = NsObjFlag::Wired;
@@ -93,7 +99,7 @@ namespace Npk
         Log("Global namespace initialized.", LogLevel::Verbose);
     }
 
-    NpkStatus SetNsObjTypeInfo(NsObjType type, NsObjDtor dtor, 
+    NpkStatus SetObjectTypeInfo(NsObjType type, NsObjDtor dtor, 
         size_t length, HeapTag tag)
     {
         if (dtor == nullptr)
@@ -157,7 +163,8 @@ namespace Npk
 
     NpkStatus FindObject(NsObject** found, NsObject* root, sl::StringSpan path)
     {
-        NPK_CHECK(!path.Empty(), NpkStatus::InvalidArg);
+        if (path.Empty())
+            return NpkStatus::InvalidArg;
 
         if (path[0] == PathDelimiter)
         {
@@ -167,27 +174,35 @@ namespace Npk
         else if (root == nullptr)
             root = rootObj;
 
-        NPK_CHECK(root != nullptr, NpkStatus::InternalError);
+        if (root == nullptr || root->type != NsObjType::Directory)
+            return NpkStatus::InvalidArg;
 
         if (!RefObject(*root))
-            return NpkStatus::BadObject;
+            return NpkStatus::ObjRefFailed;
         if (!AcquireMutex(&root->mutex, sl::NoTimeout))
         {
             UnrefObject(*root);
-            return NpkStatus::InternalError;
+            return NpkStatus::LockAcquireFailed;
         }
 
+        NsDirectory* dir = static_cast<NsDirectory*>(root);
         while (true)
         {
+            //we enter each loop with `dir` locked and its refcount
+            //incremented, path is the currently unresolved path text.
             const auto delim = path.Find(PathDelimiter);
             const auto childName = path.Subspan(0, delim);
             path = path.Subspan(delim, -1);
 
-            if (childName.Empty())
-                break;
+            if (path.Size() == 1 && path[0] == '.')
+                continue;
+            if (path.Size() == 2 && path[0] == '.' && path[1] == '.')
+            {
+                NPK_UNREACHABLE(); //TODO: implement this
+            }
 
-            NsObjList children {}; //TODO: figure this out
-            NsObject* child = nullptr;
+            auto& children = dir->children;
+            NsObject* next = nullptr;
             for (auto it = children.Begin(); it != children.End(); ++it)
             {
                 //We dont need to acquire add a reference to the child here,
@@ -204,37 +219,40 @@ namespace Npk
                 if (it->name != childName)
                     continue;
 
-                child = &*it;
-                if (!RefObject(*child))
-                    child = nullptr;
+                if (RefObject(*it))
+                    next = &*it;
                 break;
             }
 
-            if (child == nullptr)
+            //we're done with the parent now, release its mutex and refcount
+            ReleaseMutex(&dir->mutex);
+            UnrefObject(*dir);
+
+            if (next == nullptr)
+                return NpkStatus::NotFound;
+            if (path.Empty())
             {
-                ReleaseMutex(&root->mutex);
-                UnrefObject(*root);
-                break;
+                *found = next;
+
+                return NpkStatus::Success;
             }
+            if (next->type != NsObjType::Directory)
+            {
+                //there's more to the path but the next node isn't a directory
+                UnrefObject(*next);
 
-            //release the lock on the parent and acquire it on the child,
-            //we've incremented the refcount of both objects so neither will
-            //be deleted until we allow it (by unrefing them),
-            ReleaseMutex(&root->mutex);
-            UnrefObject(*root);
-            root = child;
-            AcquireMutex(&child->mutex, sl::NoTimeout);
-        }
-        ReleaseMutex(&root->mutex);
-
-        if (!path.Empty())
+                return NpkStatus::BadObject;
+            }
+            if (!AcquireMutex(&next->mutex, sl::NoTimeout))
         {
-            UnrefObject(*root);
-            return NpkStatus::InvalidArg;
+                UnrefObject(*next);
+
+                return NpkStatus::LockAcquireFailed;
         }
 
-        *found = root;
-        return NpkStatus::Success;
+            dir = static_cast<NsDirectory*>(next);
+        }
+        NPK_UNREACHABLE();
     }
 
     bool RefObject(NsObject& obj)
@@ -354,9 +372,9 @@ namespace Npk
         if (flags.Has(NsObjFlag::BorrowedName))
             flags.Clear(NsObjFlag::BorrowedName);
 
-        const char* Format = "%.*s%zu";
+        const char* Format = "%.*s%s%zu";
         const size_t nameLen = npf_snprintf(nullptr, 0, Format,
-            (int)name.Size(), name.Begin(), id);
+            (int)name.Size(), name.Begin(), ObjIdSeparator, id);
 
         const bool isWired = flags.Has(NsObjFlag::Wired);
         void* namePtr = PoolAlloc(nameLen + 1, NamespaceHeapTag, isWired);
