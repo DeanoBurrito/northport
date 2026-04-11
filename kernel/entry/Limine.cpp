@@ -47,6 +47,13 @@ namespace Npk::Loader
         .response = nullptr
     };
 
+    limine_module_request moduleReq
+    {
+        .id = LIMINE_MODULE_REQUEST,
+        .revision = 0,
+        .response = nullptr
+    };
+
     limine_boot_time_request timeReq
     {
         .id = LIMINE_BOOT_TIME_REQUEST,
@@ -109,6 +116,19 @@ namespace Npk::Loader
                 systemTable = static_cast<Paddr>(addr);
         }
 
+        sl::Opt<Paddr> moduleBlob {};
+        if (moduleReq.response != nullptr 
+            && moduleReq.response->module_count > 0)
+        {
+            const auto mod = moduleReq.response->modules[0];
+            auto addr = reinterpret_cast<uintptr_t>(mod->address);
+            if (addr >= hhdm)
+                addr -= hhdm;
+
+            if (addr != 0)
+                moduleBlob = addr;
+        }
+
         sl::Opt<sl::TimePoint> timeOffset {};
         if (timeReq.response != nullptr)
             timeOffset = sl::TimePoint(timeReq.response->boot_time * sl::TimePoint::Frequency);
@@ -128,6 +148,7 @@ namespace Npk::Loader
             .rsdp = rsdp,
             .fdt = fdt,
             .efiTable = systemTable,
+            .moduleBlob = moduleBlob,
             .timeOffset = timeOffset,
             .commandLine = cmdline
         };

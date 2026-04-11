@@ -43,6 +43,10 @@ namespace Npk::Loader
          */
         sl::Opt<Paddr> efiTable;
 
+        /* If valid, physical base address of a blob passed from the bootloader.
+         */
+        sl::Opt<Paddr> moduleBlob;
+
         /* If valid, contains the offset of the alarm/system timer relative
          * to the unix epoch.
          */
