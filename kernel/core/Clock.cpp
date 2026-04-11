@@ -56,7 +56,7 @@ namespace Npk
 
         auto currentThread = GetCurrentThread();
         const auto now = HwReadTimestamp();
-        const auto period = accounting->periodBegin - now;
+        const auto period = now - accounting->periodBegin;
         NPK_ASSERT(period.Frequency == sl::Nanos);
 
         switch (accounting->account)

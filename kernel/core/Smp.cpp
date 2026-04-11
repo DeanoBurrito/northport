@@ -234,10 +234,11 @@ namespace Npk
 
         while (freezeCmdControl.Load(sl::Acquire) != 1)
             sl::HintSpinloop();
-        freezeCmdControl.Store(0, sl::Release);
 
         if (includeSelf)
             What(arg);
+
+        freezeCmdControl.Store(0, sl::Release);
     }
 }
 

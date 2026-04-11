@@ -233,7 +233,7 @@ namespace Npk::Private
     static Node* TryCoalesce(Pool& pool, Node* node)
     {
         auto before = pool.nodesByAddr.Before(node);
-        if (before->tag == FreeTag)
+        if (before != pool.nodesByAddr.End() && before->tag == FreeTag)
         {
             const size_t l1Index = GetL1Index(before->length);
             auto beforeNode = &*before;
@@ -248,7 +248,7 @@ namespace Npk::Private
         }
 
         auto after = pool.nodesByAddr.After(node);
-        if (after->tag == FreeTag)
+        if (after != pool.nodesByAddr.End() && after->tag == FreeTag)
         {
             const size_t l1Index = GetL1Index(after->length);
             auto afterNode = &*after;
@@ -268,8 +268,6 @@ namespace Npk::Private
     {
         NPK_CHECK(ptr != nullptr, true);
         NPK_CHECK(len != 0, true);
-
-        (void)len;
 
         const auto addr = reinterpret_cast<uintptr_t>(ptr);
         NPK_CHECK((addr & (MinAllocSize - 1)) == 0, false);
@@ -294,7 +292,7 @@ namespace Npk::Private
             }
         }
 
-        if (node != nullptr && node->tag == tag)
+        if (node != nullptr && node->tag == tag && node->length == len)
         {
             uintptr_t unmapBegin = AlignDownPage(node->base);
             uintptr_t unmapEnd = AlignUpPage(node->base + node->length);
@@ -337,6 +335,12 @@ namespace Npk::Private
         {
             Log("Bad tag for free of %s-pool pointer: %p", LogLevel::Error, 
                 paged ? "paged" : "wired", ptr);
+        }
+        else if (node != nullptr && node->length != len)
+        {
+            Log("Incorrectly sized free of %s-pool pointer: %p, passed 0x%zu"
+                " bytes, expected %zu", LogLevel::Error, 
+                paged ? "paged" : "wired", ptr, len, node->length);
         }
         else
         {

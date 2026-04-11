@@ -24,6 +24,8 @@ namespace Npk
             configRootType = ConfigRootType::Fdt;
             configRootPtr = *loaderState.fdt;
         }
+        else
+            NPK_UNREACHABLE();
 
         constexpr const char* TypeStrs[] = { "rsdp", "fdt", "bootinfo" };
         const char* typeStr = TypeStrs[static_cast<size_t>(*configRootType)];

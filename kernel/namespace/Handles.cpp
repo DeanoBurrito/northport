@@ -87,7 +87,7 @@ namespace Npk
             return false;
         }
         
-        if (!PoolFreePaged(&table, sizeof(table), HandleHeapTag))
+        if (!PoolFreePaged(&table, sizeof(HandleTable), HandleHeapTag))
             return false;
 
         return true;
@@ -172,8 +172,8 @@ namespace Npk
         table.entries[table.firstFreeEntry] = &obj;
         *handle = table.entries[table.firstFreeEntry];
 
-        while (table.entries[table.firstFreeEntry] != InvalidHandle
-            && table.firstFreeEntry < table.entries.Size())
+        while (table.firstFreeEntry < table.entries.Size()
+            && table.entries[table.firstFreeEntry] != InvalidHandle)
         {
             table.firstFreeEntry++;
         }

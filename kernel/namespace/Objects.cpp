@@ -243,11 +243,11 @@ namespace Npk
                 return NpkStatus::BadObject;
             }
             if (!AcquireMutex(&next->mutex, sl::NoTimeout))
-        {
+            {
                 UnrefObject(*next);
 
                 return NpkStatus::LockAcquireFailed;
-        }
+            }
 
             dir = static_cast<NsDirectory*>(next);
         }
@@ -321,7 +321,7 @@ namespace Npk
         if (buffer.Size() == 0)
             copyLen = obj.name.Size();
         else
-        sl::MemCopy(buffer.Begin(), obj.name.Begin(), copyLen);
+            sl::MemCopy(buffer.Begin(), obj.name.Begin(), copyLen);
 
         ReleaseMutex(&obj.mutex);
         UnrefObject(obj);
@@ -329,7 +329,7 @@ namespace Npk
         return copyLen;
     }
 
-    NpkStatus CreateObject(void** ptr, NsObjType type, NsObjFlags flags, 
+    NpkStatus CreateObject(NsObject** ptr, NsObjType type, NsObjFlags flags, 
         sl::StringSpan name, size_t extraLength)
     {
         using namespace Private;
@@ -403,18 +403,18 @@ namespace Npk
             return NpkStatus::Shortage;
 
         npf_snprintf((char*)namePtr, nameLen + 1, Format, (int)name.Size(), 
-            name.Begin(), id);
+            name.Begin(), ObjIdSeparator, id);
         sl::StringSpan realName((char*)namePtr, nameLen);
 
         return CreateObject(ptr, type, flags, realName, extraLength);
     }
 
     NpkStatus RenameObject(NsObject& obj, sl::StringSpan name)
-    { NPK_UNREACHABLE(); }
+    { NPK_UNREACHABLE(); (void)obj; (void)name; }
 
     NpkStatus LinkObject(NsObject& parent, NsObject& child)
-    { NPK_UNREACHABLE(); }
+    { NPK_UNREACHABLE(); (void)parent; (void)child; }
 
     NpkStatus UnlinkObject(NsObject& parent, NsObject& child)
-    { NPK_UNREACHABLE(); }
+    { NPK_UNREACHABLE(); (void)parent; (void)child; }
 }

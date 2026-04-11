@@ -98,6 +98,8 @@ namespace Npk
     static void BreakdownRange(VmFreeRangeTree& tree, VmFreeRange* range, 
         uintptr_t base, size_t len, VmFreeRange** spare)
     {
+        const uintptr_t rangeTop = range->base + range->length;
+
         tree.Remove(range);
         base = sl::Max(range->base, base);
 
@@ -125,9 +127,8 @@ namespace Npk
         latest->largestChild = latest->length;
         tree.Insert(latest);
 
-        range->length += range->base;
         range->base = base + len;
-        range->length -= range->base;
+        range->length = rangeTop - range->base;
         latest->largestChild = range->length;
         tree.Insert(range);
     }
@@ -174,12 +175,16 @@ namespace Npk
                     scan = VmFreeRangeTree::GetLeft(scan);
                 else if (constr.preferredAddr >= scan->base + scan->length)
                     scan = VmFreeRangeTree::GetRight(scan);
-
-                //preferredAddr is within the current node, ensure it fits
-                if (constr.preferredAddr + length >= scan->base + scan->length)
-                    scan = nullptr;
-                break;
+                else if (constr.preferredAddr >= scan->base)
+                    break;
+                else
+                    NPK_UNREACHABLE();
             }
+
+            //preferredAddr is within `scan`, how about the length?
+            if (scan != nullptr 
+                && constr.preferredAddr - scan->base + length > scan->length)
+                scan = nullptr;
 
             if (scan != nullptr)
             {
@@ -478,7 +483,7 @@ namespace Npk
 
         VmRange* check = nullptr;
         auto result = SpaceLookupLocked(&check, space, range->base, 1);
-        if (result != NpkStatus::Success && range == check)
+        if (result != NpkStatus::Success || range == check)
         {
             ReleaseSxMutexExclusive(&space.rangesMutex);
             return NpkStatus::InvalidArg;

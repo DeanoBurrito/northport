@@ -235,7 +235,7 @@ namespace Npk
             {
                 what[i]->lock.Lock();
                 satisfied |= TryAcquireWaitable(&entries[i]);
-                what[i]->lock.Lock();
+                what[i]->lock.Unlock();
             }
 
             if (satisfied)
@@ -312,6 +312,12 @@ namespace Npk
 
         waitablesPendingSignal->Push(what);
 
+        //TODO: potentially quite expensive if SignalWaitable() is called in a
+        //loop, say when a bunch of IOPs or timer events are finished at once.
+        //We should add `SignalWaitables()`, which only does one RaiseIpl/LowerIpl.
+        //We'll also want to disable preemption during this, so we dont queue
+        //half on one cpu, then half on another and only flash the higher ipl
+        //on the second.
         if (CurrentIpl() == Ipl::Passive)
         {
             //waitable signalling actually happens when local IPL is lowered to

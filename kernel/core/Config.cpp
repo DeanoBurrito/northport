@@ -27,11 +27,10 @@ namespace Npk
         if (base <= 10)
             return c >= '0' && c <= ('0' + (char)base);
 
-        const char c10 = c - 10;
+        const char c10 = c - 'a';
         const char b10 = base - 10;
         return (c >= '0' && c <= '9') || (c10 >= 'a' && c10 <= ('a' + b10))
             || (c10 >= 'A' && c10 <= ('A' + b10));
-        return false;
     }
 
     static size_t ParseNum(sl::StringSpan input)
