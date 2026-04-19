@@ -1,6 +1,6 @@
 #include <private/Namespace.hpp>
-#include <Maths.hpp>
-#include <NanoPrintf.hpp>
+#include <lib/Maths.hpp>
+#include <lib/Printf.hpp>
 
 namespace Npk
 {
@@ -394,7 +394,7 @@ namespace Npk
             flags.Clear(NsObjFlag::BorrowedName);
 
         const char* Format = "%.*s%s%zu";
-        const size_t nameLen = npf_snprintf(nullptr, 0, Format,
+        const size_t nameLen = sl::SnPrintf(nullptr, 0, Format,
             (int)name.Size(), name.Begin(), ObjIdSeparator, id);
 
         const bool isWired = flags.Has(NsObjFlag::Wired);
@@ -402,7 +402,7 @@ namespace Npk
         if (namePtr == nullptr)
             return NpkStatus::Shortage;
 
-        npf_snprintf((char*)namePtr, nameLen + 1, Format, (int)name.Size(), 
+        sl::SnPrintf((char*)namePtr, nameLen + 1, Format, (int)name.Size(), 
             name.Begin(), ObjIdSeparator, id);
         sl::StringSpan realName((char*)namePtr, nameLen);
 

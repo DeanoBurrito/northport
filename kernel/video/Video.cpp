@@ -1,6 +1,6 @@
 #include <private/Video.hpp>
-#include <NanoPrintf.hpp>
-#include <Maths.hpp>
+#include <lib/Printf.hpp>
+#include <lib/Maths.hpp>
 
 namespace Npk
 {
@@ -379,7 +379,7 @@ namespace Npk
             }
         }(msg.level);
 
-        npf_pprintf(PutcTextRenderer, globalTextRenderer, format, colourStr,
+        sl::PPrintf(PutcTextRenderer, globalTextRenderer, format, colourStr,
             msg.cpu, levelStr.Begin(), ResetColourStr);
 
         WriteText(globalTextRenderer, msg.text);

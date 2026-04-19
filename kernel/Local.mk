@@ -8,6 +8,7 @@ KERNEL_CXX_SRCS += Status.cpp \
 	entry/Allocators.cpp entry/BringUp.cpp entry/ConfigRoot.cpp \
 	entry/EfiRuntime.cpp entry/InitProgram.cpp \
 	io/Continuation.cpp io/Packet.cpp \
+	lib/Memory.cpp lib/Printf.cpp lib/Time.cpp lib/Units.cpp \
 	loader/Elf.cpp loader/Filter.cpp \
 	namespace/Handles.cpp namespace/Objects.cpp \
 	process/Init.cpp process/Job.cpp process/Process.cpp process/Signals.cpp \
@@ -74,11 +75,6 @@ $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o: kernel/%.S
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Assembling: $<\n"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_AS_BIN) $(KERNEL_AS_FLAGS) $< -o $@
-
-$(BUILD_DIR)/kernel/np-syslib/%.cpp.$(KERNEL_CXX_FLAGS_HASH).o: libs/np-syslib/%.cpp
-	@printf "$(C_BLUE)[Kernel]$(C_RST) Compiling: $<\n"
-	@mkdir -p $(@D)
-	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@
 
 $(BUILD_DIR)/kernel/%.cpp.$(KERNEL_CXX_FLAGS_HASH).o: kernel/%.cpp
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Compiling: $<\n"

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <Debugger.hpp>
-#include <Flags.hpp>
-#include <Locks.hpp>
+#include <lib/Flags.hpp>
+#include <lib/Locks.hpp>
 
 namespace Npk::Private
 {

@@ -17,8 +17,7 @@ endif
 KERNEL_CXX_FLAGS += -Wall -Wextra -fstack-protector-strong -fPIE -ffreestanding \
 	-fno-omit-frame-pointer -fvisibility=hidden -fno-asynchronous-unwind-tables \
 	-std=c++17 -fno-rtti -fno-exceptions -fsized-deallocation -fno-unwind-tables \
-	-Ikernel/include -DNPK_HAS_KERNEL -Ilibs/np-syslib/include -ffunction-sections \
-	-fdata-sections
+	-Ikernel/include -DNPK_HAS_KERNEL -ffunction-sections -fdata-sections
 KERNEL_LD_FLAGS += -zmax-page-size=0x1000 -static -pie -nostdlib --gc-sections
 
 BUILD_DIR = .build
@@ -43,7 +42,6 @@ help: help-text
 include misc/cross/$(TARGET_ARCH).mk
 include kernel/$(ARCH_DIR)/Arch.mk
 include kernel/$(PLAT_DIR)/Plat.mk
-include libs/np-syslib/Local.mk
 include kernel/Local.mk
 
 all: $(ARCH_DEFAULT_TARGET)

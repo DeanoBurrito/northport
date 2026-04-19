@@ -5,10 +5,10 @@
 #include <private/Process.hpp>
 #include <Video.hpp>
 #include <Vm.hpp>
-#include <AcpiTypes.hpp>
-#include <Maths.hpp>
-#include <Memory.hpp>
-#include <UnitConverter.hpp>
+#include <lib/AcpiTypes.hpp>
+#include <lib/Maths.hpp>
+#include <lib/Memory.hpp>
+#include <lib/Units.hpp>
 
 /* If you're looking for where the kernel starts life (after any arch-specific
  * entrypoint), search this file for `void KernelEntry()`

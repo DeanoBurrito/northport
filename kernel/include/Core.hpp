@@ -1,11 +1,11 @@
 #pragma once
 
 #include <Hardware.hpp>
-#include <containers/List.hpp>
-#include <containers/LruCache.hpp>
-#include <containers/Queue.hpp>
-#include <Locks.hpp>
-#include <Efi.hpp>
+#include <lib/List.hpp>
+#include <lib/LruCache.hpp>
+#include <lib/Queue.hpp>
+#include <lib/Locks.hpp>
+#include <lib/Efi.hpp>
 
 extern "C" char KERNEL_CPULOCALS_BEGIN[];
 extern "C" char KERNEL_NODELOCALS_BEGIN[];
@@ -717,7 +717,7 @@ namespace Npk
      */
     void ThawAllCpus();
 
-    /* Sychronously runs a function on all frozen cpus. If no cpus are frozen
+    /* Synchronously runs a function on all frozen cpus. If no cpus are frozen
      * (`FreezeAllCpus()` has not been called) this function does nothing.
      * This function is not reentrant, but can practically only be called
      * from the cpu that called `FreezeAllCpus()`.

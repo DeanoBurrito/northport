@@ -1,7 +1,7 @@
 #include <private/Debugger.hpp>
-#include <Memory.hpp>
-#include <Maths.hpp>
-#include <NanoPrintf.hpp>
+#include <lib/Memory.hpp>
+#include <lib/Maths.hpp>
+#include <lib/Printf.hpp>
 
 #include <Core.hpp>
 
@@ -123,7 +123,7 @@ namespace Npk::Private
         while (be << bytes * 8)
             bytes++;
 
-        return npf_snprintf((char*)buffer.Begin(), buffer.Size(), "%.*lx",
+        return sl::SnPrintf((char*)buffer.Begin(), buffer.Size(), "%.*lx",
             (int)bytes, be >> ((sizeof(be) - bytes)) * 8);
     }
 
@@ -173,7 +173,7 @@ namespace Npk::Private
             size_t buffLen = buffer.Size() - (i * 2);
             uint8_t data = static_cast<const uint8_t*>(reg)[i];
 
-            npf_snprintf(buff, buffLen, "%02.2x", data);
+            sl::SnPrintf(buff, buffLen, "%02.2x", data);
         }
 
         sl::MemSet(&buffer[regLen * 2], 'x', padBytes);
@@ -263,7 +263,7 @@ namespace Npk::Private
         uint8_t buffer[ErrorBufferSize];
         const auto value = static_cast<uint8_t>(which);
 
-        const size_t len = npf_snprintf((char*)buffer, ErrorBufferSize, 
+        const size_t len = sl::SnPrintf((char*)buffer, ErrorBufferSize, 
             "$E%01.1x%01.1x#", value >> 4, value & 0xF);
 
         return CheckAndSend(inst, buffer, len);
@@ -284,7 +284,7 @@ namespace Npk::Private
 
     static bool SendStopReason(GdbData& inst, uint8_t signal, CpuId tid)
     {
-        size_t head = npf_snprintf((char*)inst.builtinSendBuff,
+        size_t head = sl::SnPrintf((char*)inst.builtinSendBuff,
             BuiltinBufferSize, "$T%02.2xthread", signal);
 
         head += PutThreadId(
@@ -293,7 +293,7 @@ namespace Npk::Private
 
         if (inst.features.swBreak)
         {
-            head += npf_snprintf((char*)inst.builtinSendBuff + head,
+            head += sl::SnPrintf((char*)inst.builtinSendBuff + head,
                 BuiltinBufferSize - head, "swbreak:;");
         }
 
@@ -381,7 +381,7 @@ namespace Npk::Private
                 inst.features.hwBreak = data.Contains("hwbreak+"_u8span);
                 inst.features.errorMsg = data.Contains("error-message+"_u8span);
 
-                const size_t len = npf_snprintf((char*)inst.builtinSendBuff,
+                const size_t len = sl::SnPrintf((char*)inst.builtinSendBuff,
                     BuiltinBufferSize, "$"
                     "swbreak+;"
                     "hwbreak+;"
@@ -475,7 +475,7 @@ namespace Npk::Private
             {
                 (void)data;
 
-                const size_t len = npf_snprintf((char*)inst.builtinSendBuff,
+                const size_t len = sl::SnPrintf((char*)inst.builtinSendBuff,
                     BuiltinBufferSize, "$vCont;c;C;s;S;r#");
 
                 return CheckAndSend(inst, inst.builtinSendBuff, len);

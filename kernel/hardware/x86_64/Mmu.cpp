@@ -3,8 +3,8 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <Core.hpp>
 #include <private/Entry.hpp>
-#include <Memory.hpp>
-#include <Maths.hpp>
+#include <lib/Memory.hpp>
+#include <lib/Maths.hpp>
 
 #define INVLPG(vaddr) \
     do \

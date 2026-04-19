@@ -1,8 +1,8 @@
 #include <hardware/common/uart/Ns16550.hpp>
 #include <Vm.hpp>
-#include <NanoPrintf.hpp>
-#include <Mmio.hpp>
-#include <Maths.hpp>
+#include <lib/Printf.hpp>
+#include <lib/Mmio.hpp>
+#include <lib/Maths.hpp>
 
 #ifdef __x86_64__
     #include <hardware/x86_64/PortIo.hpp>
@@ -131,7 +131,7 @@ namespace Npk
 
             if (!inPanic)
             {
-                npf_pprintf(Putc, nullptr, format, colourStr, msg.cpu, 
+                sl::PPrintf(Putc, nullptr, format, colourStr, msg.cpu, 
                     levelStr.Begin(), ResetColourStr);
             }
 

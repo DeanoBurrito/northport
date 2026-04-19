@@ -3,8 +3,8 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <hardware/x86_64/Msr.hpp>
-#include <Mmio.hpp>
-#include <Memory.hpp>
+#include <lib/Mmio.hpp>
+#include <lib/Memory.hpp>
 
 namespace Npk
 {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Types.hpp>
+#include <lib/Types.hpp>
 #include <hardware/x86_64/Arch.hpp>
 
 namespace Npk

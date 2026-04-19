@@ -1,6 +1,6 @@
 #include <private/Entry.hpp>
-#include <Maths.hpp>
-#include <Memory.hpp>
+#include <lib/Maths.hpp>
+#include <lib/Memory.hpp>
 
 namespace Npk
 {

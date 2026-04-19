@@ -1,7 +1,7 @@
 #include <private/Core.hpp>
 #include <Debugger.hpp>
-#include <NanoPrintf.hpp>
-#include <Maths.hpp>
+#include <lib/Printf.hpp>
+#include <lib/Maths.hpp>
 
 //NOTE: this is a bit dodge, but this gives us access to the build info
 #include <private/Entry.hpp>
@@ -19,7 +19,7 @@ namespace Npk
         va_list args;
         va_start(args, format);
 
-        size_t bufferLen = npf_vsnprintf(buffer, PanicPrintBufferSize, 
+        size_t bufferLen = sl::VsnPrintf(buffer, PanicPrintBufferSize, 
             format, args);
         bufferLen = sl::Min(bufferLen, PanicPrintBufferSize);
         va_end(args);
@@ -112,7 +112,7 @@ namespace Npk
 
     static void DumpWordsAt(uintptr_t addr, size_t count)
     {
-        const size_t wordWidth = npf_snprintf(nullptr, 0, "0x%0tx", addr);
+        const size_t wordWidth = sl::SnPrintf(nullptr, 0, "0x%0tx", addr);
 
         uintptr_t word;
         size_t xPos = 0;
@@ -175,7 +175,7 @@ namespace Npk
         char formattedMsgBuff[PanicPrintBufferSize];
         va_list args;
         va_start(args, frame);
-        size_t formattedMsgLen = npf_vsnprintf(formattedMsgBuff, 
+        size_t formattedMsgLen = sl::VsnPrintf(formattedMsgBuff, 
             PanicPrintBufferSize, message.Begin(), args);
         va_end(args);
 

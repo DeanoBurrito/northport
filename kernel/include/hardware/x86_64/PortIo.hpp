@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Types.hpp>
-#include <Compiler.hpp>
+#include <lib/Types.hpp>
+#include <lib/Compiler.hpp>
 
 namespace Npk
 {

@@ -1,6 +1,6 @@
 #include <private/Debugger.hpp>
 #include <Hardware.hpp>
-#include <Memory.hpp>
+#include <lib/Memory.hpp>
 
 namespace Npk::Private
 {

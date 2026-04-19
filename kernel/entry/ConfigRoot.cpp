@@ -1,9 +1,9 @@
 #include <private/Entry.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
-#include <AcpiTypes.hpp>
-#include <UnitConverter.hpp>
-#include <Memory.hpp>
+#include <lib/AcpiTypes.hpp>
+#include <lib/Units.hpp>
+#include <lib/Memory.hpp>
 
 namespace Npk
 {

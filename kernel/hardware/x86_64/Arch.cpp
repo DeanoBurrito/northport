@@ -6,8 +6,8 @@
 #include <hardware/x86_64/Tsc.hpp>
 #include <Core.hpp>
 #include <private/Entry.hpp>
-#include <Memory.hpp>
-#include <Maths.hpp>
+#include <lib/Memory.hpp>
+#include <lib/Maths.hpp>
 
 extern "C" char SysCallEntry[];
 extern "C" char BadSysCallEntry[];

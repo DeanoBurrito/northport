@@ -1,6 +1,6 @@
 #include <hardware/common/timer/GoldfishTimer.hpp>
 #include <Vm.hpp>
-#include <Mmio.hpp>
+#include <lib/Mmio.hpp>
 
 namespace Npk
 {

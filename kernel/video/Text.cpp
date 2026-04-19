@@ -1,5 +1,5 @@
 #include <private/Video.hpp>
-#include <Maths.hpp>
+#include <lib/Maths.hpp>
 
 namespace Npk
 {

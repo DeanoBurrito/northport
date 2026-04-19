@@ -1,7 +1,7 @@
 #include <private/Core.hpp>
-#include <Memory.hpp>
-#include <NanoPrintf.hpp>
-#include <Maths.hpp>
+#include <lib/Memory.hpp>
+#include <lib/Printf.hpp>
+#include <lib/Maths.hpp>
 
 /* Logging thoughts and implementation notes:
  * This logging subsystem is quite simple. Each log message ('item') is a fixed-sized
@@ -109,7 +109,7 @@ namespace Npk
 
         va_list args;
         va_start(args, level);
-        const size_t length = npf_vsnprintf(logItem->data, MaxLogLength, message, args);
+        const size_t length = sl::VsnPrintf(logItem->data, MaxLogLength, message, args);
         va_end(args);
 
         const size_t realLength = sl::Min(length, MaxLogLength - 1);

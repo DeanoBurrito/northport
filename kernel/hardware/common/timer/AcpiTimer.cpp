@@ -1,8 +1,8 @@
 #include <hardware/common/timer/AcpiTimer.hpp>
-#include <AcpiTypes.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
-#include <Mmio.hpp>
+#include <lib/AcpiTypes.hpp>
+#include <lib/Mmio.hpp>
 
 #ifdef __x86_64__
 #include <hardware/x86_64/PortIo.hpp>

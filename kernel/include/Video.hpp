@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Core.hpp>
-#include <Rects.hpp>
+#include <lib/Rects.hpp>
 
 namespace Npk
 {

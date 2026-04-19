@@ -1,7 +1,7 @@
 #include <hardware/x86_64/Private.hpp>
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/common/uart/Ns16550.hpp>
-#include <NanoPrintf.hpp>
+#include <lib/Printf.hpp>
 
 namespace Npk
 {
@@ -39,7 +39,7 @@ namespace Npk
 
         if (!inPanic)
         {
-            npf_pprintf(DebugconPutc, nullptr, format, colourStr, msg.cpu, 
+            sl::PPrintf(DebugconPutc, nullptr, format, colourStr, msg.cpu, 
                 levelStr.Begin(), ResetColourStr);
         }
 

@@ -1,6 +1,5 @@
 #include <private/Io.hpp>
 #include <Core.hpp>
-#include <CppUtils.hpp>
 
 namespace Npk
 {

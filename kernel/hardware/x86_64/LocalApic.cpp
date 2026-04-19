@@ -4,12 +4,12 @@
 #include <hardware/x86_64/Msr.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <private/Hardware.hpp>
-#include <AcpiTypes.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
-#include <Maths.hpp>
-#include <Mmio.hpp>
-#include <UnitConverter.hpp>
+#include <lib/AcpiTypes.hpp>
+#include <lib/Maths.hpp>
+#include <lib/Mmio.hpp>
+#include <lib/Units.hpp>
 
 namespace Npk
 {

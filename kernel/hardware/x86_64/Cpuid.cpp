@@ -1,7 +1,7 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <Core.hpp>
-#include <NanoPrintf.hpp>
-#include <Memory.hpp>
+#include <lib/Printf.hpp>
+#include <lib/Memory.hpp>
 
 namespace Npk
 {
@@ -90,7 +90,7 @@ namespace Npk
         {
             increment = 1;
             const bool hasFeature = CpuHasFeature(static_cast<CpuFeature>(i));
-            const size_t idealLen = npf_snprintf(msgBuff + msgBuffLen, MsgBufferSize - msgBuffLen,
+            const size_t idealLen = sl::SnPrintf(msgBuff + msgBuffLen, MsgBufferSize - msgBuffLen,
                 "%s%s=%s", msgBuffLen == 2 ? "" : ", ", accessors[i].name, 
                 hasFeature ? "yes" : "no");
 

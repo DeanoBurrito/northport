@@ -1,6 +1,6 @@
 #include <private/Vm.hpp>
-#include <Maths.hpp>
-#include <UnitConverter.hpp>
+#include <lib/Maths.hpp>
+#include <lib/Units.hpp>
 
 namespace Npk
 {

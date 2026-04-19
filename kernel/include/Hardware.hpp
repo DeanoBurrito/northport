@@ -1,11 +1,11 @@
 #pragma once
 
 #include <Status.hpp>
-#include <Optional.hpp>
-#include <Span.hpp>
-#include <Flags.hpp>
-#include <Time.hpp>
-#include <Memory.hpp>
+#include <lib/Optional.hpp>
+#include <lib/Span.hpp>
+#include <lib/Flags.hpp>
+#include <lib/Time.hpp>
+#include <lib/Memory.hpp>
 
 namespace Npk
 {

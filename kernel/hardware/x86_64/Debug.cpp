@@ -1,7 +1,7 @@
 #include <hardware/x86_64/Private.hpp>
 #include <hardware/x86_64/Msr.hpp>
 #include <Debugger.hpp>
-#include <Memory.hpp>
+#include <lib/Memory.hpp>
 
 namespace Npk
 {

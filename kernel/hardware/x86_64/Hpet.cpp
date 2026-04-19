@@ -1,9 +1,9 @@
 #include <hardware/x86_64/Hpet.hpp>
-#include <AcpiTypes.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
-#include <Mmio.hpp>
-#include <UnitConverter.hpp>
+#include <lib/AcpiTypes.hpp>
+#include <lib/Mmio.hpp>
+#include <lib/Units.hpp>
 
 namespace Npk
 {

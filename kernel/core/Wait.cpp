@@ -1,5 +1,5 @@
 #include <private/Core.hpp>
-#include <Maths.hpp>
+#include <lib/Maths.hpp>
 
 /* wait subsystem notes:
  * - signalling only wakes a number of blocked threads, it doesnt satisfy

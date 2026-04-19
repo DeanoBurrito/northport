@@ -4,7 +4,7 @@
 #include <hardware/x86_64/Private.hpp>
 #include <hardware/x86_64/Msr.hpp>
 #include <hardware/x86_64/Tsc.hpp>
-#include <AcpiTypes.hpp>
+#include <lib/AcpiTypes.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
 
