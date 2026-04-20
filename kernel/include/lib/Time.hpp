@@ -51,8 +51,6 @@ namespace sl
 
         uint64_t epoch;
 
-        static TimePoint Now();
-
         TimePoint() = default;
 
         constexpr TimePoint(uint64_t value) 
@@ -111,8 +109,6 @@ namespace sl
         uint8_t hour;
         uint8_t minute;
         uint8_t second;
-
-        static CalendarPoint Now();
 
         static CalendarPoint From(TimePoint input);
 
