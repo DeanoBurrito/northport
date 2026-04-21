@@ -119,6 +119,7 @@ namespace sl
                 char expected = UnlockedValue;
                 if (lock.CompareExchange(expected, LockedValue, Acquire))
                     break;
+
                 while (lock.Load(Acquire) == LockedValue)
                     HintSpinloop();
             }
@@ -138,6 +139,83 @@ namespace sl
         inline bool IsLocked()
         {
             return lock.Load(Relaxed);
+        }
+    };
+
+    class SxSpinLock
+    {
+    private:
+        constexpr static uint32_t ExclusiveBit = 1 << 31;
+        constexpr static uint32_t ExclusivePendingBit = 1 << 30;
+        constexpr static uint32_t ExclusiveMask = 
+            ExclusiveBit | ExclusivePendingBit;
+        constexpr static uint32_t SharedMask = ~ExclusiveMask;
+
+        sl::Atomic<uint32_t> state;
+
+    public:
+        constexpr SxSpinLock() 
+            : state {}
+        {}
+
+        inline bool TryAcquireShared()
+        {
+            uint32_t current = state.Load(Relaxed);
+
+            if (current & ExclusiveMask)
+                return false;
+
+            return state.CompareExchange(current, current + 1, Acquire);
+        }
+
+        inline void AcquireShared()
+        {
+            while (!TryAcquireShared())
+                HintSpinloop();
+        }
+
+        inline bool TryAcquireExclusive()
+        {
+            uint32_t expected = 0;
+
+            return state.CompareExchange(expected, ExclusiveBit, Acquire);
+        }
+
+        inline void AcquireExclusive()
+        {
+            while (true)
+            {
+                uint32_t current = state.Load(Relaxed);
+
+                if (current & ExclusiveMask)
+                {
+                    HintSpinloop();
+                    continue;
+                }
+
+                uint32_t desired = current | ExclusivePendingBit;
+                if (state.CompareExchange(current, desired, Acquire))
+                    break;
+            }
+
+            while (true)
+            {
+                uint32_t expected = ExclusivePendingBit;
+                if (state.CompareExchange(expected, ExclusiveBit, Acquire))
+                    return;
+
+                HintSpinloop();
+            }
+        }
+
+        void ReleaseShared()
+        {
+            state.FetchSub(1, Release);
+        }
+
+        void ReleaseExclusive()
+        {
+            state.FetchAdd(~ExclusiveBit, Release);
         }
     };
 }
