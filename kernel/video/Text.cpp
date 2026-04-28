@@ -1,5 +1,6 @@
 #include <private/Video.hpp>
 #include <lib/Maths.hpp>
+#include <lib/Mmio.hpp>
 
 namespace Npk
 {
@@ -12,8 +13,6 @@ namespace Npk
         sl::Span<const Colour> dim, sl::Span<const Colour> bright, 
         Colour foreground, Colour background)
     {
-        //TODO: canvas support
-
         if (fontData.Size() < (fontSize.x * fontSize.y * GlyphCount) / 8)
             return nullptr;
 
@@ -133,24 +132,48 @@ namespace Npk
 
     static Pixel ColourToPixel(SimpleFramebuffer* fb, Colour c)
     {
-        NPK_ASSERT(fb->bpp == 32);
+        auto FormatChannel = [](size_t value, size_t bits, size_t offset) 
+            -> Pixel
+        {
+            const auto srcLimit = 1 << (sizeof(c.red) * 8);
+            const auto destLimit = 1 << bits;
 
-        Pixel red = c.red;
-        if (fb->redBits != 8)
-            red = (red * (1 << fb->redBits)) / 0xFF;
-        Pixel green = c.green;
-        if (fb->greenBits != 8)
-            green = (green * (1 << fb->greenBits)) / 0xFF;
-        Pixel blue = c.blue;
-        if (fb->blueBits != 8)
-            blue = (blue * (1 << fb->blueBits)) / 0xFF;
+            value = (value * destLimit) / srcLimit;
+            value = value << offset;
+
+            return value;
+        };
 
         Pixel px {};
-        px |= red << fb->redShift;
-        px |= green << fb->greenShift;
-        px |= blue << fb->blueShift;
+        px |= FormatChannel(c.red, fb->redBits, fb->redShift);
+        px |= FormatChannel(c.green, fb->greenBits, fb->greenShift);
+        px |= FormatChannel(c.blue, fb->blueBits, fb->blueShift);
 
         return px;
+    }
+
+    //NOTE: this function assumes `target` is aligned to `sizeof(pixel)`.
+    static void WritePixel(Pixel value, size_t pixelBytes, uintptr_t target)
+    {
+        switch (pixelBytes)
+        {
+        case 8:
+            sl::MmioWrite64(target, value);
+            break;
+
+        case 4:
+            sl::MmioWrite32(target, value);
+            break;
+
+        case 2:
+            sl::MmioWrite16(target, value);
+            break;
+
+        default:
+            for (size_t i = 0; i < pixelBytes; i++)
+                sl::MmioWrite8(target + i, value >> (i * 8));
+            break;
+        }
     }
 
     TextAdaptor* CreateTextAdaptor(TextRenderer* renderer, 
@@ -167,23 +190,24 @@ namespace Npk
         adaptor->framebuffer = fb;
         adaptor->margin = margin;
 
-        adaptor->scale.x = fb->width / renderer->size.x;
-        adaptor->scale.y = fb->height / renderer->size.y;
+        auto& conf = renderer->config;
+        const auto fontSize = conf->fontSize;
+        adaptor->scale.x = fb->width / (renderer->size.x * fontSize.x);
+        adaptor->scale.y = fb->height / (renderer->size.y * fontSize.y);
         adaptor->scale.x = sl::Min(adaptor->scale.x, adaptor->scale.y);
 
         if (adaptor->scale.x < 1)
             adaptor->scale.x = 1;
-        adaptor->scale.y = adaptor->scale.y;
+        adaptor->scale.y = adaptor->scale.x;
 
         adaptor->offset.x = fb->width;
-        adaptor->offset.x -= renderer->size.x * renderer->config->fontSize.x;
+        adaptor->offset.x -= renderer->size.x * fontSize.x * adaptor->scale.x;
         adaptor->offset.x /= 2;
 
         adaptor->offset.y = fb->height;
-        adaptor->offset.y -= renderer->size.y * renderer->config->fontSize.y;
+        adaptor->offset.y -= renderer->size.y * fontSize.y * adaptor->scale.y;
         adaptor->offset.y /= 2;
 
-        auto& conf = renderer->config;
         adaptor->background = ColourToPixel(fb, conf->background);
         adaptor->foreground = ColourToPixel(fb, conf->foreground);
         for (size_t i = 0; i < ColourCount; i++)
@@ -192,28 +216,31 @@ namespace Npk
             adaptor->brightCols[i] = ColourToPixel(fb, conf->brightColours[i]);
         }
 
-        NPK_CHECK(AcquireMutex(&renderer->mutex, sl::NoTimeout), nullptr);
+        if (!AcquireMutex(&renderer->mutex, sl::NoTimeout))
+        {
+            PoolFreeWired(ptr, sizeof(TextAdaptor), VideoTag);
+
+            return nullptr;
+        }
         renderer->adaptors.PushBack(adaptor);
         ReleaseMutex(&renderer->mutex);
 
-        //TODO: only draw a background in areas we know we wont render over 
-        //later
+        //TODO: allow user to specify a different colour for the margin area.
+        const size_t bytesPerPixel = fb->bpp / 8;
         for (size_t y = 0; y < fb->height; y++)
         {
             for (size_t x = 0; x < fb->width; x++)
             {
-                auto ptr = reinterpret_cast<volatile uint32_t*>(
-                    fb->vbase + y * fb->pitch + x * 4);
-                const uint32_t value = 
-                    (x & 0xFF) | ((y & 0xFF) << 8) | (((x ^ y) & 0xFF) << 16);
-
-                *ptr = value;
+                auto target = fb->vbase + y * fb->pitch + x * bytesPerPixel;
+                WritePixel(adaptor->background, bytesPerPixel, target);
             }
         }
 
+        Log("Created text adaptor: %zu x %zu pixels, scale=%zu,%zu, fb=0x%tx",
+            LogLevel::Info, fb->width, fb->height, adaptor->scale.x,
+            adaptor->scale.y, fb->vbase);
+
         FullRefreshTextAdaptor(renderer, adaptor);
-        Log("Created text adaptor: %zu x %zu pixels, fb=0x%tx", LogLevel::Info,
-            fb->width, fb->height, fb->vbase);
 
         return adaptor;
     }
@@ -224,12 +251,15 @@ namespace Npk
         auto& config = adaptor->renderer->config;
         auto& font = config->font;
         auto& fontSize = config->fontSize;
+        const auto scale = adaptor->scale;
 
-        where.x = adaptor->offset.x + adaptor->margin.x + where.x * fontSize.x;
-        where.y = adaptor->offset.y + adaptor->margin.y + where.y * fontSize.y;
+        where.x = adaptor->offset.x + adaptor->margin.x + where.x * fontSize.x
+            * scale.x;
+        where.y = adaptor->offset.y + adaptor->margin.y + where.y * fontSize.y
+            * scale.y;
 
-        if (where.x + fontSize.x >= fb->width - adaptor->margin.x || 
-            where.y + fontSize.y >= fb->height - adaptor->margin.y )
+        if (where.x + fontSize.x * scale.x >= fb->width - adaptor->margin.x || 
+            where.y + fontSize.y * scale.y >= fb->height - adaptor->margin.y)
             return;
 
         const Pixel fg = [=]() 
@@ -250,19 +280,30 @@ namespace Npk
             return adaptor->dimCols[cell.bgIndex];
         }();
 
-        const bool* nextGlyph = &font[cell.data * fontSize.x * fontSize.y];
+        const size_t bytesPerPixel = fb->bpp / 8;
+        const bool* nextGlyph = &font[(uint8_t)cell.data * 
+            fontSize.x * fontSize.y];
 
-        //TODO: make use of font scale
         for (size_t y = 0; y < fontSize.y; y++)
         {
-            auto* fbLine = reinterpret_cast<volatile uint32_t*>(
-                fb->vbase + (where.y + y) * fb->pitch + where.x * 4);
-            const size_t glyphIndex = y * fontSize.x;
+            const size_t glyphRow = y * fontSize.x;
 
-            for (size_t x = 0; x < fontSize.x; x++)
+            for (size_t sy = 0; sy < scale.y; sy++)
             {
-                const bool nextPixel = nextGlyph[glyphIndex + x];
-                fbLine[x] = nextPixel ? fg : bg;
+                auto line = (where.y + y * scale.y + sy) * fb->pitch;
+                line += fb->vbase;
+
+                for (size_t x = 0; x < fontSize.x; x++)
+                {
+                    auto px = nextGlyph[glyphRow + x] ? fg : bg;
+                    uintptr_t target = line + (where.x + x + scale.x) *
+                        bytesPerPixel;
+                    for (size_t sx = 0; sx < scale.x; sx++)
+                    {
+                        WritePixel(px, bytesPerPixel, 
+                            target + sx * bytesPerPixel);
+                    }
+                }
             }
         }
     }
@@ -344,7 +385,7 @@ namespace Npk
         if (parser.argIndex == 0)
         {
             engine->fgIndex = FgBgIndexSpecial;
-            engine->fgIndex = FgBgIndexSpecial;
+            engine->bgIndex = FgBgIndexSpecial;
             return;
         }
 
@@ -561,7 +602,10 @@ namespace Npk
 
         case '\n':
             if (engine->cursor.y == engine->size.y - 1)
+            {
+                engine->cursor.x = 0;
                 QueueScroll(engine);
+            }
             else
             {
                 engine->cursor.x = 0;
