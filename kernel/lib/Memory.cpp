@@ -135,8 +135,8 @@ namespace sl
 
         auto curDest = reinterpret_cast<unsigned char*>(dest);
 
-        constexpr uintptr_t Mask = (sizeof(T) << 8) - 1;
-        while ((len & (reinterpret_cast<uintptr_t>(curDest) & Mask)) && len > 0)
+        constexpr uintptr_t Mask = sizeof(T) - 1;
+        while ((reinterpret_cast<uintptr_t>(curDest) & Mask) && len > 0)
         {
             *curDest++ = value;
             --len;
@@ -217,8 +217,16 @@ namespace sl
         uint8_t* di = static_cast<uint8_t*>(dest);
         const uint8_t* si = static_cast<const uint8_t*>(src);
 
-        for (size_t i = len; i > 0; i--)
-            di[i - 1] = si[i - 1];
+        if (di < si)
+        {
+            for (size_t i = 0; i < len; i++)
+                di[i] = si[i];
+        }
+        else
+        {
+            for (size_t i = len; i > 0; i--)
+                di[i - 1] = si[i - 1];
+        }
 
         return dest;
     }

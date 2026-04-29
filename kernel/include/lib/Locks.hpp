@@ -145,7 +145,7 @@ namespace sl
     class SxSpinLock
     {
     private:
-        constexpr static uint32_t ExclusiveBit = 1 << 31;
+        constexpr static uint32_t ExclusiveBit = 1u << 31;
         constexpr static uint32_t ExclusivePendingBit = 1 << 30;
         constexpr static uint32_t ExclusiveMask = 
             ExclusiveBit | ExclusivePendingBit;
@@ -215,7 +215,7 @@ namespace sl
 
         void ReleaseExclusive()
         {
-            state.FetchAdd(~ExclusiveBit, Release);
+            state.FetchAnd(~ExclusiveBit, Release);
         }
     };
 }

@@ -67,12 +67,12 @@ namespace sl
 
         T operator=(T incoming) noexcept
         { 
-            Store(incoming); return value;
+            Store(incoming); return incoming;
         }
 
         T operator=(T incoming) volatile noexcept
         {
-            Store(incoming); return value;
+            Store(incoming); return incoming;
         }
 
         bool IsLockFree() const

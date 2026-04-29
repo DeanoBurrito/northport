@@ -102,7 +102,7 @@ namespace sl
             if (other.size > size || other.Empty())
                 return {};
 
-            for (size_t i = 0; i < size - other.size; i++)
+            for (size_t i = 0; i <= size - other.size; i++)
             {
                 if (data[i] != other.data[0])
                     continue;

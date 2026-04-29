@@ -33,7 +33,7 @@ namespace sl
     constexpr inline T* AlignUp(T* addr, size_t alignment)
     {
         return reinterpret_cast<T*>(
-            ((uintptr_t)(addr + alignment - 1) / alignment) * alignment);
+            (((uintptr_t)addr + alignment - 1) / alignment) * alignment);
     }
 
     template<typename T>

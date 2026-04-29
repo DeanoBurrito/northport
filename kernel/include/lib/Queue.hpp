@@ -128,7 +128,7 @@ namespace sl
         {
             Hk(item)->next.Store(nullptr, Release);
             auto* prev = head.Exchange(item, AcqRel);
-            Hk(prev)->next.Store(item);
+            Hk(prev)->next.Store(item, Release);
         }
 
         T* Pop()
