@@ -634,9 +634,8 @@ namespace Npk
             RaiseIpl(max);
         const bool success = lock.TryLock();
 
-        if (success)
             prevIpl = lastIpl;
-        else
+        if (!success)
             LowerIpl(prevIpl);
 
         return success;

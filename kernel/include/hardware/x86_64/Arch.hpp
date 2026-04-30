@@ -4,6 +4,11 @@
 
 namespace Npk
 {
+    struct HwMap
+    {
+        Paddr ptRoot;
+    };
+
     struct HwPte
     {
         uint64_t value;

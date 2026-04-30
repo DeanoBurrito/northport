@@ -98,7 +98,7 @@ namespace Npk
         addrMask &= ~0xFFFul;
 
         kernelMap = state.PmAlloc();
-        sysDomain0.kernelMap = kernelMap;
+        sysDomain0.kernelMap.ptRoot = kernelMap;
         //TODO: software direct map as PageAccess optimization
 
         apBootPage = state.PmAlloc();
@@ -174,34 +174,32 @@ namespace Npk
         WRITE_CR(3, prev);
     }
 
-    HwMap HwKernelMap(sl::Opt<HwMap> next)
+    void HwKernelMap(HwMap* prev, sl::Opt<HwMap> next)
     {
-        const Paddr prev = READ_CR(3);
+        if (prev != nullptr)
+            prev->ptRoot = READ_CR(3);
 
         if (next.HasValue())
             WRITE_CR(3, *next);
         else
             WRITE_CR(3, kernelMap);
-
-        return prev;
     }
 
-    HwMap HwUserMap(sl::Opt<HwMap> next)
+    void HwUserMap(HwMap* prev, sl::Opt<HwMap> next)
     {
-        const Paddr prev = READ_CR(3);
+        if (prev != nullptr)
+            prev->ptRoot = READ_CR(3);
 
         //TODO: ensure higher half is in sync: we should just map 
         //pml4[256-511]in all addr spaces and then clone them.
         if (next.HasValue())
             WRITE_CR(3, *next);
-
-        return prev;
     }
 
     bool HwWalkMap(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
         void* ptRef)
     {
-        PageAccessRef ref = AccessPage(root);
+        PageAccessRef ref = AccessPage(root.ptRoot);
         result.level = ptLevels - 1;
         result.complete = false;
         result.pte = nullptr;

@@ -203,14 +203,15 @@ namespace Npk
                     pageCount, base, totalPages, conv.major, conv.minor, 
                     conv.prefix);
 
-                const auto loaderMap = HwKernelMap({});
+                HwMap loaderMap;
+                HwKernelMap(&loaderMap, {});
 
                 PageInfo* info = LookupPageInfo(base);
                 info->pm.count = pageCount;
                 sysDomain0.freeLists.free.PushBack(info);
                 sysDomain0.freeLists.pageCount += pageCount;
 
-                HwKernelMap(loaderMap);
+                HwKernelMap(nullptr, loaderMap);
             }
 
             if (count < MaxLoaderRanges)
@@ -415,7 +416,7 @@ R"(                                             888                      )"
 
         //3. Setup kernel virtual address space and switch to it.
         SetupKernelAddressSpace(initState, loadState);
-        HwKernelMap({});
+        HwKernelMap(nullptr, {});
 
         //4. Load cpu-local variables for the BSP. The storage used for these
         //is the original copy of the cpu-locals in the kernel image. Other

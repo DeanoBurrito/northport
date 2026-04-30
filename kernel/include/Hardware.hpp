@@ -9,13 +9,12 @@
 
 namespace Npk
 {
-    /* Opaque type, **but** must be copyable. Represents the root of an address
-     * translation map set. Since this is (so far) always a paddr pointing to
-     * the root table we've defined it as a `Paddr`.
+    /* Opaque type, must be copyable. Represents the root of an address
+     * translation set.
      */
-    using HwMap = Paddr;
+    struct HwMap;
 
-    /* Opaque type representing a single page table entry.
+    /* Opaque type representing a single page table entry, must be copyable.
      */
     struct HwPte;
 
@@ -441,17 +440,18 @@ namespace Npk
     size_t HwGetCacheLineSize();
 
     /* Sets the current kernel page table root pointer to `*next` if valid.
-     * Returns the current kernel page table root pointer.
+     * If `prev` is non-null, `*prev` is set to the current root pointer.
      *
      * On platforms that only support a single root pointer, the split behaviour
      * is emulated.
      */
-    HwMap HwKernelMap(sl::Opt<HwMap> next);
+    void HwKernelMap(HwMap* prev, sl::Opt<HwMap> next);
 
     /* Sets the current user-mode page table pointer to the `*next` field,
      * if its valid.
+     * If `prev` is non-null, `*prev` is set to the current root pointer.
      */
-    HwMap HwUserMap(sl::Opt<HwMap> next);
+    void HwUserMap(HwMap* prev, sl::Opt<HwMap> next);
 
     /* Walks a page tree represented by `root`, for a given `vaddr`.
      * This function will walk the tree as far as it can go, and write details
