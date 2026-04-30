@@ -53,6 +53,9 @@ namespace Npk
          */
         Exit = 1,
 
+        /* Enum value of `2` is currently unused and reserved for future use.
+         */
+
         /* The user context is requesting to run a privileged function.
          * The subtype field indicates the function number.
          */
@@ -143,6 +146,46 @@ namespace Npk
         uint8_t backupLength;
         uint8_t bind;
     };
+
+    /* Determines the operation(s) to perform on a hardware cache.
+     */
+    enum class HwCacheOp
+    {
+        /* Cleans cache lines completely, ensuring cached data is visible to
+         * other cpus and devices in the system.
+         */
+        Clean,
+
+        /* Weaker form of cleaning: only ensures changed data is visible to
+         * other cpus in the system, not necessarily devices. On many
+         * architectures this is implemented the same way as `Clean`, but some
+         * allow this operation to have a lesser performance cost.
+         */
+        CleanForCpus,
+
+        /* Marks cache lines as invalid, meaning data should be fetched from
+         * main memory when next needed. Any changes made to data in the cache
+         * are lost.
+         */
+        Invalidate,
+    };
+
+    using HwCacheOps = sl::Flags<HwCacheOp>;
+
+    /* Determines the type(s) of cache to operate on.
+     */
+    enum class HwCacheType
+    {
+        /* Instruction cache.
+         */
+        ICache,
+
+        /* Data cache.
+         */
+        DCache,
+    };
+
+    using HwCacheTypes = sl::Flags<HwCacheType>;
 
     /* Calls `func` passing `a`/`b`/`c` as params to it, optionally placing
      * the return value of `func` into `*r` if non-null. If a synchronous
@@ -375,6 +418,28 @@ namespace Npk
      */
     void HwFlushTlb(uintptr_t base, size_t length);
 
+    /* Flush the local TLB for all addresses.
+     */
+    void HwFlushTlbAll();
+
+    /* Flush caches relevant to the local cpu for addresses in the range
+     * indicated by `base` and `length`. The `types` field determines which
+     * caches get flushed, and `ops` determines what happens with each selected
+     * cache.
+     */
+    void HwFlushCache(uintptr_t base, size_t length, HwCacheOps ops, 
+        HwCacheTypes types);
+
+    /* Similar to `HwFlushCache()` but operates on entire caches, regardless of
+     * associated addresses.
+     */
+    void HwFlushCacheAll(HwCacheOps ops, HwCacheTypes types);
+
+    /* Returns the largest cache line in bytes of any cpu core usable by the
+     * current kernel.
+     */
+    size_t HwGetCacheLineSize();
+
     /* Sets the current kernel page table root pointer to `*next` if valid.
      * Returns the current kernel page table root pointer.
      *
@@ -395,7 +460,8 @@ namespace Npk
      * Returns whether the walk was successful or not. If false, `result` is
      * untouched and may not be valid.
      */
-    bool HwWalkMap(HwMap root, uintptr_t vaddr, MmuWalkResult& result, void* ptRef);
+    bool HwWalkMap(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
+        void* ptRef);
 
     /* Similar to `HwWalkMap()`, except this function assumes `ptRef` and
      * `result` have been filled in by a successful call to `HwWalkMap()`
@@ -405,7 +471,8 @@ namespace Npk
      * Returns whether `result` and `ptRef` were updated. If false, the walk
      * could not be continued.
      */
-    bool HwContinueWalk(HwMap root, uintptr_t vaddr, MmuWalkResult& result, void* ptRef);
+    bool HwContinueWalk(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
+        void* ptRef);
 
     /* Manipulates an intermediate PTE (i.e. one that is not a final
      * level/translation).

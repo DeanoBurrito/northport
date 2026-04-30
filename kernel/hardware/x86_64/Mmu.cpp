@@ -168,6 +168,12 @@ namespace Npk
         }
     }
 
+    void HwFlushTlbAll()
+    {
+        const uint64_t prev = READ_CR(3);
+        WRITE_CR(3, prev);
+    }
+
     HwMap HwKernelMap(sl::Opt<HwMap> next)
     {
         const Paddr prev = READ_CR(3);

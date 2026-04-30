@@ -35,6 +35,9 @@ namespace Npk
         DebugExtensions,
         Mce,
         Mca,
+        ClFlush,
+        ClFlushOpt,
+        ClWb,
 
         Count
     };

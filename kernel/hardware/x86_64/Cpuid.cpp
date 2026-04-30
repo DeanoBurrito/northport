@@ -12,6 +12,7 @@ namespace Npk
             uint32_t main;
             uint32_t sub;
         } leaf;
+
         uint8_t index;
         uint8_t shift;
         const char* name;
@@ -38,18 +39,22 @@ namespace Npk
         { .leaf {1, 0}, .index = 'c', .shift = 24, .name = "tsc-d" },
         { .leaf {0x8000'0007, 0}, .index = 'd', .shift = 8, .name = "inv-tsc" },
         { .leaf {1, 0}, .index = 'd', .shift = 16, .name = "pat" },
-        { .leaf {0x8000'0008, 0}, .index = 'b', .shift = 21, .name = "invlpgb" },
+        { .leaf {0x8000'0008, 0}, .index = 'b', .shift = 21, .name = "invlpgb"},
         { .leaf {1, 0}, .index = 'd', .shift = 12, .name = "mtrr" },
-        { .leaf {0x4000'0001, 0}, .index = 'a', .shift = 3, .name = "pv-sysclock" },
+        { .leaf {0x4000'0001, 0}, .index = 'a', .shift = 3, .name = "pv-clock"},
         { .leaf {7, 0}, .index = 'b', .shift = 0, .name = "wrfsgsbase" },
-        { .leaf {0x8000'0001, 0}, .index = 'd', .shift = 11, .name = "syscall" },
+        { .leaf {0x8000'0001, 0}, .index = 'd', .shift = 11, .name = "syscall"},
         { .leaf {1, 0}, .index = 'd', .shift = 11, .name = "sysenter" },
         { .leaf {1, 0}, .index = 'd', .shift = 2, .name = "dbg-exts" },
         { .leaf {1, 0}, .index = 'd', .shift = 7, .name = "mce" },
         { .leaf {1, 0}, .index = 'd', .shift = 14, .name = "mca" },
+        { .leaf {1, 0}, .index = 'd', .shift = 19, .name = "clflush" },
+        { .leaf {7, 0}, .index = 'b', .shift = 23, .name = "clflushopt" },
+        { .leaf {7, 0}, .index = 'b', .shift = 24, .name = "clwb" },
     };
 
-    static_assert(sizeof(accessors) / sizeof(CpuFeatureAccessor) == static_cast<size_t>(CpuFeature::Count));
+    static_assert(sizeof(accessors) / sizeof(CpuFeatureAccessor) 
+        == static_cast<size_t>(CpuFeature::Count));
 
     CpuidLeaf& DoCpuid(uint32_t leaf, uint32_t subleaf, CpuidLeaf& data)
     {
@@ -72,8 +77,10 @@ namespace Npk
         if (DoCpuid(index & 0xF000'0000, 0, leaf).a < index)
             return false;
 
-        DoCpuid(accessors[featIndex].leaf.main, accessors[featIndex].leaf.sub, leaf);
+        DoCpuid(accessors[featIndex].leaf.main, accessors[featIndex].leaf.sub,
+            leaf);
         const uint32_t data = leaf[accessors[featIndex].index];
+
         return data & (1ul << accessors[featIndex].shift);
     }
 
@@ -86,13 +93,13 @@ namespace Npk
         size_t msgBuffLen = 2;
         int increment = 1;
 
-        for (size_t i = 0; i < static_cast<size_t>(CpuFeature::Count); i += increment)
+        for (size_t i = 0; i < (size_t)CpuFeature::Count; i += increment)
         {
             increment = 1;
             const bool hasFeature = CpuHasFeature(static_cast<CpuFeature>(i));
-            const size_t idealLen = sl::SnPrintf(msgBuff + msgBuffLen, MsgBufferSize - msgBuffLen,
-                "%s%s=%s", msgBuffLen == 2 ? "" : ", ", accessors[i].name, 
-                hasFeature ? "yes" : "no");
+            const size_t idealLen = sl::SnPrintf(msgBuff + msgBuffLen, 
+                MsgBufferSize - msgBuffLen, "%s%s=%s", msgBuffLen == 2 ? "" : 
+                ", ", accessors[i].name, hasFeature ? "yes" : "no");
 
             if (idealLen + msgBuffLen >= MsgBufferSize - 1)
             {
