@@ -165,7 +165,7 @@ namespace Npk
         if (nextIpi > GetMonotonicTime().epoch)
             return;
 
-        sl::TimePoint expected { nextIpi };
+        sl::TimePoint expected { lastIpi };
         sl::TimePoint desired { GetMonotonicTime().epoch + IpiDebounceTime.ticks };
         if (control->status.lastIpi.CompareExchange(expected, desired, sl::Acquire))
             HwSendIpi(control->ipiId);

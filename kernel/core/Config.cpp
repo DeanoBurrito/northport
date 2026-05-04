@@ -14,7 +14,8 @@ namespace Npk
 
         if (noLog)
             return;
-        Log("Config store set to: %.*s", LogLevel::Info, static_cast<int>(store.Size()), store.Begin());
+        Log("Config store set to: %.*s", LogLevel::Info, 
+            static_cast<int>(store.Size()), store.Begin());
     }
 
     static bool IsSpace(char c)
@@ -25,12 +26,12 @@ namespace Npk
     static bool IsDigit(const char c, size_t base)
     {
         if (base <= 10)
-            return c >= '0' && c <= ('0' + (char)base);
+            return c >= '0' && c < ('0' + (char)base);
 
-        const char c10 = c - 'a';
         const char b10 = base - 10;
-        return (c >= '0' && c <= '9') || (c10 >= 'a' && c10 <= ('a' + b10))
-            || (c10 >= 'A' && c10 <= ('A' + b10));
+        return (c >= '0' && c <= '9') 
+            || (c >= 'a' && c <= ('a' + b10 - 1))
+            || (c >= 'A' && c <= ('A' + b10 - 1));
     }
 
     static size_t ParseNum(sl::StringSpan input)
@@ -118,10 +119,11 @@ namespace Npk
                 return true;
         }
 
-        return ParseNum(value); //defaults to returning zero/false if not a number
+        return ParseNum(value);
     }
     
-    sl::StringSpan ReadConfigString(sl::StringSpan key, sl::StringSpan defaultValue)
+    sl::StringSpan ReadConfigString(sl::StringSpan key, 
+        sl::StringSpan defaultValue)
     { 
         const auto value = FindValueByKey(key);
         if (!value.HasValue())
@@ -132,7 +134,8 @@ namespace Npk
         while (offset < configStore.Size() && IsSpace(configStore[offset]))
             offset++;
 
-        if (offset >= configStore.Size() || configStore[offset] != KeyValueDelim)
+        if (offset >= configStore.Size() 
+            || configStore[offset] != KeyValueDelim)
             return defaultValue; //key is present but has no assigned value
         offset++;
 

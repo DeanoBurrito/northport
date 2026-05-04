@@ -26,6 +26,9 @@ namespace Npk
             return false;
         }
 
+        if (entry->waitable->type == WaitableType::Condition)
+            return false;
+
         entry->satisfied = true;
         entry->waitable->waiters.Remove(entry);
 
@@ -52,7 +55,9 @@ namespace Npk
         {
         case WaitableType::Condition:
             what->tickets--;
-            return static_cast<size_t>(~0);
+            if (what->tickets == 0)
+                return static_cast<size_t>(~0);
+            return 0;
 
         case WaitableType::Timer:
             what->tickets = 1;
@@ -264,7 +269,8 @@ namespace Npk
         //timeout event has fired we will fail to cancel it, so we need to sync
         //with it executing before returning from this function (since the dpc
         //object is stack-allocated).
-        NPK_ASSERT(RemoveClockEvent(&timeoutEvent));
+        if (timeout != sl::NoTimeout)
+            NPK_ASSERT(RemoveClockEvent(&timeoutEvent));
 
         waiter.lock.Lock();
         waiter.reason = {};

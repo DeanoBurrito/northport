@@ -53,6 +53,7 @@ namespace Npk
 
         dom.freeLists.lock.Lock();
         dom.freeLists.free.PushBack(page);
+        dom.freeLists.pageCount++;
         dom.freeLists.lock.Unlock();
     }
 }
