@@ -129,20 +129,35 @@ namespace Npk
 
         range->base = base + len;
         range->length = rangeTop - range->base;
-        latest->largestChild = range->length;
+        range->largestChild = range->length;
         tree.Insert(range);
     }
 
     NpkStatus SpaceAlloc(VmSpace& space, uintptr_t* addr, size_t length,
         AllocConstraints constr)
     {
-        //TODO: support alignment requests
-        NPK_CHECK(constr.alignment == 0, NpkStatus::InvalidArg);
+        if (constr.alignment < 1)
+            constr.alignment = 1;
+
+        if (length == 0)
+            return NpkStatus::InvalidArg;
+        if ((constr.preferredAddr & PageMask()) != 0)
+            return NpkStatus::InvalidArg;
+        if (constr.alignment != 1 && !sl::IsPowerOfTwo(constr.alignment))
+            return NpkStatus::InvalidArg;
+        if (constr.alignment != 1 && constr.preferredAddr != 0
+            && (constr.preferredAddr & (constr.alignment - 1)) != 0)
+            return NpkStatus::InvalidArg;
+
+        const bool constrained = constr.minAddr != 0
+            || constr.maxAddr != static_cast<uintptr_t>(-1)
+            || constr.alignment != 1;
 
         length = AlignUpPage(length);
         constr.minAddr = AlignUpPage(constr.minAddr);
         constr.maxAddr = AlignDownPage(constr.maxAddr);
-        if ((constr.preferredAddr & PageMask()) != 0)
+
+        if (constr.minAddr > constr.maxAddr)
             return NpkStatus::InvalidArg;
 
         //The worst case below is that we allocate in the middle of a range.
@@ -210,41 +225,128 @@ namespace Npk
             //else: not a hard requirement, try normal allocation path
         }
 
-        auto scan = space.freeRanges.GetRoot();
-        while (scan != nullptr)
+        uintptr_t candidateAddr = 0;
+        VmFreeRange* scan = nullptr;
+        if (!constrained)
         {
-            //TODO: minAddr and maxAddr
-            auto left = space.freeRanges.GetLeft(scan);
-            auto right = space.freeRanges.GetRight(scan);
-            auto first = constr.topDown ? right : left;
-            auto last = constr.topDown ? left : right;
+            //no constraints = fast path
 
-            if (first != nullptr && first->largestChild >= length)
+            scan = space.freeRanges.GetRoot();
+            while (scan != nullptr)
             {
-                scan = first;
-                continue;
-            }
+                auto left = space.freeRanges.GetLeft(scan);
+                auto right = space.freeRanges.GetRight(scan);
+                auto first = constr.topDown ? right : left;
+                auto last = constr.topDown ? left : right;
 
-            if (scan->length >= length)
+                if (first != nullptr && first->largestChild >= length)
+                {
+                    scan = first;
+                    continue;
+                }
+
+                if (scan->length >= length)
+                {
+                    candidateAddr = scan->base;
+                    if (constr.topDown)
+                        candidateAddr += scan->length - length;
+                    break;
+                }
+
+                if (last != nullptr && last->largestChild >= length)
+                {
+                    scan = last;
+                    continue;
+                }
+
+                //no nodes large enough, gtfo
+                scan = nullptr;
                 break;
-
-            if (last != nullptr && last->largestChild >= length)
-            {
-                scan = last;
-                continue;
             }
+        }
+        else
+        {
+            //caller is picky so we'll degrade the tree into a flat list and
+            //search for a space that satisfies the requirements.
 
-            //no nodes large enough, gtfo
-            scan = nullptr;
-            break;
+            auto CanSatisfy = [=](const VmFreeRange* range, bool topDown,
+                uintptr_t* addr) -> bool
+            {
+                if (range->length < length)
+                    return false;
+
+                uintptr_t low = sl::Max(range->base, constr.minAddr);
+                uintptr_t high = range->base + range->length;
+
+                if (low >= high)
+                    return false;
+                if (constr.maxAddr < length - 1)
+                    return false;
+
+                const uintptr_t maxStart = constr.maxAddr - (length - 1);
+                if (!topDown)
+                {
+                    if (constr.alignment != 1)
+                        low = sl::AlignUp(low, constr.alignment);
+                    if (low > maxStart || low + length > high)
+                        return false;
+
+                    *addr = low;
+                }
+                else
+                {
+                    uintptr_t topBound = sl::Min(high - length, maxStart);
+
+                    if (topBound < low)
+                        return false;
+                    if (constr.alignment != 1)
+                        topBound = sl::AlignDown(topBound, constr.alignment);
+                    if (topBound < low)
+                        return false;
+
+                    *addr = topBound;
+                }
+
+                return true;
+            };
+
+            if (!constr.topDown)
+            {
+                for (auto it = space.freeRanges.First(); it != nullptr;
+                    it = VmFreeRangeTree::Successor(it))
+                {
+                    if (!CanSatisfy(it, false, &candidateAddr))
+                        continue;
+
+                    scan = it;
+                    break;
+                }
+            }
+            else
+            {
+                auto begin = space.freeRanges.GetRoot();
+                while (begin != nullptr
+                    && VmFreeRangeTree::GetRight(begin) != nullptr)
+                    begin = VmFreeRangeTree::GetRight(begin);
+
+                for (auto it = begin; it != nullptr; 
+                    it = VmFreeRangeTree::Predecessor(it))
+                {
+                    if (!CanSatisfy(it, true, &candidateAddr))
+                        continue;
+
+                    scan = it;
+                    break;
+                }
+            }
         }
 
         NpkStatus status = NpkStatus::Shortage;
         if (scan != nullptr)
         {
             status = NpkStatus::Success;
-            *addr = scan->base;
-            BreakdownRange(space.freeRanges, scan, scan->base, length, 
+            *addr = candidateAddr;
+            BreakdownRange(space.freeRanges, scan, candidateAddr, length, 
                 &spareRange);
         }
 
@@ -483,7 +585,7 @@ namespace Npk
 
         VmRange* check = nullptr;
         auto result = SpaceLookupLocked(&check, space, range->base, 1);
-        if (result != NpkStatus::Success || range == check)
+        if (result != NpkStatus::Success || range != check)
         {
             ReleaseSxMutexExclusive(&space.rangesMutex);
             return NpkStatus::InvalidArg;
