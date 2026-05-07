@@ -38,6 +38,10 @@ namespace Npk
             return "bad config";
         case NpkStatus::NotFound:
             return "not found";
+        case NpkStatus::Pending:
+            return "pending";
+        case NpkStatus::Aborted:
+            return "aborted";
         default:
             return "<>";
         }

@@ -22,6 +22,8 @@ namespace Npk
         NotWritable,
         BadConfig,
         NotFound,
+        Pending,
+        Aborted,
     };
 
     const char* StatusStr(NpkStatus what);
