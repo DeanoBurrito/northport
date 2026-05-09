@@ -224,8 +224,8 @@ namespace Npk::Private
             //TODO: if paged pool, add this page to the active lists
         }
 
-        ReleaseMutex(&pool.mutex);
         selected->tag = tag;
+        ReleaseMutex(&pool.mutex);
 
         return reinterpret_cast<void*>(selected->base);
     }
@@ -272,10 +272,14 @@ namespace Npk::Private
         const auto addr = reinterpret_cast<uintptr_t>(ptr);
         NPK_CHECK((addr & (MinAllocSize - 1)) == 0, false);
 
+        len = sl::AlignUp(len, MinAllocSize);
+
         Pool& pool = paged ? pagedPool : wiredPool;
         if (!AcquireMutex(&pool.mutex, timeout, NPK_WAIT_LOCATION))
             return false;
 
+        //TODO: replace list here with tree keyed by address to handle large
+        //pools.
         Node* node = nullptr;
         for (auto it = pool.nodesByAddr.Begin(); it != pool.nodesByAddr.End();
             ++it)
@@ -286,14 +290,14 @@ namespace Npk::Private
             if (addr >= it->base && addr < it->base + it->length)
             {
                 node = &*it;
-                sl::MemSet((void*)node->base, 0, node->length);
-
                 break;
             }
         }
 
         if (node != nullptr && node->tag == tag && node->length == len)
         {
+            sl::MemSet((void*)node->base, 0, node->length);
+
             uintptr_t unmapBegin = AlignDownPage(node->base);
             uintptr_t unmapEnd = AlignUpPage(node->base + node->length);
 
@@ -356,7 +360,7 @@ namespace Npk::Private
     {
         const size_t metadataLen = AlignUpPage(length / MetadataSizeDivisor);
         pool.spareNodesHead = base;
-        pool.spareNodesMax = metadataLen;
+        pool.spareNodesMax = base + metadataLen;
 
         length -= metadataLen;
         base += metadataLen;
@@ -407,7 +411,14 @@ namespace Npk
 {
     void* PoolAlloc(size_t len, HeapTag tag, bool wired, sl::TimeCount timeout)
     {
-        //TODO: slabs for small allocs and per-cpu caches (magazines)
+        /* Per-cpu object caches for faster allocations:
+         * - we'll take a page (ha) from slub and have zones. Each zone is a
+         *   contiguous region of memory owned by exactly one cpu, divided into
+         *   fixed sized chunks. Therefore we only need same-core synchronization
+         *   (so disabling preemption is enough) during alloc/free paths.
+         * - for freeing on another cpu we'll use a remote message queue, 
+         *   with the message allcoated in the memory we want to free.
+         */
         return Private::PoolAlloc(len, tag, !wired, timeout);
     }
     

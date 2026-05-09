@@ -107,14 +107,20 @@ namespace Npk
         {
             range->base += len;
             range->length -= len;
-            tree.Insert(range);
+            if (range->length == 0)
+                PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
+            else
+                tree.Insert(range);
 
             return;
         }
         else if (base + len == range->base + range->length)
         {
             range->length -= len;
-            tree.Insert(range);
+            if (range->length == 0)
+                PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
+            else
+                tree.Insert(range);
 
             return;
         }
@@ -399,27 +405,34 @@ namespace Npk
                 break;
         }
 
+        if (scan != nullptr && base >= scan->base 
+            && base < scan->base + scan->length)
+        {
+            Log("Double free at 0x%tx in VM space %p", LogLevel::Error,
+                base, &space);
+            ReleaseMutex(&space.freeRangesMutex);
+            PoolFreeWired(spareRange, sizeof(*spareRange), SpaceHeapTag);
+
+            return NpkStatus::BadVaddr;
+        }
+
         //try coalesce with nearby free ranges, if any
+        VmFreeRange* toFree = nullptr;
         VmFreeRange* latest = nullptr;
         if (succ != nullptr && succ->base == base + length)
         {
             space.freeRanges.Remove(succ);
             length += succ->length;
-
             latest = succ;
-            succ = nullptr;
         }
         if (pred != nullptr && pred->base + pred->length == base)
         {
             space.freeRanges.Remove(pred);
             length += pred->length;
             base = pred->base;
-
             if (latest != nullptr)
-            {
-                latest = pred;
-                pred = nullptr;
-            }
+                toFree = latest;
+            latest = pred;
         }
 
         if (latest == nullptr)
@@ -435,10 +448,8 @@ namespace Npk
 
         ReleaseMutex(&space.freeRangesMutex);
 
-        if (pred != nullptr)
-            PoolFreeWired(pred, sizeof(*pred), SpaceHeapTag);
-        if (succ != nullptr)
-            PoolFreeWired(succ, sizeof(*succ), SpaceHeapTag);
+        if (toFree != nullptr)
+            PoolFreeWired(toFree, sizeof(*toFree), SpaceHeapTag);
         if (spareRange != nullptr)
             PoolFreeWired(spareRange, sizeof(*spareRange), SpaceHeapTag);
 
@@ -695,18 +706,15 @@ namespace Npk
                 if (it->flags.Has(VmFlag::Write))
                     pagerFlags.Set(PagerFlag::Write);
 
-                NPK_ASSERT(src->ops->RefObj(src, pagerFlags));
+                if (!src->ops->RefObj(src, pagerFlags))
+                {
+                    PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
+                    carryOn = false;
+                    break;
+                }
             }
 
             newSpace->ranges.Insert(latest);
-
-            if (!it->source->ops->RefObj(it->source, {}))
-            {
-                carryOn = false;
-                break;
-            }
-            else
-                latest->source = it->source;
         }
 
         if (!carryOn)
@@ -722,6 +730,12 @@ namespace Npk
             {
                 auto range = newSpace->ranges.GetRoot();
                 newSpace->ranges.Remove(range);
+
+                if (range->amapRef.Valid())
+                    range->amapRef.Release();
+                if (range->source != nullptr)
+                    range->source->ops->UnrefObj(range->source);
+
                 PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
             }
 

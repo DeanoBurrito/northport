@@ -6,6 +6,8 @@ namespace Npk::Private
     constexpr auto AnonPageTag = NPK_MAKE_HEAP_TAG("AnPg");
     constexpr size_t TableEntryBits = 6;
     constexpr size_t TableEntryCount = 1 << TableEntryBits;
+    constexpr size_t AmapMaxLevels = (sizeof(size_t) * 8 + TableEntryBits - 1) 
+        / TableEntryBits;
 
     struct AnonTable
     {
@@ -13,6 +15,12 @@ namespace Npk::Private
         uint8_t validCount;
     };
     static_assert(sizeof(void*) >= sizeof(AnonPageRef));
+
+    struct AmapPathEntry
+    {
+        AnonTable* table;
+        size_t index;
+    };
 
     constexpr size_t AnonTableLevels(size_t slotCount)
     {
@@ -68,6 +76,35 @@ namespace Npk::Private
         PoolFreeWired(table, sizeof(*table), AmapTag);
     }
 
+    static void FreeEmptyTables(AnonMap& map, AmapPathEntry* path, 
+        size_t depth, AnonTable* begin)
+    {
+        if (begin->validCount != 0)
+            return;
+
+        while (true)
+        {
+            if (depth == 0)
+            {
+                map.slots = nullptr;
+                PoolFreeWired(begin, sizeof(*begin), AmapTag);
+
+                return;
+            }
+
+            depth--;
+            auto& point = path[depth];
+
+            point.table->entries[point.index] = nullptr;
+            PoolFreeWired(begin, sizeof(AnonTable), AmapTag);
+            begin = point.table;
+
+            point.table->validCount--;
+            if (point.table->validCount != 0)
+                return;
+        }
+    }
+
     NpkStatus CreateAnonPage(AnonPage** page)
     {
         if (page == nullptr)
@@ -116,11 +153,13 @@ namespace Npk::Private
             if (status != NpkStatus::Success)
             {
                 PoolFreeWired(newMap, sizeof(*newMap), AmapTag);
+
                 return status;
             }
         }
 
         *map = newMap;
+
         return NpkStatus::Success;
     }
 
@@ -149,6 +188,7 @@ namespace Npk::Private
         if (newSlotCount <= map.slotCount)
         {
             ReleaseMutex(&map.mutex);
+
             return NpkStatus::InvalidArg;
         }
 
@@ -168,28 +208,27 @@ namespace Npk::Private
         {
             //there is already a table structure allocated, create a new 
             //set of tables to point to the existing mappings.
-            auto* originalRoot = static_cast<AnonTable*>(map.slots);
-
             for (size_t i = curLevels; i != newLevels; i++)
             {
                 auto* table = AllocAnonTable();
                 if (table == nullptr)
                 {
-                    for (size_t j = 0; j < newLevels - curLevels; j++)
+                    const size_t added = i - curLevels;
+                    for (size_t j = 0; j < added; j++)
                     {
-                        auto* root = static_cast<AnonTable*>(map.slots);
-                        map.slots = root->entries[0];
-
-                        FreeAnonTable(root, curLevels + j);
+                        auto* wrapper = static_cast<AnonTable*>(map.slots);
+                        map.slots = wrapper->entries[0];
+                        PoolFreeWired(wrapper, sizeof(AnonTable), AmapTag);
                     }
-                    map.slots = originalRoot;
 
                     ReleaseMutex(&map.mutex);
+
                     return NpkStatus::Shortage;
                 }
 
                 auto* curRoot = static_cast<AnonTable*>(map.slots);
                 table->entries[0] = curRoot;
+                table->validCount = 1;
                 map.slots = table;
             }
         }
@@ -207,6 +246,13 @@ namespace Npk::Private
 
         if (!AcquireMutex(&map.mutex, sl::NoTimeout))
             return {};
+
+        if (slot >= map.slotCount)
+        {
+            ReleaseMutex(&map.mutex);
+
+            return {};
+        }
 
         AnonPageRef ref {};
 
@@ -242,6 +288,7 @@ namespace Npk::Private
         if (slot >= map.slotCount)
         {
             ReleaseMutex(&map.mutex);
+
             return NpkStatus::InvalidArg;
         }
 
@@ -252,9 +299,13 @@ namespace Npk::Private
             if (map.slots == nullptr)
             {
                 ReleaseMutex(&map.mutex);
+
                 return NpkStatus::Shortage;
             }
         }
+
+        AmapPathEntry path[AmapMaxLevels];
+        size_t pathDepth = 0;
 
         const size_t levels = AnonTableLevels(map.slotCount);
         auto* table = static_cast<AnonTable*>(map.slots);
@@ -264,22 +315,37 @@ namespace Npk::Private
             const size_t index = AnonTableIndex(level, slot);
 
             auto* entry = table->entries[index];
-            if (entry == nullptr)
+            if (entry == nullptr && level != 0)
             {
-                auto newTable = AllocAnonTable();
-                NPK_ASSERT(newTable != nullptr);
-                table->entries[index] = newTable;
+                auto* newTable = AllocAnonTable();
+                if (newTable == nullptr)
+                {
+                    if (table->validCount == 0)
+                        FreeEmptyTables(map, path, pathDepth, table);
+                    ReleaseMutex(&map.mutex);
 
+                    return NpkStatus::Shortage;
+                }
+
+                table->entries[index] = newTable;
+                table->validCount++;
                 entry = newTable;
             }
 
             if (level == 0)
             {
-                auto ref = *reinterpret_cast<AnonPageRef*>(&entry);
+                auto& ref =
+                    *reinterpret_cast<AnonPageRef*>(&table->entries[index]);
+                if (!ref.Valid())
+                    table->validCount++;
                 ref = anon;
+                break;
             }
             else
+            {
+                path[pathDepth++] = { table, index };
                 table = static_cast<AnonTable*>(entry);
+            }
         }
 
         ReleaseMutex(&map.mutex);
@@ -297,8 +363,12 @@ namespace Npk::Private
         if (map.slots == nullptr || slot >= map.slotCount)
         {
             ReleaseMutex(&map.mutex);
+
             return {};
         }
+
+        AmapPathEntry path[AmapMaxLevels];
+        size_t pathDepth = 0;
 
         AnonPageRef ref {};
         const size_t levels = AnonTableLevels(map.slotCount);
@@ -314,13 +384,18 @@ namespace Npk::Private
 
             if (level == 0)
             {
-                ref = sl::Move(*reinterpret_cast<AnonPageRef*>(&entry));
-                entry = nullptr;
+                ref = sl::Move(
+                    *reinterpret_cast<AnonPageRef*>(&table->entries[index]));
 
-                //TODO: freeing of empty tables
+                table->validCount--;
+                if (table->validCount == 0)
+                    FreeEmptyTables(map, path, pathDepth, table);
             }
             else
+            {
+                path[pathDepth++] = { table, index };
                 table = static_cast<AnonTable*>(entry);
+            }
         }
 
         ReleaseMutex(&map.mutex);
