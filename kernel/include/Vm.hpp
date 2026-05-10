@@ -39,37 +39,6 @@ namespace Npk
 
     using VmFlags = sl::Flags<VmFlag>;
 
-    /* A memory descriptor list (borrowed term) is a primitive for managing
-     * buffers in virtual memory as a list of pages. An MDL references a number
-     * of discontiguous physical pages that may (not) be backing a region of 
-     * virtual memory.
-     * Physical pages referenced by an MDL are wired (cannot be paged out 
-     * or moved) and will have any pending copy-on-write actions resolved. 
-     * Because of these semantics, MDLs should be used with care.
-     */
-    struct Mdl
-    {
-        /* Length of referenced memory in bytes.
-         */
-        size_t length;
-
-        /* Offset of referenced memory into the first page (pages[0]), in bytes.
-         */
-        size_t offset;
-
-        /* If the MDL is mapped in the kernel address space, `window` points
-         * to the location. This field is validated and populated by VM
-         * subsystem functions depending on need and should not be accessed
-         * without a prior successful call to `MdlAcquireWindow()` on this MDL.
-         */
-        void* window;
-
-        /* Pointers to the backing pages for the buffer. This array is always
-         * `AlignUpPage(length) >> PageShift()` entries long.
-         */
-        PageInfo* pages[];
-    };
-
     /* Forward declaration, see below.
      */
     struct VmSpace;
@@ -403,52 +372,4 @@ namespace Npk
     /* TODO:
      */
     NpkStatus SpaceClone(VmSpace** clone, VmSpace& source);
-
-    /* TODO:
-     */
-    NpkStatus CreateMdlFromBuffer(Mdl** mdl, void* base, size_t length);
-
-    /* TODO:
-     */
-    NpkStatus CreateMdlFromInactiveBuffer(Mdl** mdl, VmSpace& space, void* base, 
-        size_t length);
-
-    /* TODO:
-     */
-    NpkStatus CreateMdlFromPageList(Mdl** mdl, sl::Span<Paddr> pages, 
-        size_t length, size_t offset);
-
-    /* TODO:
-     */
-    NpkStatus DestroyMdl(Mdl* mdl);
-
-    /* Returns if the MDL has a window in kernel virtual memory. A window in
-     * this context meaning the pages pointed to by the MDL mapped as contiguous
-     * buffer in virtual memory.
-     * Note that this function's return value is typically useless as the status
-     * of the MDL's window may change as this function is returning. The return
-     * value is 'best effort' and as such no hard decisions should be made based
-     * on it.
-     */
-    bool IsMdlWindowValid(Mdl* mdl);
-
-    /* This function ensures the MDL has a valid window, and increments the ref
-     * count of it. A matching call to `MdlReleaseWindow()` is expected when the
-     * callee of this function has finished with the window. Note that MDL
-     * windows are exempt from typical page reclamation mechanisms so windows
-     * should only be used where necessary. They are also potentially expensive 
-     * to create and teardown.
-     * Returns whether the window was successfully acquired or not. If not it
-     * should not be accessed as it may not be mapped.
-     */
-    bool MdlAcquireWindow(Mdl* mdl);
-
-    /* TODO:
-     */
-    void MdlReleaseWindow(Mdl* mdl);
-
-    /* Returns the number of physical pages described by a memory descriptor
-     * list.
-     */
-    size_t MdlPageCount(Mdl* mdl);
 }

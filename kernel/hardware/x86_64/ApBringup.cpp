@@ -125,7 +125,7 @@ namespace Npk
         }
 
         //we can only load 32-bits into cr3 from the spinup code
-        NPK_ASSERT(MyKernelMap() >> 32 == 0); 
+        NPK_ASSERT(MyKernelMap().ptRoot >> 32 == 0); 
         NPK_ASSERT(apBootPage != Paddr());
         NPK_ASSERT(!savedMtrrs.Empty());
 
@@ -149,7 +149,7 @@ namespace Npk
             reinterpret_cast<uintptr_t>(bootPageRef->value));
 
         bootInfo->entry = reinterpret_cast<uint64_t>(&ApEntryFunc);
-        bootInfo->cr3 = reinterpret_cast<uint64_t>(MyKernelMap());
+        bootInfo->cr3 = reinterpret_cast<uint64_t>(MyKernelMap().ptRoot);
 
         size_t idAlloc = 1; //id=0 is BSP (the currently executing core)
 

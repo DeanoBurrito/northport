@@ -247,6 +247,8 @@ namespace Npk
          *   will be at least partially incomplete. The dispatch loop will
          *   continue calling remaining end functions on remaining IOP frames,
          *   as a Begin() call on an IoInterface always has a matching End().
+         *   To return detailed status information, the driver can set the
+         *   `abortCode` field in its IopFrame struct.
          */
         IoStatus (*End)(Iop* iop, void* opaque, void* stash);
     };
@@ -331,16 +333,16 @@ namespace Npk
     /* - management of buffers memory is caller's responsiblity.
      * - right now iop makes a copy of `*params`, is this safe enough?
      */
-    NpkStatus AllocIop(Iop** result, IoInterface* target, IoType type, 
+    NpkStatus CreateIop(Iop** result, IoInterface* target, IoType type, 
         IoFlags flags, IopParams* params, sl::Span<IoBuffer> buffers);
     
     /*
      */
-    NpkStatus FreeIop(Iop* packet);
+    NpkStatus DestroyIop(Iop* packet);
 
     /*
      */
-    NpkStatus StartIop(Iop* packet);
+    NpkStatus StartIop(Iop* packet, bool waitUntilComplete);
 
     /* - returns NpkStatus::Pending if packet is pending.
      * - returns NpkStatus::Success if packet is complete (not necessarily

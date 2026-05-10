@@ -33,9 +33,9 @@ namespace Npk
             base = AlignUpPage(base);
         }
 
-        for (; i < buffer.Size(); i += PageSize())
+        for (Paddr page = base; i < buffer.Size(); i += PageSize(), page += PageSize())
         {
-            PageAccessRef access = AccessPage(base + i - offset);
+            PageAccessRef access = AccessPage(page);
             if (!access.Valid())
                 return i;
 
