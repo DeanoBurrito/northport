@@ -445,8 +445,10 @@ R"(                                             888                      )"
 
         SetConfigRoot(loadState);
         TryMapAcpiTables(virtBase);
-        if (loadState.efiTable.HasValue())
-            TryEnableEfiRtServices(*loadState.efiTable, virtBase);
+        if (loadState.efi.HasValue())
+            TryEnableEfiRuntimeServices(*loadState.efi, virtBase);
+        else
+            Log("EFI runtime services not available.", LogLevel::Info);
 
         const auto smpData = InitPerCpuData(virtBase);
         ArchInitFull(virtBase);
