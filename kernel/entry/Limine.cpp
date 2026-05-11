@@ -68,6 +68,13 @@ namespace Npk::Loader
         .response = nullptr
     };
 
+    limine_efi_memmap_request efiMemmapReq
+    {
+        .id = LIMINE_EFI_MEMMAP_REQUEST,
+        .revision = 0,
+        .response = nullptr
+    };
+
     limine_framebuffer_request fbReq
     {
         .id = LIMINE_FRAMEBUFFER_REQUEST,
@@ -86,7 +93,8 @@ namespace Npk::Loader
         sl::Opt<Paddr> rsdp {};
         if (rsdpReq.response != nullptr)
         {
-            uintptr_t addr = reinterpret_cast<uintptr_t>(rsdpReq.response->address);
+            uintptr_t addr = 
+                reinterpret_cast<uintptr_t>(rsdpReq.response->address);
             if (addr >= hhdm)
                 addr -= hhdm;
 
@@ -97,7 +105,8 @@ namespace Npk::Loader
         sl::Opt<Paddr> fdt {};
         if (fdtReq.response != nullptr)
         {
-            uintptr_t addr = reinterpret_cast<uintptr_t>(fdtReq.response->dtb_ptr);
+            uintptr_t addr = 
+                reinterpret_cast<uintptr_t>(fdtReq.response->dtb_ptr);
             if (addr >= hhdm)
                 addr -= hhdm;
 
@@ -105,15 +114,29 @@ namespace Npk::Loader
                 fdt = static_cast<Paddr>(addr);
         }
 
-        sl::Opt<Paddr> systemTable {};
-        if (efiReq.response != nullptr)
+        sl::Opt<EfiDetails> efi {};
+        if (efiReq.response != nullptr && efiMemmapReq.response != nullptr
+            && efiReq.response->address != 0 
+            && efiMemmapReq.response->memmap != 0)
         {
-            uintptr_t addr = reinterpret_cast<uintptr_t>(efiReq.response->address);
-            if (addr >= hhdm)
-                addr -= hhdm;
+            EfiDetails deets {};
 
-            if (addr != 0)
-                systemTable = static_cast<Paddr>(addr);
+            deets.systemTable = 
+                reinterpret_cast<Paddr>(efiReq.response->address);
+            if (deets.systemTable >= hhdm)
+                deets.systemTable -= hhdm;
+
+            deets.memmapBase = 
+                reinterpret_cast<Paddr>(efiMemmapReq.response->memmap);
+            if (deets.memmapBase >= hhdm)
+                deets.memmapBase -= hhdm;
+
+            deets.memmapSize = efiMemmapReq.response->memmap_size;
+            deets.memmapDescSize = efiMemmapReq.response->desc_size;
+            deets.memmapDescVersion = 
+                static_cast<uint32_t>(efiMemmapReq.response->desc_version);
+
+            efi = deets;
         }
 
         sl::Opt<Paddr> moduleBlob {};
@@ -131,13 +154,18 @@ namespace Npk::Loader
 
         sl::Opt<sl::TimePoint> timeOffset {};
         if (timeReq.response != nullptr)
-            timeOffset = sl::TimePoint(timeReq.response->boot_time * sl::TimePoint::Frequency);
+        {
+            timeOffset = sl::TimePoint(timeReq.response->boot_time 
+                * sl::TimePoint::Frequency);
+        }
 
         sl::StringSpan cmdline {};
         if (fileReq.response != nullptr)
         {
-            const size_t len = sl::MemFind(fileReq.response->kernel_file->cmdline, 0, sl::NoLimit);
-            cmdline = sl::StringSpan(fileReq.response->kernel_file->cmdline, len);
+            const size_t len = sl::MemFind(
+                fileReq.response->kernel_file->cmdline, 0, sl::NoLimit);
+            cmdline = sl::StringSpan(fileReq.response->kernel_file->cmdline, 
+                len);
         }
 
         return 
@@ -147,7 +175,7 @@ namespace Npk::Loader
             .bspId = 0,
             .rsdp = rsdp,
             .fdt = fdt,
-            .efiTable = systemTable,
+            .efi = efi,
             .moduleBlob = moduleBlob,
             .timeOffset = timeOffset,
             .commandLine = cmdline

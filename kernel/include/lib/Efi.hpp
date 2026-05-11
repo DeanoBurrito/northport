@@ -3,6 +3,12 @@
 #include "Types.hpp"
 #include "Flags.hpp"
 
+#ifdef __x86_64__
+#define NPK_EFI_CALL __attribute__((ms_abi))
+#else
+#define NPK_EFI_CALL
+#endif
+
 namespace sl
 {
     using EfiStatus = int;
@@ -59,7 +65,7 @@ namespace sl
 
     using EfiVariableFlags = sl::Flags<EfiVariableFlag, uint32_t>;
 
-    enum class EfiMemoryType
+    enum class EfiMemoryType : uint32_t
     {
     };
 
@@ -132,33 +138,53 @@ namespace sl
         uint32_t reserved;
     };
 
-    using EfiGetTime = EfiStatus (*)(EfiTime* time, EfiTimeCapabilities* caps);
-    using EfiSetTime = EfiStatus (*)(EfiTime* time);
-    using EfiGetWakeupTime = EfiStatus (*)(bool* enabled, bool* pending, 
-        EfiTime* time);
-    using EfiSetWakeupTime = EfiStatus (*)(bool enable, EfiTime* time);
-    using EfiSetVirtualAddressMap = EfiStatus (*)(EfiUintN memoryMapSize, 
-        EfiUintN descriptorSize, uint32_t descriptorVersion, 
-        EfiMemoryDescriptor* virtualMap);
-    using EfiConvertPointer = EfiStatus (*)(EfiUintN debugDisposition, 
-        void** address);
-    using EfiGetVariable = EfiStatus (*)(EfiChar16* name, EfiGuid* vendor, 
-        EfiVariableFlags* attribs, EfiUintN* size, void* data);
-    using EfiGetNextVariableName = EfiStatus (*)(EfiUintN* size, 
-        EfiChar16* name, EfiGuid* vendor);
-    using EfiSetVariable = EfiStatus (*)(EfiChar16* name, EfiGuid* guid, 
-        EfiVariableFlags* attribs, EfiUintN size, void* data);
-    using EfiGetNextHighMonotonicCount = EfiStatus (*)(uint32_t* count);
-    using EfiResetSystem = void (*)(EfiResetType type, EfiStatus status, 
+    using EfiGetTime = EfiStatus (NPK_EFI_CALL*)
+        (EfiTime* time, EfiTimeCapabilities* caps);
+
+    using EfiSetTime = EfiStatus (NPK_EFI_CALL*)
+        (EfiTime* time);
+
+    using EfiGetWakeupTime = EfiStatus (NPK_EFI_CALL*)
+        (bool* enabled, bool* pending, EfiTime* time);
+
+    using EfiSetWakeupTime = EfiStatus (NPK_EFI_CALL*)
+        (bool enable, EfiTime* time);
+
+    using EfiSetVirtualAddressMap = EfiStatus (NPK_EFI_CALL*)
+        (EfiUintN memoryMapSize, EfiUintN descriptorSize, 
+        uint32_t descriptorVersion, EfiMemoryDescriptor* virtualMap);
+
+    using EfiConvertPointer = EfiStatus (NPK_EFI_CALL*)
+        (EfiUintN debugDisposition, void** address);
+
+    using EfiGetVariable = EfiStatus (NPK_EFI_CALL*)
+        (EfiChar16* name, EfiGuid* vendor, EfiVariableFlags* attribs,
+        EfiUintN* size, void* data);
+
+    using EfiGetNextVariableName = EfiStatus (NPK_EFI_CALL*)
+        (EfiUintN* size, EfiChar16* name, EfiGuid* vendor);
+
+    using EfiSetVariable = EfiStatus (NPK_EFI_CALL*)
+        (EfiChar16* name, EfiGuid* guid, EfiVariableFlags* attribs, 
         EfiUintN size, void* data);
-    using EfiUpdateCapsule = EfiStatus (*)(EfiCapsuleHeader** capsuleHeaderArray, 
-        EfiUintN capsuleCount, EfiPhysicalAddress scatterGatherList);
-    using EfiQueryCapsuleCapabilities = EfiStatus (*)(
-        EfiCapsuleHeader** capsuleHeaderArray, EfiUintN capsuleCount, 
+
+    using EfiGetNextHighMonotonicCount = EfiStatus (NPK_EFI_CALL*)
+        (uint32_t* count);
+
+    using EfiResetSystem = void (NPK_EFI_CALL*)
+        (EfiResetType type, EfiStatus status, EfiUintN size, void* data);
+
+    using EfiUpdateCapsule = EfiStatus (NPK_EFI_CALL*)
+        (EfiCapsuleHeader** capsuleHeaderArray, EfiUintN capsuleCount, 
+        EfiPhysicalAddress scatterGatherList);
+
+    using EfiQueryCapsuleCapabilities = EfiStatus (NPK_EFI_CALL*)
+        (EfiCapsuleHeader** capsuleHeaderArray, EfiUintN capsuleCount,
         uint64_t maximumCapsuleSize, EfiResetType* resetType);
-    using EfiQueryVariableInfo = EfiStatus (*)(EfiVariableFlags attribs, 
-        uint64_t maximumVariableStorage, uint64_t remainingVariableStorage,
-        uint64_t* maximumVariable);
+
+    using EfiQueryVariableInfo = EfiStatus (NPK_EFI_CALL*)
+        (EfiVariableFlags attribs, uint64_t maximumVariableStorage, 
+        uint64_t remainingVariableStorage, uint64_t* maximumVariable);
 
     struct EfiRuntimeServices
     {

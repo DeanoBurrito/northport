@@ -7,6 +7,15 @@
  */
 namespace Npk::Loader
 {
+    struct EfiDetails
+    {
+        Paddr systemTable;
+        Paddr memmapBase;
+        size_t memmapSize;
+        size_t memmapDescSize;
+        uint32_t memmapDescVersion;
+    };
+
     /* This struct defines info critical for the kernel to initialize,
      * as well as config root pointers and some 'nice to know' info.
      */
@@ -38,10 +47,10 @@ namespace Npk::Loader
          */
         sl::Opt<Paddr> fdt;
 
-        /* If valid, physical address of the EFI system table.
-         * NOTE: this is the system table, not the runtime services table.
+        /* If valid contains the physical address of the efi system table,
+         * and a description of the efi memory map.
          */
-        sl::Opt<Paddr> efiTable;
+        sl::Opt<EfiDetails> efi;
 
         /* If valid, physical base address of a blob passed from the bootloader.
          */
@@ -138,7 +147,8 @@ namespace Npk
 
     void SetConfigRoot(const Loader::LoadState& loaderState);
     void TryMapAcpiTables(uintptr_t& virtBase);
-    void TryEnableEfiRtServices(Paddr systemTable, uintptr_t& virtBase);
+    void TryEnableEfiRuntimeServices(const Loader::EfiDetails& details, 
+        uintptr_t& virtBase);
     void InitPageAccessCache(size_t entries, uintptr_t slots);
 
     void HwSetMyLocals(uintptr_t where, CpuId softwareId);
