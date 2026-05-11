@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Vm.hpp>
+#include "../Vm.hpp"
 #include <Hardware.hpp>
 
 namespace Npk

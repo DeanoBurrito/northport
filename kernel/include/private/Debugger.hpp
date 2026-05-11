@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Debugger.hpp>
+#include "../Debugger.hpp"
 #include <lib/Flags.hpp>
 #include <lib/Locks.hpp>
 

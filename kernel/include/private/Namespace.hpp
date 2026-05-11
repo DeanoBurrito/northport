@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Namespace.hpp>
+#include "../Namespace.hpp"
 #include <Vm.hpp>
 
 namespace Npk::Private

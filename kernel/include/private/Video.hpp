@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Video.hpp>
+#include "../Video.hpp"
 #include <Vm.hpp>
 
 namespace Npk
