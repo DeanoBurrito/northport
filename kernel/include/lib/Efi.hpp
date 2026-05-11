@@ -67,6 +67,22 @@ namespace sl
 
     enum class EfiMemoryType : uint32_t
     {
+        Reserved,
+        LoaderCode,
+        LoaderData,
+        BootServicesCode,
+        BootServicesData,
+        RuntimeServicesCode,
+        RuntimeServicesData,
+        Conventional,
+        Unusable,
+        AcpiReclaim,
+        AcpiNvs,
+        MappedIo,
+        MappedIoPortSpace,
+        PalCode,
+        Persistent,
+        Unaccepted,
     };
 
     enum class EfiMemoryFlag
@@ -137,6 +153,10 @@ namespace sl
         uint32_t crc32;
         uint32_t reserved;
     };
+
+    constexpr uint64_t EfiSignatureSystemTable = 0x5453595320494249;
+    constexpr uint64_t EfiSignatureBsTable = 0x56524553544f4f42;
+    constexpr uint64_t EfiSignatureRtsTable = 0x56524553544e5552;
 
     using EfiGetTime = EfiStatus (NPK_EFI_CALL*)
         (EfiTime* time, EfiTimeCapabilities* caps);
