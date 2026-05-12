@@ -62,6 +62,7 @@ namespace sl
                 Reset();
             
             new (store) T(Forward<Args>(args)...);
+            isValid = true;
         }
 
         ~Optional()
@@ -107,50 +108,9 @@ namespace sl
 
         Optional& operator=(Optional&& from)
         {
-            if (from.isValid)
-            {
-                if (isValid)
-                    *Get() = sl::Move(*from.Get());
-                else
-                {
-                    isValid = true;
-                    new (store) T(sl::Move (*from.Get()));
-                }
-            }
-            else
-            {
-                if (isValid)
-                    Reset();
-            }
+            if (&from == this)
+                return *this;
 
-            return *this;
-        }
-
-        template<typename U>
-        Optional& operator=(const Optional<U>& other)
-        {
-            if (other.isValid)
-            {
-                if (isValid)
-                    *Get() = *other.Get();
-                else
-                {
-                    isValid = true;
-                    new (store) T(*other.Get());
-                }
-            }
-            else
-            {
-                if (isValid)
-                    Reset();
-            }
-
-            return *this;
-        }
-
-        template<typename U>
-        Optional& operator=(Optional<U>&& from)
-        {
             if (from.isValid)
             {
                 if (isValid)
@@ -200,25 +160,25 @@ namespace sl
     template<typename A, typename B>
     constexpr bool operator==(const Optional<A>& opt, const B& value)
     { 
-        return opt ? (*opt == value) : false;
+        return opt.HasValue() ? (*opt == value) : false;
     }
 
     template<typename A, typename B>
     constexpr bool operator==(const A& value, const Optional<B>& opt)
     { 
-        return opt ? (value == *opt) : false;
+        return opt.HasValue() ? (value == *opt) : false;
     }
 
     template<typename A, typename B>
     constexpr bool operator!=(const Optional<A>& opt, const B& value)
     { 
-        return opt ? (*opt != value) : true;
+        return opt.HasValue() ? (*opt != value) : true;
     }
 
     template<typename A, typename B>
     constexpr bool operator!=(const A& value, const Optional<B>& opt)
     { 
-        return opt ? (*opt != value) : true;
+        return opt.HasValue() ? (*opt != value) : true;
     }
 
     template<typename T>

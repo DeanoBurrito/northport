@@ -246,6 +246,9 @@ namespace sl
     template<typename T>
     constexpr inline T StandardDeviation(sl::Span<T> data)
     {
+        if (data.Size() < 2)
+            return T {};
+
         T mean = 0;
         for (size_t i = 0; i < data.Size(); i++)
             mean += data[i];
@@ -287,6 +290,9 @@ namespace sl
     template<typename T>
     constexpr inline T MaxOf(sl::Span<T> data)
     {
+        if (data.Empty())
+            return T {};
+
         T temp = data[0];
         for (size_t i = 1; i < data.Size(); i++)
         {
@@ -300,6 +306,9 @@ namespace sl
     template<typename T>
     constexpr inline T MinOf(sl::Span<T> data)
     {
+        if (data.Empty())
+            return T {};
+
         T temp = data[0];
         for (size_t i = 1; i < data.Size(); i++)
         {

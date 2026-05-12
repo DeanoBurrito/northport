@@ -147,7 +147,7 @@ namespace Npk
 
     void SetConfigRoot(const Loader::LoadState& loaderState);
     void TryMapAcpiTables(uintptr_t& virtBase);
-    void TryEnableEfiRuntimeServices(const Loader::EfiDetails& details, 
+    NpkStatus TryEnableEfiRuntimeServices(const Loader::EfiDetails& details, 
         uintptr_t& virtBase);
     void InitPageAccessCache(size_t entries, uintptr_t slots);
 

@@ -173,7 +173,7 @@ namespace sl
             {
                 tail = static_cast<T*>(Hk(temp)->next);
                 if (tail == nullptr)
-                    head = nullptr;
+                    tail = it.ptr;
             }
 
             return temp;
@@ -410,15 +410,11 @@ namespace sl
 
         void InsertAfter(Iterator it, T* value)
         {
-            Hk(value)->prev = it.ptr;
-
             if (it.ptr == nullptr)
-            {
-                Hk(value)->next = head;
-                head = value;
-            }
+                return PushBack(value);
             else
             {
+                Hk(value)->prev = it.ptr;
                 Hk(value)->next = Hk(it.ptr)->next;
                 Hk(it.ptr)->next = value;
             }
@@ -434,15 +430,7 @@ namespace sl
             Hk(value)->next = it.ptr;
 
             if (it.ptr == nullptr)
-            {
-                Hk(value)->prev = nullptr;
-                Hk(value)->next = head;
-                if (head == nullptr)
-                    tail = value;
-                else
-                    Hk(head)->prev = value;
-                head = value;
-            }
+                return PushBack(value);
             else
             {
                 Hk(value)->prev = Hk(it.ptr)->prev;

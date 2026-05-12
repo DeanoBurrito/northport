@@ -57,7 +57,7 @@ namespace sl
 
             size_t lockedCount = 0;
             uintptr_t lastLocked = 0;
-            while (lockedCount!= objCount - 1)
+            while (lockedCount != objCount)
             {
                 size_t candidate = 0;
                 auto candidateAddr = static_cast<uintptr_t>(~0);
@@ -120,7 +120,7 @@ namespace sl
                 if (lock.CompareExchange(expected, LockedValue, Acquire))
                     break;
 
-                while (lock.Load(Acquire) == LockedValue)
+                while (lock.Load(Relaxed) == LockedValue)
                     HintSpinloop();
             }
         }

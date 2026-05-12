@@ -73,7 +73,9 @@ namespace sl
 
         Span Subspan(size_t begin, size_t length) const
         {
-            if (length > size || begin + length > size)
+            if (begin > size)
+                begin = size;
+            if (length > size - begin)
                 length = size - begin;
 
             return Span(data + begin, length);

@@ -8,7 +8,7 @@ namespace Npk
 {
     sl::EfiRuntimeServices* efiRtTable = nullptr;
 
-    void TryEnableEfiRuntimeServices(const Loader::EfiDetails& details, 
+    NpkStatus TryEnableEfiRuntimeServices(const Loader::EfiDetails& details, 
         uintptr_t& virtBase)
     {
         constexpr size_t MaxDescSize = 256;
@@ -23,12 +23,40 @@ namespace Npk
             return reinterpret_cast<const sl::EfiMemoryDescriptor*>(descBuffer);
         };
 
-        if (ReadConfigUint("npk.allow_efi_runtime", true) == false)
+        //optimization: the firmware releases control of the following
+        //memory descriptor types after exiting boot services, so it wont
+        //need them during SetVirtualAddressMap(). On systems with large
+        //amounts of usable ram (type: conventional) this can speed things
+        //up quite a bit.
+        auto DescNeedsIdentityMap = [](const sl::EfiMemoryDescriptor* desc) -> bool
+        {
+            if (desc->attributes.Has(sl::EfiMemoryFlag::Runtime))
+                return true;
+
+           switch (desc->type)
+            {
+            case sl::EfiMemoryType::Conventional: 
+                [[fallthrough]];
+            case sl::EfiMemoryType::LoaderCode: 
+                [[fallthrough]];
+            case sl::EfiMemoryType::LoaderData: 
+                [[fallthrough]];
+            case sl::EfiMemoryType::BootServicesCode: 
+                [[fallthrough]];
+            case sl::EfiMemoryType::BootServicesData:
+                return false;
+
+            default:
+                return true;
+            }
+        };
+
+        if (!ReadConfigUint("npk.allow_efi_runtime", true))
         {
             Log("EFI runtime services unavailable: disabled via command line",
                 LogLevel::Error);
 
-            return;
+            return NpkStatus::BadConfig;
         }
 
         if (details.memmapSize == 0 || details.memmapDescSize > MaxDescSize 
@@ -38,7 +66,7 @@ namespace Npk
             Log("EFI runtime services unavailable: bad memory map format",
                 LogLevel::Error);
 
-            return;
+            return NpkStatus::InvalidArg;
         }
 
         if (details.memmapSize % details.memmapDescSize != 0)
@@ -55,7 +83,7 @@ namespace Npk
             Log("EFI runtime services unavailable: failed to read system table",
                 LogLevel::Error);
 
-            return;
+            return NpkStatus::InternalError;
         }
 
         if (sysTable.hdr.signature != sl::EfiSignatureSystemTable)
@@ -63,7 +91,7 @@ namespace Npk
             Log("EFI runtime unavailable: bad SystemTable signature 0x%" PRIx64,
                 LogLevel::Error, sysTable.hdr.signature);
 
-            return;
+            return NpkStatus::InternalError;
         }
 
         const Paddr rtPaddr = reinterpret_cast<Paddr>(sysTable.runtimeServices);
@@ -101,7 +129,7 @@ namespace Npk
             Log("EFI runtime services unavailable: RT table not found in any"
                 " runtime region", LogLevel::Error);
 
-            return;
+            return NpkStatus::InternalError;
         }
 
         const size_t rtDescsLen = rtDescCount * details.memmapDescSize;
@@ -134,7 +162,6 @@ namespace Npk
         size_t rtDescIndex = 0;
         const VmFlags rtFlags = VmFlag::Write | VmFlag::Fetch;
 
-        using MemType = sl::EfiMemoryType;
         for (size_t i = 0; i < descCount; i++)
         {
             auto* desc = ReadDesc(i);
@@ -145,17 +172,7 @@ namespace Npk
             const bool isRuntime =
                 desc->attributes.Has(sl::EfiMemoryFlag::Runtime);
 
-            //optimization: the firmware releases control of the following
-            //memory descriptor types after exiting boot services, so it wont
-            //need them during SetVirtualAddressMap(). On systems with large
-            //amounts of usable ram (type: conventional) this can speed things
-            //up quite a bit.
-            if (!isRuntime
-                && (desc->type == MemType::Conventional
-                    || desc->type == MemType::LoaderCode
-                    || desc->type == MemType::LoaderData
-                    || desc->type == MemType::BootServicesCode
-                    || desc->type == MemType::BootServicesData))
+            if (!DescNeedsIdentityMap(desc))
                 continue;
 
             const uintptr_t highBase = virtBase;
@@ -205,18 +222,33 @@ namespace Npk
             rtDescIndex++;
         }
 
-        NPK_ASSERT(rtVaddr != 0);
         HwFlushTlbAll();
 
+        NpkStatus result = NpkStatus::Success;
         auto* rtIdent = reinterpret_cast<sl::EfiRuntimeServices*>(rtPaddr);
-        NPK_ASSERT(rtIdent->hdr.signature == sl::EfiSignatureRtsTable);
+        if (rtIdent->hdr.signature != sl::EfiSignatureRtsTable)
+        {
+            Log("EFI runtime unavailable: bad RT table signature 0x%" PRIx64,
+                LogLevel::Error, rtIdent->hdr.signature);
+            result = NpkStatus::InternalError;
+        }
+        else
+        {
+            auto efiResult = rtIdent->SetVirtualAddressMap(
+                static_cast<sl::EfiUintN>(rtDescsLen),
+                static_cast<sl::EfiUintN>(details.memmapDescSize),
+                details.memmapDescVersion,
+                reinterpret_cast<sl::EfiMemoryDescriptor*>(rtDescsBase)
+                );
 
-        auto result = rtIdent->SetVirtualAddressMap(
-            static_cast<sl::EfiUintN>(rtDescsLen),
-            static_cast<sl::EfiUintN>(details.memmapDescSize),
-            details.memmapDescVersion,
-            reinterpret_cast<sl::EfiMemoryDescriptor*>(rtDescsBase)
-            );
+            if (efiResult != 0)
+            {
+                Log("EFI runtime services unavailable: SetVirtualAddressMap() "
+                    "returned %i", LogLevel::Error, efiResult);
+
+                result = NpkStatus::NotAvailable;
+            }
+        }
 
         //remove identity map, taking care to preserve any pre-existing
         //mappings.
@@ -226,14 +258,7 @@ namespace Npk
             if (desc->numberOfPages == 0)
                 continue;
 
-            const bool isRuntime =
-                desc->attributes.Has(sl::EfiMemoryFlag::Runtime);
-            if (!isRuntime
-                && (desc->type == MemType::Conventional
-                    || desc->type == MemType::LoaderCode
-                    || desc->type == MemType::LoaderData
-                    || desc->type == MemType::BootServicesCode
-                    || desc->type == MemType::BootServicesData))
+            if (!DescNeedsIdentityMap(desc))
                 continue;
 
             const size_t bytes = desc->numberOfPages * PageSize();
@@ -251,20 +276,33 @@ namespace Npk
         }
         HwFlushTlbAll();
 
-        if (result != 0)
+        if (result != NpkStatus::Success)
         {
-            efiRtTable = nullptr;
-            Log("EFI runtime services unavailable: SetVirtualAddressMap() "
-                "returned %i", LogLevel::Error, result);
-            //TODO: clean up higher half mappings and descriptor area.
-            //we can also reset virtBase back to its original value.
+            for (size_t i = rtDescsBase; i < virtBase; i += PageSize())
+            {
+                Paddr paddr;
+                NPK_ASSERT(ClearKernelMap(i, &paddr) == NpkStatus::Success);
 
-            return;
+                if (i < rtDescsBase + rtDescsLen)
+                {
+                    auto page = LookupPageInfo(paddr);
+                    FreePage(page);
+                }
+            }
+
+            //we undid all higher half mappings so it's safe to reset
+            //`virtBase` back to how it was, to avoid leaking address space.
+            virtBase = rtDescsBase;
+            HwFlushTlbAll();
+
+            return result;
         }
 
         efiRtTable = reinterpret_cast<sl::EfiRuntimeServices*>(rtVaddr);
         Log("EFI runtime services available, table at %p", LogLevel::Info,
             efiRtTable);
+
+        return NpkStatus::Success;
     }
 
     sl::Opt<sl::EfiRuntimeServices*> GetEfiRtServices()

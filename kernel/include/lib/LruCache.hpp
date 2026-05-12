@@ -59,6 +59,7 @@ namespace sl
 
         static void Put(Slot* slot)
         {
+            slot->cache->tree.Remove(slot);
             slot->cache->freelist.PushBack(slot);
         }
 
@@ -72,9 +73,6 @@ namespace sl
             {
                 if (found->key == key)
                 {
-                    if (found->refs == 0)
-                        freelist.Remove(found);
-
                     found->refs.Add(1);
                     CacheRef ref = found;
                     found->refs.Sub(1);

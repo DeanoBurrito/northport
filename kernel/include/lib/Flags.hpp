@@ -73,7 +73,7 @@ namespace sl
 
         inline constexpr Flags operator!() const
         { 
-            return !value;
+            return ~value;
         }
 
         inline constexpr Flags operator|(const Flags other) const

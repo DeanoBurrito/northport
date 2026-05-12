@@ -178,6 +178,11 @@ namespace sl
             return __atomic_sub_fetch(&value, 1, (int)MemoryOrder::SeqCst);
         }
 
+        T operator--() volatile
+        { 
+            return __atomic_sub_fetch(&value, 1, (int)MemoryOrder::SeqCst);
+        }
+
         T operator+=(T incoming)
         { 
             return __atomic_add_fetch(&value, incoming, 

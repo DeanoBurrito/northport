@@ -70,6 +70,9 @@ namespace sl
 
         Ref& operator=(const Ref& other)
         {
+            if (&other == this)
+                return *this;
+
             if (ptr != nullptr)
                 Release();
 
@@ -88,6 +91,9 @@ namespace sl
 
         Ref& operator=(Ref&& from)
         {
+            if (&from == this)
+                return *this;
+
             Release();
 
             ptr = from.ptr;
