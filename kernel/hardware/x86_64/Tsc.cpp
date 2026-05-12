@@ -1,257 +1,176 @@
 #include <hardware/x86_64/Tsc.hpp>
+#include <hardware/x86_64/RefTimers.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
-#include <hardware/x86_64/Hpet.hpp>
-#include <hardware/x86_64/Pit.hpp>
-#include <hardware/common/timer/AcpiTimer.hpp>
 #include <Core.hpp>
 #include <lib/Maths.hpp>
 #include <lib/Units.hpp>
 
 namespace Npk
 {
-    void InitReferenceTimers(uintptr_t& virtBase)
+    constexpr uint64_t TscFreqUndetermined = 0;
+    constexpr uint64_t TscFreqPending = 1;
+
+    /* Protocol: a value of 0 means tsc frequency is undetermined for this
+     * group of cores, a value of 1 means a cpu is currently determining the
+     * frequency, all other values are the tsc frequency.
+     * The first cpu to request the frequency will see it's value 0, so it
+     * knows it should set it to 1 and begin calibration. Other cpus reading a
+     * value of 1 will spin until the value changes.
+     */
+    sl::Atomic<uint64_t> tscFrequency = TscFreqUndetermined;
+    //TODO: this should be per-socket, or more easily per-node
+
+    static void DoTscCalibration()
     {
-        if (InitAcpiTimer(virtBase))
+        if (auto freq = ReadConfigUint("npk.x86.tsc_freq_override", 0); freq)
         {
-            Log("ACPI timer selected as reference timer.", LogLevel::Trace);
-            return;
-        }
-        if (InitHpet(virtBase))
-        {
-            Log("HPET selected as reference timer.", LogLevel::Trace);
-            return;
-        }
-
-        NPK_ASSERT(!ReadConfigUint("npk.x86.ignore_pit", false));
-        //dont laugh at this lol: but I want to provide the option to ignore
-        //the PIT, but if we reach this point we have no further calibration
-        //sources and must abort.
-        Log("PIT selected as reference timer.", LogLevel::Trace);
-    }
-
-    sl::SpinLock pitLock {};
-
-    void AcquireReferenceTimerLock()
-    {
-        if (AcpiTimerAvailable() || HpetAvailable())
-            return;
-
-        pitLock.Lock();
-    }
-
-    void ReleaseReferenceTimerLock()
-    {
-        if (AcpiTimerAvailable() || HpetAvailable())
-            return;
-
-        pitLock.Unlock();
-    }
-
-    uint64_t ReferenceSleep(uint64_t nanos)
-    {
-        //TODO: maybe we should abstract this behind a `struct calib_timer_source`
-        //or something, this is a bit silly. :wa
-        if (AcpiTimerAvailable())
-        {
-            const uint64_t sleepTicks = nanos * AcpiTimerFrequency() / sl::Nanos;
-
-            const uint64_t beginSleep = AcpiTimerRead();
-            uint64_t endSleep = beginSleep;
-
-            while (endSleep < beginSleep + sleepTicks)
-                endSleep = AcpiTimerRead();
-
-            const uint64_t sleptTicks = endSleep - beginSleep;
-            return sleptTicks * (sl::Nanos / AcpiTimerFrequency());
-        }
-        else if (HpetAvailable())
-        {
-            const uint64_t sleepTicks = nanos * HpetFrequency() / sl::Nanos;
-
-            const uint64_t beginSleep = HpetRead();
-            uint64_t endSleep = beginSleep;
-
-            while (endSleep < beginSleep + sleepTicks)
-                endSleep = HpetRead();
-
-            const uint64_t sleptTicks = endSleep - beginSleep;
-            return sleptTicks * (sl::Nanos / HpetFrequency());
-        }
-        else
-        {
-            const uint64_t sleepTicks = nanos * PitFrequency / sl::Nanos;
-
-            StartPit();
-            const uint64_t beginSleep = ReadPit();
-            uint64_t endSleep = beginSleep;
-
-            while (endSleep < beginSleep + sleepTicks)
-                endSleep = ReadPit();
-
-            const uint64_t sleptTicks = endSleep - beginSleep;
-            return sleptTicks * (sl::Nanos / PitFrequency);
-        }
-    }
-
-    sl::Opt<uint64_t> CoalesceTimerData(sl::Span<uint64_t> runs, size_t allowedOutliers)
-    {
-        uint64_t mean = 0;
-        for (size_t i = 0; i < runs.Size(); i++)
-            mean += runs[i];
-        mean /= runs.Size();
-
-        const uint64_t deviation = sl::StandardDeviation(runs);
-
-        size_t validCount = 0;
-        uint64_t accumulator = 0;
-        for (size_t i = 0; i < runs.Size(); i++)
-        {
-            if (runs[i] < mean - deviation || runs[i] > mean + deviation)
-                continue;
-
-            validCount++;
-            accumulator += runs[i];
-        }
-
-        if (validCount < runs.Size() - allowedOutliers)
-            return {};
-
-        accumulator /= validCount;
-        return accumulator;
-    }
-
-
-    CPU_LOCAL(uint64_t, tscFreq);
-
-    static uint64_t Calibrate()
-    {
-        /* Calibrating the tsc, or: "Why let things that should be simple, be simple".
-         * We try a number of ways to calibrate the tsc, moving on to the next if we fail:
-         * 1. read the values from cpuid leaf 0x15
-         * 2. read the values from cpuid leaf 0x16
-         * 3. read the values from cpuid leaf 0x4000'0010
-         * 4. calibrate against another timer:
-         *  4a. acpi pm timer
-         *  4b. hpet
-         *  4c. pit
-         * There is also the option of the user explicitly telling us the tsc freq, if they want.
-         */
-
-        if (auto freq = ReadConfigUint("npk.x86.tsc_freq_override", 0); freq != 0)
-        {
-            Log("TSC frequency set to %zuHz by command line override.", LogLevel::Trace,
+            Log("TSC frequency set to %zuHZ by command line", LogLevel::Info,
                 freq);
-            return freq;
+
+            tscFrequency.Store(freq, sl::Release);
+            return;
         }
 
         CpuidLeaf cpuid {};
         const size_t baseLeaves = DoCpuid(BaseLeaf, 0, cpuid).a;
 
-        //1.
         DoCpuid(0x15, 0, cpuid);
         if (baseLeaves >= 0x15 && cpuid.b != 0 && cpuid.a != 0)
         {
             const uint64_t freq = (cpuid.c * cpuid.b) / cpuid.a;
-            Log("TSC frequency acquired from cpuid 0x15: %u / %u * %u = %luHz", LogLevel::Trace,
-                cpuid.c, cpuid.b, cpuid.a, freq);
-            return freq;
+            Log("TSC frequency from cpuid 0x15 set to %luHz", LogLevel::Info,
+                freq);
+
+            tscFrequency.Store(freq, sl::Release);
+            return;
         }
 
-        //2.
-        DoCpuid(0x16, 0, cpuid);
-        if (baseLeaves >= 0x16 && cpuid.a != 0)
-        {
-            Log("TSC frequency acquired from cpuid 0x15: %uMHz", LogLevel::Trace, cpuid.a);
-            return cpuid.a * 1'000'000;
-        }
-
-        //3.
         DoCpuid(HypervisorLeaf, 0, cpuid);
         if (cpuid.a >= 0x10 && DoCpuid(HypervisorLeaf + 0x10, 0, cpuid).a != 0)
         {
-            Log("TSC frequency acquired from cpuid 0x4000'0010: %uKHz", LogLevel::Trace, cpuid.a);
-            return cpuid.a * 1000;
+            const uint64_t freq = cpuid.a * 1000;
+            Log("TSC frequency from cpuid 0x4000'0010: %luHz", LogLevel::Trace,
+                freq);
+
+            tscFrequency.Store(freq, sl::Release);
+            return;
         }
 
-        //4.
-        constexpr size_t MaxCalibRuns = 64;
-        const size_t calibRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_calibration_runs", 10), 1, MaxCalibRuns);
-        const size_t sampleFreq = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_sample_freq", 100), 10, 1000);
-        const size_t neededRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_needed_runs", 7), 1, calibRuns);
-        const size_t controlRuns = sl::Clamp<size_t>(ReadConfigUint("npk.x86.tsc_control_runs", 5), 1, calibRuns);
-        const bool dumpCalibData = ReadConfigUint("npk.x86.tsc_dump_calibration", true);
+        DoCpuid(0x16, 0, cpuid);
+        if (baseLeaves >= 0x16 && cpuid.a != 0)
+        {
+            const uint64_t freq = cpuid.a * 1'000'000;
+            Log("TSC frequency from cpuid 0x15: %luHz", LogLevel::Info,
+                freq);
+
+            tscFrequency.Store(freq, sl::Release);
+            return;
+        }
+
+        constexpr size_t MaxRuns = 64;
+        uint64_t data[MaxRuns];
+
+        const auto runs = sl::Clamp<size_t>(
+            ReadConfigUint("npk.x86.tsc_calibration_runs", 10), 1, MaxRuns);
+        const auto sampleFreq = sl::Clamp<size_t>(
+            ReadConfigUint("npk.x86.tsc_sample_freq", 100), 10, 1000);
+        const auto neededRuns = sl::Clamp<size_t>(
+            ReadConfigUint("npk.x86.tsc_needed_runs", 7), 1, runs);
+        const auto controlRuns = sl::Clamp<size_t>(
+            ReadConfigUint("npk.x86.tsc_control_runs", 5), 1, MaxRuns);
+        const auto dumpResults = 
+            ReadConfigUint("npk.x86.tsc_show_calibration", true);
 
         size_t controlOffset = 0;
-        uint64_t calibData[MaxCalibRuns];
-        uint64_t calibNanos = sl::TimeCount(sampleFreq, 1).Rebase(sl::Nanos).ticks;
-        Log("Calibrating TSC: sampling=%zu hz, runs=%zu (mulligans=%zu, control=%zu)", LogLevel::Trace,
-            sampleFreq, calibRuns, calibRuns - neededRuns, controlRuns);
+        const uint64_t calibNanos = 
+            sl::TimeCount(sampleFreq, 1).Rebase(sl::Nanos).ticks;
+
+        Log("Calibrating TSC: sampling=%zuHz, runs=%zu (%zu needed)",
+            LogLevel::Verbose, sampleFreq, runs, neededRuns);
 
         //control runs, determine time taken to read reference timer
         for (size_t i = 0; i < controlRuns; i++)
         {
-            AcquireReferenceTimerLock();
-            const size_t tscBegin = ReadTsc();
-            ReferenceSleep(0);
-            const size_t tscEnd = ReadTsc();
-            ReleaseReferenceTimerLock();
+            AcquireRefTimersLock();
+            const auto tscBegin = ReadTsc();
+            RefTimersSleep(0);
+            const auto tscEnd = ReadTsc();
+            ReleaseRefTimersLock();
 
             controlOffset += tscEnd - tscBegin;
         }
-
         controlOffset /= controlRuns;
-        Log("Control offset for reference timer: %zu tsc ticks", LogLevel::Trace, controlOffset);
 
-        for (size_t i = 0; i < calibRuns; i++)
+        if (controlRuns != 0)
         {
-            AcquireReferenceTimerLock();
-            const uint64_t tscBegin = ReadTsc();
-            const uint64_t realCalibNanos = ReferenceSleep(calibNanos);
-            const uint64_t tscEnd = ReadTsc();
-            ReleaseReferenceTimerLock();
+            Log("Control runs: %zu, average tsc ticks taken = %zu",
+                LogLevel::Verbose, controlRuns, controlOffset);
+        }
 
-            if (realCalibNanos == 0)
+        for (size_t i = 0; i < runs; i++)
+        {
+            AcquireRefTimersLock();
+            const auto tscBegin = ReadTsc();
+            const auto sleptNanos = RefTimersSleep(calibNanos);
+            const auto tscEnd = ReadTsc();
+            ReleaseRefTimersLock();
+
+            if (sleptNanos == 0)
             {
-                //something went wrong with the calibration sleep (massive SMI?)
-                calibData[i] = 0;
+                //reference timer wasn't happy with something.
+                data[i] = 0;
                 continue;
             }
 
-            calibData[i] = (tscEnd - tscBegin) - controlOffset;
-            calibData[i] = (calibData[i] * calibNanos) / realCalibNanos; //oversleep correction
-            if (dumpCalibData)
+            data[i] = (tscEnd - tscBegin);
+            data[i] = data[i] - controlOffset;
+            data[i] = (data[i] * calibNanos) / sleptNanos;
+
+            if (dumpResults)
             {
-                Log("TSC calibration run: begin=%zu, end=%zu, adjusted=%zu, slept=%zuns", LogLevel::Verbose,
-                    tscBegin, tscEnd, calibData[i], realCalibNanos);
+                Log("Calibration run %zu: begin=%zu, end=%zu, adjusted=%zu, "
+                    "slept=%zu", LogLevel::Trace, i, tscBegin, tscEnd, data[i],
+                    sleptNanos);
             }
         }
 
-        const auto maybeTscPeriod = CoalesceTimerData({ calibData, calibRuns }, calibRuns - neededRuns);
-        NPK_CHECK(maybeTscPeriod.HasValue(), false);
+        const auto period = CoalesceTimerData({ data, runs }, runs -neededRuns);
+        NPK_ASSERT(period.HasValue());
 
-        const uint64_t tscFreq = *maybeTscPeriod * sampleFreq;
-        const auto conv = sl::ConvertUnits(tscFreq, sl::UnitBase::Decimal);
-        Log("TSC calibrated as %zu Hz (%zu.%zu %sHz)", LogLevel::Info, tscFreq,
+        const auto freq = *period * sampleFreq;
+        const auto conv = sl::ConvertUnits(freq, sl::UnitBase::Decimal);
+        Log("TSC calibrated as %zuHz (%zu.%zu %sHz)", LogLevel::Info, freq,
             conv.major, conv.minor, conv.prefix);
-        return tscFreq;
+
+        tscFrequency.Store(freq, sl::Release);
     }
 
-    bool CalibrateTsc()
+    void CalibrateTsc()
     {
-        if (!CpuHasFeature(CpuFeature::Tsc))
-            return false;
-        if (!CpuHasFeature(CpuFeature::InvariantTsc) && MyCoreId() == 0)
-            Log("This cpu does not report an invariant tsc.", LogLevel::Warning);
+        uint64_t freq = tscFrequency.Load(sl::Acquire);
+        if (freq == TscFreqUndetermined)
+        {
+            if (tscFrequency.CompareExchange(freq, TscFreqPending, sl::AcqRel))
+                DoTscCalibration();
+        }
 
-        //TODO: if we have invariant tsc, can we clone BSP's calibration data?
-        const uint64_t freq = Calibrate();
-        *tscFreq = freq;
+        while (freq == TscFreqPending)
+        {
+            sl::HintSpinloop();
+            freq = tscFrequency.Load(sl::Acquire);
+        }
 
-        return freq != 0;
+        const auto conv = sl::ConvertUnits(freq, sl::UnitBase::Decimal);
+        Log("Local TSC frequency is %zuHz (%zu.%zu %sHz)", LogLevel::Verbose, 
+            freq, conv.major, conv.minor, conv.prefix);
     }
 
     uint64_t MyTscFrequency()
     {
-        return *tscFreq;
+        uint64_t freq = tscFrequency.Load(sl::Acquire);
+        if (freq <= TscFreqPending)
+            return 0;
+
+        return freq;
     }
 }

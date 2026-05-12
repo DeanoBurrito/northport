@@ -84,7 +84,7 @@ namespace Npk
     uintptr_t HwInitBspMmu(InitState& state, size_t tempMapCount)
     {
         const uint64_t cr4 = READ_CR(4);
-        ptLevels = (cr4 & (1 << 1)) ? 5 : 4;
+        ptLevels = (cr4 & (1 << 12)) ? 5 : 4;
 
         nxSupported = CpuHasFeature(CpuFeature::NoExecute);
         patSupported = CpuHasFeature(CpuFeature::Pat);

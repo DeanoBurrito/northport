@@ -2,6 +2,7 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Msr.hpp>
+#include <hardware/x86_64/RefTimers.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <private/Hardware.hpp>
 #include <Core.hpp>
@@ -178,11 +179,11 @@ namespace Npk
         {
             constexpr uint32_t BeginValue = 0xFFFF'FFFF;
 
-            AcquireReferenceTimerLock();
+            AcquireRefTimersLock();
             lapic->Write(LApicReg::TimerInitCount, BeginValue);
-            ReferenceSleep(0);
+            RefTimersSleep(0);
             const uint32_t endValue = lapic->Read(LApicReg::TimerCount);
-            ReleaseReferenceTimerLock();
+            ReleaseRefTimersLock();
 
             lapic->Write(LApicReg::TimerInitCount, 0);
             controlOffset += BeginValue - endValue;
@@ -196,11 +197,11 @@ namespace Npk
         {
             constexpr uint32_t BeginValue = 0xFFFF'FFFF;
 
-            AcquireReferenceTimerLock();
+            AcquireRefTimersLock();
             lapic->Write(LApicReg::TimerInitCount, BeginValue);
-            const uint64_t realCalibNanos = ReferenceSleep(calibNanos);
+            const uint64_t realCalibNanos = RefTimersSleep(calibNanos);
             const uint32_t stopValue = lapic->Read(LApicReg::TimerCount);
-            ReleaseReferenceTimerLock();
+            ReleaseRefTimersLock();
 
             lapic->Write(LApicReg::TimerInitCount, 0);
             NPK_CHECK(stopValue != 0, false);

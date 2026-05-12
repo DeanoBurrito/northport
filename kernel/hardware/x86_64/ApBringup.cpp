@@ -5,6 +5,7 @@
 #include <hardware/x86_64/Msr.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <lib/AcpiTypes.hpp>
+#include <lib/Maths.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
 
@@ -55,7 +56,7 @@ namespace Npk
 
         ThreadContext idleContext {};
         BringCpuOnline(&idleContext);
-        NPK_ASSERT(CalibrateTsc());
+        CalibrateTsc();
         NPK_ASSERT(InitApLapic());
 
         Log("AP init thread done, becoming idle thread.", LogLevel::Verbose);
@@ -127,6 +128,7 @@ namespace Npk
         //we can only load 32-bits into cr3 from the spinup code
         NPK_ASSERT(MyKernelMap().ptRoot >> 32 == 0); 
         NPK_ASSERT(apBootPage != Paddr());
+        NPK_ASSERT(apBootPage < 1 * MiB);
         NPK_ASSERT(!savedMtrrs.Empty());
 
         auto maybeMadt = GetAcpiTable(sl::SigMadt);

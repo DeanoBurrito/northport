@@ -1,18 +1,11 @@
 #pragma once
 
+#include <lib/Types.hpp>
 #include <lib/Compiler.hpp>
-#include <lib/Span.hpp>
-#include <lib/Optional.hpp>
 
 namespace Npk
 {
-    void InitReferenceTimers(uintptr_t& virtBase);
-    void AcquireReferenceTimerLock();
-    void ReleaseReferenceTimerLock();
-    uint64_t ReferenceSleep(uint64_t nanos);
-    sl::Opt<uint64_t> CoalesceTimerData(sl::Span<uint64_t> runs, size_t allowedOutliers);
-
-    bool CalibrateTsc();
+    void CalibrateTsc();
     uint64_t MyTscFrequency();
 
     SL_ALWAYS_INLINE

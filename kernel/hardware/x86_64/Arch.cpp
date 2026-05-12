@@ -3,6 +3,7 @@
 #include <hardware/x86_64/Msr.hpp>
 #include <hardware/x86_64/LocalApic.hpp>
 #include <hardware/x86_64/PvClock.hpp>
+#include <hardware/x86_64/RefTimers.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <Core.hpp>
 #include <private/Entry.hpp>
@@ -86,7 +87,7 @@ namespace Npk
 
         uint64_t cr0 = READ_CR(0);
         cr0 &= ~(1 << 30); //clear CD
-        cr0 &= ~(1 << 20); //clear NW
+        cr0 &= ~(1 << 29); //clear NW
         cr0 |= 1 << 16; //set WP
         cr0 |= 1 << 5; //set NE
         cr0 |= 1 << 3; //set TS (tbh it doesnt matter at this stage)
@@ -196,8 +197,8 @@ namespace Npk
     void ArchInitFull(uintptr_t& virtBase)
     {
         NPK_ASSERT(InitBspLapic(virtBase));
-        InitReferenceTimers(virtBase);
-        NPK_ASSERT(CalibrateTsc());
+        InitRefTimers(virtBase);
+        CalibrateTsc();
 
         if (CpuHasFeature(CpuFeature::VGuest))
             hasPvClocks = TryInitPvClocks(virtBase);
