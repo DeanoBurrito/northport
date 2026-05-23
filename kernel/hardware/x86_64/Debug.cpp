@@ -1,15 +1,28 @@
 #include <hardware/x86_64/Private.hpp>
 #include <hardware/x86_64/Msr.hpp>
-#include <Debugger.hpp>
+#include <Core.hpp>
+#include <private/Debugger.hpp>
 #include <lib/Memory.hpp>
 
+//TODO: too many magic numbers!
 namespace Npk
 {
     constexpr uint8_t BindSwBreakpoint = 0xFF;
-    uint8_t drBitmap = 0;
+    constexpr uint64_t EFlagsTrapFlag = 1 << 8;
+    constexpr uint64_t Dr6Breakpoint0 = 1 << 0;
+    constexpr uint64_t Dr6Breakpoint1 = 1 << 1;
+    constexpr uint64_t Dr6Breakpoint2 = 1 << 2;
+    constexpr uint64_t Dr6Breakpoint3 = 1 << 3;
+    constexpr uint64_t Dr6BusLock = 1 << 11;
+    constexpr uint64_t Dr6DebugRegAccess = 1 << 13;
+    constexpr uint64_t Dr6SingleStep = 1 << 14;
+
+    static uint8_t drBitmap = 0;
 
     void HandleDebugException(TrapFrame* frame, bool int3)
     {
+        using namespace Private;
+
         BreakpointEventArg arg {};
         arg.frame = frame;
 
@@ -21,15 +34,26 @@ namespace Npk
         }
 
         const uint64_t dr6 = READ_DR(6);
-        if (dr6 & 0b0001)
-            arg.addr = READ_DR(0);
-        else if (dr6 & 0b0010)
-            arg.addr = READ_DR(1);
-        else if (dr6 & 0b0100)
-            arg.addr = READ_DR(2);
-        else if (dr6 & 0b1000)
-            arg.addr = READ_DR(3);
+        NPK_ASSERT(!(dr6 & Dr6DebugRegAccess));
 
+        if ((dr6 & Dr6SingleStep) != 0)
+        {
+            arg.type = BreakpointType::SingleStep;
+            DebugEventOccurred(DebugEventType::Breakpoint, &arg);
+        }
+
+        if ((dr6 & Dr6Breakpoint0) != 0)
+            arg.addr = READ_DR(0);
+        else if ((dr6 & Dr6Breakpoint1) != 0)
+            arg.addr = READ_DR(1);
+        else if ((dr6 & Dr6Breakpoint2) != 0)
+            arg.addr = READ_DR(2);
+        else if ((dr6 & Dr6Breakpoint3) != 0)
+            arg.addr = READ_DR(3);
+        else
+            return;
+
+        arg.type = BreakpointType::Breakpoint;
         DebugEventOccurred(DebugEventType::Breakpoint, &arg);
     }
 
@@ -55,13 +79,10 @@ namespace Npk
 
     inline void WriteDr(uint8_t index, uint64_t value)
     {
-        switch (index)
-        {
-        case 0: WRITE_DR(0, value); return;
-        case 1: WRITE_DR(1, value); return;
-        case 2: WRITE_DR(2, value); return;
-        case 3: WRITE_DR(3, value); return;
-        }
+        if (index > 3)
+            return;
+
+        WRITE_DR(index, value);
     }
 
     bool HwEnableBreakpoint(HwBreakpoint& bp, uintptr_t addr, size_t kind, 
@@ -144,108 +165,163 @@ namespace Npk
         return true;
     }
 
-    constexpr size_t GprBase = 0;
-    constexpr size_t FprBase = 0x100;
-    constexpr size_t VectorBase = 0x200;
-    constexpr size_t SpecialBase = 0x300;
-
-    size_t AccessRegister(TrapFrame& frame, size_t index, 
-        sl::Span<uint8_t> buffer, bool get)
+    size_t HwGetBreakpointCount()
     {
-        void* reg = nullptr;
-        size_t regSize = 0;
+        return 4;
+    }
+
+    NpkStatus HwAccessRegister(TrapFrame& frame, HwReg reg, size_t* usedLen,
+        sl::Span<uint8_t> buffer, bool write)
+    {
+        uint64_t store;
+        void* source = nullptr;
         bool readonly = false;
-        uint64_t stash;
 
-        if (index < GprBase + 16)
+        switch (reg)
         {
-            regSize = 8;
+        case HwReg_rax:
+            source = &frame.rax;
+            break;
+        case HwReg_rbx:
+            source = &frame.rbx;
+            break;
+        case HwReg_rcx:
+            source = &frame.rcx;
+            break;
+        case HwReg_rdx:
+            source = &frame.rdx;
+            break;
+        case HwReg_rdi:
+            source = &frame.rdi;
+            break;
+        case HwReg_rsi:
+            source = &frame.rsi;
+            break;
+        case HwReg_rbp:
+            source = &frame.rbp;
+            break;
+        case HwReg_rsp:
+            source = &frame.iret.rsp;
+            break;
+        case HwReg_r8:
+            source = &frame.r8;
+            break;
+        case HwReg_r9:
+            source = &frame.r9;
+            break;
+        case HwReg_r10:
+            source = &frame.r10;
+            break;
+        case HwReg_r11:
+            source = &frame.r11;
+            break;
+        case HwReg_r12:
+            source = &frame.r12;
+            break;
+        case HwReg_r13:
+            source = &frame.r13;
+            break;
+        case HwReg_r14:
+            source = &frame.r14;
+            break;
+        case HwReg_r15:
+            source = &frame.r15;
+            break;
 
-            switch (index)
-            {
-            case 0: reg = &frame.rax; break;
-            case 1: reg = &frame.rbx; break;
-            case 2: reg = &frame.rcx; break;
-            case 3: reg = &frame.rdx; break;
-            case 4: reg = &frame.rsi; break;
-            case 5: reg = &frame.rdi; break;
-            case 6: reg = &frame.iret.rsp; break;
-            case 7: reg = &frame.rbp; break;
-            case 8: reg = &frame.r8; break;
-            case 9: reg = &frame.r9; break;
-            case 10: reg = &frame.r10; break;
-            case 11: reg = &frame.r11; break;
-            case 12: reg = &frame.r12; break;
-            case 13: reg = &frame.r13; break;
-            case 14: reg = &frame.r14; break;
-            case 15: reg = &frame.r15; break;
-            }
+        case HwReg_cs:
+            source = &frame.iret.cs;
+            break;
+        case HwReg_ss:
+            source = &frame.iret.ss;
+            break;
+        case HwReg_ds:
+            store = READ_SR(ds);
+            source = &store;
+            readonly = true;
+            break;
+        case HwReg_es:
+            store = READ_SR(es);
+            source = &store;
+            readonly = true;
+            break;
+        case HwReg_fs:
+            store = READ_SR(fs);
+            source = &store;
+            readonly = true;
+            break;
+        case HwReg_gs:
+            store = READ_SR(gs);
+            source = &store;
+            readonly = true;
+            break;
+        default:
+            return NpkStatus::InvalidArg;
         }
-        //TODO: fpu and vector regs
-        else if (index >= SpecialBase && index < SpecialBase + 11)
-        {
-            regSize = 8;
-            index -= SpecialBase;
 
-            switch (index)
-            {
-            case 0: reg = &frame.iret.rip; break;
-            case 1: reg = &frame.iret.flags; break;
-            case 2: reg = &frame.iret.cs; break;
-            case 3: reg = &frame.iret.ss; break;
-            case 4:
-                stash = READ_CR(0);
-                reg = &stash;
-                readonly = true;
-                break;
-            case 5:
-                stash = READ_CR(1);
-                reg = &stash;
-                readonly = true;
-                break;
-            case 6:
-                stash = READ_CR(2);
-                reg = &stash;
-                readonly = true;
-                break;
-            case 7:
-                stash = READ_CR(3);
-                reg = &stash;
-                readonly = true;
-                break;
-            case 8:
-                stash = READ_CR(4);
-                reg = &stash;
-                readonly = true;
-                break;
-            case 9:
-                stash = READ_CR(8);
-                reg = &stash;
-                readonly = true;
-                break;
-            case 10:
-                stash = ReadMsr(Msr::Efer);
-                reg = &stash;
-                readonly = true;
-                break;
-            //TODO: ds, es, fs, gs
-            }
-        }
-
-        if (reg == nullptr)
-            return 0; //unknown register
-        if (readonly && !get)
-            return 0; //trying to write a readonly register
+        if (source == nullptr)
+            return NpkStatus::InvalidArg;
+        if (readonly && write)
+            return NpkStatus::NotWritable;
         if (buffer.Empty())
-            return regSize;
-        if (buffer.Size() < regSize)
-            return 0; //not enough buffer space for read/write
+            return NpkStatus::InvalidArg;
 
-        if (get)
-            sl::MemCopy(buffer.Begin(), reg, regSize);
+        const size_t bytes = HwGetRegisterWidth(reg);
+        if (bytes == 0 || bytes > buffer.Size())
+            return NpkStatus::InvalidArg;
+
+        if (write)
+            sl::MemCopy(source, buffer.Begin(), bytes);
         else
-            sl::MemCopy(reg, buffer.Begin(), regSize);
+            sl::MemCopy(buffer.Begin(), source, bytes);
 
-        return regSize;
+        if (usedLen != nullptr)
+            *usedLen = bytes;
+
+        return NpkStatus::Success;
+    }
+
+    size_t HwGetRegisterWidth(HwReg reg)
+    {
+        switch (reg)
+        {
+        default:
+            return 0;
+        }
+    }
+
+    size_t HwGetRegisterCount(HwRegType type)
+    {
+        switch (type)
+        {
+        case HwRegType::Common:
+            return 4;
+
+        case HwRegType::General:
+            return 16;
+
+        case HwRegType::FloatingPoint:
+            return 0;
+
+        case HwRegType::Vector:
+            return 0;
+
+        case HwRegType::System:
+            return 6;
+
+        default:
+            return 0;
+        }
+    }
+
+    void HwSetSingleStep(TrapFrame& frame, bool on)
+    {
+        frame.iret.flags &= ~EFlagsTrapFlag;
+        if (on)
+            frame.iret.flags |= EFlagsTrapFlag;
+    }
+
+    bool HwGetSingleStep(TrapFrame& frame)
+    {
+        return frame.iret.flags & EFlagsTrapFlag;
     }
 }

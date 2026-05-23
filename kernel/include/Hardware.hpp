@@ -92,10 +92,6 @@ namespace Npk
      */
     enum class DebugEventType;
 
-    /* Forward declaration, see Debugger.hpp for the full description.
-     */
-    enum class DebugStatus;
-
     enum class MmuFlag
     {
         Write,
@@ -141,9 +137,9 @@ namespace Npk
      */
     struct HwBreakpoint
     {
-        uint8_t backup[6];
         uint8_t backupLength;
         uint8_t bind;
+        uint8_t backup[sizeof(uintptr_t)];
     };
 
     /* Determines the operation(s) to perform on a hardware cache.
@@ -185,6 +181,44 @@ namespace Npk
     };
 
     using HwCacheTypes = sl::Flags<HwCacheType>;
+
+    enum class HwRegType
+    {
+        Common = 0,
+        General = 1,
+        FloatingPoint = 2,
+        Vector = 3,
+        System = 4,
+    };
+
+    constexpr size_t HwRegShift = 16;
+
+    enum class HwReg
+    {
+        /*
+         */
+        CommonBase = (size_t)HwRegType::Common << HwRegShift,
+        ProgramCounter,
+        StackPointer,
+        FramePointer,
+        Flags,
+
+        /*
+         */
+        GeneralBase = (size_t)HwRegType::General << HwRegShift,
+
+        /*
+         */
+        FloatingPointBase = (size_t)HwRegType::FloatingPoint << HwRegShift,
+
+        /*
+         */
+        VectorBase = (size_t)HwRegType::Vector << HwRegShift,
+
+        /*
+         */
+        SystemBase = (size_t)HwRegType::System << HwRegShift,
+    };
 
     /* Calls `func` passing `a`/`b`/`c` as params to it, optionally placing
      * the return value of `func` into `*r` if non-null. If a synchronous
@@ -400,13 +434,13 @@ namespace Npk
 
     /* Calls into the debugger core, notifying it of an event or request.
      * `type` defines the event/request type, and `data` is a pointer to an
-     * event args struct (or nullptr, if the vent defines none).
+     * event args struct (or nullptr, if the event defines none).
      * Event arg structs are named after their associated event: an event
      * of type `Breakpoint` would pass the address of a `BreakpointEventArg`
      * struct as `data`.
      */
     SL_ALWAYS_INLINE
-    DebugStatus HwCallDebugger(DebugEventType type, void* data);
+    NpkStatus HwCallDebugger(DebugEventType type, void* data);
 
     /* Set the physical address mapped by a temporary map slot at `index`.
      * Returns nullptr on error, or the virtual address `paddr` can be found at.
@@ -539,6 +573,14 @@ namespace Npk
      */
     bool HwInitDebugState();
 
+    /* Returns the smallest number of hardware breakpoints supported by any
+     * cpu core in the system. Hardware breakpoints are mirrored between cpus,
+     * so only the smallest common value is usable by the debugger.
+     * This function will only run after all cores have run `HwInitDebugState()`
+     * successfully.
+     */
+    size_t HwGetBreakpointCount();
+
     /* Attempts to enable a breakpoint at `addr`. The meaning of `kind` depends
      * on the type of breakpoint: for read or write breakpoints, its the length
      * in bytes to watch for (from `addr`). For exec breakpoints, its meaning
@@ -564,10 +606,41 @@ namespace Npk
      */
     bool HwDisableBreakpoint(HwBreakpoint& bp, uintptr_t addr, size_t kind);
 
-    /*
+    /* Allows generic code to access hardware register values from a trap frame
+     * or their active values (if not represented by a trap frame, which only
+     * backs up enough state for the kernel to run).
+     * The `write` flag indicates the type of operation: if set, the function
+     * attempts to write the contents of `buffer` to the register. If cleared,
+     * register contents are written to `buffer`, space permitting. If `buffer`
+     * is not large enough to write into, the register value is truncated. If 
+     * `buffer` does not contain enough data to fill the register the unfilled
+     * parts of the register have undefined contents - the exact value depends
+     * on what hardware allows for. In most cases these bits should contain
+     * their original value but this shouldn't be relied upon.
+     * If `usedLen` is non-null, the function writes the number of bytes read/
+     * written to `*usedLen`.
      */
-    size_t AccessRegister(TrapFrame& frame, size_t index, 
-        sl::Span<uint8_t> buffer, bool get);
+    NpkStatus HwAccessRegister(TrapFrame& frame, HwReg reg, size_t* usedLen,
+        sl::Span<uint8_t> buffer, bool write);
+
+    /* Returns the number of **bytes** required to hold the value of the
+     * specified register.
+     */
+    size_t HwGetRegisterWidth(HwReg reg);
+
+    /* Returns the count of available registers of a particular class.
+     */
+    size_t HwGetRegisterCount(HwRegType type);
+
+    /* Enables/Disables single stepping for the instruction stream represented
+     * by `frame`.
+     */
+    void HwSetSingleStep(TrapFrame& frame, bool on);
+
+    /* Returns whether single stepping is enabled for the instruction stream
+     * represented by `frame`.
+     */
+    bool HwGetSingleStep(TrapFrame& frame);
 
     /* Arms the local per-cpu timer to fire exactly once at a specified
      * time in the future. `expiry` is relative to same point in time as

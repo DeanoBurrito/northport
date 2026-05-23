@@ -10,6 +10,8 @@ namespace Npk
 
     extern "C" void InterruptDispatch(TrapFrame* frame)
     {
+        RemoteStatus(MyCoreId())->lastIntrFrame = frame;
+
         if (frame->vector == 0x1 || frame->vector == 0x3)
             return HandleDebugException(frame, frame->vector == 3);
 
@@ -119,7 +121,8 @@ namespace Npk
             DispatchInterrupt(frame->vector - 0x20);
             break;
         }
-
+        
+        RemoteStatus(MyCoreId())->lastIntrFrame = nullptr;
         if (!suppressEoi)
             SignalEoi();
         LowerIpl(prevIpl);

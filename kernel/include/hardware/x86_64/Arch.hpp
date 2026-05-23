@@ -2,8 +2,35 @@
 
 #include <Hardware.hpp>
 
+#define NPK_MAKE_HW_REG(name, type, index) \
+    constexpr HwReg HwReg_##name = \
+        (HwReg)(index + ((size_t)HwRegType::type << HwRegShift))
+
 namespace Npk
 {
+    NPK_MAKE_HW_REG(rax, General, 0);
+    NPK_MAKE_HW_REG(rbx, General, 1);
+    NPK_MAKE_HW_REG(rcx, General, 2);
+    NPK_MAKE_HW_REG(rdx, General, 3);
+    NPK_MAKE_HW_REG(rdi, General, 4);
+    NPK_MAKE_HW_REG(rsi, General, 5);
+    NPK_MAKE_HW_REG(rbp, General, 6);
+    NPK_MAKE_HW_REG(rsp, General, 7);
+    NPK_MAKE_HW_REG(r8 , General, 8);
+    NPK_MAKE_HW_REG(r9 , General, 9);
+    NPK_MAKE_HW_REG(r10, General, 10);
+    NPK_MAKE_HW_REG(r11, General, 11);
+    NPK_MAKE_HW_REG(r12, General, 12);
+    NPK_MAKE_HW_REG(r13, General, 13);
+    NPK_MAKE_HW_REG(r14, General, 14);
+    NPK_MAKE_HW_REG(r15, General, 15);
+    NPK_MAKE_HW_REG(cs, System, 0);
+    NPK_MAKE_HW_REG(ss, System, 1);
+    NPK_MAKE_HW_REG(ds, System, 2);
+    NPK_MAKE_HW_REG(es, System, 3);
+    NPK_MAKE_HW_REG(fs, System, 4);
+    NPK_MAKE_HW_REG(gs, System, 5);
+
     struct HwMap
     {
         Paddr ptRoot;
@@ -107,9 +134,9 @@ namespace Npk
     constexpr uint8_t DebugEventVector = 0xFB;
 
     SL_ALWAYS_INLINE
-    DebugStatus HwCallDebugger(DebugEventType type, void* data)
+    NpkStatus HwCallDebugger(DebugEventType type, void* data)
     {
-        DebugStatus ret;
+        NpkStatus ret;
         asm("int $0xFB; mov %%eax, %0" : "=r"(ret) : "D"(type), "S"(data) : "memory", "rax");
         return ret;
     }
@@ -120,3 +147,5 @@ namespace Npk
 #define WRITE_CR(num, val) do { asm("mov %0, %%cr" #num :: "r"(val) : "memory"); } while (false)
 #define READ_DR(num) ({ uint64_t val; asm("mov %%dr" #num", %0" : "=r"(val)); val; })
 #define WRITE_DR(num, val) do { asm("mov %0, %%dr" #num :: "r"(val) : "memory"); } while (false)
+#define READ_SR(id) ({ uint16_t val; asm("mov %%" #id ", %0" : "=r"(val)); val; })
+#define WRITE_SR(id, val) do { asm("mov %0, %%" #id :: "r"(val) : "memory"); } while (false)
