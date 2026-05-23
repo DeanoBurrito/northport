@@ -404,6 +404,7 @@ namespace Npk
         LocalScheduler* scheduler;
         IplSpinLock<Ipl::Dpc> workItemsLock;
         WorkItemQueue workItems;
+        TrapFrame* lastIntrFrame;
     };
 
     struct SmpControl
@@ -644,9 +645,9 @@ namespace Npk
     template<Ipl max, Ipl min>
     inline void IplSpinLock<max, min>::Unlock()
     {
+        lock.Unlock();
         if (prevIpl < max)
             LowerIpl(prevIpl);
-        lock.Unlock();
     }
 
     /* Queues a DPC for execution on the current cpu. This function can be
@@ -724,6 +725,10 @@ namespace Npk
      * The callback function must not modify the current IPL or interrupt state.
      */
     void RunOnFrozenCpus(void (*What)(void* arg), void* arg, bool includeSelf);
+
+    /* Similar to `RunOnFrozenCpus()` but only targets a single CPU. 
+     */
+    void RunOnFrozenCpu(CpuId who, void (*What)(void* arg), void* arg);
     
     CycleAccount SetCycleAccount(CycleAccount who);
     void AddClockEvent(ClockEvent* event);

@@ -5,9 +5,11 @@ namespace Npk
 {
     constexpr sl::TimeCount IpiDebounceTime = 1_ms;
     constexpr sl::TimeCount FreezePingTime = 10_ms;
+    constexpr CpuId FreezeTargetAll = static_cast<CpuId>(-1);
 
     static sl::Atomic<CpuId> freezeControl = 0;
     static sl::Atomic<CpuId> freezeCmdControl = 0;
+    static CpuId freezeTarget;
     static void* freezeArg;
     static void (*freezeCommand)(void* arg);
 
@@ -41,6 +43,8 @@ namespace Npk
                 continue;
             }
             if (commandRun)
+                continue;
+            if (freezeTarget != MyCoreId() && freezeTarget != FreezeTargetAll)
                 continue;
 
             freezeCommand(freezeArg);
@@ -230,6 +234,7 @@ namespace Npk
 
         freezeArg = arg;
         freezeCommand = What;
+        freezeTarget = FreezeTargetAll;
         freezeCmdControl.Store(TotalCpuCount(), sl::Release);
 
         while (freezeCmdControl.Load(sl::Acquire) != 1)
@@ -237,6 +242,23 @@ namespace Npk
 
         if (includeSelf)
             What(arg);
+
+        freezeCmdControl.Store(0, sl::Release);
+    }
+
+    void RunOnFrozenCpu(CpuId who, void (*What)(void* arg), void* arg)
+    {
+        NPK_ASSERT(freezeControl.Load(sl::Acquire) == 1);
+        NPK_ASSERT(freezeCmdControl.Load(sl::Acquire) == 0);
+        NPK_ASSERT(who < TotalCpuCount());
+
+        freezeArg = arg;
+        freezeCommand = What;
+        freezeTarget = who;
+        freezeCmdControl.Store(2, sl::Release);
+
+        while (freezeCmdControl.Load(sl::Acquire) != 1)
+            sl::HintSpinloop();
 
         freezeCmdControl.Store(0, sl::Release);
     }
