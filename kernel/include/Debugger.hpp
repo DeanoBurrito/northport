@@ -5,7 +5,10 @@
 
 namespace Npk
 {
-    constexpr size_t MaxBreakpointDataSize = 8;
+    namespace Private
+    {
+        struct Breakpoint;
+    }
 
     enum class DebugEventType
     {
@@ -16,35 +19,12 @@ namespace Npk
         Breakpoint,
     };
 
-    struct BreakpointEventArg
+    enum class BreakpointType
     {
-        uintptr_t addr;
-        TrapFrame* frame;
+        Breakpoint,
+        Manual,
+        SingleStep,
     };
-
-    enum class DebugStatus
-    {
-        Success,
-        NotSupported,
-        InvalidArgument,
-        BadEnvironment,
-        InvalidBreakpoint,
-    };
-
-    struct Breakpoint
-    {
-        sl::ListHook listHook;
-        HwBreakpoint arch;
-
-        uintptr_t addr;
-        uint8_t kind;
-        bool read;
-        bool write;
-        bool execute;
-        bool hardware;
-    };
-
-    using BreakpointList = sl::List<Breakpoint, &Breakpoint::listHook>;
 
     struct DebugTransport
     {
@@ -83,23 +63,45 @@ namespace Npk
 
     struct DebugProtocol
     {
+        /* Human readable name for the protocol, for vanity reasons.
+         */
         const char* name;
+
+        /* For internal use by the protocol implementation.
+         */
         void* opaque;
 
-        DebugStatus (*Connect)(DebugProtocol* inst, DebugTransportList* ports);
+        /* Attempts to connect via this protocol to a debug controller on any
+         * transport. Upon success the protocol should attach itself to the
+         * transport and keep track of which transport it selected.
+         */
+        NpkStatus (*Connect)(DebugProtocol* inst, DebugTransportList* ports);
+
+        /* Informs the protocol the kernel wants to disconnect from any debug
+         * controllers. This function is always assumed to succeed and the
+         * debug transport associated with this protocol will be unavailable
+         * after this function returns, so the implementation should ensure no
+         * further communication with the host is required after returning.
+         */
         void (*Disconnect)(DebugProtocol* inst);
-        DebugStatus (*BreakpointHit)(DebugProtocol* inst, Breakpoint* bp, 
-            TrapFrame* frame);
+
+        /* Informs the protocol that a breakpoint was hit, `*bp` contains the
+         * breakpoint data and can be inspected to determine the exact cause.
+         */
+        NpkStatus (*BreakpointHit)(DebugProtocol* inst, BreakpointType type,
+            Private::Breakpoint* bp, TrapFrame* frame);
     };
 
     /* Initializes the debugger subsystem, the kernel is **not self debuggable**
      * before this function runs.
      */
-    void InitDebugger();
+    NpkStatus InitDebugger(uintptr_t& virtBase);
 
-    /* Spins until a debug host can be contacted via an available transport.
+    /* Attempts to connect to a debug host via any available transport. If a
+     * timeout is provided this function returns `NotAvailable` if a host could
+     * not be contacted. Otherwise `Success` is returned.
      */
-    DebugStatus ConnectDebugger();
+    NpkStatus ConnectDebugger(sl::TimeCount timeout);
 
     /* Disconnects the debug host from the current system and resets any
      * local debugger state (e.g. active breakpoints).
@@ -113,11 +115,11 @@ namespace Npk
 
     /* Makes a transport available for use by the kernel debugger.
      */
-    void AddDebugTransport(DebugTransport* transport);
+    NpkStatus AddDebugTransport(DebugTransport* transport);
 
     /* Used to notify the debug subsystem that an event has occurred. This
      * function must be called with interrupts and preemption disabled.
      */
     extern "C"
-    DebugStatus DebugEventOccurred(DebugEventType what, void* data);
+    NpkStatus DebugEventOccurred(DebugEventType what, void* data);
 }

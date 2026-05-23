@@ -3,8 +3,6 @@
 #include <lib/Maths.hpp>
 #include <lib/Printf.hpp>
 
-#include <Core.hpp>
-
 /* This file implements support for driving the kernel debugger via the GDB
  * remote protocol (sometimes called the GDB serial protocol).
  *
@@ -17,26 +15,116 @@
  */
 namespace Npk::Private
 {
-    constexpr size_t BuiltinBufferSize = 512;
-    constexpr size_t ErrorBufferSize = 16;
-    constexpr CpuId AllThreads = -1;
-    constexpr CpuId AnyThread = -2;
+    constexpr const char* GdbRegTypeInt32 = "int32";
+    constexpr const char* GdbRegTypeInt64 = "int64";
+    constexpr const char* GdbRegTypeDataPtr = "data_ptr";
+    constexpr const char* GdbRegTypeCodePtr = "code_ptr";
+    constexpr const char* GdbRegTypeI386Flags = "i386_eflags";
 
-    enum ErrorValue
+    struct GdbArchReg
+    {
+        bool valid; //whether register is valid on the current system.
+        HwReg hwReg; //kernel specific data, see `Hardware.hpp` for details.
+        const char* name; //friendly name
+        const char* gdbType; //GDB XML type (how it should be displayed)
+        uint8_t bits; //static width, used when `valid` is clear.
+    };
+
+    /* `GdbArchRegs` maps GDB register numbers to the northport equivalent,
+     * plus storing some extra metadata about the register. Registers marked
+     * invalid (!valid) are known to GDB and the architecture but dont exist
+     * on the current system. For invalid registers the static register width
+     * defined here is used for communicating with GDB, since 
+     * `HwGetRegisterWidth()` will always return 0 for them.
+     * This table (`GdbArchRegs`) **must** be ordered such that a register's
+     * index matches the GDB register number.
+     */
+
+#ifdef __x86_64__
+    constexpr GdbArchReg GdbArchRegs[] =
+    {
+        { true, HwReg_rax, "rax", GdbRegTypeInt64, 64 },
+        { true, HwReg_rbx, "rbx", GdbRegTypeInt64, 64 },
+        { true, HwReg_rcx, "rcx", GdbRegTypeInt64, 64 },
+        { true, HwReg_rdx, "rdx", GdbRegTypeInt64, 64 },
+        { true, HwReg_rsi, "rsi", GdbRegTypeInt64, 64 },
+        { true, HwReg_rdi, "rdi", GdbRegTypeInt64, 64 },
+        { true, HwReg_rbp, "rbp", GdbRegTypeDataPtr, 64 },
+        { true, HwReg_rsp, "rsp", GdbRegTypeDataPtr, 64 },
+        { true, HwReg_r8 , "r8" , GdbRegTypeInt64, 64 },
+        { true, HwReg_r9 , "r9" , GdbRegTypeInt64, 64 },
+        { true, HwReg_r10, "r10", GdbRegTypeInt64, 64 },
+        { true, HwReg_r11, "r11", GdbRegTypeInt64, 64 },
+        { true, HwReg_r12, "r12", GdbRegTypeInt64, 64 },
+        { true, HwReg_r13, "r13", GdbRegTypeInt64, 64 },
+        { true, HwReg_r14, "r14", GdbRegTypeInt64, 64 },
+        { true, HwReg_r15, "r15", GdbRegTypeInt64, 64 },
+        { true, HwReg::ProgramCounter, "rip", GdbRegTypeCodePtr, 64 },
+        { true, HwReg::Flags, "eflags", GdbRegTypeI386Flags, 32 },
+        { true, HwReg_cs , "cs" , GdbRegTypeInt32, 32 },
+        { true, HwReg_ss , "ss" , GdbRegTypeInt32, 32 },
+        { true, HwReg_ds , "ds" , GdbRegTypeInt32, 32 },
+        { true, HwReg_es , "es" , GdbRegTypeInt32, 32 },
+        { true, HwReg_fs , "fs" , GdbRegTypeInt32, 32 },
+        { true, HwReg_gs , "gs" , GdbRegTypeInt32, 32 },
+    };
+
+    constexpr const char* GdbArchName = "i386:x86-64";
+    constexpr const char* GdbArchFeature = "org.gnu.gdb.i386.core";
+    constexpr size_t GdbArchRegCount = 
+        sizeof(GdbArchRegs) / sizeof(GdbArchRegs[0]);
+#else
+#error "GdbRemote.cpp: Unknown architecture, lacking register table"
+#endif
+}
+
+namespace Npk::Private
+{
+    using RwBuffer = sl::Span<uint8_t>;
+    using RoBuffer = sl::Span<const uint8_t>;
+
+    constexpr size_t RecvBufSize = 0x1000;
+    constexpr size_t SendBufSize = 0x2000;
+    constexpr size_t MaxRegBytes = 64;
+    constexpr size_t SendTryCount = 16;
+
+    constexpr uint8_t GdbRleBase = 28;
+    constexpr uint8_t GdbRleEscape = '}';
+    constexpr size_t GdbRleMinRun = 4;
+    constexpr size_t GdbRleMaxRun = 98;
+
+    constexpr uintptr_t GdbProtoAnyThread = 0;
+    constexpr CpuId AllThreads = (CpuId)-1;
+    constexpr CpuId AnyThread = (CpuId)-2;
+
+    constexpr size_t CpuStoreFlags = 0;
+    constexpr size_t CpuStoreRangeStart = 1;
+    constexpr size_t CpuStoreRangeEnd = 2;
+
+    enum class GdbError : uint8_t
     {
         MissingArg = 1,
         InvalidArg = 2,
         InternalError = 3,
+        BadAddress = 4,
     };
 
     struct GdbData
     {
         DebugTransport* transport;
-        uint8_t builtinRecvBuff[BuiltinBufferSize];
-        uint8_t builtinSendBuff[BuiltinBufferSize];
-        CpuId selectedThread;
-        CpuId threadListHead;
+        uint8_t recvBuf[RecvBufSize];
+        uint8_t sendBuf[SendBufSize];
+
+        CpuId selectedThread; //for g/G/p/P packets
+        CpuId continueThread; //for Hc/Hs packets
+        CpuId threadListHead; //for qfThreadInfo/qsThreadInfo packets
+
         TrapFrame* stopFrame;
+        uint8_t stopSignal;
+        Breakpoint* stopBreakpoint;
+        BreakpointType stopBreakpointType;
+
+        bool noAck;
         bool breakCommandLoop;
 
         struct
@@ -44,621 +132,1425 @@ namespace Npk::Private
             bool swBreak;
             bool hwBreak;
             bool errorMsg;
-        } features;
-    } gdbData;
-
-    struct GdbCommand
-    {
-        sl::StringSpan text;
-        bool (*Execute)(GdbData& inst, sl::Span<const uint8_t> data);
+            bool xmlFeatures;
+        } peerFeatures;
     };
 
-    static bool IsHexDigit(uint8_t test)
+    struct GdbBreakpointArgs
     {
-        return (test >= '0' && test <= '9') 
-            || (test >= 'a' && test <= 'f')
-            || (test >= 'A' && test <= 'F');
+        uint8_t type;
+        uintptr_t address;
+        uintptr_t kind;
+    };
+
+    static GdbData gdbInst;
+
+    constexpr static Breakpoint GdbBreakpointTemplates[] =
+    {
+        { .read = false, .write = false, .execute = true , .hardware = false },
+        { .read = false, .write = false, .execute = true , .hardware = true  },
+        { .read = false, .write = true , .execute = false, .hardware = false },
+        { .read = true , .write = false, .execute = false, .hardware = false },
+        { .read = true , .write = true , .execute = false, .hardware = false },
+    };
+
+    constexpr size_t TemplateCount = sizeof(GdbBreakpointTemplates) 
+        / sizeof(GdbBreakpointTemplates[0]);
+
+    static bool IsHexDigit(uint8_t c)
+    {
+        return (c >= '0' && c <= '9')
+            || (c >= 'a' && c <= 'f')
+            || (c >= 'A' && c <= 'F');
     }
 
-    static uint8_t FromHex(uint8_t input)
+    static uint8_t FromHex(uint8_t c)
     {
-        if (input >= '0' && input <= '9')
-            return input - '0';
-        if (input >= 'a' && input <= 'f')
-            return input - 'a' + 10;
-        if (input >= 'A' && input <= 'F')
-            return input - 'A' + 10;
-        
-        return 0;
+        if (c >= '0' && c <= '9')
+            return c - '0';
+
+        if (c >= 'a' && c <= 'f')
+            return c - 'a' + 10;
+
+        return c - 'A' + 10;
     }
 
-    static uint8_t ToHex(uint8_t input)
+    static uint8_t ToHex(uint8_t n)
     {
-        constexpr char digits[] = "0123456789abcdef";
-
-        return digits[input & 0xF];
+        return "0123456789abcdef"[n & 0xF];
     }
 
-    static uint8_t ComputeChecksum(sl::Span<uint8_t> buffer)
+    //returns number of characters read from buffer.
+    static size_t ParseHexInt(uintptr_t& out, RoBuffer buffer)
     {
-        uint8_t sum = 0;
+        out = 0;
 
-        //the start/end of packet markers aren't included in the checksum
-        if (buffer.Size() > 1 && buffer[0] == '$')
-            buffer = buffer.Subspan(1, -1);
-        if (buffer.Size() > 1 && *(buffer.End() - 1) == '#')
-            buffer = buffer.Subspan(0, buffer.Size() - 1);
-
-        for (size_t i = 0; i < buffer.Size(); i++)
-            sum += buffer[i];
-
-        return sum;
-    }
-
-    static size_t PutBytes(sl::Span<uint8_t> buffer, const void* data, 
-        size_t dataLen)
-    {
-        const uint8_t* store = static_cast<const uint8_t*>(data);
-
-        size_t bytesWritten = 0;
-        while (bytesWritten < dataLen && bytesWritten * 2 + 1 < buffer.Size())
+        size_t i = 0;
+        while (i < buffer.Size() && IsHexDigit(buffer[i]))
         {
-            const uint8_t high = ToHex(store[bytesWritten] >> 4);
-            const uint8_t low = ToHex(store[bytesWritten] & 0xF);
-
-            buffer[bytesWritten * 2] = high;
-            buffer[bytesWritten * 2 + 1] = low;
-            bytesWritten++;
+            out = (out << 4) | FromHex(buffer[i]);
+            i++;
         }
 
-        return bytesWritten * 2;
+        return i;
     }
 
-    static size_t PutThreadId(sl::Span<uint8_t> buffer, CpuId id)
+    //returns number of characters written to buffer
+    static size_t PutHexInt(RwBuffer buffer, uintptr_t val, size_t minDigits)
     {
-        id++; //gdb uses 1-based thread ids, we use 0-based
+        char buff[18];
+        const size_t len = sl::SnPrintf(buff, sizeof(buff), "%zx", (size_t)val);
 
-        CpuId be = sl::HostToBe(id);
-        size_t bytes = 1;
-        while (be << bytes * 8)
-            bytes++;
-
-        return sl::SnPrintf((char*)buffer.Begin(), buffer.Size(), "%.*lx",
-            (int)bytes, be >> ((sizeof(be) - bytes)) * 8);
-    }
-
-    static size_t PutThreadList(GdbData& inst, sl::Span<uint8_t> buffer)
-    {
-        const CpuId maxId = MySystemDomain().smpControls.Size();
-        const size_t maxBytesUsed = sizeof(CpuId) * 2 + 1;
-
-        size_t head = 0;
-        if (inst.threadListHead == maxId)
-            buffer[head++] = 'l';
-        else
+        if (len < minDigits)
         {
-            buffer[head++] = 'm';
+            const size_t pad = minDigits - len;
+            if (pad + len + 1 > buffer.Size())
+                return 0;
 
-            bool first = true;
-            for (CpuId i = inst.threadListHead; i < maxId; i++)
+            sl::MemSet(buffer.Begin(), '0', pad);
+            sl::MemCopy(buffer.Begin() + pad, buff, len);
+
+            return pad + len;
+        }
+
+        if (len + 1 > buffer.Size())
+            return 0;
+
+        sl::MemCopy(buffer.Begin(), buff, len);
+
+        return len;
+    }
+
+    //returns number of characters read from buffer.
+    static size_t ParseThreadId(CpuId& outId, RoBuffer buffer)
+    {
+        if (buffer.Size() >= 2 && buffer[0] == '-' && buffer[1] == '1')
+        {
+            outId = AllThreads;
+
+            return 2;
+        }
+
+        uintptr_t value;
+        const size_t lenRead = ParseHexInt(value, buffer);
+        if (lenRead == 0)
+        {
+            outId = AnyThread;
+
+            return 0;
+        }
+
+        outId = value - 1;
+        if (value == GdbProtoAnyThread)
+            outId = AnyThread;
+
+        return lenRead;
+    }
+
+    //returns number of characters written to buffer
+    static size_t PutThreadId(RwBuffer buffer, CpuId id)
+    {
+        if (id == AllThreads)
+        {
+            if (buffer.Size() < 2)
+                return 0;
+
+            buffer[0] = '-';
+            buffer[1] = '1';
+
+            return 2;
+        }
+
+        uintptr_t value = id + 1;
+        if (id == AnyThread)
+            value = GdbProtoAnyThread;
+
+        return PutHexInt(buffer, value, 1);
+    }
+
+    static NpkStatus RawSend(GdbData& inst, RoBuffer data)
+    {
+        for (size_t i = 0; i < SendTryCount; i++)
+        {
+            if (!inst.transport->Transmit(inst.transport, data))
+                return NpkStatus::InternalError;
+
+            if (inst.noAck)
+                return NpkStatus::Success;
+
+            //wait for response.
+            while (true)
             {
-                if (head + maxBytesUsed >= buffer.Size())
+                uint8_t ack;
+                size_t n = inst.transport->Receive(inst.transport, { &ack, 1 });
+
+                if (n == 0)
+                    continue;
+                if (ack == '+')
+                    return NpkStatus::Success;
+                if (ack == '-')
                     break;
-
-                if (!first)
-                    buffer[head++] = ',';
-                first = false;
-
-                head += PutThreadId(buffer.Subspan(head, -1), i);
-                inst.threadListHead++;
             }
         }
+
+        return NpkStatus::NotAvailable;
+    }
+
+    //returns number of characters written to `*src`, this function is safe to
+    //call with `dest` and `src` pointing to the same buffer. It applies the
+    //RLE described in the gdb remote protocol spec, which includes a few 
+    //special cases.
+    static size_t RleEncode(uint8_t* dest, const uint8_t* src, size_t len)
+    {
+        size_t write = 0;
+        size_t read = 0;
+
+        while (read < len)
+        {
+            const uint8_t c = src[read];
+
+            size_t runLength = 1;
+            while (read + runLength < len && src[read + runLength] == c
+                && runLength < GdbRleMaxRun)
+                runLength++;
+
+            size_t count = runLength;
+            while (count >= GdbRleMinRun)
+            {
+                const uint8_t cc = (uint8_t)(count + GdbRleBase);
+
+                //handle special cases, these characters have other meanings so
+                //we shouldn't use them for RLE counts.
+                if (cc != '#' && cc != '$' && cc != '*'
+                    && cc != GdbRleEscape)
+                    break;
+
+                count--;
+            }
+
+            if (count >= GdbRleMinRun)
+            {
+                dest[write++] = c;
+                dest[write++] = '*';
+                dest[write++] = static_cast<uint8_t>(count + GdbRleBase);
+
+                read += count;
+            }
+            else
+                dest[write++] = src[read++];
+        }
+
+        return write;
+    }
+
+    //returns the expanded length (write head) of the encoded data, or 0 if
+    //an error occured like `destLen` being too small.
+    static size_t RleDecode(uint8_t* dest, size_t destLen, const uint8_t* src,
+        size_t srcLen)
+    {
+        size_t write = 0;
+        size_t read = 0;
+        uint8_t prev = 0;
+
+        while (read < srcLen)
+        {
+            if (src[read] == GdbRleEscape && read + 1 < srcLen)
+            {
+                if (write >= destLen)
+                    return 0;
+
+                prev = src[read + 1] ^ 0x20;
+                dest[write++] = prev;
+
+                read += 2;
+            }
+            else if (src[read] == '*' && read + 1 < srcLen)
+            {
+                const uint8_t countChar = src[read + 1];
+                if (countChar < ' ')
+                    return 0;
+
+                const size_t extra = (countChar - GdbRleBase) - 1;
+                if (write + extra > destLen)
+                    return 0;
+
+                for (size_t j = 0; j < extra; j++)
+                    dest[write++] = prev;
+
+                read += 2;
+            }
+            else
+            {
+                if (write >= destLen)
+                    return 0;
+
+                prev = src[read];
+                dest[write++] = prev;
+
+                read++;
+            }
+        }
+
+        return write;
+    }
+
+    static NpkStatus FlushPacket(GdbData& inst, size_t head)
+    {
+        if (head + 2 > SendBufSize)
+            return NpkStatus::InvalidArg;
+        if (head < 2 || inst.sendBuf[0] != '$' || inst.sendBuf[head - 1] != '#')
+            return NpkStatus::InvalidArg;
+
+        auto* content = inst.sendBuf + 1;
+        const size_t rawLen = head - 2;
+        const size_t encodedLen = RleEncode(content, content, rawLen);
+        inst.sendBuf[1 + encodedLen] = '#';
+        head = encodedLen + 2;
+
+        uint8_t checksum = 0;
+        for (size_t i = 1; i < head - 1; i++)
+            checksum += inst.sendBuf[i];
+
+        inst.sendBuf[head] = ToHex(checksum >> 4);
+        inst.sendBuf[head + 1] = ToHex(checksum & 0xF);
+
+        return RawSend(inst, RoBuffer(inst.sendBuf, head + 2));
+    }
+
+    static NpkStatus SendOk(GdbData& inst)
+    {
+        inst.sendBuf[0] = '$';
+        inst.sendBuf[1] = 'O';
+        inst.sendBuf[2] = 'K';
+        inst.sendBuf[3] = '#';
+
+        return FlushPacket(inst, 4);
+    }
+
+    static NpkStatus SendUnsupported(GdbData& inst)
+    {
+        inst.sendBuf[0] = '$';
+        inst.sendBuf[1] = '#';
+
+        return FlushPacket(inst, 2);
+    }
+
+    static NpkStatus SendError(GdbData& inst, GdbError which)
+    {
+        const uint8_t v = static_cast<uint8_t>(which);
+
+        size_t head = 0;
+        inst.sendBuf[head++] = '$';
+        inst.sendBuf[head++] = 'E';
+        inst.sendBuf[head++] = ToHex(v >> 4);
+        inst.sendBuf[head++] = ToHex(v & 0xF);
+        inst.sendBuf[head++] = '#';
+
+        return FlushPacket(inst, head);
+    }
+
+    //returns the number of data bytes (not including delims '$' and '#'),
+    //the receive buffer starts with packet data, not '$'.
+    static size_t ReceivePacket(GdbData& inst)
+    {
+        size_t total = 0;
+        bool hasStart = false;
+
+        while (true)
+        {
+            size_t space = RecvBufSize - total;
+            if (space == 0)
+            {
+                total = 0;
+                hasStart = false;
+                continue;
+            }
+
+            size_t got = inst.transport->Receive(inst.transport,
+                RwBuffer(inst.recvBuf + total, space));
+            if (got == 0)
+                continue;
+
+            if (!hasStart)
+            {
+                constexpr size_t NoStart = (size_t)-1;
+
+                //scan for the start of a packet
+                size_t start = NoStart;
+                for (size_t i = 0; i < got; i++)
+                {
+                    if (inst.recvBuf[i + total] == '$')
+                    {
+                        start = i + total;
+                        break;
+                    }
+                }
+                if (start == NoStart)
+                    continue;
+
+                //found a packet, trim leading junk so buffer starts with packet
+                //contents.
+                size_t remaining = got - (start - total);
+                sl::MemMove(inst.recvBuf, inst.recvBuf + start, remaining);
+                total = remaining;
+                hasStart = true;
+            }
+            else
+                total += got;
+
+
+            for (size_t i = 1; i < total; i++)
+            {
+                if (inst.recvBuf[i] != '#')
+                    continue;
+                if (i + 2 >= total)
+                    break;
+
+                //found the end delim, look for a checksum
+                uint8_t expected = 0;
+                for (size_t j = 1; j < i; j++)
+                    expected += inst.recvBuf[j];
+
+                const uint8_t checksum = (FromHex(inst.recvBuf[i + 1]) << 4) 
+                    | FromHex(inst.recvBuf[i + 2]);
+
+                if (!inst.noAck)
+                {
+                    uint8_t ack = '+';
+                    if (checksum != expected)
+                        ack = '-';
+
+                    inst.transport->Transmit(inst.transport, { &ack, 1 });
+                    if (ack == '-')
+                    {
+                        total = 0;
+                        hasStart = false;
+
+                        break;
+                    }
+                }
+
+                //check for any RLE/escape encode done by the host
+                bool hasEncoding = false;
+                for (size_t k = 1; k < i && !hasEncoding; k++)
+                {
+                    const uint8_t b = inst.recvBuf[k];
+                    hasEncoding = (b == '*' || b == GdbRleEscape);
+                }
+
+                const size_t rawLen = i - 1;
+                if (!hasEncoding)
+                    return rawLen; //fast path, nothing fancy going on
+
+                //slow path: decode incoming data in-place.
+                auto* staging = inst.recvBuf + RecvBufSize / 2;
+                sl::MemMove(staging, inst.recvBuf + 1, rawLen);
+                const size_t expandedLen = RleDecode(inst.recvBuf + 1, 
+                    RecvBufSize / 2 - 1, staging, rawLen);
+
+                return expandedLen;
+            }
+        }
+    }
+
+    //returns the number of bytes needed to represent a register. If the
+    //register exists on the current hardware the length returned is based on
+    //the register's true size, otherwise it is based on the maximum supported
+    //length reported by the `GdbArchRegs` table.
+    static size_t CountRegBytes(const GdbArchReg& reg)
+    {
+        if (reg.valid)
+        {
+            const size_t width = HwGetRegisterWidth(reg.hwReg);
+            if (width == 0)
+                return sl::AlignUp(reg.bits, 8) / 8;
+
+            if (width > MaxRegBytes)
+            {
+                DebuggerPanic("HwGetRegisterWidth() for %zu (%s) returned %zu, "
+                    "which is larger than the max of %zu", reg.hwReg, reg.name,
+                    width, MaxRegBytes);
+            }
+
+            return width;
+        }
+
+        return sl::AlignUp(reg.bits, 8) / 8;
+    }
+
+    //returns the length written to buffer, or 0 if an error occured.
+    static size_t GenerateXml(char* buffer, size_t bufSize)
+    {
+        size_t head = 0;
+
+        auto advance = sl::SnPrintf(buffer + head, bufSize - head,
+            "<?xml version=\"1.0\"?>\n"
+            "<!DOCTYPE target SYSTEM \"gdb-target.dtd\">\n"
+            "<target version=\"1.0\">\n"
+            "  <architecture>%s</architecture>\n"
+            "  <feature name=\"%s\">\n",
+            GdbArchName, GdbArchFeature);
+
+        if (advance == 0)
+            return 0;
+        head += static_cast<size_t>(advance);
+
+        for (size_t i = 0; i < GdbArchRegCount; i++)
+        {
+            const auto& reg = GdbArchRegs[i];
+
+            advance = sl::SnPrintf(buffer + head, bufSize - head,
+                "    <reg name=\"%s\" bitsize=\"%zu\" type=\"%s\"/>\n",
+                reg.name, CountRegBytes(reg) * 8, reg.gdbType);
+
+            if (advance == 0)
+                return 0;
+            head += static_cast<size_t>(advance);
+        }
+
+        advance = sl::SnPrintf(buffer + head, bufSize - head,
+            "  </feature>\n"
+            "</target>\n");
+
+        if (advance == 0)
+            return 0;
+        head += static_cast<size_t>(advance);
 
         return head;
     }
 
-    static size_t PutRegister(GdbData& inst, sl::Span<uint8_t> buffer, 
-        const void* reg, size_t regLen, size_t padBytes)
+    //returns number of character written to `buffer`, or 0 if an error occured.
+    static size_t ReadRegister(RwBuffer buffer, size_t regNum, TrapFrame* frame)
     {
-        (void)inst;
-
-        if ((regLen + padBytes) * 2 + 3 >= buffer.Size())
+        if (regNum >= GdbArchRegCount)
             return 0;
 
-        //NOTE: the spec states that registers are encoded in target byte order,
-        //this works nicely since we take the `reg` argument in memory.
-        for (size_t i = 0; i < regLen; i++)
-        {
-            char* buff = reinterpret_cast<char*>(&buffer[i * 2]);
-            size_t buffLen = buffer.Size() - (i * 2);
-            uint8_t data = static_cast<const uint8_t*>(reg)[i];
+        const auto& reg = GdbArchRegs[regNum];
+        const size_t bytes = CountRegBytes(reg);
 
-            sl::SnPrintf(buff, buffLen, "%02.2x", data);
+        if (buffer.Size() < bytes * 2)
+            return 0;
+
+        if (!reg.valid || bytes > MaxRegBytes || frame == nullptr)
+        {
+            sl::MemSet(buffer.Begin(), 'x', bytes * 2);
+
+            return bytes * 2;
         }
 
-        sl::MemSet(&buffer[regLen * 2], 'x', padBytes);
+        uint8_t store[MaxRegBytes];
+        sl::MemSet(store, 0, MaxRegBytes);
 
-        return (regLen + padBytes) * 2;
-    }
-
-    static size_t GetBytes(sl::Span<const uint8_t> buffer, void* data, 
-        size_t dataLen)
-    {
-        uint8_t* store = static_cast<uint8_t*>(data);
-
-        size_t bytesRead = 0;
-        while (bytesRead < dataLen && bytesRead * 2 + 1 < buffer.Size()
-            && IsHexDigit(buffer[bytesRead * 2]) 
-            && IsHexDigit(buffer[bytesRead * 2 + 1]))
+        auto result = HwAccessRegister(*frame, reg.hwReg, nullptr,
+            { store, bytes }, false);
+        if (result != NpkStatus::Success)
         {
-            const uint8_t high = FromHex(buffer[bytesRead * 2]);
-            const uint8_t low = FromHex(buffer[bytesRead * 2 + 1]);
-            const uint8_t full = (high << 4) | low;
+            sl::MemSet(buffer.Begin(), 'x', bytes * 2);
 
-            store[bytesRead] = full;
-            bytesRead++;
+            return bytes * 2;
         }
 
-        return bytesRead * 2;
-    }
-
-    static size_t GetThreadId(sl::Span<const uint8_t> buffer, CpuId& id)
-    {
-        if (buffer.Size() >= 2 && buffer[0] == '-' && buffer[1] == '1')
+        for (size_t i = 0; i < bytes; i++)
         {
-            id = AllThreads;
-            return 2;
+            buffer[i * 2] = ToHex(store[i] >> 4);
+            buffer[i * 2 + 1] = ToHex(store[i] & 0xF);
         }
-        else if (buffer.Size() >= 1 && buffer[0] == '0')
-        {
-            id = AnyThread;
-            return 1;
-        }
-
-        id = 0;
-        size_t bytes = 0;
-        for (size_t i = 0; i < sizeof(id); i++)
-        {
-            uint8_t byte;
-            if (0 == GetBytes(buffer.Subspan(i * 2, -1), &byte, 1))
-                break;
-
-            id <<= 8;
-            id |= byte;
-        }
-
-        id--; //gdb uses 1-based thread ids, we use 0-based.
 
         return bytes * 2;
     }
 
-    static bool Send(GdbData& inst, sl::Span<const uint8_t> buffer)
+    static NpkStatus WriteRegister(size_t regNum, TrapFrame* frame, 
+        RoBuffer buffer)
     {
-        if (!inst.transport->Transmit(inst.transport, buffer))
-            return false;
+        if (regNum >= GdbArchRegCount || frame == nullptr)
+            return NpkStatus::InvalidArg;
 
-        while (true)
+        const auto& reg = GdbArchRegs[regNum];
+
+        if (!reg.valid)
+            return NpkStatus::InvalidArg;
+
+        const size_t bytes = HwGetRegisterWidth(reg.hwReg);
+        if (bytes == 0 || bytes > MaxRegBytes)
+            return NpkStatus::InvalidArg;
+        if (buffer.Size() < bytes * 2)
+            return NpkStatus::InvalidArg;
+
+        for (size_t i = 0; i < bytes * 2; i++)
         {
-            uint8_t ack[1];
-            size_t ackLen = inst.transport->Receive(inst.transport, { ack, 1 });
-            if (ackLen == 0)
-                continue;
-
-            return ack[0] == '+';
-        }
-    }
-
-    static bool CheckAndSend(GdbData& inst, sl::Span<uint8_t> buffer, 
-        size_t head)
-    {
-        auto checksum = ComputeChecksum(buffer.Subspan(0, head));
-        auto checkBuffer = buffer.Subspan(head, head + 2);
-        head += PutBytes(checkBuffer, &checksum, sizeof(checksum));
-
-        return Send(inst, buffer.Subspan(0, head).Const());
-    }
-
-    static bool SendError(GdbData& inst, ErrorValue which)
-    {
-        uint8_t buffer[ErrorBufferSize];
-        const auto value = static_cast<uint8_t>(which);
-
-        const size_t len = sl::SnPrintf((char*)buffer, ErrorBufferSize, 
-            "$E%01.1x%01.1x#", value >> 4, value & 0xF);
-
-        return CheckAndSend(inst, buffer, len);
-    }
-
-    static bool SendUnsupported(GdbData& inst)
-    {
-        return Send(inst, "$#00"_u8span);
-    }
-
-    static bool SendOk(GdbData& inst)
-    {
-        uint8_t buffer[6];
-        sl::MemCopy(buffer, "$OK#", 4);
-
-        return CheckAndSend(inst, buffer, 4);
-    }
-
-    static bool SendStopReason(GdbData& inst, uint8_t signal, CpuId tid)
-    {
-        size_t head = sl::SnPrintf((char*)inst.builtinSendBuff,
-            BuiltinBufferSize, "$T%02.2xthread", signal);
-
-        head += PutThreadId(
-            { inst.builtinSendBuff + head, BuiltinBufferSize - head }, tid);
-        inst.builtinSendBuff[head++] = ';';
-
-        if (inst.features.swBreak)
-        {
-            head += sl::SnPrintf((char*)inst.builtinSendBuff + head,
-                BuiltinBufferSize - head, "swbreak:;");
+            if (!IsHexDigit(buffer[i]))
+                return NpkStatus::InvalidArg;
         }
 
-        inst.builtinSendBuff[head++] = '#';
+        uint8_t store[MaxRegBytes];
+        for (size_t i = 0; i < bytes; i++)
+        {
+            store[i] = FromHex(buffer[i * 2]) << 4;
+            store[i] |= FromHex(buffer[i * 2 + 1]);
+        }
 
-        return CheckAndSend(inst, inst.builtinSendBuff, head);
+        return HwAccessRegister(*frame, reg.hwReg, nullptr,
+            RwBuffer(store, bytes), true);
     }
 
-    static size_t Receive(GdbData& inst, sl::Span<uint8_t> buffer)
+    static TrapFrame* GetThreadFrame(GdbData& inst, CpuId who)
     {
-        size_t receivedLen = 0;
-        bool hasStart = false;
-        bool hasEnd = false;
-        bool sendAck = true;
+        if (who == AnyThread || who == AllThreads)
+            who = MyCoreId();
 
-        while (true)
+        if (who == MyCoreId())
+            return inst.stopFrame;
+
+        if (who >= GetDebugCpuCount())
+            return nullptr;
+
+        return DebugFrameForCpu(who);
+    }
+
+    static NpkStatus SendStopReason(GdbData& inst)
+    {
+        size_t head = 0;
+
+        inst.sendBuf[head++] = '$';
+        head += (size_t)sl::SnPrintf((char*)inst.sendBuf + head,
+            SendBufSize - head, "T%02x", inst.stopSignal);
+        head += (size_t)sl::SnPrintf((char*)inst.sendBuf + head,
+            SendBufSize - head, "thread:");
+        head += PutThreadId({ inst.sendBuf + head, SendBufSize - head },
+            MyCoreId());
+        inst.sendBuf[head++] = ';';
+
+        if (inst.stopBreakpointType == BreakpointType::Breakpoint)
         {
-            auto localBuffer = buffer.Subspan(receivedLen, -1);
-            size_t localLen = inst.transport->Receive(inst.transport,
-                localBuffer);
+            const auto* bp = inst.stopBreakpoint;
 
-            if (!hasStart)
+            if (bp->execute)
             {
-                //try to find the start of the packet.
-                for (size_t i = 0; i < localLen; i++)
+                if (inst.peerFeatures.hwBreak && bp->hardware)
                 {
-                    if (localBuffer[i] != '$')
-                        continue;
-
-                    //probably a waste of cycles, but move the start of the
-                    //packet to the start of the buffer.
-                    localLen -= i;
-                    sl::MemCopy(buffer.Begin(), &localBuffer[i], localLen);
-                    hasStart = true;
-                    receivedLen = localLen;
-                    break;
+                    head += (size_t)sl::SnPrintf((char*)inst.sendBuf + head,
+                        SendBufSize - head, "hwbreak:;");
                 }
-
-                if (!hasStart)
-                    continue;
+                else if (inst.peerFeatures.swBreak && !bp->hardware)
+                {
+                    head += (size_t)sl::SnPrintf((char*)inst.sendBuf + head,
+                        SendBufSize - head, "swbreak:;");
+                }
             }
-            else
-                receivedLen += localLen;
 
-            if (!hasEnd)
+            const uint8_t x = (uint8_t)bp->read | ((uint8_t)bp->write << 1);
+            switch (x)
             {
-                //find the end of the packet if we can.
-                for (size_t i = 0; i < receivedLen; i++)
-                {
-                    if (buffer[i] != '#')
-                        continue;
-                    if (i + 2 >= receivedLen)
-                        continue;
+            case 0b01:
+                head += (size_t)sl::SnPrintf((char*)inst.sendBuf + head,
+                    SendBufSize - head, "rwatch:%zx;", bp->addr);
+                break;
 
-                    receivedLen = i + 3; //+2 for checksum, +1 for '#'
-                    hasEnd = true;
-                    break;
-                }
+            case 0b10:
+                head += (size_t)sl::SnPrintf((char*)inst.sendBuf + head,
+                    SendBufSize - head, "watch:%zx;", bp->addr);
+                break;
 
-                if (hasEnd)
-                    break;
+            case 0b11:
+                head += (size_t)sl::SnPrintf((char*)inst.sendBuf + head,
+                    SendBufSize - head, "awatch:%zx;", bp->addr);
+                break;
             }
         }
+        inst.sendBuf[head++] = '#';
 
-        uint8_t checksum;
-        GetBytes(buffer.Subspan(receivedLen - 2, -1).Const(), &checksum, 1);
-        if (checksum != ComputeChecksum(buffer.Subspan(0, receivedLen - 2)))
-            sendAck = false;
-
-        //let the host know we received its data via an ack/nack
-        const uint8_t ack = sendAck ? '+' : '-';
-        inst.transport->Transmit(inst.transport, { &ack, 1 });
-        //TODO: error handling for Transmit()
-
-        return receivedLen;
+        return FlushPacket(inst, head);
     }
 
-    constexpr GdbCommand GdbCommands[] =
+    static NpkStatus SendThreadInfo(GdbData& inst)
+    {
+        const CpuId count = GetDebugCpuCount();
+        bool first = true;
+        size_t head = 0;
+
+        inst.sendBuf[head++] = '$';
+        inst.sendBuf[head++] = 'm';
+
+        for (CpuId i = inst.threadListHead; i < count; i++)
+        {
+            if (!first)
+                inst.sendBuf[head++] = ',';
+            first = false;
+            head += PutThreadId(
+                RwBuffer(inst.sendBuf + head,
+                    SendBufSize - head - 3),
+                i);
+            inst.threadListHead = i + 1;
+
+            //see if there's enough space for another thread item + packet tail
+            if (head + 24 > SendBufSize - 3)
+                break;
+        }
+
+        inst.sendBuf[head++] = '#';
+
+        return FlushPacket(inst, head);
+    }
+
+    static NpkStatus ExtractZPacketArgs(GdbBreakpointArgs& args, RoBuffer buff)
+    {
+        if (buff.Size() < 2)
+            return NpkStatus::InvalidArg;
+        if (buff[0] != 'z' && buff[0] != 'Z')
+            return NpkStatus::InvalidArg;
+
+        args.type = buff[1] - '0';
+        buff = buff.Subspan(2, -1);
+        if (buff.Empty() || buff[0] != ',')
+            return NpkStatus::InvalidArg;
+
+        buff = buff.Subspan(1, -1);
+        const size_t count = ParseHexInt(args.address, buff);
+        if (count == 0 || buff.Size() <= count || buff[count] != ',')
+            return NpkStatus::InvalidArg;
+
+        buff = buff.Subspan(count + 1, -1);
+        ParseHexInt(args.kind, buff);
+
+        return NpkStatus::Success;
+    }
+
+    struct GdbCommand
+    {
+        sl::StringSpan prefix;
+        NpkStatus (*Execute)(GdbData& inst, RoBuffer packet);
+    };
+
+    static const GdbCommand GdbCommands[] =
     {
         {
-            .text = "qSupported"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            "qXfer:features:read:target.xml:"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
             {
-                inst.features.swBreak = data.Contains("swbreak+"_u8span);
-                inst.features.hwBreak = data.Contains("hwbreak+"_u8span);
-                inst.features.errorMsg = data.Contains("error-message+"_u8span);
+                if (GdbArchRegCount == 0)
+                    return SendUnsupported(inst);
 
-                const size_t len = sl::SnPrintf((char*)inst.builtinSendBuff,
-                    BuiltinBufferSize, "$"
-                    "swbreak+;"
+                const size_t prefixLen = 
+                    sizeof("qXfer:features:read:target.xml:") - 1;
+                packet = packet.Subspan(prefixLen, -1);
+
+                uintptr_t offset = 0;
+                const size_t len = ParseHexInt(offset, packet);
+                if (len == 0 || packet.Size() <= len || packet[len] != ',')
+                    return SendError(inst, GdbError::InvalidArg);
+
+                uintptr_t length = 0;
+                packet = packet.Subspan(len + 1, -1);
+                ParseHexInt(length, packet);
+
+                //... XML? who thought this was a good solution to the problem?
+                //Now I have to generate XML in a kernel, I'm sure this will
+                //have no long term issues.
+                //Anyway, GenerateXml() outputs directly into the buffer we give
+                //it, so we reserve space for '$' and 'm'/'l' before the xml
+                //data, and another 3 bytes after for '#' and the checksum.
+                const size_t xmlLen = GenerateXml(
+                    (char*)inst.sendBuf + 2, SendBufSize - 5);
+
+                if (offset > xmlLen)
+                    offset = xmlLen;
+
+                const size_t avail = xmlLen - offset;
+                const size_t chunk = sl::Min(length, (uintptr_t)avail);
+                const bool last  = (offset + chunk >= xmlLen);
+
+                inst.sendBuf[0] = '$';
+                inst.sendBuf[1] = last ? 'l' : 'm';
+
+                if (offset > 0)
+                {
+                    sl::MemMove(inst.sendBuf + 2, inst.sendBuf + 2 + offset, 
+                        chunk);
+                }
+
+                size_t head = 2 + chunk;
+                inst.sendBuf[head++] = '#';
+
+                return FlushPacket(inst, head);
+            }
+        },
+        {
+            "qSupported"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                inst.peerFeatures.swBreak = packet.Contains("swbreak+"_u8span);
+                inst.peerFeatures.hwBreak = packet.Contains("hwbreak+"_u8span);
+                inst.peerFeatures.errorMsg =
+                    packet.Contains("error-message+"_u8span);
+                inst.peerFeatures.xmlFeatures =
+                    packet.Contains("xmlRegisters=i386"_u8span)
+                    || packet.Contains("qXfer:features:read+"_u8span);
+
+                //due to how runlength decoding uses the higher half of RecvBuf,
+                //we can only advertise half it's size, minus one.
+                const size_t packetSize = RecvBufSize / 2 - 1;
+
+                const size_t len = (size_t)sl::SnPrintf(
+                    (char*)inst.sendBuf, SendBufSize,
+                    "$PacketSize=%zx;"
                     "hwbreak+;"
+                    "swbreak+;"
                     "error-message+;"
-                    "vContSupported+"
-                    "#");
+                    "vContSupported+;"
+                    "qXfer:features:read+;"
+                    "QStartNoAckMode+"
+                    "#",
+                    packetSize);
 
-                return CheckAndSend(inst, inst.builtinSendBuff, len);
+                return FlushPacket(inst, len);
             }
         },
         {
-            .text = "qAttached"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            "QStartNoAckMode"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
             {
-                (void)data;
+                (void)packet;
 
-                inst.builtinSendBuff[0] = '$';
-                inst.builtinSendBuff[1] = '1'; //1 = gdb attached to an existing
-                inst.builtinSendBuff[2] = '#'; //process.
+                auto result = SendOk(inst);
+                if (result != NpkStatus::Success)
+                    return result;
 
-                return CheckAndSend(inst, inst.builtinSendBuff, 3);
+                inst.noAck = true;
+
+                return NpkStatus::Success;
             }
         },
         {
-            .text = "qC"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            "qAttached"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
             {
-                (void)data;
+                (void)packet;
 
-                size_t len = 0;
-                inst.builtinSendBuff[len++] = '$';
-                inst.builtinSendBuff[len++] = 'Q';
-                inst.builtinSendBuff[len++] = 'C';
+                //return '1', meaning attached to existing 'process'
+                inst.sendBuf[0] = '$';
+                inst.sendBuf[1] = '1';
+                inst.sendBuf[2] = '#';
 
-                len += PutThreadId(
-                    { inst.builtinSendBuff + len, BuiltinBufferSize - len },
-                    inst.selectedThread);
-
-                inst.builtinSendBuff[len++] = '#';
-
-                return CheckAndSend(inst, inst.builtinSendBuff, len);
+                return FlushPacket(inst, 3);
             }
         },
         {
-            .text = "qfThreadInfo"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            "qC"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
             {
-                (void)data;
+                (void)packet;
+
+                size_t head = 0;
+                inst.sendBuf[head++] = '$';
+                inst.sendBuf[head++] = 'Q';
+                inst.sendBuf[head++] = 'C';
+                head += PutThreadId(
+                    RwBuffer(inst.sendBuf + head, SendBufSize - head),
+                    MyCoreId());
+                inst.sendBuf[head++] = '#';
+
+                return FlushPacket(inst, head);
+            }
+        },
+        {
+            "qfThreadInfo"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
 
                 inst.threadListHead = 0;
 
+                return SendThreadInfo(inst);
+            }
+        },
+        {
+            "qsThreadInfo"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                if (inst.threadListHead < GetDebugCpuCount())
+                    return SendThreadInfo(inst);
+
+                inst.sendBuf[0] = '$';
+                inst.sendBuf[1] = 'l';
+                inst.sendBuf[2] = '#';
+
+                return FlushPacket(inst, 3);
+            }
+        },
+        {
+            "qThreadExtraInfo,"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                const size_t prefix = sizeof("qThreadExtraInfo,") - 1;
+
+                CpuId id;
+                ParseThreadId(id, packet.Subspan(prefix, -1));
+                if (id == AnyThread || id == AllThreads)
+                    id = MyCoreId();
+
+                //TODO: display more info about the thread/cpu here
+                char store[32];
+                size_t storeLen = (size_t)sl::SnPrintf(store, sizeof(store),
+                    "core %zu", (size_t)id);
+
                 size_t head = 0;
-                inst.builtinSendBuff[head++] = '$';
-
-                sl::Span<uint8_t> buff = inst.builtinSendBuff;
-                buff = buff.Subspan(head, buff.Size() - head - 3);
-                head += PutThreadList(inst, buff);
-                inst.builtinSendBuff[head++] = '#';
-
-                return CheckAndSend(inst, inst.builtinSendBuff, head);
-            }
-        },
-        {
-            .text = "qsThreadInfo"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
-            {
-                (void)data;
-
-                size_t head = 0;
-                inst.builtinSendBuff[head++] = '$';
-
-                sl::Span<uint8_t> buff = inst.builtinSendBuff;
-                buff = buff.Subspan(head, buff.Size() - head - 3);
-                head += PutThreadList(inst, buff);
-                inst.builtinSendBuff[head++] = '#';
-
-                return CheckAndSend(inst, inst.builtinSendBuff, head);
-            }
-        },
-        {
-            .text = "qRcmd"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
-            {
-                (void)data; //TODO: local command interpreter
-                return SendUnsupported(inst);
-            }
-        },
-        {
-            .text = "vCont?"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
-            {
-                (void)data;
-
-                const size_t len = sl::SnPrintf((char*)inst.builtinSendBuff,
-                    BuiltinBufferSize, "$vCont;c;C;s;S;r#");
-
-                return CheckAndSend(inst, inst.builtinSendBuff, len);
-            }
-        },
-        {
-            .text = "?"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
-            {
-                (void)data;
-
-                return SendStopReason(inst, 5, MyCoreId());
-            }
-        },
-        {
-            .text = "H"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
-            {
-                if (data.Size() < 3)
-                    return SendError(inst, ErrorValue::MissingArg);
-
-                const uint8_t op = data[1];
-                if (op != 'g')
+                inst.sendBuf[head++] = '$';
+                for (size_t i = 0; i < storeLen; i++)
                 {
-                    if (op == 'c')
-                        return SendUnsupported(inst);
-                    return SendError(inst, ErrorValue::InvalidArg);
+                    inst.sendBuf[head++] = ToHex((uint8_t)store[i] >> 4);
+                    inst.sendBuf[head++] = ToHex((uint8_t)store[i] & 0xF);
                 }
+                inst.sendBuf[head++] = '#';
 
-                GetThreadId(data.Subspan(2, -1), inst.selectedThread);
-                if (inst.selectedThread == AnyThread)
-                    inst.selectedThread = MyCoreId();
+                return FlushPacket(inst, head);
+            }
+        },
+        {
+            "?"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                return SendStopReason(inst);
+            }
+        },
+        {
+            "H"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                if (packet.Size() < 2)
+                    return SendError(inst, GdbError::MissingArg);
+
+                CpuId tid;
+                ParseThreadId(tid, packet.Subspan(2, packet.Size() - 2));
+
+                if (tid == AnyThread)
+                    tid = MyCoreId();
+
+                const uint8_t op = packet[1];
+                switch (op)
+                {
+                case 'g':
+                    inst.selectedThread = tid;
+                    return SendOk(inst);
+
+                case 'c':
+                    inst.continueThread = tid;
+                    return SendOk(inst);
+
+                default:
+                    return SendError(inst, GdbError::InvalidArg);
+                }
+            }
+        },
+        {
+            "T"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                CpuId tid;
+                ParseThreadId(tid, packet.Subspan(1, packet.Size() - 1));
+
+                if (tid == AnyThread || tid == AllThreads)
+                    return SendOk(inst);
+                if (tid >= GetDebugCpuCount())
+                    return SendError(inst, GdbError::InvalidArg);
 
                 return SendOk(inst);
             }
         },
         {
-            .text = "g"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            "g"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
             {
-                (void)data;
+                (void)packet;
 
-                if (inst.stopFrame == nullptr)
-                    return SendError(inst, ErrorValue::InternalError);
-
+                TrapFrame* frame = GetThreadFrame(inst, inst.selectedThread);
                 size_t head = 0;
-                size_t ret;
-                sl::Span<uint8_t> response = inst.builtinSendBuff;
 
-#ifdef __x86_64__
-                //https://github.com/bminor/binutils-gdb/blob/master/gdb/features/i386/64bit-core.xml
-                uint8_t buff[8];
-
-                //16 GPRs
-                for (size_t i = 0; i < 16; i++)
+                inst.sendBuf[head++] = '$';
+                for (size_t i = 0; i < GdbArchRegCount; i++)
                 {
-                    ret = AccessRegister(*inst.stopFrame, i, buff, true);
-                    head += PutRegister(inst, response.Subspan(head, -1),
-                        buff, ret, 8 - ret);
+                    const auto buff = 
+                        RwBuffer(inst.sendBuf + head, SendBufSize - head - 3);
+
+                    const size_t len = ReadRegister(buff, i, frame);
+                    if (len == 0)
+                        return SendError(inst, GdbError::InternalError);
+
+                    head += len;
                 }
+                inst.sendBuf[head++] = '#';
 
-                //rip + rflags
-                ret = AccessRegister(*inst.stopFrame, 0x300, buff, true);
-                head += PutRegister(inst, response.Subspan(head, -1), buff, 
-                    ret, 8 - ret);
-                ret = AccessRegister(*inst.stopFrame, 0x301, buff, true);
-                head += PutRegister(inst, response.Subspan(head, -1), buff,
-                    ret, 8 - ret);
-
-                //cs, ss, ds, es, fs, gs
-                ret = AccessRegister(*inst.stopFrame, 0x302, buff, true);
-                head += PutRegister(inst, response.Subspan(head, -1), buff,
-                    ret, 8 - ret);
-                ret = AccessRegister(*inst.stopFrame, 0x303, buff, true);
-                head += PutRegister(inst, response.Subspan(head, -1), buff,
-                    ret, 8 - ret);
-
-                //TODO: ds/es/fs/gs aren't supported, so return unknown for them
-                head += PutRegister(inst, response.Subspan(head, -1), buff,
-                    0, 8);
-                head += PutRegister(inst, response.Subspan(head, -1), buff,
-                    0, 8);
-                head += PutRegister(inst, response.Subspan(head, -1), buff,
-                    0, 8);
-                head += PutRegister(inst, response.Subspan(head, -1), buff,
-                    0, 8);
-#else
-#error "The GDB remote stub lacks an implementation for the 'g' packet"
-#endif
-
-                return CheckAndSend(inst, inst.builtinSendBuff, head);
-            },
+                return FlushPacket(inst, head);
+            }
         },
         {
-            .text = "Z"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
+            "G"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
             {
-                size_t head = 2;
+                TrapFrame* frame = GetThreadFrame(inst, inst.selectedThread);
 
-                const uint8_t type = data[1];
+                auto data = packet.Subspan(1, packet.Size() - 1);
+                size_t head = 0;
+
+                for (size_t i = 0; i < GdbArchRegCount; i++)
+                {
+                    const size_t bytes = CountRegBytes(GdbArchRegs[i]);
+                    if (data.Size() - head < bytes * 2)
+                        break;
+
+                    //we silently ignore failures to write to registers, this
+                    //is apparently fine?
+                    const auto value = data.Subspan(head, data.Size() - head);
+                    WriteRegister(i, frame, value);
+                    head += bytes * 2;
+                }
+
+                return SendOk(inst);
+            }
+        },
+        {
+            "p"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                uintptr_t regNum;
+                ParseHexInt(regNum, packet.Subspan(1, packet.Size() - 1));
+                if (regNum >= GdbArchRegCount)
+                    return SendError(inst, GdbError::InvalidArg);
+
+                TrapFrame* frame = GetThreadFrame(inst, inst.selectedThread);
+                size_t head = 0;
+
+                inst.sendBuf[head++] = '$';
+                const size_t count = ReadRegister(
+                    RwBuffer(inst.sendBuf + head, SendBufSize - head - 3),
+                    (size_t)regNum, frame);
+                if (count == 0)
+                    return SendError(inst, GdbError::InternalError);
+
+                head += count;
+                inst.sendBuf[head++] = '#';
+
+                return FlushPacket(inst, head);
+            }
+        },
+        {
+            "P"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                packet = packet.Subspan(1, -1);
+
+                uintptr_t regNum;
+                const size_t count = ParseHexInt(regNum, packet);
+                if (count == 0 || packet.Size() <= count 
+                    || packet[count] != '=')
+                    return SendError(inst, GdbError::MissingArg);
+                if (regNum >= GdbArchRegCount)
+                    return SendError(inst, GdbError::InvalidArg);
+
+                TrapFrame* frame = GetThreadFrame(inst, inst.selectedThread);
+                if (frame == nullptr)
+                    return SendError(inst, GdbError::InternalError);
+
+                const auto valueLen = packet.Size() - count - 1;
+                auto value = packet.Subspan(count + 1, valueLen);
+                auto result = WriteRegister((size_t)regNum, frame, value); 
+                if (result != NpkStatus::Success)
+                    return SendError(inst, GdbError::InvalidArg);
+
+                return SendOk(inst);
+            }
+        },
+        {
+            "m"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                packet  = packet.Subspan(1, packet.Size() - 1);
+
                 uintptr_t addr;
-                head += GetBytes(data.Subspan(head, -1), &addr, sizeof(addr));
-                uint8_t kind;
-                head += GetBytes(data.Subspan(head, -1), &kind, 1);
+                const size_t count = ParseHexInt(addr, packet);
+                if (count == 0 || packet.Size() <= count || packet[count] !=',')
+                    return SendError(inst, GdbError::MissingArg);
+
+                uintptr_t length;
+                packet = packet.Subspan(count + 1, -1);
+                ParseHexInt(length, packet);
+
+                if (length == 0)
+                    return SendUnsupported(inst);
+
+                const size_t maxBytes = (SendBufSize - 4) / 2;
+                if (length > maxBytes)
+                    length = maxBytes;
+
+                //We use the upper half of the send buffer as scratch space to
+                //store the read memory into, then encode it into the lower
+                //half. The encoded data takes twice as much space but this is
+                //fine as we have a local copy of the byte over writing its
+                //conversion to the buffer. This allows us to skip using an
+                //extra buffer.
+                auto store = reinterpret_cast<uint8_t*>(
+                    inst.sendBuf + SendBufSize / 2);
+                const bool abort = MemCopyExceptionAware(store, 
+                    reinterpret_cast<const void*>(addr), length);
+
+                if (abort)
+                    return SendError(inst, GdbError::BadAddress);
+
+                size_t head = 0;
+                inst.sendBuf[head++] = '$';
+                for (size_t i = 0; i < (size_t)length; i++)
+                {
+                    const auto value = store[i];
+
+                    inst.sendBuf[head++] = ToHex(value >> 4);
+                    inst.sendBuf[head++] = ToHex(value & 0xF);
+                }
+                inst.sendBuf[head++] = '#';
+
+                return FlushPacket(inst, head);
+            }
+        },
+        {
+            "M"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                packet = packet.Subspan(1, packet.Size() - 1);
+
+                uintptr_t addr;
+                const size_t count = ParseHexInt(addr, packet);
+                if (count == 0 || packet.Size() <= count || packet[count] !=',')
+                    return SendError(inst, GdbError::MissingArg);
+
+                uintptr_t length;
+                packet = packet.Subspan(count + 1, -1);
+                const size_t count2 = ParseHexInt(length, packet);
+                if (count2 == 0)
+                    return SendError(inst, GdbError::MissingArg);
+
+                const size_t colon = count2;
+                if (packet.Size() <= colon || packet[colon] != ':')
+                    return SendError(inst, GdbError::MissingArg);
+
+                packet = packet.Subspan(colon + 1, -1);
+
+                if (length == 0)
+                    return SendOk(inst);
+                if (packet.Size() < length * 2)
+                    return SendError(inst, GdbError::InvalidArg);
+
+                auto store = reinterpret_cast<uint8_t*>(
+                    inst.sendBuf + SendBufSize / 2);
+                for (size_t i = 0; i < length; i++)
+                {
+                    const size_t l = i * 2;
+
+                    if (!IsHexDigit(packet[l]) || !IsHexDigit(packet[l + 1]))
+                        return SendError(inst, GdbError::InvalidArg);
+
+                    store[i] = FromHex(packet[l]) << 4;
+                    store[i] |= FromHex(packet[l + 1]);
+                }
+
+                //TODO: do we want to arch-specific hooks here to make memory
+                //writable even when it normally wouldn't be?
+                const bool abort = MemCopyExceptionAware(
+                    reinterpret_cast<void*>(addr), store, length);
+                if (abort)
+                    return SendError(inst, GdbError::BadAddress);
+
+                return SendOk(inst);
+            }
+        },
+        {
+            "Z"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                GdbBreakpointArgs args;
+                auto result = ExtractZPacketArgs(args, packet);
+
+                if (result != NpkStatus::Success)
+                    return SendError(inst, GdbError::InvalidArg);
+
+                if (args.type >= TemplateCount)
+                    return SendUnsupported(inst);
 
                 Breakpoint* bp = AllocBreakpoint();
                 if (bp == nullptr)
-                    return SendError(inst, ErrorValue::InternalError);
+                    return SendError(inst, GdbError::InternalError);
 
-                bp->kind = kind;
-
-                switch (type)
-                {
-                case 0: //software breakpoint
-                    bp->execute = true;
-                    bp->hardware = false;
-                    break;
-                case 1: //hardware breakpoint
-                    bp->execute = true;
-                    bp->hardware = true;
-                    break;
-                case 2: //write watchpoint
-                    bp->write = true;
-                    break;
-                case 3: //read watchpoint
-                    bp->read = true;
-                    break;
-                case 4: //access (read | write) watchpoint
-                    bp->read = true;
-                    bp->write = true;
-                    break;
-                }
+                *bp = GdbBreakpointTemplates[args.type];
+                bp->addr = args.address;
+                bp->kind = args.kind;
 
                 if (!ArmBreakpoint(*bp))
                 {
                     FreeBreakpoint(&bp);
-                    return SendError(inst, ErrorValue::InternalError);
+                    return SendError(inst, GdbError::InternalError);
                 }
-
-                return SendOk(inst);
-            },
-        },
-        {
-            .text = "z"_span,
-            .Execute = [](GdbData& inst, sl::Span<const uint8_t> data) -> bool
-            {
-                size_t head = 2;
-
-                uintptr_t addr;
-                head += GetBytes(data.Subspan(head, -1), &addr, sizeof(addr));
-                uint8_t kind;
-                head += GetBytes(data.Subspan(head, -1), &kind, 1);
-                (void)kind;
-
-                Breakpoint* bp = GetBreakpointByAddr(addr);
-                if (bp == nullptr)
-                    return SendError(inst, ErrorValue::InvalidArg);
-
-                if (DisarmBreakpoint(*bp))
-                    return SendError(inst, ErrorValue::InternalError);
-                FreeBreakpoint(&bp);
 
                 return SendOk(inst);
             }
         },
+        {
+            "z"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                GdbBreakpointArgs args;
+                auto result = ExtractZPacketArgs(args, packet);
+                if (result != NpkStatus::Success)
+                    return SendError(inst, GdbError::InvalidArg);
+
+                //TODO: we should only remove breakpoints matching the type 
+                //+ kind fields.
+                Breakpoint* bp = GetBreakpointByAddr(args.address);
+                if (bp == nullptr)
+                    return SendError(inst, GdbError::InvalidArg);
+
+                if (!DisarmBreakpoint(*bp))
+                    return SendError(inst, GdbError::InternalError);
+
+                FreeBreakpoint(&bp);
+                return SendOk(inst);
+            }
+        },
+        {
+            "vCont?"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                const size_t len = (size_t)sl::SnPrintf((char*)inst.sendBuf,
+                    SendBufSize, "$vCont;c;C;s;S;r#");
+
+                return FlushPacket(inst, len);
+            }
+        },
+        {
+            "vCont;"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                constexpr uintptr_t StepBit = 1;
+                constexpr uintptr_t ExplicitBit = 2;
+                constexpr size_t pfxLen = sizeof("vCont;") - 1;
+
+                packet = packet.Subspan(pfxLen, -1);
+
+                const CpuId cpuCount = GetDebugCpuCount();
+                auto stores = GetCpuDebugStores();
+                for (size_t i = 0; i < stores.Size(); i++)
+                    stores[i] = 0;
+
+                bool defaultStep = false;
+                bool defaultIsRange = false;
+                uintptr_t defaultRangeStart = 0;
+                uintptr_t defaultRangeEnd = 0;
+                bool hasAction = false;
+                bool hasDefault = false;
+                while (!packet.Empty())
+                {
+                    uint8_t action = packet[0];
+                    packet = packet.Subspan(1, -1);
+
+                    //treat 'C'/'S' packets as 'c'/'s' since we have no signals
+                    //in the kernel.
+                    if (action == 'C' || action == 'S')
+                    {
+                        while (!packet.Empty() && IsHexDigit(packet[0]))
+                            packet = packet.Subspan(1, -1);
+
+                        if (action == 'C')
+                            action = 'c';
+                        else
+                            action = 's';
+                    }
+
+                    uintptr_t rangeStart = 0;
+                    uintptr_t rangeEnd = 0;
+                    if (action == 'r')
+                    {
+                        size_t count = ParseHexInt(rangeStart, packet);
+                        packet = packet.Subspan(count, -1);
+
+                        if (!packet.Empty() && packet[0] == ',')
+                        {
+                            packet = packet.Subspan(1, -1);
+                            count = ParseHexInt(rangeEnd, packet);
+                            packet = packet.Subspan(count, -1);
+                        }
+                    }
+
+                    //determine if this action is a default or applies to a
+                    //specific thread (which thread then?).
+                    CpuId tid = AllThreads;
+                    if (!packet.Empty() && packet[0] == ':')
+                    {
+                        packet = packet.Subspan(1, -1);
+                        const size_t count = ParseThreadId(tid, packet);
+                        packet = packet.Subspan(count, -1);
+                    }
+
+                    if (!packet.Empty() && packet[0] == ';')
+                        packet = packet.Subspan(1, -1);
+
+                    const bool doStep = (action == 's' || action == 'r');
+                    hasAction = true;
+
+                    if (tid == AllThreads || tid == AnyThread)
+                    {
+                        if (!hasDefault)
+                        {
+                            hasDefault = true;
+                            defaultStep = doStep;
+                            if (action == 'r')
+                            {
+                                defaultIsRange = true;
+                                defaultRangeStart = rangeStart;
+                                defaultRangeEnd = rangeEnd;
+                            }
+                        }
+                    }
+                    else if ((size_t)tid < (size_t)cpuCount)
+                    {
+                        auto& flags = stores[tid * 4 + CpuStoreFlags];
+                        if ((flags & ExplicitBit) != 0)
+                            continue;
+
+                        flags = ExplicitBit | (doStep ? StepBit : 0);
+                        if (action == 'r')
+                        {
+                            stores[tid * 4 + CpuStoreRangeStart] = rangeStart;
+                            stores[tid * 4 + CpuStoreRangeEnd] = rangeEnd;
+                        }
+                    }
+                }
+
+                if (!hasAction)
+                    return SendError(inst, GdbError::MissingArg);
+
+                for (CpuId i = 0; i < cpuCount; i++)
+                {
+                    const auto flags = stores[i * 4 + CpuStoreFlags];
+                    bool doStep = defaultStep;
+                    if (flags & ExplicitBit)
+                        doStep = (flags & StepBit) != 0;
+                    else if (defaultIsRange)
+                    {
+                        stores[i * 4 + CpuStoreRangeStart] = defaultRangeStart;
+                        stores[i * 4 + CpuStoreRangeEnd] = defaultRangeEnd;
+                    }
+
+                    if (!doStep)
+                        continue;
+
+                    auto* frame = GetThreadFrame(inst, i);
+                    if (frame != nullptr)
+                        HwSetSingleStep(*frame, true);
+                }
+
+                inst.breakCommandLoop = true;
+
+                return NpkStatus::Success;
+            }
+        },
+        {
+            "c"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                inst.breakCommandLoop = true;
+
+                return NpkStatus::Success;
+            }
+        },
+        {
+            "C"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                inst.breakCommandLoop = true;
+
+                return NpkStatus::Success;
+            }
+        },
+        {
+            "s"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                auto* frame = GetThreadFrame(inst, inst.continueThread);
+                if (frame != nullptr)
+                    HwSetSingleStep(*frame, true);
+                inst.breakCommandLoop = true;
+
+                return NpkStatus::Success;
+            }
+        },
+        {
+            "S"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                auto* frame = GetThreadFrame(inst, inst.continueThread);
+
+                if (frame != nullptr)
+                    HwSetSingleStep(*frame, true);
+                inst.breakCommandLoop = true;
+
+                return NpkStatus::Success;
+            }
+        },
+        {
+            "D"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                SendOk(inst);
+                inst.breakCommandLoop = true;
+                NotifyOfHostDisconnect();
+
+                return NpkStatus::Success;
+            }
+        },
+        {
+            "k"_span,
+            [](GdbData& inst, RoBuffer packet) -> NpkStatus
+            {
+                (void)packet;
+
+                inst.breakCommandLoop = true;
+                NotifyOfHostDisconnect();
+
+                return NpkStatus::Success;
+            }
+        },
     };
 
-    static bool ProcessPacket(GdbData& inst, sl::Span<const uint8_t> packet)
+    static NpkStatus ProcessPacket(GdbData& inst, RoBuffer data)
     {
-        const size_t commands = sizeof(GdbCommands) / sizeof(GdbCommand);
-        for (size_t i = 0; i < commands; i++)
-        {
-            const auto cmd = GdbCommands[i];
-            const size_t length = sl::Min(packet.Size(), cmd.text.Size());
+        constexpr size_t count = sizeof(GdbCommands) / sizeof(GdbCommands[0]);
 
-            if (0 != sl::MemCompare(packet.Begin(), cmd.text.Begin(), length))
+        for (size_t i = 0; i < count; i++)
+        {
+            const auto& cmd = GdbCommands[i];
+
+            if (data.Size() < cmd.prefix.Size())
+                continue;
+            if (sl::MemCompare(data.Begin(), cmd.prefix.Begin(),
+                cmd.prefix.Size()) != 0)
                 continue;
 
-            return cmd.Execute(inst, packet);
+            return cmd.Execute(inst, data);
         }
 
-        SendUnsupported(inst);
-        return false;
+        return SendUnsupported(inst);
     }
 
     static void DoCommandLoop(GdbData& inst)
@@ -667,68 +1559,106 @@ namespace Npk::Private
 
         while (!inst.breakCommandLoop)
         {
-            const auto recvLen = Receive(inst, inst.builtinRecvBuff);
+            const size_t recvLen = ReceivePacket(inst);
             if (recvLen == 0)
                 continue;
 
-            ProcessPacket(inst, { gdbData.builtinRecvBuff + 1, recvLen - 4 });
+            ProcessPacket(inst, { inst.recvBuf + 1, recvLen });
         }
     }
 
-    static DebugStatus GdbConnect(DebugProtocol* inst, DebugTransportList* ports)
+    static NpkStatus GdbConnect(DebugProtocol* proto, DebugTransportList* ports)
     {
-        (void)inst;
+        auto& gdb = *static_cast<GdbData*>(proto->opaque);
 
-        gdbData.selectedThread = AllThreads;
+        gdb.selectedThread = (CpuId)MyCoreId();
+        gdb.continueThread = AllThreads;
+        gdb.threadListHead = 0;
+        gdb.stopFrame = nullptr;
+        gdb.stopSignal = 5;
+        gdb.stopBreakpoint = nullptr;
+        gdb.stopBreakpointType = BreakpointType::Manual;
+        gdb.noAck = false;
+        gdb.breakCommandLoop = false;
+        sl::MemSet(&gdb.peerFeatures, 0, sizeof(gdb.peerFeatures));
 
         for (auto it = ports->Begin(); it != ports->End(); ++it)
         {
-            gdbData.transport = &*it;
+            gdb.transport = &*it;
 
-            const auto recvLen = Receive(gdbData, gdbData.builtinRecvBuff);
-            if (recvLen == 0)
+            const size_t dataLen = ReceivePacket(gdb);
+            if (dataLen == 0)
             {
-                gdbData.transport = nullptr;
+                gdb.transport = nullptr;
                 continue;
             }
 
-            //there's a debug host on the other end of this transport! It's
-            //sent us a command - we should process and respond.
-            ProcessPacket(gdbData, { gdbData.builtinRecvBuff + 1, recvLen - 4});
-            break;
+            //we found a transport with someone on the other end, process the
+            //first packet manually and then enter the command processor loop.
+            ProcessPacket(gdb, { gdb.recvBuf + 1, dataLen });
+            DoCommandLoop(gdb);
+
+            return NpkStatus::Success;
         }
 
-        if (gdbData.transport == nullptr)
-            return DebugStatus::BadEnvironment;
+        gdb.transport = nullptr;
 
-        DoCommandLoop(gdbData);
-        return DebugStatus::Success;
+        return NpkStatus::NotAvailable;
     }
 
-    static void GdbDisconnect(DebugProtocol* inst)
+    static void GdbDisconnect(DebugProtocol* proto)
     {
-        SL_UNREACHABLE(); (void)inst;
+        ClearAllBreakpoints();
+
+        auto stores = GetCpuDebugStores();
+        for (size_t i = 0; i < stores.Size(); i++)
+            stores[i] = 0;
+
+        auto& gdb = *static_cast<GdbData*>(proto->opaque);
+        gdb.transport = nullptr;
     }
 
-    static DebugStatus GdbBreakpointHit(DebugProtocol* inst, Breakpoint* bp, 
-        TrapFrame* frame)
+    static NpkStatus GdbBreakpointHit(DebugProtocol* proto, BreakpointType type,
+        Breakpoint* bp, TrapFrame* frame)
     {
-        (void)bp;
+        auto& gdb = *static_cast<GdbData*>(proto->opaque);
 
-        auto gdbData = static_cast<GdbData*>(inst->opaque);
-        DebugStatus result = DebugStatus::Success;
+        if (type == BreakpointType::SingleStep)
+        {
+            HwSetSingleStep(*frame, false);
 
-        gdbData->stopFrame = frame;
-        SendStopReason(*gdbData, 5, MyCoreId());
+            const CpuId cpu = MyCoreId();
+            auto stores = GetCpuDebugStores();
+            const uintptr_t rangeEnd = stores[cpu * 4 + CpuStoreRangeEnd];
+            if (rangeEnd != 0)
+            {
+                const uintptr_t pc = GetTrapReturnAddr(frame);
+                if (pc >= stores[cpu * 4 + CpuStoreRangeStart] && pc < rangeEnd)
+                {
+                    HwSetSingleStep(*frame, true);
+                    return NpkStatus::Success;
+                }
+                stores[cpu * 4 + CpuStoreRangeEnd] = 0;
+            }
+        }
 
-        gdbData->stopFrame = nullptr;
-        return result;
+        gdb.stopFrame = frame;
+        gdb.stopSignal = 5;
+        gdb.stopBreakpoint = bp;
+
+        SendStopReason(gdb);
+        DoCommandLoop(gdb);
+
+        gdb.stopFrame = nullptr;
+        gdb.stopBreakpoint = nullptr;
+
+        return NpkStatus::Success;
     }
 
     DebugProtocol gdbProtocol
     {
         .name = "gdb-remote",
-        .opaque = &gdbData,
+        .opaque = &gdbInst,
         .Connect = GdbConnect,
         .Disconnect = GdbDisconnect,
         .BreakpointHit = GdbBreakpointHit,

@@ -3,61 +3,88 @@
 
 namespace Npk
 {
-    static DebugStatus HandleBreakpoint(DebugProtocol& proto, void* data)
+    using namespace Private;
+
+    static NpkStatus DoDisconnect(DebugProtocol* proto)
     {
-        auto arg = static_cast<BreakpointEventArg*>(data);
+        debugHostWantsDisconnect = false;
+        proto->Disconnect(proto);
+        debugEventsMask.Store(DebugEventType::Connect, sl::Release);
 
-        const auto bp = Private::GetBreakpointByAddr(arg->addr);
-        if (bp == nullptr)
-            return DebugStatus::InvalidBreakpoint;
-
-        return proto.BreakpointHit(&proto, bp, arg->frame);
+        return NpkStatus::Success;
     }
 
-    extern "C" 
-    DebugStatus DebugEventOccurred(DebugEventType what, void* data)
+    extern "C"
+    NpkStatus DebugEventOccurred(DebugEventType what, void* data)
     {
-        if (!Private::debuggerInitialized)
-        {
-            if (what != DebugEventType::Init)
-                return DebugStatus::NotSupported;
+        if (data == nullptr)
+            return NpkStatus::InvalidArg;
 
-            DebugStatus result = DebugStatus::Success;
+        auto* proto = debugProtocol;
+        FreezeAllCpus(true);
 
-            FreezeAllCpus(true);
-            RunOnFrozenCpus(Private::DebuggerPerCpuInit, &result, true);
-            ThawAllCpus();
-
-            //TODO: init memory for debugger allocators to use
-            if (result == DebugStatus::Success)
-                Private::debuggerInitialized = true;
-            return result;
-        }
-
-        auto prevCycleAccount = SetCycleAccount(CycleAccount::Debugger);
-        Private::debugCpusCount = FreezeAllCpus(true);
-        auto proto = Private::debugProtocol;
-
-        auto result = DebugStatus::NotSupported;
+        auto result = NpkStatus::Unsupported;
         switch (what)
         {
+        case DebugEventType::Init:
+            {
+                auto* arg = static_cast<InitEventArg*>(data);
+                InitInternalDebuggerApi(arg);
+
+                sl::Atomic<NpkStatus> atomicStatus = NpkStatus::Success;
+                RunOnFrozenCpus(DebuggerPerCpuInit, &atomicStatus, true);
+
+                result = atomicStatus.Load(sl::Acquire);
+                if (result == NpkStatus::Success)
+                    debugEventsMask.Store(DebugEventType::Connect, sl::Release);
+
+                break;
+            }
+
         case DebugEventType::Connect:
-            Private::debugTransportsLock.Lock();
-            result = proto->Connect(proto, &Private::debugTransports);
-            Private::debugTransportsLock.Unlock();
+            {
+                auto* arg = static_cast<ConnectEventArg*>(data);
+
+                //TODO: respect timeout
+                result = proto->Connect(proto, arg->transports);
+                if (result == NpkStatus::Success)
+                {
+                    DebugEventTypes flags {};
+                    flags.Set(DebugEventType::Breakpoint);
+                    flags.Set(DebugEventType::Disconnect);
+
+                    debugEventsMask.Store(flags, sl::Release);
+                }
+                break;
+            }
+
+        case DebugEventType::Disconnect:
+            result = DoDisconnect(proto);
             break;
 
         case DebugEventType::Breakpoint:
-            result = HandleBreakpoint(*proto, data);
-            break;
+            {
+                auto* arg = static_cast<BreakpointEventArg*>(data);
+                const auto bp = GetBreakpointByAddr(arg->addr);
+
+                if (bp == nullptr && arg->type == BreakpointType::Breakpoint)
+                {
+                    result = NpkStatus::InvalidArg;
+                    break;
+                }
+                
+                result = proto->BreakpointHit(proto, arg->type, bp, arg->frame);
+                break;
+            }
 
         default:
-            Log("Unknown debug event: %u", LogLevel::Error, (unsigned)what);
             break;
         }
 
+        if (debugHostWantsDisconnect)
+            DoDisconnect(proto);
+
         ThawAllCpus();
-        SetCycleAccount(prevCycleAccount);
 
         return result;
     }

@@ -3,11 +3,11 @@ KERNEL_CXX_SRCS += Status.cpp \
 	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp \
 	core/Panic.cpp core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
 	core/Worker.cpp\
-	debugger/Event.cpp debugger/GdbRemote.cpp debugger/InternalApi.cpp \
-	debugger/LocalApi.cpp \
+	debugger/EnclaveApi.cpp debugger/Event.cpp debugger/GdbRemote.cpp \
+	debugger/KernelApi.cpp \
 	entry/Allocators.cpp entry/BringUp.cpp entry/ConfigRoot.cpp \
 	entry/EfiRuntime.cpp entry/InitProgram.cpp \
-	io/Continuation.cpp io/Packet.cpp \
+	io/Interfaces.cpp io/Packet.cpp \
 	lib/Memory.cpp lib/Printf.cpp lib/Time.cpp lib/Units.cpp \
 	loader/Elf.cpp loader/Filter.cpp \
 	namespace/Handles.cpp namespace/Objects.cpp \
@@ -32,27 +32,30 @@ endif
 BAKED_CONSTANTS_FILE = BakedConstants.cpp
 UNITY_SOURCE_FILE = $(BUILD_DIR)/kernel/GeneratedUnitySource.cpp
 KERNEL_LD_SCRIPT = kernel/$(PLAT_DIR)/Linker.lds
-KERNEL_OBJS = $(patsubst %.S, $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_AS_SRCS)) 
+KERNEL_OBJS = $(patsubst \
+	%.S, $(BUILD_DIR)/kernel/%.S.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_AS_SRCS)) 
 ifeq ($(KERNEL_UNITY_BUILD), yes)
 	KERNEL_OBJS += $(patsubst %.cpp, $(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o, $(UNITY_SOURCE_FILE))
-	KERNEL_CXX_FLAGS += -Ikernel -Ilibs
+	KERNEL_CXX_FLAGS += -Ikernel
 else
 	KERNEL_OBJS += $(patsubst %.cpp, $(BUILD_DIR)/kernel/%.cpp.$(KERNEL_CXX_FLAGS_HASH).o, $(KERNEL_CXX_SRCS))
 endif
 
 $(KERNEL_TARGET): $(KERNEL_OBJS) $(KERNEL_LD_SCRIPT)
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Linking ...\n"
-	$(LOUD)$(X_LD_BIN) $(KERNEL_OBJS) $(KERNEL_LD_FLAGS) -T $(KERNEL_LD_SCRIPT) -o $(KERNEL_TARGET)
+	$(LOUD)$(X_LD_BIN) $(KERNEL_OBJS) $(KERNEL_LD_FLAGS) \
+		-T $(KERNEL_LD_SCRIPT) -o $(KERNEL_TARGET)
 	@printf "$(C_BLUE)[Kernel]$(C_RST) $(C_GREEN)Done.$(C_RST)\n"
 
 .PHONY: $(UNITY_SOURCE_FILE)
 $(UNITY_SOURCE_FILE): kernel/$(BAKED_CONSTANTS_FILE)
 	@mkdir -p $(@D)
 	$(file > $(UNITY_SOURCE_FILE))
-	$(foreach S, $(KERNEL_CXX_SRCS), $(shell printf "#include <$S>\n" >> $(UNITY_SOURCE_FILE)))
+	$(foreach S, $(KERNEL_CXX_SRCS), \
+		$(shell printf "#include <$S>\n" >> $(UNITY_SOURCE_FILE)))
 
 $(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o: $(UNITY_SOURCE_FILE)
-	@printf "$(C_BLUE)[Kernel]$(C_RST) Compiling unity build source file: $<\n"
+	@printf "$(C_BLUE)[Kernel]$(C_RST) Compiling unity source file: $<\n"
 	@mkdir -p $(@D)
 	$(LOUD)$(X_CXX_BIN) $(KERNEL_CXX_FLAGS) -c $< -o $@
 
