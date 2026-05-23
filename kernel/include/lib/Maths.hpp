@@ -257,9 +257,15 @@ namespace sl
         T variance = 0;
         for (size_t i = 0; i < data.Size(); i++)
         {
-            variance += ((data[i] - mean) * (data[i] - mean) 
-                / (data.Size() - 1));
+            T diff;
+
+            if (data[i] >= mean)
+                diff = data[i] - mean;
+            else
+                diff = mean - data[i];
+            variance += diff * diff;
         }
+        variance /= (data.Size() - 1);
 
         return SquareRoot(variance);
     }

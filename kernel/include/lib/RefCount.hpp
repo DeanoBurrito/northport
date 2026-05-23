@@ -2,6 +2,7 @@
 
 #include "Types.hpp"
 #include "Atomic.hpp"
+#include "Compiler.hpp"
 
 namespace sl
 {
@@ -24,7 +25,7 @@ namespace sl
                 return true;
         }
 
-        return false;
+        SL_UNREACHABLE();
     }
 
     template<typename T, RefCount T::*refs>

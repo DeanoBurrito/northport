@@ -208,7 +208,7 @@ namespace sl
             {
                 auto prev = it;
                 ++it;
-                if (LessThan(value, &*it))
+                if (it == End() || LessThan(value, &*it))
                     return InsertAfter(prev, value);
             }
         }
