@@ -1349,6 +1349,7 @@ namespace Npk::Private
                 uintptr_t defaultRangeEnd = 0;
                 bool hasAction = false;
                 bool hasDefault = false;
+
                 while (!packet.Empty())
                 {
                     uint8_t action = packet[0];
@@ -1404,6 +1405,7 @@ namespace Npk::Private
                         {
                             hasDefault = true;
                             defaultStep = doStep;
+
                             if (action == 'r')
                             {
                                 defaultIsRange = true;
@@ -1412,17 +1414,21 @@ namespace Npk::Private
                             }
                         }
                     }
-                    else if ((size_t)tid < (size_t)cpuCount)
+                    else if (tid < cpuCount)
                     {
-                        auto& flags = stores[tid * 4 + CpuStoreFlags];
+                        auto* baseStore = &stores[tid * PerCpuStorePointers];
+
+                        auto& flags = baseStore[CpuStoreFlags];
                         if ((flags & ExplicitBit) != 0)
                             continue;
+                        flags = ExplicitBit;
+                        if (doStep)
+                            flags |= StepBit;
 
-                        flags = ExplicitBit | (doStep ? StepBit : 0);
                         if (action == 'r')
                         {
-                            stores[tid * 4 + CpuStoreRangeStart] = rangeStart;
-                            stores[tid * 4 + CpuStoreRangeEnd] = rangeEnd;
+                            baseStore[CpuStoreRangeStart] = rangeStart;
+                            baseStore[CpuStoreRangeEnd] = rangeEnd;
                         }
                     }
                 }
@@ -1432,14 +1438,16 @@ namespace Npk::Private
 
                 for (CpuId i = 0; i < cpuCount; i++)
                 {
-                    const auto flags = stores[i * 4 + CpuStoreFlags];
+                    auto* baseStore = &stores[i * PerCpuStorePointers];
+
+                    const auto flags = baseStore[CpuStoreFlags];
                     bool doStep = defaultStep;
                     if (flags & ExplicitBit)
                         doStep = (flags & StepBit) != 0;
                     else if (defaultIsRange)
                     {
-                        stores[i * 4 + CpuStoreRangeStart] = defaultRangeStart;
-                        stores[i * 4 + CpuStoreRangeEnd] = defaultRangeEnd;
+                        baseStore[CpuStoreRangeStart] = defaultRangeStart;
+                        baseStore[CpuStoreRangeEnd] = defaultRangeEnd;
                     }
 
                     if (!doStep)
@@ -1629,16 +1637,20 @@ namespace Npk::Private
 
             const CpuId cpu = MyCoreId();
             auto stores = GetCpuDebugStores();
-            const uintptr_t rangeEnd = stores[cpu * 4 + CpuStoreRangeEnd];
+            auto* store = &stores[cpu * PerCpuStorePointers];
+
+            const uintptr_t rangeEnd = store[CpuStoreRangeEnd];
             if (rangeEnd != 0)
             {
                 const uintptr_t pc = GetTrapReturnAddr(frame);
-                if (pc >= stores[cpu * 4 + CpuStoreRangeStart] && pc < rangeEnd)
+                if (pc >= store[CpuStoreRangeStart] && pc < rangeEnd)
                 {
                     HwSetSingleStep(*frame, true);
+
                     return NpkStatus::Success;
                 }
-                stores[cpu * 4 + CpuStoreRangeEnd] = 0;
+
+                store[CpuStoreRangeEnd] = 0;
             }
         }
 
