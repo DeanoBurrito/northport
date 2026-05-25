@@ -446,7 +446,11 @@ R"(                                             888                      )"
         SetConfigRoot(loadState);
         TryMapAcpiTables(virtBase);
         if (loadState.efi.HasValue())
-            TryEnableEfiRuntimeServices(*loadState.efi, virtBase);
+        {
+            auto result = TryEnableEfiRuntimeServices(*loadState.efi, virtBase);
+            if (result != NpkStatus::Success)
+                NPK_UNEXPECTED_STATUS(result, LogLevel::Error);
+        }
         else
             Log("EFI runtime services not available.", LogLevel::Info);
 
@@ -454,7 +458,7 @@ R"(                                             888                      )"
         ArchInitFull(virtBase);
         PlatInitFull(virtBase);
         HwBootAps(virtBase, smpData);
-        InitDebugger();
+        InitDebugger(virtBase);
 
         ThreadContext idleContext {};
         BringCpuOnline(&idleContext);

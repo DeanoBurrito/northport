@@ -279,6 +279,12 @@ namespace Npk
      */
     bool GetTrapIsUserContext(const TrapFrame* frame);
 
+    /* Represents a valid but empty trap frame struct. This is intended for use
+     * with APIs that require a valid trap frame when the caller cannot provide
+     * one.
+     */
+    TrapFrame* IdentityTrapFrame();
+
     /* Returns a pointer to the context of the currently executing thread.
      */
     SL_ALWAYS_INLINE

@@ -54,6 +54,7 @@ namespace Npk::Private
     void DebuggerPanic(const char* format, ...)
     {
         sl::PPrintf(LogRingPutc, nullptr, "DEBUGGER PANIC: ");
+
         va_list args;
         va_start(args, format);
         sl::VpPrintf(LogRingPutc, nullptr, format, args);

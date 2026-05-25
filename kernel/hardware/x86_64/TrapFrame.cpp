@@ -22,4 +22,13 @@ namespace Npk
     {
         return frame->iret.cs != 0x8;
     }
+
+    static TrapFrame identityFrame;
+
+    TrapFrame* IdentityTrapFrame()
+    {
+        sl::MemSet(&identityFrame, 0, sizeof(TrapFrame));
+
+        return &identityFrame;
+    }
 }

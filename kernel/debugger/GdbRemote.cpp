@@ -19,7 +19,6 @@ namespace Npk::Private
     constexpr const char* GdbRegTypeInt64 = "int64";
     constexpr const char* GdbRegTypeDataPtr = "data_ptr";
     constexpr const char* GdbRegTypeCodePtr = "code_ptr";
-    constexpr const char* GdbRegTypeI386Flags = "i386_eflags";
 
     struct GdbArchReg
     {
@@ -36,11 +35,12 @@ namespace Npk::Private
      * on the current system. For invalid registers the static register width
      * defined here is used for communicating with GDB, since 
      * `HwGetRegisterWidth()` will always return 0 for them.
-     * This table (`GdbArchRegs`) **must** be ordered such that a register's
-     * index matches the GDB register number.
      */
 
 #ifdef __x86_64__
+    constexpr const char* GdbRegTypeI386Flags = "x86_flags";
+    constexpr const char* GdbRegTypeI387Ext = "i387_ext";
+
     constexpr GdbArchReg GdbArchRegs[] =
     {
         { true, HwReg_rax, "rax", GdbRegTypeInt64, 64 },
@@ -51,8 +51,8 @@ namespace Npk::Private
         { true, HwReg_rdi, "rdi", GdbRegTypeInt64, 64 },
         { true, HwReg_rbp, "rbp", GdbRegTypeDataPtr, 64 },
         { true, HwReg_rsp, "rsp", GdbRegTypeDataPtr, 64 },
-        { true, HwReg_r8 , "r8" , GdbRegTypeInt64, 64 },
-        { true, HwReg_r9 , "r9" , GdbRegTypeInt64, 64 },
+        { true, HwReg_r8 , "r8", GdbRegTypeInt64, 64 },
+        { true, HwReg_r9 , "r9", GdbRegTypeInt64, 64 },
         { true, HwReg_r10, "r10", GdbRegTypeInt64, 64 },
         { true, HwReg_r11, "r11", GdbRegTypeInt64, 64 },
         { true, HwReg_r12, "r12", GdbRegTypeInt64, 64 },
@@ -61,18 +61,102 @@ namespace Npk::Private
         { true, HwReg_r15, "r15", GdbRegTypeInt64, 64 },
         { true, HwReg::ProgramCounter, "rip", GdbRegTypeCodePtr, 64 },
         { true, HwReg::Flags, "eflags", GdbRegTypeI386Flags, 32 },
-        { true, HwReg_cs , "cs" , GdbRegTypeInt32, 32 },
-        { true, HwReg_ss , "ss" , GdbRegTypeInt32, 32 },
-        { true, HwReg_ds , "ds" , GdbRegTypeInt32, 32 },
-        { true, HwReg_es , "es" , GdbRegTypeInt32, 32 },
-        { true, HwReg_fs , "fs" , GdbRegTypeInt32, 32 },
-        { true, HwReg_gs , "gs" , GdbRegTypeInt32, 32 },
+        { true, HwReg_cs, "cs", GdbRegTypeInt32, 32 },
+        { true, HwReg_ss, "ss", GdbRegTypeInt32, 32 },
+        { true, HwReg_ds, "ds", GdbRegTypeInt32, 32 },
+        { true, HwReg_es, "es", GdbRegTypeInt32, 32 },
+        { true, HwReg_fs, "fs", GdbRegTypeInt32, 32 },
+        { true, HwReg_gs, "gs", GdbRegTypeInt32, 32 },
+        { false, {}, "st0", GdbRegTypeI387Ext, 80 },
+        { false, {}, "st1", GdbRegTypeI387Ext, 80 },
+        { false, {}, "st2", GdbRegTypeI387Ext, 80 },
+        { false, {}, "st3", GdbRegTypeI387Ext, 80 },
+        { false, {}, "st4", GdbRegTypeI387Ext, 80 },
+        { false, {}, "st5", GdbRegTypeI387Ext, 80 },
+        { false, {}, "st6", GdbRegTypeI387Ext, 80 },
+        { false, {}, "st7", GdbRegTypeI387Ext, 80 },
+        { false, {}, "fctrl", GdbRegTypeInt32, 32 },
+        { false, {}, "fstat", GdbRegTypeInt32, 32 },
+        { false, {}, "ftag", GdbRegTypeInt32, 32 },
+        { false, {}, "fiseg", GdbRegTypeInt32, 32 },
+        { false, {}, "fioff", GdbRegTypeInt32, 32 },
+        { false, {}, "foseg", GdbRegTypeInt32, 32 },
+        { false, {}, "fooff", GdbRegTypeInt32, 32 },
+        { false, {}, "fop", GdbRegTypeInt32, 32 },
+        { false, {}, "xmm0", "vec128", 128 },
+        { false, {}, "xmm1", "vec128", 128 },
+        { false, {}, "xmm2", "vec128", 128 },
+        { false, {}, "xmm3", "vec128", 128 },
+        { false, {}, "xmm4", "vec128", 128 },
+        { false, {}, "xmm5", "vec128", 128 },
+        { false, {}, "xmm6", "vec128", 128 },
+        { false, {}, "xmm7", "vec128", 128 },
+        { false, {}, "xmm8", "vec128", 128 },
+        { false, {}, "xmm9", "vec128", 128 },
+        { false, {}, "xmm10", "vec128", 128 },
+        { false, {}, "xmm11", "vec128", 128 },
+        { false, {}, "xmm12", "vec128", 128 },
+        { false, {}, "xmm13", "vec128", 128 },
+        { false, {}, "xmm14", "vec128", 128 },
+        { false, {}, "xmm15", "vec128", 128 },
+        { false, {}, "mxcsr", "x86_mxcsr", 32 },
     };
 
     constexpr const char* GdbArchName = "i386:x86-64";
     constexpr const char* GdbArchFeature = "org.gnu.gdb.i386.core";
-    constexpr size_t GdbArchRegCount = 
+    constexpr size_t GdbArchRegCount =
         sizeof(GdbArchRegs) / sizeof(GdbArchRegs[0]);
+
+    constexpr const char* GdbArchHeader =
+        "    <flags id=\"x86_flags\" size=\"4\">\n"
+        "      <field name=\"CF\" start=\"0\" end=\"0\"/>\n"
+        "      <field name=\"PF\" start=\"2\" end=\"2\"/>\n"
+        "      <field name=\"AF\" start=\"4\" end=\"4\"/>\n"
+        "      <field name=\"ZF\" start=\"6\" end=\"6\"/>\n"
+        "      <field name=\"SF\" start=\"7\" end=\"7\"/>\n"
+        "      <field name=\"TF\" start=\"8\" end=\"8\"/>\n"
+        "      <field name=\"IF\" start=\"9\" end=\"9\"/>\n"
+        "      <field name=\"DF\" start=\"10\" end=\"10\"/>\n"
+        "      <field name=\"OF\" start=\"11\" end=\"11\"/>\n"
+        "      <field name=\"IOPL\" start=\"12\" end=\"13\"/>\n"
+        "      <field name=\"NT\" start=\"14\" end=\"14\"/>\n"
+        "      <field name=\"RF\" start=\"16\" end=\"16\"/>\n"
+        "      <field name=\"VM\" start=\"17\" end=\"17\"/>\n"
+        "      <field name=\"AC\" start=\"18\" end=\"18\"/>\n"
+        "      <field name=\"VIF\" start=\"19\" end=\"19\"/>\n"
+        "      <field name=\"VIP\" start=\"20\" end=\"20\"/>\n"
+        "      <field name=\"ID\" start=\"21\" end=\"21\"/>\n"
+        "    </flags>\n"
+        "    <vector id=\"v4f\" type=\"ieee_single\" count=\"4\"/>\n"
+        "    <vector id=\"v2d\" type=\"ieee_double\" count=\"2\"/>\n"
+        "    <vector id=\"v16i8\" type=\"int8\" count=\"16\"/>\n"
+        "    <vector id=\"v8i16\" type=\"int16\" count=\"8\"/>\n"
+        "    <vector id=\"v4i32\" type=\"int32\" count=\"4\"/>\n"
+        "    <vector id=\"v2i64\" type=\"int64\" count=\"2\"/>\n"
+        "    <union id=\"vec128\">\n"
+        "      <field name=\"v4_float\" type=\"v4f\"/>\n"
+        "      <field name=\"v2_double\" type=\"v2d\"/>\n"
+        "      <field name=\"v16_int8\" type=\"v16i8\"/>\n"
+        "      <field name=\"v8_int16\" type=\"v8i16\"/>\n"
+        "      <field name=\"v4_int32\" type=\"v4i32\"/>\n"
+        "      <field name=\"v2_int64\" type=\"v2i64\"/>\n"
+        "    </union>\n"
+        "    <flags id=\"x86_mxcsr\" size=\"4\">\n"
+        "      <field name=\"IE\" start=\"0\" end=\"0\"/>\n"
+        "      <field name=\"DE\" start=\"1\" end=\"1\"/>\n"
+        "      <field name=\"ZE\" start=\"2\" end=\"2\"/>\n"
+        "      <field name=\"OE\" start=\"3\" end=\"3\"/>\n"
+        "      <field name=\"UE\" start=\"4\" end=\"4\"/>\n"
+        "      <field name=\"PE\" start=\"5\" end=\"5\"/>\n"
+        "      <field name=\"DAZ\" start=\"6\" end=\"6\"/>\n"
+        "      <field name=\"IM\" start=\"7\" end=\"7\"/>\n"
+        "      <field name=\"DM\" start=\"8\" end=\"8\"/>\n"
+        "      <field name=\"ZM\" start=\"9\" end=\"9\"/>\n"
+        "      <field name=\"OM\" start=\"10\" end=\"10\"/>\n"
+        "      <field name=\"UM\" start=\"11\" end=\"11\"/>\n"
+        "      <field name=\"PM\" start=\"12\" end=\"12\"/>\n"
+        "      <field name=\"FZ\" start=\"15\" end=\"15\"/>\n"
+        "    </flags>\n";
 #else
 #error "GdbRemote.cpp: Unknown architecture, lacking register table"
 #endif
@@ -591,6 +675,12 @@ namespace Npk::Private
             "  <feature name=\"%s\">\n",
             GdbArchName, GdbArchFeature);
 
+        if (advance == 0)
+            return 0;
+        head += static_cast<size_t>(advance);
+
+        advance = sl::SnPrintf(buffer + head, bufSize - head, "%s", 
+            GdbArchHeader);
         if (advance == 0)
             return 0;
         head += static_cast<size_t>(advance);
@@ -1575,14 +1665,16 @@ namespace Npk::Private
         }
     }
 
-    static NpkStatus GdbConnect(DebugProtocol* proto, DebugTransportList* ports)
+    static NpkStatus GdbConnect(DebugProtocol* proto, DebugTransportList* ports,
+        sl::TimeCount timeout)
     {
         auto& gdb = *static_cast<GdbData*>(proto->opaque);
 
+        //TODO: respect timeout
         gdb.selectedThread = (CpuId)MyCoreId();
         gdb.continueThread = AllThreads;
         gdb.threadListHead = 0;
-        gdb.stopFrame = nullptr;
+        gdb.stopFrame = IdentityTrapFrame();
         gdb.stopSignal = 5;
         gdb.stopBreakpoint = nullptr;
         gdb.stopBreakpointType = BreakpointType::Manual;
@@ -1605,10 +1697,12 @@ namespace Npk::Private
             //first packet manually and then enter the command processor loop.
             ProcessPacket(gdb, { gdb.recvBuf + 1, dataLen });
             DoCommandLoop(gdb);
+            gdb.stopFrame = nullptr;
 
             return NpkStatus::Success;
         }
 
+        gdb.stopFrame = nullptr;
         gdb.transport = nullptr;
 
         return NpkStatus::NotAvailable;

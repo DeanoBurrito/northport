@@ -220,7 +220,7 @@ namespace Npk
             DumpWordsAt(GetTrapStackPtr(frame), 8);
         }
 
-        ConnectDebugger();
+        ConnectDebugger(sl::NoTimeout);
         DebugBreakpoint();
 
         while (true)

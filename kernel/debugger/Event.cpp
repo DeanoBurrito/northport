@@ -45,8 +45,7 @@ namespace Npk
             {
                 auto* arg = static_cast<ConnectEventArg*>(data);
 
-                //TODO: respect timeout
-                result = proto->Connect(proto, arg->transports);
+                result = proto->Connect(proto, arg->transports, arg->timeout);
                 if (result == NpkStatus::Success)
                 {
                     DebugEventTypes flags {};

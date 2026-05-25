@@ -82,6 +82,25 @@ namespace Npk
         if (index > 3)
             return;
 
+        switch (index)
+        {
+        case 0:
+            WRITE_DR(0, value);
+            return;
+
+        case 1:
+            WRITE_DR(1, value);
+            return;
+
+        case 2:
+            WRITE_DR(2, value);
+            return;
+
+        case 3:
+            WRITE_DR(3, value);
+            return;
+
+        }
         WRITE_DR(index, value);
     }
 
@@ -179,6 +198,13 @@ namespace Npk
 
         switch (reg)
         {
+        case HwReg::ProgramCounter:
+            source = &frame.iret.rip;
+            break;
+        case HwReg::Flags:
+            store = frame.iret.flags & 0xFFFF'FFFF;
+            source = &store;
+            break;
         case HwReg_rax:
             source = &frame.rax;
             break;
@@ -197,9 +223,11 @@ namespace Npk
         case HwReg_rsi:
             source = &frame.rsi;
             break;
+        case HwReg::FramePointer:
         case HwReg_rbp:
             source = &frame.rbp;
             break;
+        case HwReg::StackPointer:
         case HwReg_rsp:
             source = &frame.iret.rsp;
             break;
@@ -284,6 +312,39 @@ namespace Npk
     {
         switch (reg)
         {
+        case HwReg::ProgramCounter:
+        case HwReg::StackPointer:
+        case HwReg::FramePointer:
+            return 8;
+        case HwReg::Flags:
+            return 4;
+
+        case HwReg_rax:
+        case HwReg_rbx:
+        case HwReg_rcx:
+        case HwReg_rdx:
+        case HwReg_rdi:
+        case HwReg_rsi:
+        case HwReg_rbp:
+        case HwReg_rsp:
+        case HwReg_r8:
+        case HwReg_r9:
+        case HwReg_r10:
+        case HwReg_r11:
+        case HwReg_r12:
+        case HwReg_r13:
+        case HwReg_r14:
+        case HwReg_r15:
+            return 8;
+
+        case HwReg_cs:
+        case HwReg_ss:
+        case HwReg_ds:
+        case HwReg_es:
+        case HwReg_fs:
+        case HwReg_gs:
+            return 4;
+
         default:
             return 0;
         }

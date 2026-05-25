@@ -75,7 +75,8 @@ namespace Npk
          * transport. Upon success the protocol should attach itself to the
          * transport and keep track of which transport it selected.
          */
-        NpkStatus (*Connect)(DebugProtocol* inst, DebugTransportList* ports);
+        NpkStatus (*Connect)(DebugProtocol* inst, DebugTransportList* ports,
+            sl::TimeCount timeout);
 
         /* Informs the protocol the kernel wants to disconnect from any debug
          * controllers. This function is always assumed to succeed and the
