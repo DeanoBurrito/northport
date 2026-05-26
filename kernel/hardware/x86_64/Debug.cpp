@@ -4,7 +4,6 @@
 #include <private/Debugger.hpp>
 #include <lib/Memory.hpp>
 
-//TODO: too many magic numbers!
 namespace Npk
 {
     constexpr uint8_t BindSwBreakpoint = 0xFF;
@@ -65,7 +64,7 @@ namespace Npk
 
         dr7 &= ~0xFF; //disable local and global matching of hw breakpoints.
         dr7 |= (1 << 8) | (1 << 9); //enable exact matches for breakpoints.
-        dr7 &= (1 << 11); //disable RTM, we dont support TSX
+        dr7 &= ~(1 << 11); //disable RTM, we dont support TSX
         WRITE_DR(7, dr7);
 
         uint64_t dr6 = READ_DR(6);
@@ -256,6 +255,9 @@ namespace Npk
             source = &frame.r15;
             break;
 
+        //TODO: reading st0-st7 and some fpu control junk
+        //TODO: xmm0-xmm15, mxcsr
+
         case HwReg_cs:
             source = &frame.iret.cs;
             break;
@@ -337,6 +339,45 @@ namespace Npk
         case HwReg_r15:
             return 8;
 
+        case HwReg_st0:
+        case HwReg_st1:
+        case HwReg_st2:
+        case HwReg_st3:
+        case HwReg_st4:
+        case HwReg_st5:
+        case HwReg_st6:
+        case HwReg_st7:
+            return 10;
+        case HwReg_fctrl:
+        case HwReg_fstat:
+        case HwReg_ftag:
+        case HwReg_fiseg:
+        case HwReg_fioff:
+        case HwReg_foseg:
+        case HwReg_fooff:
+        case HwReg_fop:
+            return 4;
+
+        case HwReg_xmm0:
+        case HwReg_xmm1:
+        case HwReg_xmm2:
+        case HwReg_xmm3:
+        case HwReg_xmm4:
+        case HwReg_xmm5:
+        case HwReg_xmm6:
+        case HwReg_xmm7:
+        case HwReg_xmm8:
+        case HwReg_xmm9:
+        case HwReg_xmm10:
+        case HwReg_xmm11:
+        case HwReg_xmm12:
+        case HwReg_xmm13:
+        case HwReg_xmm14:
+        case HwReg_xmm15:
+            return 16;
+        case HwReg_mxcsr:
+            return 4;
+
         case HwReg_cs:
         case HwReg_ss:
         case HwReg_ds:
@@ -361,10 +402,10 @@ namespace Npk
             return 16;
 
         case HwRegType::FloatingPoint:
-            return 0;
+            return 16;
 
         case HwRegType::Vector:
-            return 0;
+            return 17;
 
         case HwRegType::System:
             return 6;
