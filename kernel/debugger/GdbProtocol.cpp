@@ -1088,7 +1088,7 @@ namespace Npk::Private
                 //TODO: display more info about the thread/cpu here
                 char store[32];
                 size_t storeLen = (size_t)sl::SnPrintf(store, sizeof(store),
-                    "core %zu", (size_t)id);
+                    "core %zu%s", (size_t)id, id == 0 ? ", bsp" : "");
 
                 size_t head = 0;
                 inst.sendBuf[head++] = '$';

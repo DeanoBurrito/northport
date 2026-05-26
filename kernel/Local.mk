@@ -3,7 +3,7 @@ KERNEL_CXX_SRCS += Status.cpp \
 	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp \
 	core/Panic.cpp core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
 	core/Worker.cpp\
-	debugger/EnclaveApi.cpp debugger/Event.cpp debugger/GdbRemote.cpp \
+	debugger/EnclaveApi.cpp debugger/Event.cpp debugger/GdbProtocol.cpp \
 	debugger/KernelApi.cpp \
 	entry/Allocators.cpp entry/BringUp.cpp entry/ConfigRoot.cpp \
 	entry/EfiRuntime.cpp entry/InitProgram.cpp \
