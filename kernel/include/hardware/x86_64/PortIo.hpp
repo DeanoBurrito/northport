@@ -48,6 +48,13 @@ namespace Npk
     }
 
     SL_ALWAYS_INLINE
+    void Out8String(Port port, const uint8_t* data, size_t count)
+    {
+        asm volatile("rep outsb" : "+S"(data), "+c"(count) : "d"(port)
+            : "memory");
+    }
+
+    SL_ALWAYS_INLINE
     void Out16(Port port, uint16_t data)
     {
         asm volatile("outw %0, %1" :: "a"(data), "Nd"(port));

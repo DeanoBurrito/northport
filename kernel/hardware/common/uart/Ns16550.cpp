@@ -12,6 +12,9 @@ namespace Npk
 {
     namespace Ns16550
     {
+        constexpr size_t FormatChunkSize = 128;
+        constexpr size_t MaxHeaderLen = 64;
+
         constexpr const char ResetColourStr[] = "\e[39m";
         constexpr const char FormatStr[] = "%.0s[c%u %7s]%.0s ";
         constexpr const char ColourFormatStr[] = "%s[c%u %7s]%s ";
@@ -34,6 +37,9 @@ namespace Npk
         static bool isMmio;
         static bool inPanic;
         static uintptr_t address;
+        static size_t txFifoLen = 1;
+        static char chunkBuff[FormatChunkSize];
+        static size_t chunkLen = 0;
 
         static inline void WriteReg(Reg reg, uint8_t value)
         {
@@ -51,14 +57,53 @@ namespace Npk
                 return In8((Port)(address + (uintptr_t)reg));
         }
 
-        static inline void Putc(int c, void* ignored)
+        static inline void Flush()
         {
-            (void)ignored;
+            size_t head = 0;
+            while (head < chunkLen)
+            {
+                while ((ReadReg(Reg::LineStatus) & 0x20) == 0)
+                    sl::HintSpinloop();
 
-            while ((ReadReg(Reg::LineStatus) & 0x20) == 0)
-                sl::HintSpinloop();
+                const size_t count = sl::Min(txFifoLen, chunkLen - head);
+                const uintptr_t where = address + (uintptr_t)Reg::Data;
 
-            WriteReg(Reg::Data, static_cast<uint8_t>(c));
+                if (isMmio)
+                {
+                    for (size_t i = 0; i < count; i++)
+                        sl::MmioWrite8(where, chunkBuff[head + i]);
+                }
+                else
+#ifdef __x86_64__
+                {
+                    Out8String((Port)where, 
+                        reinterpret_cast<const uint8_t*>(&chunkBuff[head]), 
+                        count);
+                }
+#else
+                    NPK_UNREACHABLE();
+#endif
+                head += count;
+            }
+
+            chunkLen = 0;
+        }
+
+        static inline void Append(const char* text, size_t length)
+        {
+            while (length > 0)
+            {
+                const size_t space = FormatChunkSize - chunkLen;
+                const size_t count = sl::Min(space, length);
+
+                sl::MemCopy(&chunkBuff[chunkLen], text, count);
+                chunkLen += count;
+                length -= count;
+                text += count;
+
+                if (chunkLen == FormatChunkSize)
+                    Flush();
+            }
         }
 
         static inline void Reset()
@@ -101,48 +146,71 @@ namespace Npk
                 | (stopBits << 2) | dataBits;
             WriteReg(Reg::LineControl, settings);
 
-            //enable FIFO with a depth of 14 bytes (maximum allowed).
-            WriteReg(Reg::IntrId, 0xC7);
+            //detect FIFO size: 64 bits (16750), 16 bytes (16550A), or 1 in all
+            //other cases.
+            WriteReg(Reg::IntrId, 0xE7);
+            const uint8_t iir = ReadReg(Reg::IntrId);
+            if ((iir & 0xC0) == 0xC0)
+            {
+                if (iir & 0x20)
+                    txFifoLen = 64;
+                else
+                {
+                    WriteReg(Reg::IntrId, 0xC7);
+                    txFifoLen = 16;
+                }
+            }
+            else
+            {
+                WriteReg(Reg::IntrId, 0x00);
+                txFifoLen = 1;
+            }
 
             //enable RTS and DTR pins, leave interrupts disabled
             WriteReg(Reg::ModemControl, 3);
 
-            Putc('\n', nullptr);
-            Putc('\r', nullptr);
+            const char tail[] = { '\n', '\r' };
+            Append(tail, 2);
+            Flush();
         }
 
         static inline void Write(LogSinkMessage msg)
         {
-            const auto levelStr = LogLevelStr(msg.level);
-            const char* format = doColour ? ColourFormatStr : FormatStr;
-            const char* colourStr = [](LogLevel level) -> const char*
+            if (!inPanic)
             {
-                switch (level)
+                const auto levelStr = LogLevelStr(msg.level);
+                const char* format = doColour ? ColourFormatStr : FormatStr;
+                const char* colourStr = [](LogLevel level) -> const char*
                 {
-                case LogLevel::Error:   return "\e[31m";
-                case LogLevel::Warning: return "\e[33m";
-                case LogLevel::Info:    return "\e[97m";
-                case LogLevel::Verbose: return "\e[90m";
-                case LogLevel::Trace:   return "\e[37m";
-                case LogLevel::Debug:   return "\e[34m";
-                default: return "";
-                }
-            }(msg.level);
+                    switch (level)
+                    {
+                    case LogLevel::Error:   return "\e[31m";
+                    case LogLevel::Warning: return "\e[33m";
+                    case LogLevel::Info:    return "\e[97m";
+                    case LogLevel::Verbose: return "\e[90m";
+                    case LogLevel::Trace:   return "\e[37m";
+                    case LogLevel::Debug:   return "\e[34m";
+                    default: return "";
+                    }
+                }(msg.level);
+
+                char header[MaxHeaderLen];
+                const size_t headerLen = sl::SnPrintf(header, MaxHeaderLen,
+                    format, colourStr, msg.cpu, levelStr.Begin(), 
+                    ResetColourStr);
+                Append(header, sl::Min(headerLen, MaxHeaderLen - 1));
+            }
+
+            Append(msg.text.Begin(), msg.text.Size());
 
             if (!inPanic)
             {
-                sl::PPrintf(Putc, nullptr, format, colourStr, msg.cpu, 
-                    levelStr.Begin(), ResetColourStr);
+                const char tail[] = { '\n', '\r' };
+                Append(tail, 2);
             }
 
-            for (size_t i = 0; i < msg.text.Size(); i++)
-                Putc(msg.text[i], nullptr);
-
-            if (!inPanic)
-            {
-                Putc('\n', nullptr);
-                Putc('\r', nullptr);
-            }
+            if (chunkLen != 0)
+                Flush();
         }
 
         static inline void BeginPanic()
@@ -154,8 +222,8 @@ namespace Npk
         {
             (void)inst;
 
-            for (size_t i = 0; i < data.Size(); i++)
-                Putc(data[i], nullptr);
+            Append((const char*)data.Begin(), data.Size());
+            Flush();
 
             return true;
         }

@@ -2,9 +2,13 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/common/uart/Ns16550.hpp>
 #include <lib/Printf.hpp>
+#include <lib/Maths.hpp>
 
 namespace Npk
 {
+    constexpr size_t FormatChunkSize = 128;
+    constexpr size_t MaxHeaderLen = 64;
+
     constexpr const char ResetColourStr[] = "\e[39m";
     constexpr const char FormatStr[] = "%.0s[c%u %7s]%.0s ";
     constexpr const char ColourFormatStr[] = "%s[c%u %7s]%s ";
@@ -13,44 +17,69 @@ namespace Npk
     static bool debugconDoColour;
     static bool inPanic;
 
-    static void DebugconPutc(int c, void* ignored)
-    {
-        (void)ignored;
-        Out8(Port::Debugcon, static_cast<uint8_t>(c));
-    }
-
     static void DebugconWrite(LogSinkMessage msg)
     {
-        const auto levelStr = LogLevelStr(msg.level);
-        const char* format = debugconDoColour ? ColourFormatStr : FormatStr;
-        const char* colourStr = [](LogLevel level) -> const char*
+        char chunkBuff[FormatChunkSize];
+        size_t chunkLen = 0;
+
+        auto Flush = [&]() -> void
         {
-            switch (level)
+            Out8String(Port::Debugcon, reinterpret_cast<uint8_t*>(chunkBuff), 
+                chunkLen);
+            chunkLen = 0;
+        };
+
+        auto Append = [&](const char* text, size_t length) -> void
+        {
+            while (length > 0)
             {
-            case LogLevel::Error:   return "\e[31m";
-            case LogLevel::Warning: return "\e[33m";
-            case LogLevel::Info:    return "\e[97m";
-            case LogLevel::Verbose: return "\e[90m";
-            case LogLevel::Trace:   return "\e[37m";
-            case LogLevel::Debug:   return "\e[34m";
-            default: return "";
+                const size_t space = FormatChunkSize - chunkLen;
+                const size_t count = sl::Min(space, length);
+
+                sl::MemCopy(&chunkBuff[chunkLen], text, count);
+                chunkLen += count;
+                length -= count;
+                text += count;
+
+                if (chunkLen == FormatChunkSize)
+                    Flush();
             }
-        }(msg.level);
+        };
 
         if (!inPanic)
         {
-            sl::PPrintf(DebugconPutc, nullptr, format, colourStr, msg.cpu, 
-                levelStr.Begin(), ResetColourStr);
+            const auto levelStr = LogLevelStr(msg.level);
+            const char* format = debugconDoColour ? ColourFormatStr : FormatStr;
+            const char* colourStr = [](LogLevel level) -> const char*
+            {
+                switch (level)
+                {
+                case LogLevel::Error:   return "\e[31m";
+                case LogLevel::Warning: return "\e[33m";
+                case LogLevel::Info:    return "\e[97m";
+                case LogLevel::Verbose: return "\e[90m";
+                case LogLevel::Trace:   return "\e[37m";
+                case LogLevel::Debug:   return "\e[34m";
+                default: return "";
+                }
+            }(msg.level);
+
+            char header[MaxHeaderLen];
+            const size_t headerLen = sl::SnPrintf(header, MaxHeaderLen,
+                format, colourStr, msg.cpu, levelStr.Begin(), ResetColourStr);
+            Append(header, sl::Min(headerLen, MaxHeaderLen - 1));
         }
 
-        for (size_t i = 0; i < msg.text.Size(); i++)
-            Out8(Port::Debugcon, msg.text[i]);
+        Append(msg.text.Begin(), msg.text.Size());
 
         if (!inPanic)
         {
-            Out8(Port::Debugcon, '\n');
-            Out8(Port::Debugcon, '\r');
+            const char tail[] = { '\n', '\r' };
+            Append(tail, 2);
         }
+
+        if (chunkLen != 0)
+            Flush();
     }
 
     static void DebugconReset()
@@ -75,7 +104,7 @@ namespace Npk
     void InitUarts()
     {
         bool debugconActive = false;
-        if (ReadConfigUint("npk.x86.debugcon_enable", true))
+        if (ReadConfigUint("npk.x86.debugcon_enable", false))
         {
             debugconDoColour = ReadConfigUint("npk.x86.debugcon_colour", true);
 
