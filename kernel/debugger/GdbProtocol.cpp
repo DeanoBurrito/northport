@@ -558,7 +558,10 @@ namespace Npk::Private
             size_t got = inst.transport->Receive(inst.transport,
                 RwBuffer(inst.recvBuf + total, space));
             if (got == 0)
+            {
+                sl::HintSpinloop();
                 continue;
+            }
 
             if (!hasStart)
             {
@@ -815,7 +818,8 @@ namespace Npk::Private
             MyCoreId());
         inst.sendBuf[head++] = ';';
 
-        if (inst.stopBreakpointType == BreakpointType::Breakpoint)
+        if (inst.stopBreakpoint != nullptr && 
+            inst.stopBreakpointType == BreakpointType::Breakpoint)
         {
             const auto* bp = inst.stopBreakpoint;
 
@@ -1754,6 +1758,8 @@ namespace Npk::Private
         }
 
         gdb.stopFrame = frame;
+        if (type == BreakpointType::Manual)
+            gdb.stopFrame = IdentityTrapFrame();
         gdb.stopSignal = 5;
         gdb.stopBreakpoint = bp;
 
