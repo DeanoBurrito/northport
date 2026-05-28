@@ -6,9 +6,22 @@
 namespace Npk::Private
 {
     constexpr size_t MaxBreakpointClearFails = 64;
+    constexpr size_t DebugVarMaxNameLength = 31;
+
+    struct DebugVariable
+    {
+        sl::ListHook hook;
+        char name[DebugVarMaxNameLength];
+        uint8_t nameLength;
+        uintptr_t value;
+    };
+
+    using DebugVariableList = sl::List<DebugVariable, &DebugVariable::hook>;
 
     static BreakpointList freeBreakpoints;
     static BreakpointList liveBreakpoints;
+    static DebugVariableList freeVariables;
+    static DebugVariableList liveVariables;
     static sl::Span<uintptr_t> perCpuStores;
     static sl::Span<char> debugLogRing;
     static size_t debugLogHead;
@@ -169,4 +182,92 @@ namespace Npk::Private
         return status->lastIntrFrame;
     }
 
+    NpkStatus CreateDebugVariable(DebugVariable** created, sl::StringSpan name,
+        uintptr_t value)
+    {
+        if (name.Empty())
+            return NpkStatus::InvalidArg;
+        if (created == nullptr)
+            return NpkStatus::InvalidArg;
+
+        if (name[0] == DebugVarNamePrefix)
+            name = name.Subspan(1, -1);
+        if (name.Size() > DebugVarMaxNameLength)
+            return NpkStatus::InvalidArg;
+
+        if (freeVariables.Empty())
+            return NpkStatus::Shortage;
+
+        auto var = freeVariables.PopFront();
+        sl::MemSet(var, 0, sizeof(*var));
+        new (var) DebugVariable {};
+
+        sl::MemCopy(var->name, name.Begin(), name.Size());
+        var->nameLength = name.Size();
+        var->value = value;
+
+        liveVariables.PushBack(var);
+        *created = var;
+
+        return NpkStatus::Success;
+    }
+
+    NpkStatus DestroyDebugVariable(DebugVariable** var)
+    {
+        if (var == nullptr || *var == nullptr)
+            return NpkStatus::InvalidArg;
+
+        liveVariables.Remove(*var);
+        freeVariables.PushFront(*var);
+
+        *var = nullptr;
+
+        return NpkStatus::Success;
+    }
+
+    NpkStatus LookupDebugVariable(DebugVariable** found, sl::StringSpan name)
+    {
+        if (found == nullptr)
+            return NpkStatus::InvalidArg;
+        if (name.Empty())
+            return NpkStatus::InvalidArg;
+
+        if (name[0] == DebugVarNamePrefix)
+            name = name.Subspan(1, -1);
+        if (name.Size() > DebugVarMaxNameLength)
+            return NpkStatus::InvalidArg;
+
+        for (auto it = liveVariables.Begin(); it != liveVariables.End(); ++it)
+        {
+            auto varName = sl::StringSpan(it->name, it->nameLength);
+
+            if (varName != name)
+                continue;
+            *found = &*it;
+
+            return NpkStatus::Success;
+        }
+
+        return NpkStatus::NotFound;
+    }
+
+    NpkStatus ReadDebugVariable(uintptr_t* value, DebugVariable& var)
+    {
+        if (value == nullptr)
+            return NpkStatus::InvalidArg;
+
+        *value = var.value;
+
+        return NpkStatus::Success;
+    }
+
+    NpkStatus WriteDebugVariable(DebugVariable& var, uintptr_t value,
+        uintptr_t* prevValue)
+    {
+        if (prevValue != nullptr)
+            *prevValue = var.value;
+        var.value = value;
+
+        return NpkStatus::Success;
+    }
 }

@@ -7,6 +7,7 @@
 namespace Npk::Private
 {
     constexpr size_t PerCpuStorePointers = 4;
+    constexpr char DebugVarNamePrefix = '$';
 
     struct InitEventArg
     {
@@ -48,6 +49,8 @@ namespace Npk::Private
 
     using BreakpointList = sl::List<Breakpoint, &Breakpoint::listHook>;
     using DebugEventTypes = sl::Flags<DebugEventType>;
+
+    struct DebugVariable;
 
     extern sl::Atomic<DebugEventTypes> debugEventsMask;
     extern DebugProtocol* debugProtocol;
@@ -114,4 +117,26 @@ namespace Npk::Private
      * this function may return `nullptr` (this situation is unlikely).
      */
     TrapFrame* DebugFrameForCpu(CpuId id);
+
+    /*
+     */
+    NpkStatus CreateDebugVariable(DebugVariable** created, sl::StringSpan name,
+        uintptr_t value);
+
+    /*
+     */
+    NpkStatus DestroyDebugVariable(DebugVariable** var);
+
+    /*
+     */
+    NpkStatus LookupDebugVariable(DebugVariable** found, sl::StringSpan name);
+
+    /*
+     */
+    NpkStatus ReadDebugVariable(uintptr_t* value, DebugVariable& var);
+
+    /*
+     */
+    NpkStatus WriteDebugVariable(DebugVariable& var, uintptr_t value,
+        uintptr_t* prevValue);
 }
