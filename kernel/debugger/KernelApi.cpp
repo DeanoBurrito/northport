@@ -7,6 +7,7 @@ namespace Npk
     using namespace Private;
 
     constexpr size_t MaxBreakpoints = 64;
+    constexpr size_t MaxVariables = 128;
     constexpr size_t DefaultDebuggerConnectMs = 5000;
 
     static sl::SpinLock debugTransportsLock;
@@ -52,6 +53,20 @@ namespace Npk
                 VmFlag::Write) == NpkStatus::Success);
         }
 
+        const size_t maxVars =
+            ReadConfigUint("npk.debugger.max_variables", MaxVariables);
+        const size_t varBuffSize =
+            AlignUpPage(maxVars * sizeof(DebugVariable));
+        const uintptr_t varsBuff = virtBase;
+        virtBase += varBuffSize;
+
+        for (uintptr_t i = varsBuff; i != virtBase; i += PageSize())
+        {
+            //TODO: remove fatal failure path
+            NPK_ASSERT(SetKernelMap(i, LookupPagePaddr(AllocPage(false)), 
+                VmFlag::Write) == NpkStatus::Success);
+        }
+
         const size_t logringLen = AlignUpPage(
             ReadConfigUint("npk.debugger.logring_size", PageSize()));
         const uintptr_t logringBase = virtBase;
@@ -78,6 +93,8 @@ namespace Npk
         InitEventArg arg {};
         arg.breakpoints = { reinterpret_cast<Breakpoint*>(breakpointBuff),
             bpBuffSize / sizeof(Breakpoint) };
+        arg.variables = { reinterpret_cast<DebugVariable*>(varsBuff),
+            varBuffSize / sizeof(DebugVariable) };
         arg.logring = { reinterpret_cast<char*>(logringBase), logringLen };
         arg.perCpu = { reinterpret_cast<uintptr_t*>(perCpuBase), cpuCount 
             * PerCpuStorePointers };

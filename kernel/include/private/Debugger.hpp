@@ -8,10 +8,20 @@ namespace Npk::Private
 {
     constexpr size_t PerCpuStorePointers = 4;
     constexpr char DebugVarNamePrefix = '$';
+    constexpr size_t DebugVarMaxNameLength = 31;
+
+    struct DebugVariable
+    {
+        sl::ListHook hook;
+        char name[DebugVarMaxNameLength];
+        uint8_t nameLength;
+        uintptr_t value;
+    };
 
     struct InitEventArg
     {
         sl::Span<Breakpoint> breakpoints;
+        sl::Span<DebugVariable> variables;
         sl::Span<char> logring;
         sl::Span<uintptr_t> perCpu;
     };
@@ -49,8 +59,6 @@ namespace Npk::Private
 
     using BreakpointList = sl::List<Breakpoint, &Breakpoint::listHook>;
     using DebugEventTypes = sl::Flags<DebugEventType>;
-
-    struct DebugVariable;
 
     extern sl::Atomic<DebugEventTypes> debugEventsMask;
     extern DebugProtocol* debugProtocol;

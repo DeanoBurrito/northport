@@ -6,15 +6,6 @@
 namespace Npk::Private
 {
     constexpr size_t MaxBreakpointClearFails = 64;
-    constexpr size_t DebugVarMaxNameLength = 31;
-
-    struct DebugVariable
-    {
-        sl::ListHook hook;
-        char name[DebugVarMaxNameLength];
-        uint8_t nameLength;
-        uintptr_t value;
-    };
 
     using DebugVariableList = sl::List<DebugVariable, &DebugVariable::hook>;
 
@@ -34,6 +25,8 @@ namespace Npk::Private
     {
         for (size_t i = 0; i < arg->breakpoints.Size(); i++)
             freeBreakpoints.PushBack(&arg->breakpoints[i]);
+        for (size_t i = 0; i < arg->variables.Size(); i++)
+            freeVariables.PushBack(&arg->variables[i]);
 
         debugLogRing = arg->logring;
         perCpuStores = arg->perCpu;
