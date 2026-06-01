@@ -14,6 +14,8 @@ namespace Npk::Private
         Minus,
         Slash,
         Percent,
+        ShiftLeft,
+        ShiftRight,
         VariableName,
         Identifier,
         Equals,
@@ -48,14 +50,15 @@ namespace Npk::Private
         };
     };
 
-    static NpkStatus DoExpression(uintptr_t& store, Lexer& lex);
+    static NpkStatus DoExpression(uintptr_t& store, Lexer& lex,
+        ValueContext& context);
 
     static NpkStatus ArbitraryRead(uintptr_t& store, uintptr_t addr)
     {
         return NpkStatus::Unsupported; (void)store; (void)addr;
     }
 
-    static NpkStatus ArbitaryWrite(uintptr_t value, uintptr_t addr)
+    static NpkStatus ArbitraryWrite(uintptr_t value, uintptr_t addr)
     {
         return NpkStatus::Unsupported; (void)value; (void)addr;
     }
@@ -218,6 +221,18 @@ namespace Npk::Private
         case '=':
             return LexedType::Equals;
 
+        case '<':
+            if (lexer.head < lexer.input.Size() 
+                && lexer.input[lexer.head++] == '<')
+                return LexedType::ShiftLeft;
+            return LexedType::Invalid;
+
+        case '>':
+            if (lexer.head < lexer.input.Size() 
+                && lexer.input[lexer.head++] == '>')
+                return LexedType::ShiftRight;
+            return LexedType::Invalid;
+
         default:
             return LexedType::Invalid;
         }
@@ -276,11 +291,16 @@ namespace Npk::Private
         case LexedType::Identifier:
             //TODO: identifiers without the variable prefix are treated as
             //symbols. We'll need the kernel/debugger shared data state for this.
+            //TODO: also accessing registers as variables/identifiers. We'll 
+            //need stringified names for the registers here, like the gdbstub
+            //has. I'm thinking we extract the register names from there into
+            //the hardware layer register access api, then the expresison parser
+            //can use the same strings as the gdbstub.
             return NpkStatus::Unsupported;
 
         case LexedType::LeftParenthesis:
             {
-                auto result = DoExpression(store, lex);
+                auto result = DoExpression(store, lex, context);
                 if (result != NpkStatus::Success)
                     return result;
 
@@ -340,18 +360,168 @@ namespace Npk::Private
         return DoTerminalExpression(store, lex, context);
     }
 
-    static NpkStatus DoBinaryExpression(uintptr_t& store, Lexer& lex,
+    static NpkStatus DoMultiplyExpression(uintptr_t& store, Lexer& lex,
         ValueContext& context)
     {
-        return DoUnaryExpression(store, lex, context);
+        auto result = DoUnaryExpression(store, lex, context);
+        if (result != NpkStatus::Success)
+            return result;
+
+        while (true)
+        {
+            const auto op = LexNext(lex);
+            if (op != LexedType::Star && op != LexedType::Slash
+                && op != LexedType::Percent)
+            {
+                UndoPrevLex(lex);
+
+                return NpkStatus::Success;
+            }
+
+            context.type = ValueType::None;
+
+            uintptr_t rhs;
+            ValueContext rhsContext;
+            result = DoUnaryExpression(rhs, lex, rhsContext);
+            if (result != NpkStatus::Success)
+                return result;
+
+            (void)rhsContext;
+
+            switch (op)
+            {
+            case LexedType::Star:
+                store = store * rhs;
+                break;
+
+            case LexedType::Slash:
+                if (rhs == 0)
+                {
+                    SetLexError(lex, "attempted to divide by 0");
+
+                    return NpkStatus::InternalError;
+                }
+                store = store / rhs;
+                break;
+
+            case LexedType::Percent:
+                if (rhs == 0)
+                {
+                    SetLexError(lex, "attempted to divide by 0");
+
+                    return NpkStatus::InternalError;
+                }
+                store = store % rhs;
+                break;
+
+            default:
+                return NpkStatus::InternalError;
+            }
+        }
+    }
+    
+    static NpkStatus DoAddExpression(uintptr_t& store, Lexer& lex,
+        ValueContext& context)
+    {
+        auto result = DoMultiplyExpression(store, lex, context);
+        if (result != NpkStatus::Success)
+            return result;
+
+        while (true)
+        {
+            const auto op = LexNext(lex);
+            if (op != LexedType::Plus && op != LexedType::Minus)
+            {
+                UndoPrevLex(lex);
+
+                return NpkStatus::Success;
+            }
+
+            context.type = ValueType::None;
+
+            uintptr_t rhs;
+            ValueContext rhsContext;
+            result = DoMultiplyExpression(rhs, lex, rhsContext);
+            if (result != NpkStatus::Success)
+                return result;
+
+            (void)rhsContext;
+
+            switch (op)
+            {
+            case LexedType::Plus:
+                store = store + rhs;
+                break;
+
+            case LexedType::Minus:
+                store = store - rhs;
+                break;
+
+            default:
+                return NpkStatus::InternalError;
+            }
+        }
     }
 
-    static NpkStatus DoAssignmentExpression(uintptr_t& store, Lexer& lex)
+    static NpkStatus DoShiftExpression(uintptr_t& store, Lexer& lex,
+        ValueContext& context)
     {
-        ValueContext context;
-        context.type = ValueType::None;
+        auto result = DoAddExpression(store, lex, context);
+        if (result != NpkStatus::Success)
+            return result;
 
-        auto result = DoBinaryExpression(store, lex, context);
+        while (true)
+        {
+            const auto op = LexNext(lex);
+            if (op != LexedType::ShiftLeft && op != LexedType::ShiftRight)
+            {
+                UndoPrevLex(lex);
+
+                return NpkStatus::Success;
+            }
+
+            context.type = ValueType::None;
+
+            uintptr_t rhs;
+            ValueContext rhsContext;
+            result = DoAddExpression(rhs, lex, rhsContext);
+            if (result != NpkStatus::Success)
+                return result;
+
+            (void)rhsContext;
+
+            switch (op)
+            {
+            case LexedType::ShiftLeft:
+                if (rhs >= sizeof(uintptr_t) * 8)
+                {
+                    SetLexError(lex, "shift out of valid range");
+
+                    return NpkStatus::InternalError;
+                }
+                store = store << rhs;
+                break;
+
+            case LexedType::ShiftRight:
+                if (rhs >= sizeof(uintptr_t) * 8)
+                {
+                    SetLexError(lex, "shift out of valid range");
+
+                    return NpkStatus::InternalError;
+                }
+                store = store >> rhs;
+                break;
+
+            default:
+                return NpkStatus::InternalError;
+            }
+        }
+    }
+
+    static NpkStatus DoAssignmentExpression(uintptr_t& store, Lexer& lex,
+        ValueContext& context)
+    {
+        auto result = DoShiftExpression(store, lex, context);
         if (result != NpkStatus::Success)
             return result;
 
@@ -364,9 +534,12 @@ namespace Npk::Private
         }
 
         uintptr_t value;
-        result = DoExpression(value, lex);
+        ValueContext dummyContext;
+        result = DoExpression(value, lex, dummyContext);
         if (result != NpkStatus::Success)
             return result;
+
+        (void)dummyContext;
 
         switch (context.type)
         {
@@ -375,7 +548,7 @@ namespace Npk::Private
             return NpkStatus::NotWritable;
 
         case ValueType::Address:
-            result = ArbitaryWrite(value, context.addr);
+            result = ArbitraryWrite(value, context.addr);
             break;
 
         case ValueType::Variable:
@@ -387,9 +560,10 @@ namespace Npk::Private
         return result;
     }
 
-    static NpkStatus DoExpression(uintptr_t& store, Lexer& lex)
+    static NpkStatus DoExpression(uintptr_t& store, Lexer& lex, 
+        ValueContext& context)
     {
-        return DoAssignmentExpression(store, lex);
+        return DoAssignmentExpression(store, lex, context);
     }
 
     NpkStatus ProcessExpression(uintptr_t& store, sl::StringSpan input)
@@ -402,6 +576,11 @@ namespace Npk::Private
         if (result != NpkStatus::Success)
             return result;
 
-        return DoExpression(store, lexer);
+        ValueContext context {};
+        context.type = ValueType::None;
+        result = DoExpression(store, lexer, context);
+        (void)context;
+
+        return result;
     }
 }
