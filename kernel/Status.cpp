@@ -42,6 +42,10 @@ namespace Npk
             return "pending";
         case NpkStatus::Aborted:
             return "aborted";
+        case NpkStatus::Timeout:
+            return "timeout";
+        case NpkStatus::Reset:
+            return "reset";
         default:
             return "<>";
         }

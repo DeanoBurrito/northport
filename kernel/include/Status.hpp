@@ -24,6 +24,8 @@ namespace Npk
         NotFound,
         Pending,
         Aborted,
+        Timeout,
+        Reset,
     };
 
     const char* StatusStr(NpkStatus what);

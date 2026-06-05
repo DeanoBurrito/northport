@@ -283,15 +283,6 @@ namespace Npk
         ClockList events;
     };
 
-    enum class WaitStatus : uint8_t
-    {
-        Incomplete,
-        Timedout,
-        Reset,
-        Cancelled,
-        Success,
-    };
-
     enum class WaitStage : uint8_t
     {
         Preparing,
@@ -307,6 +298,7 @@ namespace Npk
         Condition,
         Timer,
         Mutex,
+        SxMutex,
     };
 
     struct WaitEntry;
@@ -320,6 +312,8 @@ namespace Npk
         ThreadContext* thread;
         Waitable* waitable;
         bool satisfied;
+        bool isExclusive;
+        bool inList;
     };
 
     using WaitEntryList = sl::List<WaitEntry, &WaitEntry::waitableQueueHook>;
@@ -339,36 +333,43 @@ namespace Npk
      * `Timer` types block all waiters until the integrated `ClockEvent`
      * expires, after which it will satisfy all current and future waiters until
      * reset again. This type of event is signalled by the clock subsystem,
-     * manually signalling it will cause it to act as if the `ClockEvent` fired.
+     * there is no mechanism to signal it manually.
      *
      * `Mutex` types are intended for use as blocking locks. The ticket count
      * represents the number of locks available, typically this will be reset
      * to just one, for a true mutex. Threads will block on mutexes with a 
      * ticket count of 0, and will only be satisfied when they can successfully
      * decrement the ticket count without it going below zero.
+     *
+     * `SxMutex` types are similar to `Mutex` types but can be held shared or
+     * exclusive. An SxMutex that is held shared can be acquired shared by
+     * other threads, and if the SxMutex is held exclusive no other thread
+     * can acquire it. An SxMutex also has a batching mechanism where if many 
+     * threads attempt to acquire an SxMutex shared but cannot (and therefore
+     * block) they will all be woken at the same time, provided there are enough
+     * tickets available.
      */
     struct Waitable
     {
         WaitableType type;
-
-        IplSpinLock<Ipl::Dpc> lock;
-        WaitEntryList waiters;
-        sl::QueueMpScHook mpscHook;
-
-        size_t tickets;
         union
         {
+            ThreadContext* owner;
             ClockEvent clockEvent;
-            ThreadContext* mutexHolder;
         };
+        sl::Atomic<size_t> tickets;
+
+        IplSpinLock<Ipl::Dpc> listLock;
+        WaitEntryList waitersList;
+
+        sl::QueueMpScHook mpscHook;
+        sl::Atomic<bool> pending;
     };
 
     using Condition = Waitable;
     using Timer = Waitable;
     using Mutex = Waitable;
-
-    struct SxMutex
-    {};
+    using SxMutex = Waitable;
 
     using WaitableMpScQueue = sl::QueueMpSc<Waitable, &Waitable::mpscHook>;
     
@@ -573,6 +574,7 @@ namespace Npk
         struct
         {
             sl::Atomic<WaitStage> stage;
+            Dpc* wakeDpc;
             IplSpinLock<Ipl::Dpc> lock;
             sl::StringSpan reason;
         } waiting;
@@ -655,6 +657,11 @@ namespace Npk
      * ipl and execute the DPC immediately.
      */
     void QueueDpc(Dpc* dpc);
+
+    /* Must be called at passive IPL: spins until the target DPC has finished
+     * execution.
+     */
+    void WaitForDpcCompletion(Dpc* dpc);
 
     /* Queues a work item to be run by a kernel worker thread, with an optional
      * cpu affinity. This work item will be run at IPL::Passive but is not
@@ -870,9 +877,11 @@ namespace Npk
     sl::Opt<CpuId> GetThreadAffinity(ThreadContext* thread, bool& pinned);
 
     /* Attempts to cancel a preparing or ongoing wait operation for a thread.
-     * Returns whether a wait was successfully cancelled or not.
+     * Returns whether a wait was successfully cancelled or not. Waiting
+     * threads will be woken with an `Aborted` status.
+     * Safe to call at any IPL.
      */
-    bool CancelWait(ThreadContext* thread);
+    NpkStatus CancelWait(ThreadContext* thread);
 
     WaitStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, 
         sl::TimeCount timeout, sl::StringSpan reason = {});
