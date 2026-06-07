@@ -48,6 +48,7 @@ namespace Npk
             {
                 auto dpc = localQueue.PopFront();
                 dpc->function(dpc, dpc->arg);
+                dpc->complete.Store(true, sl::Release);
             }
         }
     }
@@ -92,6 +93,8 @@ namespace Npk
         NPK_CHECK(dpc != nullptr, );
         NPK_CHECK(dpc->function != nullptr, );
 
+        dpc->complete.Store(false, sl::Release);
+
         if (CurrentIpl() < Ipl::Dpc)
         {
             const auto prevIpl = RaiseIpl(Ipl::Dpc);
@@ -103,5 +106,15 @@ namespace Npk
         dpcQueueLock->Lock();
         dpcQueue->PushBack(dpc);
         dpcQueueLock->Unlock();
+    }
+
+    void SpinUntilDpcCompleted(Dpc* dpc)
+    {
+        AssertIpl(Ipl::Passive);
+        if (dpc == nullptr)
+            return;
+
+        while (dpc->complete.Load(sl::Relaxed))
+            sl::HintSpinloop();
     }
 }

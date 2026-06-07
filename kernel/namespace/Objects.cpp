@@ -71,17 +71,10 @@ namespace Npk
         (void)obj;
     }
 
-    static void FileObjDtor(void* obj)
-    {
-        (void)obj;
-    }
-
     void Private::InitNamespace()
     {
         SetObjectTypeInfo(NsObjType::Directory, DirectoryObjDtor, 
             sizeof(NsDirectory), NamespaceHeapTag);
-        SetObjectTypeInfo(NsObjType::File, FileObjDtor, sizeof(NsObject),
-            NamespaceHeapTag); //TODO: this should be a hook for the VFS
 
         NsObjFlags flags = NsObjFlag::Wired;
         auto result = CreateObject(&rootObj, NsObjType::Directory, flags, 
@@ -175,10 +168,10 @@ namespace Npk
 
         if (root == nullptr || root->type != NsObjType::Directory)
             return NpkStatus::InvalidArg;
-
         if (!RefObject(*root))
             return NpkStatus::ObjRefFailed;
-        if (!AcquireMutex(&root->mutex, sl::NoTimeout))
+        auto result = AcquireMutex(&root->mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
         {
             UnrefObject(*root);
             return NpkStatus::LockAcquireFailed;
@@ -242,7 +235,9 @@ namespace Npk
 
                 return NpkStatus::BadObject;
             }
-            if (!AcquireMutex(&next->mutex, sl::NoTimeout))
+
+            result = AcquireMutex(&next->mutex, sl::NoTimeout);
+            if (result != NpkStatus::Success)
             {
                 UnrefObject(*next);
 
@@ -314,7 +309,8 @@ namespace Npk
     {
         if (!RefObject(obj))
             return 0;
-        if (!AcquireMutex(&obj.mutex, sl::NoTimeout))
+        auto result = AcquireMutex(&obj.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
             return 0;
 
         size_t copyLen = sl::Min(buffer.Size(), obj.name.Size());
@@ -350,7 +346,8 @@ namespace Npk
             return NpkStatus::Shortage;
 
         auto* obj = new(poolPtr) NsObject {};
-        if (!ResetMutex(&obj->mutex, 1))
+        auto result = ResetMutex(&obj->mutex, 1);
+        if (result != NpkStatus::Success)
         {
             PoolFree(poolPtr, realLen, typeDesc->heapTag, isWired);
             

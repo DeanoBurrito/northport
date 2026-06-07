@@ -1,4 +1,4 @@
-#include <Core.hpp>
+#include <private/Core.hpp>
 #include <Hardware.hpp>
 
 /* Clock Subsystem:
@@ -41,7 +41,6 @@ namespace Npk
         uint64_t kernelInterrupt;
         uint64_t driver;
         uint64_t driverInterrupt;
-        uint64_t debugger;
     };
 
     CPU_LOCAL(CycleAccounting, accounting);
@@ -80,9 +79,6 @@ namespace Npk
             break;
         case CycleAccount::DriverInterrupt:
             accounting->driverInterrupt += period.epoch;
-            break;
-        case CycleAccount::Debugger:
-            accounting->debugger += period.epoch;
             break;
         default:
             NPK_UNREACHABLE();
@@ -135,7 +131,7 @@ namespace Npk
             if (event->dpc != nullptr)
                 QueueDpc(event->dpc);
             if (event->waitable != nullptr)
-                SignalWaitable(event->waitable);
+                Private::SignalTimerWaitable(event->waitable);
         }
     }
 
@@ -165,7 +161,7 @@ namespace Npk
             if (event->dpc != nullptr)
                 QueueDpc(event->dpc);
             if (event->waitable != nullptr)
-                SignalWaitable(event->waitable);
+                Private::SignalTimerWaitable(event->waitable);
             return;
         }
 

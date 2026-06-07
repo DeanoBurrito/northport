@@ -48,7 +48,7 @@ namespace Npk
         mySpace->map = MySystemDomain().kernelMap;
 
         ResetMutex(&mySpace->freeRangesMutex, 1);
-        ResetSxMutex(&mySpace->rangesMutex, 1);
+        ResetSxMutex(&mySpace->rangesMutex);
 
         ptr = PoolAllocWired(sizeof(VmFreeRange), SpaceHeapTag);
         NPK_ASSERT(ptr != nullptr);
@@ -179,11 +179,13 @@ namespace Npk
             return NpkStatus::Shortage;
         VmFreeRange* spareRange = new(sparePtr) VmFreeRange{};
 
-        if (!AcquireMutex(&space.freeRangesMutex, constr.timeout, 
-            NPK_WAIT_LOCATION))
+        auto result = AcquireMutex(&space.freeRangesMutex, constr.timeout, 
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
         {
             PoolFreeWired(spareRange, sizeof(*spareRange), SpaceHeapTag);
-            return NpkStatus::InternalError;
+
+            return result;
         }
 
         if (constr.preferredAddr != 0)
@@ -371,8 +373,14 @@ namespace Npk
             return NpkStatus::Shortage;
         VmFreeRange* spareRange = new(sparePtr) VmFreeRange{};
 
-        if (!AcquireMutex(&space.freeRangesMutex, timeout, NPK_WAIT_LOCATION))
-            return NpkStatus::InternalError;
+        auto result = AcquireMutex(&space.freeRangesMutex, timeout, 
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
+        {
+            PoolFreeWired(spareRange, sizeof(*spareRange), SpaceHeapTag);
+
+            return result;
+        }
 
         VmFreeRange* pred = nullptr;
         VmFreeRange* succ = nullptr;
@@ -515,15 +523,17 @@ namespace Npk
             allocatedVaddrs = true;
         }
 
-        if (!AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION))
+        auto result = AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
         {
             if (allocatedVaddrs)
                 SpaceFree(space, base, length);
-            return NpkStatus::InternalError;
+
+            return result;
         }
 
-        auto result = SpaceLookupLocked(nullptr, space, base, length);
+        result = SpaceLookupLocked(nullptr, space, base, length);
         if (result == NpkStatus::Success)
         {
             ReleaseSxMutexExclusive(&space.rangesMutex);
@@ -590,12 +600,13 @@ namespace Npk
         const uintptr_t base = range->base;
         const size_t length = range->length;
 
-        if (!AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION))
-            return NpkStatus::InternalError;
+        auto result = AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
+            return result;
 
         VmRange* check = nullptr;
-        auto result = SpaceLookupLocked(&check, space, range->base, 1);
+        result = SpaceLookupLocked(&check, space, range->base, 1);
         if (result != NpkStatus::Success || range != check)
         {
             ReleaseSxMutexExclusive(&space.rangesMutex);
@@ -634,12 +645,15 @@ namespace Npk
 
     NpkStatus SpaceClone(VmSpace** clone, VmSpace& source)
     {
-        if (!AcquireMutex(&source.freeRangesMutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION))
-            return NpkStatus::InternalError;
+        auto result = AcquireMutex(&source.freeRangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
+            return result;
 
-        if (!AcquireSxMutexExclusive(&source.rangesMutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION))
+        result = AcquireSxMutexExclusive(&source.rangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
+            return result;
         {
             ReleaseMutex(&source.freeRangesMutex);
             return NpkStatus::InternalError;
@@ -655,8 +669,12 @@ namespace Npk
         }
 
         auto* newSpace = new(ptr) VmSpace {};
-        NPK_ASSERT(ResetMutex(&newSpace->freeRangesMutex, 1));
-        NPK_ASSERT(ResetSxMutex(&newSpace->rangesMutex, 1));
+        result = ResetMutex(&newSpace->freeRangesMutex, 1);
+        if (result != NpkStatus::Success)
+            return result;
+        result = ResetSxMutex(&newSpace->rangesMutex);
+        if (result != NpkStatus::Success)
+            return result;
 
         bool carryOn = true;
         for (auto it = source.freeRanges.First(); it != nullptr; 
@@ -758,8 +776,10 @@ namespace Npk
     {
         NPK_CHECK(found != nullptr, NpkStatus::InvalidArg);
 
-        if (!AcquireSxMutexShared(&space.rangesMutex, {}, NPK_WAIT_LOCATION))
-            return NpkStatus::InternalError;
+        auto result = AcquireSxMutexShared(&space.rangesMutex, {}, 
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
+            return result;
 
         auto status = SpaceLookupLocked(found, space, addr, 1);
         ReleaseSxMutexShared(&space.rangesMutex);

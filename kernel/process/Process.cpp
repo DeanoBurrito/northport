@@ -34,7 +34,8 @@ namespace Npk
         ResetMutex(&procPtr->threadsMutex, 1);
         ResetMutex(&procPtr->signalsMutex, 1);
 
-        if (!AcquireMutex(&parent.processesMutex, sl::NoTimeout))
+        result = AcquireMutex(&parent.processesMutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
         {
             UnrefJob(parent);
             UnrefProcess(*procPtr);

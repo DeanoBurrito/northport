@@ -16,6 +16,7 @@ namespace Npk::Private
     void EndWait();
     void WakeThread(ThreadContext* thread);
     void WorkThreadEntry(void* arg);
+    void SignalTimerWaitable(Timer* timer);
 
     void AcquirePanicOutputs(LogSinkList& sinks);
 }

@@ -143,7 +143,8 @@ namespace Npk::Private
         auto& pool = paged ? pagedPool : wiredPool;
 
         //try acquire the mutex for this pool
-        if (!AcquireMutex(&pool.mutex, timeout, NPK_WAIT_LOCATION))
+        auto result = AcquireMutex(&pool.mutex, timeout, NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
             return nullptr;
 
         //find a node with enough space
@@ -275,7 +276,8 @@ namespace Npk::Private
         len = sl::AlignUp(len, MinAllocSize);
 
         Pool& pool = paged ? pagedPool : wiredPool;
-        if (!AcquireMutex(&pool.mutex, timeout, NPK_WAIT_LOCATION))
+        auto result = AcquireMutex(&pool.mutex, timeout, NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
             return false;
 
         //TODO: replace list here with tree keyed by address to handle large
@@ -391,14 +393,16 @@ namespace Npk::Private
         const bool defaultCoalesce = ReadConfigUint("npk.vm.pool_coalescing", 
             false);
 
-        NPK_ASSERT(AcquireMutex(&wiredPool.mutex, {}, NPK_WAIT_LOCATION));
+        auto result = AcquireMutex(&wiredPool.mutex, {}, NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
 
         wiredPool.allowCoalescing = 
             ReadConfigUint("npk.vm.wired_pool_coalescing", defaultCoalesce);
         InitSpecificPool(wiredPool, wiredBase, wiredLength);
         ReleaseMutex(&wiredPool.mutex);
 
-        NPK_ASSERT(AcquireMutex(&pagedPool.mutex, {}, NPK_WAIT_LOCATION));
+        result = AcquireMutex(&pagedPool.mutex, {}, NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
 
         pagedPool.allowCoalescing = 
             ReadConfigUint("npk.vm.paged_pool_coalescing", defaultCoalesce);

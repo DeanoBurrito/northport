@@ -236,6 +236,7 @@ namespace Npk
         sl::FwdListHook hook;
         DpcEntry function;
         void* arg;
+        sl::Atomic<bool> complete;
     };
 
     using DpcQueue = sl::FwdList<Dpc, &Dpc::hook>;
@@ -260,7 +261,6 @@ namespace Npk
         KernelInterrupt,
         Driver,
         DriverInterrupt,
-        Debugger,
     };
 
     struct Waitable;
@@ -661,7 +661,7 @@ namespace Npk
     /* Must be called at passive IPL: spins until the target DPC has finished
      * execution.
      */
-    void WaitForDpcCompletion(Dpc* dpc);
+    void SpinUntilDpcCompleted(Dpc* dpc);
 
     /* Queues a work item to be run by a kernel worker thread, with an optional
      * cpu affinity. This work item will be run at IPL::Passive but is not
@@ -883,77 +883,129 @@ namespace Npk
      */
     NpkStatus CancelWait(ThreadContext* thread);
 
-    WaitStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, 
+    /* Must be called from passive IPL. Blocks the calling thread until the
+     * waitables in `what` can be acquired, or until `timeout` expires.
+     * The `entries` array must be caller-allocated with at least `what.Size()`
+     * elements. For `SxMutex` type waitables, the corresponding entry's
+     * `isExclusive` field must be pre-set by the caller before this call.
+     * The `timeout` argument is a relative duration, passing `sl::NoTimeout`
+     * blocks indefinitely. A zero-tick count makes a single non-blocking
+     * acquisition attempt, returning `Timeout` if no waitable can be acquired
+     * immediately.
+     * The `reason` argument is an optional debug label recorded in the thread's
+     * wait state while blocked.
+     * Returns `Timeout` if the deadline expired before any waitable was
+     * acquired, `Aborted` if the wait was cancelled via `CancelWait()`, or
+     * `Reset` if a waitable was reset while the thread was blocked.
+     */
+    NpkStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries,
         sl::TimeCount timeout, sl::StringSpan reason = {});
 
-    /* Marks a waitable object as able to satisfy a waiter. This can be called
-     * from any IPL but calls from > passive level may not satisfy waiters
-     * immediately.
+    /* Must be called from passive IPL. Convenience wrapper around `WaitMany()`,
+     * all other notes are identical.
      */
-    void SignalWaitable(Waitable* what);
-
-    /* Resets a waitable object to its a default state for `newType`, optionally
-     * setting the initial ticket count. Returns whether the reset was
-     * performed, as sometimes it may not be possible: e.g. `what` is a locked
-     * mutex.
-     */
-    bool ResetWaitable(Waitable* what, WaitableType newType, size_t tickets);
-
-    SL_ALWAYS_INLINE
-    bool ResetCondition(Condition* what, size_t tickets)
-    {
-        return ResetWaitable(what, WaitableType::Condition, tickets);
-    }
-
-    SL_ALWAYS_INLINE
-    bool ResetTimer(Condition* what, sl::TimePoint expiry, Dpc* dpc, 
-        Waitable* signalee)
-    {
-        if (!ResetWaitable(what, WaitableType::Timer, 0))
-            return false;
-
-        what->clockEvent.expiry = expiry;
-        what->clockEvent.dpc = dpc;
-        what->clockEvent.waitable = signalee;
-
-        return true;
-    };
-
-    SL_ALWAYS_INLINE
-    bool ResetMutex(Mutex* what, size_t tickets)
-    {
-        return ResetWaitable(what, WaitableType::Mutex, tickets);
-    }
-
-    SL_ALWAYS_INLINE
-    WaitStatus WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout,
-        sl::StringSpan reason = {})
-    {
-        return WaitMany({ &what, 1 }, entry, timeout, reason);
-    }
-
-    SL_ALWAYS_INLINE
-    bool AcquireMutex(Mutex* mutex, sl::TimeCount timeout, 
-        sl::StringSpan reason = {})
-    {
-        WaitEntry entry {};
-        auto status = WaitOne(mutex, &entry, timeout, reason);
-
-        return status == WaitStatus::Success;
-    }
-
-    SL_ALWAYS_INLINE
-    void ReleaseMutex(Mutex* mutex)
-    {
-        SignalWaitable(mutex);
-    }
-
-    bool AcquireSxMutexShared(SxMutex* mutex, sl::TimeCount timeout, 
-        sl::StringSpan reason = {});
-    bool AcquireSxMutexExclusive(SxMutex* mutex, sl::TimeCount timeout,
+    NpkStatus WaitOne(Waitable* what, WaitEntry* entry, sl::TimeCount timeout,
         sl::StringSpan reason = {});
 
+    /* Must be called from passive IPL. Prepares `what` for use as a condition,
+     * initializing it with `tickets` as the countdown value. Any threads
+     * currently waiting on this object are woken with a `Reset` status.
+     * While the ticket count is non-zero, waiting threads block; once it
+     * reaches zero (via calls to `SetCondition()`) all current and future
+     * waiters are immediately satisfied until the condition is reset again.
+     * Returns `Busy` if the waitable is currently held as a mutex or sxmutex
+     * and cannot safely be repurposed.
+     */
+    NpkStatus ResetCondition(Condition* what, size_t tickets);
+
+    /* Must be called from passive IPL. Prepares `what` for use as a timer,
+     * recording `expiry` as the initial absolute fire time. Any threads
+     * currently waiting are woken with a `Reset` status. The timer does not
+     * begin counting until `SetTimer()` is called; `ResetTimer()` only
+     * establishes the type and initial state.
+     * An optional `dpc` callback will be run at `Ipl::Dpc` when the timer
+     * fires, alongside waking any waiting threads. Pass null if no extra
+     * action is needed at fire time.
+     * Returns `Busy` if the waitable is currently held and cannot be reset.
+     */
+    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry, Dpc* dpc);
+
+    /* Must be called from passive IPL. Prepares `what` for use as a blocking
+     * mutex (semaphore), setting `tickets` as the initial number of available
+     * acquisitions. Any threads currently waiting are woken with a `Reset`
+     * status.
+     * Returns `Busy` if the waitable is currently held as a mutex.
+     */
+    NpkStatus ResetMutex(Mutex* what, size_t tickets);
+
+    /* Must be called from passive IPL. Prepares `what` for use as a shared/
+     * exclusive mutex, initializing it to the unheld state. Any threads
+     * currently waiting are woken with a `Reset` status.
+     * Returns `Busy` if the sxmutex is currently held in any mode (shared or
+     * exclusive) and cannot safely be reset.
+     */
+    NpkStatus ResetSxMutex(SxMutex* what);
+
+    /* Can be called from any IPL. Decrements the ticket count of `what` by
+     * `count`. If this brings the count to exactly zero, all waiting threads
+     * are woken and future waits will be satisfied immediately until the
+     * condition is reset. If the subtraction does not reach zero, no threads
+     * are woken; callers must signal the condition exactly as many times as
+     * required to exhaust the ticket count set at reset.
+     */
+    void SetCondition(Condition* what, size_t count = 1);
+
+    /* Must be called from passive IPL. Arms `what` to fire at the expiry
+     * recorded during `ResetTimer()`. If `expiry` has a value it overrides
+     * the previously stored expiry before arming.
+     * Has no effect if the timer has already fired; it must be reset via
+     * `ResetTimer()` before it can be armed again.
+     */
+    void SetTimer(Timer* timer, sl::Opt<sl::TimePoint> expiry);
+
+    /* Must be called from passive IPL. Blocks the calling thread until
+     * `mutex` can be acquired, or until `timeout` expires. On success the
+     * calling thread becomes the recorded owner.
+     * The `timeout` and `reason` arguments have the same semantics as in
+     * `WaitMany()`.
+     */
+    NpkStatus AcquireMutex(Mutex* mutex, sl::TimeCount timeout,
+        sl::StringSpan reason = {});
+
+    /* Can be called from any IPL. Releases `mutex` and wakes at most one
+     * waiting thread, which will then compete to acquire it.
+     */
+    void ReleaseMutex(Mutex* mutex);
+
+    /* Must be called from passive IPL. Acquires `mutex` for shared access.
+     * Multiple threads may hold an sxmutex shared simultaneously. Blocks if
+     * an exclusive holder exists, or if there are pending exclusive waiters
+     * and this thread is not yet queued (to prevent starvation of exclusive
+     * waiters).
+     * The `timeout` and `reason` arguments have the same semantics as in
+     * `WaitMany()`.
+     */
+    NpkStatus AcquireSxMutexShared(SxMutex* mutex, sl::TimeCount timeout,
+        sl::StringSpan reason = {});
+
+    /* Must be called from passive IPL. Acquires `mutex` for exclusive access.
+     * Only one thread may hold an sxmutex exclusive at a time, and it must
+     * wait until both the exclusive-held flag and all shared holders are clear.
+     * The `timeout` and `reason` arguments have the same semantics as in
+     * `WaitMany()`.
+     */
+    NpkStatus AcquireSxMutexExclusive(SxMutex* mutex, sl::TimeCount timeout,
+        sl::StringSpan reason = {});
+
+    /* Can be called from any IPL. Releases one shared hold on `mutex`. If this
+     * was the last holder (no other shared holds and no exclusive hold), 
+     * waiting threads will be considered for wakeup.
+     */
     void ReleaseSxMutexShared(SxMutex* mutex);
+
+    /* Can be called from any IPL. Releases the exclusive hold on `mutex` and
+     * wakes waiting threads.
+     */
     void ReleaseSxMutexExclusive(SxMutex* mutex);
 }
 

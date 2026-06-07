@@ -72,7 +72,7 @@ namespace Npk
             if (mail->function != nullptr)
                 mail->function(mail->arg);
             if (mail->onComplete != nullptr)
-                SignalWaitable(mail->onComplete);
+                SetCondition(mail->onComplete);
         }
 
         FlushRequest* shootdown = nullptr;

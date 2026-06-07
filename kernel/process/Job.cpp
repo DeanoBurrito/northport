@@ -76,7 +76,8 @@ namespace Npk
         auto* jobPtr = reinterpret_cast<Job*>(ptr);
         ResetMutex(&jobPtr->processesMutex, 1);
 
-        if (!AcquireMutex(&parent.jobsMutex, sl::NoTimeout))
+        result = AcquireMutex(&parent.jobsMutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
         {
             UnrefSession(parent);
             UnrefJob(*jobPtr);

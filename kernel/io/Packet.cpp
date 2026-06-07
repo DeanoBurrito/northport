@@ -475,7 +475,7 @@ namespace Npk
         if (completeCallback != nullptr)
             completeCallback(packet, completeCbArg);
         if (completeCondVar != nullptr)
-            SignalWaitable(completeCondVar);
+            SetCondition(completeCondVar);
 
         ClearBusyFlag();
         if (status == IoStatus::Complete)

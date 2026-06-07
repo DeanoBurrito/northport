@@ -78,7 +78,8 @@ namespace Npk
         NPK_CHECK(ptr != nullptr, nullptr);
 
         auto* engine = new(ptr) TextRenderer {};
-        NPK_ASSERT(ResetMutex(&engine->mutex, 1));
+        auto result = ResetMutex(&engine->mutex, 1);
+        NPK_ASSERT(result == NpkStatus::Success);
         engine->config = conf;
 
         ptr = PoolAllocWired(cellCount * sizeof(PendingWrite), VideoTag);
@@ -216,7 +217,7 @@ namespace Npk
             adaptor->brightCols[i] = ColourToPixel(fb, conf->brightColours[i]);
         }
 
-        if (!AcquireMutex(&renderer->mutex, sl::NoTimeout))
+        if (AcquireMutex(&renderer->mutex, sl::NoTimeout) != NpkStatus::Success)
         {
             PoolFreeWired(ptr, sizeof(TextAdaptor), VideoTag);
 
@@ -634,7 +635,9 @@ namespace Npk
     {
         NPK_ASSERT(engine != nullptr);
 
-        NPK_ASSERT(AcquireMutex(&engine->mutex, sl::NoTimeout));
+        auto result = AcquireMutex(&engine->mutex, sl::NoTimeout);
+        NPK_ASSERT(result == NpkStatus::Success);
+
         for (size_t i = 0; i < text.Size(); i++)
             WriteChar(engine, text[i]);
         ReleaseMutex(&engine->mutex);
@@ -645,7 +648,11 @@ namespace Npk
         NPK_ASSERT(engine != nullptr);
 
         if (!engine->panicMode)
-            NPK_ASSERT(AcquireMutex(&engine->mutex, sl::NoTimeout));
+        {
+            auto result = AcquireMutex(&engine->mutex, sl::NoTimeout);
+            NPK_ASSERT(result == NpkStatus::Success);
+        }
+
         FlushTextRendererLocked(engine);
         if (!engine->panicMode)
             ReleaseMutex(&engine->mutex);
@@ -655,7 +662,8 @@ namespace Npk
     {
         NPK_ASSERT(engine != nullptr);
 
-        NPK_ASSERT(AcquireMutex(&engine->mutex, sl::NoTimeout));
+        auto result = AcquireMutex(&engine->mutex, sl::NoTimeout);
+        NPK_ASSERT(result == NpkStatus::Success);
 
         FlushTextRendererLocked(engine);
         for (auto it = engine->adaptors.Begin(); it != engine->adaptors.End();
@@ -677,7 +685,8 @@ namespace Npk
         NPK_ASSERT(engine != nullptr);
         NPK_ASSERT(adaptor != nullptr);
 
-        NPK_ASSERT(AcquireMutex(&engine->mutex, sl::NoTimeout));
+        auto result = AcquireMutex(&engine->mutex, sl::NoTimeout);
+        NPK_ASSERT(result == NpkStatus::Success);
 
         FlushTextRendererLocked(engine);
         for (size_t i = 0; i < engine->cells.Size(); i++)

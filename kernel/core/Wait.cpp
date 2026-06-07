@@ -177,11 +177,11 @@ namespace Npk
 
         if (waiter.stage.CompareExchange(preparing, desired, sl::AcqRel))
             return NpkStatus::Success;
+
+        if (waiter.wakeDpc == nullptr)
+            return NpkStatus::InternalError;
         if (waiter.stage.CompareExchange(blocked, desired, sl::AcqRel))
         {
-            if (waiter.wakeDpc == nullptr)
-                return NpkStatus::InternalError;
-
             //QueueDpc() is the secret ingredient that makes calling CancelWait
             //safe from any IPL.
             QueueDpc(waiter.wakeDpc);
@@ -567,7 +567,7 @@ namespace Npk
 
             if (stage.CompareExchange(preparing, desired, sl::AcqRel))
             {} //no-op, thread will detect the new state and error out
-            else if (stage.CompareExchange(blocked, preparing, sl::AcqRel))
+            else if (stage.CompareExchange(blocked, desired, sl::AcqRel))
                 Private::WakeThread(entry->thread);
         }
 
@@ -576,6 +576,7 @@ namespace Npk
         //The lock ensures no one else tries to change it's type, and
         //therefore the behaviour of the other wait functions.
         what->type = newType;
+        what->owner = nullptr;
         switch (what->type)
         {
         case WaitableType::Condition:
@@ -648,6 +649,20 @@ namespace Npk
             return;
 
         QueueWaitable(what);
+    }
+
+    void Private::SignalTimerWaitable(Timer* timer)
+    {
+        if (timer == nullptr)
+            return;
+        if (timer->type != WaitableType::Timer)
+            return;
+
+        const auto prev = timer->tickets.Exchange(0);
+        if (prev == 0)
+            return;
+
+        QueueWaitable(timer);
     }
 
     void SetTimer(Timer* timer, sl::Opt<sl::TimePoint> expiry)

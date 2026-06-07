@@ -134,6 +134,21 @@ namespace Npk::Private
         PoolFreeWired(page, sizeof(*page), AnonPageTag);
     }
 
+    NpkStatus AnonPageGetPage(PageInfo** info, AnonPageRef page)
+    {
+        if (!page.Valid())
+            return NpkStatus::InvalidArg;
+        if (info == nullptr)
+            return NpkStatus::InvalidArg;
+
+        page->lock.Lock();
+        //TODO: get pageinfo or page it in
+        auto result = NpkStatus::NotAvailable;
+        page->lock.Unlock();
+
+        return result;
+    }
+
     NpkStatus CreateAnonMap(AnonMap** map, size_t slotCount)
     {
         if (map == nullptr)
@@ -143,7 +158,7 @@ namespace Npk::Private
         if (ptr == nullptr)
             return NpkStatus::Shortage;
         auto* newMap = new(ptr) AnonMap {};
-        NPK_ASSERT(ResetMutex(&newMap->mutex, 1));
+        NPK_ASSERT(ResetMutex(&newMap->mutex, 1) == NpkStatus::Success);
         newMap->refcount = 1;
 
         if (slotCount > 0)
@@ -182,8 +197,9 @@ namespace Npk::Private
     {
         AnonMapRef mapRef = &map;
 
-        if (!AcquireMutex(&map.mutex, sl::NoTimeout))
-            return NpkStatus::InternalError;
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
+            return result;
 
         if (newSlotCount <= map.slotCount)
         {
@@ -206,7 +222,7 @@ namespace Npk::Private
 
         if (map.slots != nullptr)
         {
-            //there is already a table structure allocated, create a new 
+            //there is already a table structure allocated, create a new
             //set of tables to point to the existing mappings.
             for (size_t i = curLevels; i != newLevels; i++)
             {
@@ -244,7 +260,8 @@ namespace Npk::Private
     {
         AnonMapRef mapRef = &map;
 
-        if (!AcquireMutex(&map.mutex, sl::NoTimeout))
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
             return {};
 
         if (slot >= map.slotCount)
@@ -282,8 +299,9 @@ namespace Npk::Private
     {
         AnonMapRef mapRef = &map;
 
-        if (!AcquireMutex(&map.mutex, sl::NoTimeout))
-            return NpkStatus::LockAcquireFailed;
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
+            return result;
 
         if (slot >= map.slotCount)
         {
@@ -357,7 +375,8 @@ namespace Npk::Private
     {
         AnonMapRef mapRef = &map;
 
-        if (!AcquireMutex(&map.mutex, sl::NoTimeout))
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
             return {};
 
         if (map.slots == nullptr || slot >= map.slotCount)
