@@ -51,7 +51,9 @@ namespace Npk::Loader
     {
         .id = LIMINE_MODULE_REQUEST,
         .revision = 0,
-        .response = nullptr
+        .response = nullptr,
+        .internal_module_count = 0,
+        .internal_modules = nullptr
     };
 
     limine_boot_time_request timeReq
