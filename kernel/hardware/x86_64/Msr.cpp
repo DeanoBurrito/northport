@@ -16,7 +16,8 @@ namespace Npk
         const uint64_t baseAddr = base & ~(uint64_t)0xFFF;
         const uint64_t maskValue = mask & ~(uint64_t)0xFFF;
 
-        Log("%s MTRR %zu: valid=%s, type=%s, base=0x%tx, mask=0x%tx", LogLevel::Trace,
+        Log("%s MTRR %zu: valid=%s, type=%s, base=0x%tx, mask=0x%tx", 
+            LogLevel::Trace,
             saving ? "Saving" : "Restoring", 
             index, 
             valid ? "yes" : "no", 
@@ -36,7 +37,7 @@ namespace Npk
         for (size_t i = 0; i < vcount; i++)
         {
             regs[i * 2] = ReadMsr((Msr)((uint32_t)Msr::MtrrPhysBase + i * 2));
-            regs[i * 2 + 1] = ReadMsr((Msr)((uint32_t)Msr::MtrrPhysMask + i * 2));
+            regs[i * 2 + 1] = ReadMsr((Msr)((uint32_t)Msr::MtrrPhysMask + i*2));
             LogMttr(i, true, regs[i * 2], regs[i * 2 + 1]);
         }
 
@@ -55,11 +56,17 @@ namespace Npk
         regs[vcount * 2 + 9] = ReadMsr((Msr)0x26E);
         regs[vcount * 2 + 10] = ReadMsr((Msr)0x26F);
         for (size_t i = 0 ; i < fixedCount; i++)
-            Log("Saving fixed MTRR: 0x%" PRIx64, LogLevel::Trace, regs[vcount * 2 + i]);
+        {
+            Log("Saving fixed MTRR: 0x%" PRIx64, LogLevel::Trace, 
+                regs[vcount * 2 + i]);
+        }
     }
 
     void RestoreMtrrs(sl::Span<uint64_t> regs)
     {
+        //TODO: there is a protocol for writing to MTRRs, see intel and
+        //AMD docs.
+
         const uint64_t caps = ReadMsr(Msr::MtrrCap);
 
         const size_t vcount = caps & 0xFF;
@@ -70,24 +77,28 @@ namespace Npk
         {
             LogMttr(i, false, regs[i * 2], regs[i * 2 + 1]);
             WriteMsr((Msr)((uint32_t)Msr::MtrrPhysBase + i * 2), regs[i * 2]);
-            WriteMsr((Msr)((uint32_t)Msr::MtrrPhysMask + i * 2), regs[i * 2 + 1]);
+            WriteMsr((Msr)((uint32_t)Msr::MtrrPhysMask + i * 2), 
+                regs[i * 2 + 1]);
         }
 
         if (fixedCount == 0)
             return;
         for (size_t i = 0; i < fixedCount; i++)
-            Log("Restoring fixed MTRR: 0x%" PRIx64, LogLevel::Trace, regs[vcount * 2 + i]);
+        {
+            Log("Restoring fixed MTRR: 0x%" PRIx64, LogLevel::Trace, 
+                regs[vcount * 2 + i]);
+        }
 
         WriteMsr((Msr)0x250, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x258, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x259, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x268, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x269, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x26A, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x26B, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x26C, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x26D, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x26E, regs[vcount * 2 + 0]);
-        WriteMsr((Msr)0x26F, regs[vcount * 2 + 0]);
+        WriteMsr((Msr)0x258, regs[vcount * 2 + 1]);
+        WriteMsr((Msr)0x259, regs[vcount * 2 + 2]);
+        WriteMsr((Msr)0x268, regs[vcount * 2 + 3]);
+        WriteMsr((Msr)0x269, regs[vcount * 2 + 4]);
+        WriteMsr((Msr)0x26A, regs[vcount * 2 + 5]);
+        WriteMsr((Msr)0x26B, regs[vcount * 2 + 6]);
+        WriteMsr((Msr)0x26C, regs[vcount * 2 + 7]);
+        WriteMsr((Msr)0x26D, regs[vcount * 2 + 8]);
+        WriteMsr((Msr)0x26E, regs[vcount * 2 + 9]);
+        WriteMsr((Msr)0x26F, regs[vcount * 2 + 10]);
     }
 }

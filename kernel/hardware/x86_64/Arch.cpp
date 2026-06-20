@@ -80,7 +80,7 @@ namespace Npk
                 addr = (uintptr_t)DebugEventEntry;
             idt[i].data[0] = (addr & 0xFFFF) | ((addr & 0xFFFF'0000) << 32);
             idt[i].data[0] |= 0x08 << 16; //kernel code selector
-            idt[i].data[0] |= ((0b1110ull << 8) | (1ull << 15)) << 32; //present | type
+            idt[i].data[0] |= ((0b1110ull << 8) | (1ull << 15)) << 32; //type
             idt[i].data[1] = addr >> 32;
         }
         asm("lidt %0" :: "m"(idtr));
@@ -139,11 +139,13 @@ namespace Npk
             WriteMsr(Msr::CStar, reinterpret_cast<uint64_t>(BadSysCallEntry));
             WriteMsr(Msr::SFMask, 1 << 9); //will disable intrs on syscall entry
 
-            Log("Setup for syscall/sysret: star=0x%tx, lstar=0x%tx, cstar=0x%tx, sfmask=0x%tx",
+            Log("Setup for syscall/sysret: star=0x%tx, lstar=0x%tx, "
+                "cstar=0x%tx, sfmask=0x%tx",
                 LogLevel::Verbose, ReadMsr(Msr::Star), ReadMsr(Msr::LStar), 
                 ReadMsr(Msr::CStar), ReadMsr(Msr::SFMask));
         }
 
+        //TODO: PAT setup
         //TODO: fixups: sse, xsave
         
         InitMachineChecking();
@@ -161,7 +163,8 @@ namespace Npk
         Log("Cpu %zu locals at %p", LogLevel::Info, softwareId, tls);
     }
 
-    void HwPrimeThread(HwThreadContext** store, uintptr_t stub, uintptr_t entry, uintptr_t arg, uintptr_t stack)
+    void HwPrimeThread(HwThreadContext** store, uintptr_t stub, uintptr_t entry,
+        uintptr_t arg, uintptr_t stack)
     {
         SwitchFrame frame {};
         sl::MemSet(&frame, 0, sizeof(frame));
@@ -173,10 +176,12 @@ namespace Npk
 
         sl::MemSet(reinterpret_cast<void*>(stack - NullLength), 0, NullLength);
         stack -= NullLength;
-        sl::MemCopy(reinterpret_cast<void*>(stack - sizeof(stub)), &stub, sizeof(stub));
+        sl::MemCopy(reinterpret_cast<void*>(stack - sizeof(stub)), 
+            &stub, sizeof(stub));
         stack -= sizeof(stub);
 
-        auto* dest = reinterpret_cast<SwitchFrame*>(sl::AlignDown(stack, alignof(SwitchFrame)));
+        stack = sl::AlignDown(stack, alignof(SwitchFrame));
+        auto* dest = reinterpret_cast<SwitchFrame*>(stack);
         dest--;
         sl::MemCopy(dest, &frame, sizeof(frame));
 
@@ -185,7 +190,8 @@ namespace Npk
 
     void HwInitEarly()
     {
-        const uint64_t dummyLocals = reinterpret_cast<uint64_t>(KERNEL_CPULOCALS_BEGIN);
+        const uint64_t dummyLocals = 
+            reinterpret_cast<uint64_t>(KERNEL_CPULOCALS_BEGIN);
         HwSetMyLocals(dummyLocals, 0);
 
         InitUarts();
@@ -206,7 +212,8 @@ namespace Npk
 
     //NOTE: this function relies on rbp being used for the frame base
     //pointer, i.e. being compiled with `-fno-omit-frame-pointer`.
-    size_t GetCallstack(sl::Span<uintptr_t> store, uintptr_t start, size_t offset)
+    size_t GetCallstack(sl::Span<uintptr_t> store, uintptr_t start, 
+        size_t offset)
     {
         struct Frame
         {
@@ -237,7 +244,8 @@ namespace Npk
         return store.Size();
     }
 
-    void HwDumpPanicInfo(size_t maxWidth, size_t (*Print)(const char* format, ...))
+    void HwDumpPanicInfo(size_t maxWidth, 
+        size_t (*Print)(const char* format, ...))
     {
         (void)maxWidth;
 

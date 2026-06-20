@@ -100,7 +100,6 @@ namespace Npk
             return;
 
         }
-        WRITE_DR(index, value);
     }
 
     bool HwEnableBreakpoint(HwBreakpoint& bp, uintptr_t addr, size_t kind, 
