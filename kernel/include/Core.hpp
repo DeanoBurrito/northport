@@ -652,19 +652,21 @@ namespace Npk
     template<Ipl max, Ipl min>
     inline void IplSpinLock<max, min>::Lock()
     {
-        prevIpl = CurrentIpl();
-        if (prevIpl > max || min > prevIpl)
+        const auto lastIpl = CurrentIpl();
+        if (lastIpl > max || min > lastIpl)
             Panic("Bad IPL when acquiring IplSpinLock", nullptr);
 
-        if (prevIpl < max)
+        if (lastIpl < max)
             RaiseIpl(max);
+
         lock.Lock();
+        prevIpl = lastIpl;
     }
 
     template<Ipl max, Ipl min>
     inline bool IplSpinLock<max, min>::TryLock()
     {
-        auto lastIpl = CurrentIpl();
+        const auto lastIpl = CurrentIpl();
         if (lastIpl > max || min > lastIpl)
             Panic("Bad IPL when trying to acquire IplSpinLock", nullptr);
 
@@ -672,7 +674,7 @@ namespace Npk
             RaiseIpl(max);
         const bool success = lock.TryLock();
 
-            prevIpl = lastIpl;
+        prevIpl = lastIpl;
         if (!success)
             LowerIpl(prevIpl);
 
@@ -682,9 +684,11 @@ namespace Npk
     template<Ipl max, Ipl min>
     inline void IplSpinLock<max, min>::Unlock()
     {
+        const auto lastIpl = prevIpl;
         lock.Unlock();
-        if (prevIpl < max)
-            LowerIpl(prevIpl);
+
+        if (lastIpl < max)
+            LowerIpl(lastIpl);
     }
 
     /* Resets and initializes a DPC instance struct.
