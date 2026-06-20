@@ -88,6 +88,24 @@ namespace Npk
             Private::OnPassiveRunLevel();
     }
 
+    NpkStatus ResetDpc(Dpc* dpc, DpcEntry func, void* arg, bool force)
+    {
+        if (dpc == nullptr)
+            return NpkStatus::InvalidArg;
+        if (func == nullptr)
+            return NpkStatus::InvalidArg;
+
+        const bool complete = dpc->complete.Load(sl::Acquire);
+        if (!complete && !force)
+            return NpkStatus::Busy;
+
+        dpc->complete.Store(false, sl::Release);
+        dpc->arg = arg;
+        dpc->function = func;
+
+        return NpkStatus::Success;
+    }
+
     void QueueDpc(Dpc* dpc)
     {
         NPK_CHECK(dpc != nullptr, );
@@ -99,7 +117,9 @@ namespace Npk
         {
             const auto prevIpl = RaiseIpl(Ipl::Dpc);
             dpc->function(dpc, dpc->arg);
+            dpc->complete.Store(true, sl::Release);
             LowerIpl(prevIpl);
+
             return;
         }
 
@@ -114,7 +134,7 @@ namespace Npk
         if (dpc == nullptr)
             return;
 
-        while (dpc->complete.Load(sl::Relaxed))
+        while (!dpc->complete.Load(sl::Relaxed))
             sl::HintSpinloop();
     }
 }

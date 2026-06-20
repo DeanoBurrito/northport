@@ -262,6 +262,23 @@ namespace Npk
 
         freezeCmdControl.Store(0, sl::Release);
     }
+
+    void SetCpuPerformanceData(CpuId who, uint8_t performance,
+        uint8_t efficiency)
+    {
+        auto* status = RemoteStatus(who);
+        if (status == nullptr)
+            return;
+
+        const uint8_t perf = performance;
+        const uint8_t eff = efficiency;
+        status->performanceCapacity.Exchange(performance, sl::AcqRel);
+        status->efficiencyClass.Exchange(efficiency, sl::AcqRel);
+
+        Log("Performance/efficiency update for cpu %zu: perf %u -> %u,\
+            eff %u -> %u", LogLevel::Verbose, who, performance, perf,
+            efficiency, eff);
+    }
 }
 
 namespace Npk::Private

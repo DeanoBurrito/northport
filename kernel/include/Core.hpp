@@ -352,18 +352,19 @@ namespace Npk
     struct Waitable
     {
         WaitableType type;
+        IplSpinLock<Ipl::Dpc> listLock;
+        sl::Atomic<bool> pending;
+
+        sl::Atomic<size_t> tickets;
+        WaitEntryList waitersList;
+        sl::QueueMpScHook mpscHook;
+        sl::FwdListHook ownerListHook;
+
         union
         {
             ThreadContext* owner;
             ClockEvent clockEvent;
         };
-        sl::Atomic<size_t> tickets;
-
-        IplSpinLock<Ipl::Dpc> listLock;
-        WaitEntryList waitersList;
-
-        sl::QueueMpScHook mpscHook;
-        sl::Atomic<bool> pending;
     };
 
     using Condition = Waitable;
@@ -372,6 +373,7 @@ namespace Npk
     using SxMutex = Waitable;
 
     using WaitableMpScQueue = sl::QueueMpSc<Waitable, &Waitable::mpscHook>;
+    using WaitableOwnerList = sl::FwdList<Waitable, &Waitable::ownerListHook>;
     
     using MailFunction = void (*)(void* arg);
 
@@ -406,9 +408,11 @@ namespace Npk
         IplSpinLock<Ipl::Dpc> workItemsLock;
         WorkItemQueue workItems;
         TrapFrame* lastIntrFrame;
+        sl::Atomic<uint8_t> performanceCapacity;
+        sl::Atomic<uint8_t> efficiencyClass;
     };
 
-    struct SmpControl
+    struct alignas(64) SmpControl
     {
         void* ipiId;
         MailQueue mail;
@@ -538,6 +542,11 @@ namespace Npk
          */
         Executing,
 
+        /* Internal state: indicates a thread is currently executing but will
+         * transition to Waiting instead of Ready when next scheduled away from.
+         */
+        WaitPending,
+
         /* Thread is currently waiting on an event/waitable. When the wait is
          * completed (by satisfaction or by timing out) the thread will wake
          * and be placed in a core's run queues and move to the `Ready` state.
@@ -545,17 +554,45 @@ namespace Npk
         Waiting,
     };
 
+    enum class PowerHint : uint8_t
+    {
+        Default,
+        Efficient,
+        Performance,
+    };
+
+    struct SchedulerStats
+    {
+        sl::Atomic<uint64_t> version;
+        uint64_t contextSwitchCount;
+        uint64_t quantumEndCount;
+        uint64_t preemptCount;
+        uint64_t yieldCount;
+        uint64_t stealsAttempted;
+        uint64_t stealsSuccessful;
+        uint64_t migrationsTo;
+        uint64_t migrationsFrom;
+        uint64_t idleCount;
+    };
+
+    struct ThreadStats
+    {
+        sl::Atomic<uint64_t> version;
+        uint64_t contextSwitchCount;
+        uint64_t quantumEnds;
+        uint64_t migrationCount;
+        uint64_t waitPercentage;
+        uint64_t userNanos;
+        uint64_t kernelNanos;
+    };
+
     struct ThreadContext
     {
-        struct 
-        {
-            sl::Atomic<uint64_t> userNs; //TODO: use TimePoint instead of raw nanos
-            sl::Atomic<uint64_t> kernelNs;
-        } accounting;
+        ThreadStats accounting;
 
         struct
         {
-            IntrSpinLock lock;
+            IplSpinLock<Ipl::Dpc> lock;
             HwThreadContext* context;
 
             CpuId affinity;
@@ -563,13 +600,18 @@ namespace Npk
             uint32_t sleepTime;
             uint32_t runTime;
             uint8_t basePriority;
-            uint8_t dynPriority;
+            uint8_t boostPriority;
             bool isPinned;
             ThreadState state;
             bool isInteractive;
             uint8_t niceness;
+            PowerHint powerHint;
+            bool agingBoost; //TODO: implement
+            bool inRunQueue;
+            sl::Span<WaitEntry> waitingOn;
+            WaitableOwnerList heldLocks;
         } scheduling;
-        sl::ListHook queueHook; //NOTE: protected by scheduling.lock
+        sl::ListHook queueHook; //NOTE: protected by queuesLock
 
         struct
         {
@@ -578,13 +620,6 @@ namespace Npk
             IplSpinLock<Ipl::Dpc> lock;
             sl::StringSpan reason;
         } waiting;
-
-        inline uint8_t Priority() const
-        {
-            if (scheduling.dynPriority != 0)
-                return scheduling.dynPriority;
-            return scheduling.basePriority;
-        }
     };
 
     using ThreadQueue = sl::List<ThreadContext, &ThreadContext::queueHook>;
@@ -651,6 +686,10 @@ namespace Npk
         if (prevIpl < max)
             LowerIpl(prevIpl);
     }
+
+    /* Resets and initializes a DPC instance struct.
+     */
+    NpkStatus ResetDpc(Dpc* dpc, DpcEntry func, void* arg, bool force);
 
     /* Queues a DPC for execution on the current cpu. This function can be
      * called at any level: if run from below IPL::DPC, it will raise the local
@@ -825,10 +864,32 @@ namespace Npk
         return AccessPage(LookupPagePaddr(page));
     }
 
-    bool ResetThread(ThreadContext* thread);
-    bool PrepareThread(ThreadContext* thread, uintptr_t entry, uintptr_t arg, 
-        uintptr_t stack, sl::Opt<CpuId> affinity);
-    void ExitThread(size_t code, void* data);
+    /* Updates the relative performance and efficiency values for a specific
+     * cpu. These values server as hints to the scheduler.
+     * This function is intended for use by the hardware layer or system specific
+     * drivers that can obtain this information. The set details remain until
+     * this function is called again or the system is reset, they do remain
+     * across sleep states and individual cores being powered on/off.
+     */
+    void SetCpuPerformanceData(CpuId who, uint8_t performance,
+        uint8_t efficiency);
+
+    /*
+     */
+    NpkStatus ResetThread(ThreadContext* thread);
+
+    /*
+     */
+    NpkStatus PrepareThread(ThreadContext* thread, uintptr_t entry, 
+        uintptr_t arg, uintptr_t stack, sl::Opt<CpuId> affinity);
+
+    /*
+     */
+    [[noreturn]]
+    void ExitThread(size_t code);
+
+    /*
+     */
     void Yield();
     void EnqueueThread(ThreadContext* thread);
 
@@ -848,6 +909,10 @@ namespace Npk
      * until it re-enables preemption.
      */
     void SetThreadAffinity(ThreadContext* thread, CpuId who);
+
+    /*
+     */
+    void SetThreadPowerHint(ThreadContext* thread, PowerHint hint);
 
     /* Removes the pinned status of `thread`, allowing it migrate cpus again.
      */
@@ -875,6 +940,8 @@ namespace Npk
      * may execute next, based on the last cpu it ran on.
      */
     sl::Opt<CpuId> GetThreadAffinity(ThreadContext* thread, bool& pinned);
+
+    sl::Opt<PowerHint> GetThreadPowerHint(ThreadContext* thread);
 
     /* Attempts to cancel a preparing or ongoing wait operation for a thread.
      * Returns whether a wait was successfully cancelled or not. Waiting
@@ -1030,7 +1097,7 @@ namespace Npk
 #define NPK_UNREACHABLE() \
     do \
     { \
-    NPK_ASSERT(!"Unreachable code reached."); \
+        NPK_ASSERT(!"Unreachable code reached."); \
         SL_UNREACHABLE(); \
     } \
     while (false)
@@ -1050,4 +1117,4 @@ namespace Npk
 
 #define NPK_UNEXPECTED_STATUS(status, lvl) \
     Log("(" SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__) ") Unexpected status code %zu, %s", lvl, \
-    status, StatusStr(status)) \
+    status, StatusStr(status))

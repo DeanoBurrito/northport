@@ -400,9 +400,12 @@ namespace Npk
 
         ClockEvent timeoutEvent {};
         timeoutEvent.dpc = &timeoutDpc;
-        timeoutEvent.expiry = GetMonotonicTime() + timeout;
-        if (timeout.ticks != 0)
+        const bool anyTimeout = timeout != sl::NoTimeout && timeout.ticks != 0;
+        if (anyTimeout)
+        {
+            timeoutEvent.expiry = GetMonotonicTime() + timeout;
             AddClockEvent(&timeoutEvent);
+        }
 
         //2. main waiting loop.
         auto result = satisfied ? NpkStatus::Success : NpkStatus::Timeout;
@@ -421,7 +424,7 @@ namespace Npk
                 break;
             }
 
-            Private::BeginWait();
+            Private::BeginWait({ entries, what.Size() });
             while (true)
             {
                 LowerIpl(Ipl::Passive); //allow preemption to take place.
@@ -462,7 +465,7 @@ namespace Npk
                     break;
 
                 //re-arm for another sleep
-                Private::BeginWait();
+                Private::BeginWait({ entries, what.Size() });
             }
 
             Private::EndWait();
@@ -497,7 +500,7 @@ namespace Npk
             entry.waitable = nullptr;
         }
 
-        if (timeout.ticks != 0)
+        if (anyTimeout)
         {
             if (!RemoveClockEvent(&timeoutEvent))
                 SpinUntilDpcCompleted(&timeoutDpc);

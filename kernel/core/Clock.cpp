@@ -62,12 +62,12 @@ namespace Npk
         {
         case CycleAccount::User:
             if (currentThread != nullptr)
-                currentThread->accounting.userNs += period.epoch;
+                currentThread->accounting.userNanos += period.epoch;
             accounting->user += period.epoch;
             break;
         case CycleAccount::Kernel:
             if (currentThread != nullptr)
-                currentThread->accounting.kernelNs += period.epoch;
+                currentThread->accounting.kernelNanos += period.epoch;
             accounting->kernel += period.epoch;
             break;
         case CycleAccount::KernelInterrupt:
