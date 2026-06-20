@@ -197,6 +197,9 @@ namespace Npk
                 const Paddr base = sl::Max(ranges[i].base, init.pmAllocHead);
                 const size_t pageCount = (top - base) >> PfnShift();
 
+                if (pageCount == 0)
+                    continue;
+
                 totalPages += pageCount;
                 const auto conv = sl::ConvertUnits(totalPages << PfnShift());
                 Log("%9zu|%#18tx|%12zu|%4zu.%03zu %sB", LogLevel::Verbose,

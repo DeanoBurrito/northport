@@ -52,6 +52,7 @@ namespace Npk
         SystemDomain& dom = MySystemDomain();
 
         dom.freeLists.lock.Lock();
+        page->pm.count = 1;
         dom.freeLists.free.PushBack(page);
         dom.freeLists.pageCount++;
         dom.freeLists.lock.Unlock();
