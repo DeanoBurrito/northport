@@ -24,7 +24,7 @@ namespace Npk
             }
 
             auto access = AccessPage(page);
-            sl::MemSet(access->value, 0, PageSize());
+            sl::MemSet(access.vaddr, 0, PageSize());
 
             dom.freeLists.pageCount--;
             return page;

@@ -239,7 +239,7 @@ namespace Npk
             if (!nextPtRef.Valid())
                 return false;
 
-            auto pt = static_cast<PageTable*>(nextPtRef->value);
+            auto pt = static_cast<PageTable*>(nextPtRef.vaddr);
             pte = &pt->ptes[indices[level]];
             level--;
             localPtRef = nextPtRef;
@@ -407,5 +407,10 @@ namespace Npk
             return false;
 
         return true;
+    }
+
+    sl::Span<const HwDirectMapSegment> HwGetDirectMapSegments()
+    {
+        return {};
     }
 }

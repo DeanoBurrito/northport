@@ -273,7 +273,7 @@ namespace Npk
 
             auto access = AccessPage(page);
             NPK_ASSERT(access.Valid());
-            sl::MemSet(access->value, 0, PageSize());
+            sl::MemSet(access.vaddr, 0, PageSize());
 
             auto paddr = LookupPagePaddr(page);
             SetKernelMap(virtBase, paddr, VmFlag::Write);
@@ -294,7 +294,7 @@ namespace Npk
 
             auto access = AccessPage(page);
             NPK_ASSERT(access.Valid());
-            sl::MemSet(access->value, 0, PageSize());
+            sl::MemSet(access.vaddr, 0, PageSize());
 
             auto paddr = LookupPagePaddr(page);
             SetKernelMap(virtBase, paddr, VmFlag::Write);

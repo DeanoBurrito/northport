@@ -227,6 +227,39 @@ namespace Npk
         }
     };
 
+    namespace Private
+    {
+        bool PmaCacheSetEntry(size_t slot, void** curVaddr, Paddr curPaddr, 
+            Paddr nextPaddr);
+    };
+
+    using PageAccessCache = sl::LruCache<Paddr, void*, 
+        Private::PmaCacheSetEntry>;
+
+    struct PageAccessRef
+    {
+    private:
+        PageAccessCache::CacheRef slot;
+
+    public:
+        void* vaddr;
+        Paddr paddr;
+
+        PageAccessRef() 
+            : slot {}
+        {}
+
+        PageAccessRef(PageAccessCache::CacheRef slot)
+            : slot(sl::Move(slot))
+        {}
+        
+        bool Valid()
+        {
+            return vaddr != nullptr;
+        }
+
+    };
+
     struct Dpc;
 
     using DpcEntry = void (*)(Dpc* self, void* arg);
@@ -624,12 +657,6 @@ namespace Npk
 
     using ThreadQueue = sl::List<ThreadContext, &ThreadContext::queueHook>;
 
-    namespace Private
-    {
-        bool PmaCacheSetEntry(size_t slot, void** curVaddr, Paddr curPaddr, 
-            Paddr nextPaddr);
-    };
-
     extern SystemDomain sysDomain0;
 
     SL_PRINTF_FUNC(1, 3)
@@ -840,8 +867,6 @@ namespace Npk
      */
     void FreePage(PageInfo* page);
 
-    using PageAccessCache = sl::LruCache<Paddr, void*, Private::PmaCacheSetEntry>;
-    using PageAccessRef = PageAccessCache::CacheRef;
 
     /* Attempts to copy `buffer.Size()` bytes into the memory specified by
      * `buffer` from the physical memory range starting at `base`.
@@ -852,13 +877,24 @@ namespace Npk
      */
     size_t CopyFromPhysical(Paddr base, sl::Span<char> buffer);
 
-    /* Attempts to create a temporary mapping to access the page at `paddr`.
-     * Returns a refcounted struct where `key` is equal to `paddr`, and
-     * `value` is the virtual address the page can be accessed at. While the
-     * refcount is non-zero the virtual address remains valid to access.
-     * The mapping is shared by all CPUs in the same system domain.
+    /* Attempts to retrieve a mapping for access to the page containing `paddr`.
+     * On success the returned struct will have a non-null `vaddr` field, the
+     * `paddr` field contains the same value as the `paddr` argument.
+     *
+     * The mapping only exists until the nearest page boundary either size of
+     * `paddr` and until the returned struct has its destructor called.
+     *
+     * Note that this mechanism is only intended for general purpose memory
+     * types (e.g. firmware or system provided data). It's not safe to use this
+     * for accessing devices or other mmio as no caching control is provided to
+     * the caller.
      */
     PageAccessRef AccessPage(Paddr paddr);
+
+    /* Manually call the destructor for a page access struct. After calling
+     * this function `*ref` is considered invalid and should not be used.
+     */
+    void DestroyPageAccess(PageAccessRef* ref);
 
     /* Sugar function: Gets the paddr for `page` and calls `AccessPage(paddr)`.
      */

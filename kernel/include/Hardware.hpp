@@ -220,6 +220,29 @@ namespace Npk
         SystemBase = (size_t)HwRegType::System << HwRegShift,
     };
 
+    /* Represents a region of virtual address space that the kernel can use
+     * as a direct map. Meaning a page at `paddr` can be accessed as
+     * `vaddr = paddr - seg->base + seg->offset`. All field values of a segment
+     * must be page-aligned.
+     */
+    struct HwDirectMapSegment
+    {
+        /* Virtual base address of the segment: where its translation window
+         * can be found from the kernel's perspective. This is bounded by
+         * `length.
+         */
+        uintptr_t virtBase;
+
+        /* Physical base address of the segment: where it begins translating
+         * addresses from. This is bounded by `length`.
+         */
+        Paddr physBase;
+
+        /* Determines the length of the segment.
+         */
+        size_t length;
+    };
+
     /* Calls `func` passing `a`/`b`/`c` as params to it, optionally placing
      * the return value of `func` into `*r` if non-null. If a synchronous
      * exception (i.e. one occurring due to an instruction `func` executed)
@@ -551,6 +574,12 @@ namespace Npk
      * this address.
      */
     bool HwIsCanonicalUserAddress(uintptr_t addr);
+
+    /* Returns the available direct map segments. Note that these values are
+     * not allowed to change after the first call of this function: the 
+     * direct map segments are immutable once setup.
+     */
+    sl::Span<const HwDirectMapSegment> HwGetDirectMapSegments();
 
     /* Places the stack of return addresses into `store`.
      * `start` is the frame base pointer to begin at, or `0` if wanting to use

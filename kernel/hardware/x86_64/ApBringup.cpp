@@ -148,7 +148,7 @@ namespace Npk
             - (uintptr_t)SpinupBlob) - sizeof(BootInfo);
 
         BootInfo* bootInfo = reinterpret_cast<BootInfo*>(infoOffset +
-            reinterpret_cast<uintptr_t>(bootPageRef->value));
+            reinterpret_cast<uintptr_t>(bootPageRef.vaddr));
 
         bootInfo->entry = reinterpret_cast<uint64_t>(&ApEntryFunc);
         bootInfo->cr3 = reinterpret_cast<uint64_t>(MyKernelMap().ptRoot);
