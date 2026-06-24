@@ -654,6 +654,20 @@ namespace Npk
         QueueWaitable(what);
     }
 
+    void SetConditionTo(Condition* what, size_t value)
+    {
+        if (what == nullptr)
+            return;
+        if (what->type != WaitableType::Condition)
+            return;
+
+        what->tickets.Store(value, sl::Release);
+        if (value != 0)
+            return;
+
+        QueueWaitable(what);
+    }
+
     void Private::SignalTimerWaitable(Timer* timer)
     {
         if (timer == nullptr)

@@ -1062,6 +1062,13 @@ namespace Npk
      */
     void SetCondition(Condition* what, size_t count = 1);
 
+    /* Can be called from any IPL. Sets the ticket count of `what` to value.
+     * If `value` is zero, all waiting threads are woken and future waits will
+     * be immediately satisfied until the condition is reset. If `value` is
+     * non-zero no threads are woken and no waits are satisfied.
+     */
+    void SetConditionTo(Condition* what, size_t value);
+
     /* Must be called from passive IPL. Arms `what` to fire at the expiry
      * recorded during `ResetTimer()`. If `expiry` has a value it overrides
      * the previously stored expiry before arming.
