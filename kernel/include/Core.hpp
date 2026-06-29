@@ -483,6 +483,14 @@ namespace Npk
 
     using LogSinkList = sl::List<LogSink, &LogSink::listHook>;
 
+    enum class PageVmFlag
+    {
+        Busy,
+        Clean,
+    };
+
+    using PageVmFlags = sl::Flags<PageVmFlag, uint32_t>;
+
     struct PageInfo
     {
         sl::FwdListHook mmList;
@@ -497,10 +505,9 @@ namespace Npk
             struct
             {
                 char placeholder[sizeof(vmoList)];
-                uint32_t flags;
+                PageVmFlags flags;
                 uint16_t offset;
-                uint16_t wireCount;
-                void* vmo;
+                uint16_t refcount;
             } vm;
 
             struct
@@ -659,12 +666,30 @@ namespace Npk
 
     extern SystemDomain sysDomain0;
 
+    /* Can be called from any IPL, appends a message to the kernel log queue.
+     * There are no lifetime guarantees for a log message once in the queue,
+     * but a written message will eventually be consumed by any active log
+     * sinks. The `msg` argument may contain printf style format specifiers.
+     */
     SL_PRINTF_FUNC(1, 3)
     void Log(const char* msg, LogLevel level, ...);
+
+    /* Similar to `Log()` except the function brings down the entire system,
+     * captures and displays some debug info alongside the panic message.
+     * If `frame` is non-null, the stored program state will also be included
+     * in the debug data and can aid later diagnostics. Like `Log()`, `msg` may
+     * contain printf style format specifiers.
+     * This function can be called from any IPL and never returns.
+     */
     [[noreturn]]
     void Panic(sl::StringSpan message, TrapFrame* frame, ...);
 
     void AddLogSink(LogSink& sink);
+
+    /* Detaches a previously registered log sink. Once removed the sink receives
+     * no further messages and can be safely torn down.
+     * Safe to call at any IPL.
+     */
     void RemoveLogSink(LogSink& sink);
 
     /* Enum value to string function for `enum LogLevel`.
@@ -672,10 +697,28 @@ namespace Npk
     sl::StringSpan LogLevelStr(LogLevel which);
 
     void AssertIpl(Ipl target);
+
+    /* Returns the current IPL for the local CPU. Note the return value is
+     * only meaningful if preemption is disabled, otherwise the value may be
+     * stale if a thread is migrated between calling this function and using
+     * the value.
+     */
     Ipl CurrentIpl();
+
+    /* Strictly raises the local cpu's IPL to `target`, masking any activity
+     * that runs at or below the previous level. Returns the previous IPL so it
+     * can be later restored via a call to `LowerIpl()`.
+     */
     Ipl RaiseIpl(Ipl target);
+
+    /* Strict lowers the local cpu's IPL to `target`, unmasking any activity
+     * that held off at higher levels. Any work at the newly unmasked levels is
+     * performed before this function returns.
+     */
     void LowerIpl(Ipl target);
 
+    /* Acquires the lock, must be called at IPL <= max IPL of lock.
+     */
     template<Ipl max, Ipl min>
     inline void IplSpinLock<max, min>::Lock()
     {
@@ -690,6 +733,10 @@ namespace Npk
         prevIpl = lastIpl;
     }
 
+    /* TryAcquire version of `IplSpinLock::Lock()`. Attempts to acquire the lock
+     * once before returning. Returns whether the lock was successfully acquired
+     * or not.
+     */
     template<Ipl max, Ipl min>
     inline bool IplSpinLock<max, min>::TryLock()
     {
@@ -708,6 +755,9 @@ namespace Npk
         return success;
     }
 
+    /* Releases the lock and restores the local IPL to the level it was at when
+     * the lock was acquired.
+     */
     template<Ipl max, Ipl min>
     inline void IplSpinLock<max, min>::Unlock()
     {
@@ -820,25 +870,68 @@ namespace Npk
         return HwReadTimestamp();
     }
 
+    /* Sets the backing store used by the kernel config manager. This is usually
+     * the command line provided by the bootloader, but is not required to be.
+     * The backing store is referenced, not copied, so it must be available
+     * until the next call to `SetConfigStore()`. The `noLog` argument can be
+     * used to suppress logging during this function so that it may be called
+     * before logging is initialized. Safe to call at any IPL.
+     */
     void SetConfigStore(sl::StringSpan store, bool noLog);
+
+    /* If the current config store contains an element with a matching `key`,
+     * this function returns the stored value interpreted as an unsigned 
+     * integer. Otherwise it returns `defaultValue`. No IPL requirement.
+     */
     size_t ReadConfigUint(sl::StringSpan key, size_t defaultValue);
-    sl::StringSpan ReadConfigString(sl::StringSpan key, 
+
+    /* Similar to `ReadConfigUint()` but the stored value is returned as text
+     * data rather than being interpreted as an unsigned integer. If no matching
+     * config element is present in the store, `defaultValue` is returned.
+     * No IPL requirement.
+     */
+    sl::StringSpan ReadConfigString(sl::StringSpan key,
         sl::StringSpan defaultValue);
 
+    /* Returns the physical address for the configuration root type, if that
+     * type is present on this system. Can be called at any IPL.
+     */
     sl::Opt<Paddr> GetConfigRoot(ConfigRootType type);
+
+    /* Attempts to find the first ACPI table with the matching `signature`.
+     * Can be called at any IPL.
+     */
     sl::Opt<sl::Sdt*> GetAcpiTable(sl::StringSpan signature);
+
+    /* If EFI runtime services are available and have been successfully
+     * enabled on this system, this function returns a pointer to the runtime
+     * services table in kernel virtual memory.
+     * Otherwise an empty opt is returned. Can be called at any IPL.
+     */
     sl::Opt<sl::EfiRuntimeServices*> GetEfiRtServices();
 
+    /* Attempts to lookup the `struct PageInfo` for `paddr`. Note that `paddr`
+     * must be a valid address of usable memory, one that originated from a 
+     * call to `AllocPage()`. This function does not enforce this requirement,
+     * and may return non-null but junk values if `paddr` is invalid.
+     * No IPL requirement.
+     */
     SL_ALWAYS_INLINE
     PageInfo* LookupPageInfo(Paddr paddr)
     {
-        return &sysDomain0.pfndb[((paddr - sysDomain0.physOffset) >> PfnShift())];
+        const size_t index = (paddr - sysDomain0.physOffset) >> PfnShift();
+
+        return &sysDomain0.pfndb[index];
     }
 
+    /* Inverse of `LookupPageInfo()`, also no IPL requirement.
+     */
     SL_ALWAYS_INLINE
     Paddr LookupPagePaddr(PageInfo* info)
     {
-        return ((info - sysDomain0.pfndb) << PfnShift()) + sysDomain0.physOffset;
+        const Paddr paddr = (info - sysDomain0.pfndb) << PfnShift();
+
+        return paddr + sysDomain0.physOffset;
     }
 
     /* Returns the system domain for the current cpu.
@@ -877,11 +970,12 @@ namespace Npk
      */
     size_t CopyFromPhysical(Paddr base, sl::Span<char> buffer);
 
-    /* Attempts to retrieve a mapping for access to the page containing `paddr`.
+    /* Attempts to retrieve a mapping for access to the page at `paddr`, which
+     * must be page-aligned; an unaligned address yields an invalid reference.
      * On success the returned struct will have a non-null `vaddr` field, the
      * `paddr` field contains the same value as the `paddr` argument.
      *
-     * The mapping only exists until the nearest page boundary either size of
+     * The mapping only exists until the nearest page boundary either side of
      * `paddr` and until the returned struct has its destructor called.
      *
      * Note that this mechanism is only intended for general purpose memory
@@ -923,14 +1017,25 @@ namespace Npk
     NpkStatus PrepareThread(ThreadContext* thread, uintptr_t entry, 
         uintptr_t arg, uintptr_t stack, sl::Opt<CpuId> affinity);
 
-    /*
+    /* Must be called at passive IPL with no locks held. This function does not
+     * return and terminates the current thread. The exit code (`code`) is
+     * stored for later retrieval, and is opaque to this function (i.e it's just
+     * data, no observable changes).
      */
     [[noreturn]]
     void ExitThread(size_t code);
 
-    /*
+    /* Must be called at passive IPL. Voluntarily ends the current thread's
+     * control of the current cpu, this function will eventually return when
+     * the thread later resumes execution. Note that this is not a wait, no
+     * control over when the thread resumes is provided.
      */
     void Yield();
+
+    /* Must be called at passive or dpc IPL. This function moves `thread` from
+     * the standby state to the ready state, and prepares it for execution by
+     * placing into a cpu's run queue.
+     */
     void EnqueueThread(ThreadContext* thread);
 
     /* Sets the niceness value for a thread. See `MinNiceness`, `MaxNiceness`,
@@ -950,7 +1055,10 @@ namespace Npk
      */
     void SetThreadAffinity(ThreadContext* thread, CpuId who);
 
-    /*
+    /* Sets the power *hint* for a thread, which affects which effects the
+     * preferred cpus when scheduling this thread. Changes to this hint may not
+     * take effect immediately.
+     * Must be called at passive IPL.
      */
     void SetThreadPowerHint(ThreadContext* thread, PowerHint hint);
 
@@ -981,6 +1089,8 @@ namespace Npk
      */
     sl::Opt<CpuId> GetThreadAffinity(ThreadContext* thread, bool& pinned);
 
+    /* Attempts to get the current power hint for `thread`.
+     */
     sl::Opt<PowerHint> GetThreadPowerHint(ThreadContext* thread);
 
     /* Attempts to cancel a preparing or ongoing wait operation for a thread.
@@ -1163,5 +1273,6 @@ namespace Npk
     SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__)
 
 #define NPK_UNEXPECTED_STATUS(status, lvl) \
-    Log("(" SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__) ") Unexpected status code %zu, %s", lvl, \
+    Log("(" SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__) \
+        ") Unexpected status code %zu, %s", lvl, \
     status, StatusStr(status))
