@@ -275,17 +275,29 @@ namespace Npk
     using DpcQueue = sl::FwdList<Dpc, &Dpc::hook>;
 
     struct WorkItem;
+    struct RemoteCpuStatus;
 
     using WorkItemEntry = void (*)(WorkItem* self, void* arg);
 
-    struct WorkItem
+    enum class WorkItemState
     {
-        sl::FwdListHook hook;
-        WorkItemEntry function;
-        void* arg;
+        Invalid,
+        Idle,
+        Pending,
+        Executing,
+        PendingCancel,
     };
 
-    using WorkItemQueue = sl::FwdList<WorkItem, &WorkItem::hook>;
+    struct WorkItem
+    {
+        sl::QueueMpScHook hook;
+        WorkItemEntry function;
+        void* arg;
+        sl::Atomic<WorkItemState> state;
+        RemoteCpuStatus* queue;
+    };
+
+    using WorkItemQueue = sl::QueueMpSc<WorkItem, &WorkItem::hook>;
 
     enum class CycleAccount
     {
@@ -438,8 +450,8 @@ namespace Npk
     {
         sl::Atomic<sl::TimePoint> lastIpi;
         LocalScheduler* scheduler;
-        IplSpinLock<Ipl::Dpc> workItemsLock;
         WorkItemQueue workItems;
+        Condition workItemsPending;
         TrapFrame* lastIntrFrame;
         sl::Atomic<uint8_t> performanceCapacity;
         sl::Atomic<uint8_t> efficiencyClass;
@@ -783,11 +795,39 @@ namespace Npk
      */
     void SpinUntilDpcCompleted(Dpc* dpc);
 
-    /* Queues a work item to be run by a kernel worker thread, with an optional
-     * cpu affinity. This work item will be run at IPL::Passive but is not
-     * allowed to block.
+    /* Resets a work item struct to it's initial (usable) state, this function
+     * can be called on an idle struct or one that has been zero-initialized.
+     * This function has no IPL requirement.
      */
-    void QueueWorkItem(WorkItem* item, sl::Opt<CpuId> who);
+    NpkStatus ResetWorkItem(WorkItem* item, WorkItemEntry func, void* arg);
+
+    /* Places a work item in a queue, optionally on a specific cpu. This
+     * function can be called on idle or executing work items (a work item can
+     * re-queue itself while running). Work item functions are allowed to take
+     * mutexes and otherwise block, but they are not recommended for waiting on
+     * long-running tasks. This function has no IPL requirement.
+     */
+    NpkStatus QueueWorkItem(WorkItem* item, sl::Opt<CpuId> who);
+
+    /* This functions only returns when `item` has been marked as idle, meaning
+     * it's not queued anywhere and is not currently executing.
+     * The `spin` flag determines if this function busy waits on the work item,
+     * or uses a blocking wait. If called with `spin = false`, it must be done
+     * so at passive IPL, otherwise there is no IPL requirement.
+     */
+    NpkStatus WaitUntilWorkItemComplete(WorkItem* item, bool spin);
+
+    /* Requests cancellation of a work item: if the item is queued or pending
+     * execution the item is skipped, if the item is executing already it is
+     * allowed to complete. The `wait` and `spin` arguments control when this
+     * function returns: `wait` determines if the function should ensure the
+     * work item has finished before returning, `spin` determines how the wait
+     * happens (`spin = true` spins, `spin = false` uses blocking).
+     * There is no IPL requirement for this function unless 
+     * `wait = true, spin = false` is passed, in which can the caller must be
+     * at passive IPL.
+     */
+    NpkStatus CancelWorkItem(WorkItem* item, bool wait, bool spin);
 
     /* Get access to some cpu-local variables of another cpu. This can be an
      * expensive operation, best used sparingly.
