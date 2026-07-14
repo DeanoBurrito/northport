@@ -507,6 +507,9 @@ namespace Npk
             ArmQuantumEvent(*localSched, current);
 
         LowerIpl(Ipl::Passive);
+
+        auto& dom = MySystemDomain();
+        NudgeEpoch(dom.rcu, MyCoreId() - dom.smpBase);
     }
 
     NpkStatus ResetThread(ThreadContext* thread)

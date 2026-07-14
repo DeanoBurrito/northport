@@ -85,7 +85,10 @@ namespace Npk
         }
 
         if (target == Ipl::Passive)
+        {
+            Private::CheckPendingRcuQuiesce();
             Private::OnPassiveRunLevel();
+        }
     }
 
     NpkStatus ResetDpc(Dpc* dpc, DpcEntry func, void* arg, bool force)

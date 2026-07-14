@@ -1,4 +1,4 @@
-#include <Core.hpp>
+#include <private/Core.hpp>
 #include <Debugger.hpp>
 
 namespace Npk
@@ -83,6 +83,7 @@ namespace Npk
         }
 
         control->status.lastIpi.Store({}, sl::Release);
+        Private::ArmPendingRcuQuiesce();
     }
 
     RemoteCpuStatus* RemoteStatus(CpuId who)

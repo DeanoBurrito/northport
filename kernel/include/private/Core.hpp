@@ -18,6 +18,8 @@ namespace Npk::Private
     void WakeThread(ThreadContext* thread);
     void WorkItemThreadEntry(void* arg);
     void SignalTimerWaitable(Timer* timer);
+    void ArmPendingRcuQuiesce();
+    void CheckPendingRcuQuiesce();
 
     void AcquirePanicOutputs(LogSinkList& sinks);
 }

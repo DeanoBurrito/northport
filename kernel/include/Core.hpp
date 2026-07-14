@@ -532,40 +532,6 @@ namespace Npk
 
     using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
 
-    struct VmSpace;
-
-    struct SystemDomain
-    {
-        Paddr physOffset;
-        PageInfo* pfndb;
-
-        CpuId smpBase;
-        sl::Span<SmpControl> smpControls;
-
-        uintptr_t pmaBase;
-        HwMap kernelMap;
-        VmSpace* kernelSpace;
-        Paddr zeroPage;
-        
-        struct
-        {
-            IntrSpinLock lock;
-            size_t pageCount;
-            PageList free;
-            PageList zeroed;
-        } freeLists;
-
-        struct 
-        {
-            Mutex lock;
-            PageList active;
-            PageList dirty;
-            PageList standby;
-        } liveLists;
-
-        //TODO: io + device linkage
-    };
-
     /* Possible states of existence for a thread.
      */
     enum class ThreadState : uint8_t
@@ -675,6 +641,125 @@ namespace Npk
     };
 
     using ThreadQueue = sl::List<ThreadContext, &ThreadContext::queueHook>;
+
+    struct EbrItem;
+    struct EbrDomain;
+
+    using EbrCallback = void (*)(EbrItem* item);
+    using EbrNudgeActor = void (*)(EbrDomain& dom, size_t id);
+
+    /* Represents a deferred callback for the EBR engine to execute when deemed
+     * safe to do so. The owner of this is responsible for populating `callback`
+     * before passing the item to `EbrCall()`/`RcuCall()`.
+     */
+    struct EbrItem
+    {
+        /* Internal use: queue hook.
+         */
+        sl::FwdListHook hook;
+
+        /* The domain's epoch when this item was enqueued. Once all actors
+         * have passed this epoch the callback is safe to execute.
+         */
+        size_t epoch;
+
+        /* Callback function to execute.
+         */
+        EbrCallback callback;
+    };
+
+    using EbrItemList = sl::FwdList<EbrItem, &EbrItem::hook>;
+
+    /* Represents an active participant in an EBR domain: something that
+     * has a local epoch and reports idle/quiescent states. An actor typically
+     * represents a thread or cpu core, in the case of the RCU each actor
+     * represents a cpu core.
+     */
+    struct EbrActor
+    {
+        /* Last observed global epoch while this actor was idle.
+         */
+        sl::Atomic<size_t> epoch;
+
+        /* Used for extended idle states: even if the actor is active and may
+         * be taking read locks and modifying its local epoch, odd if the actor
+         * is not currently participating in EBR activies (and can be assumed
+         * not to hold any EBR managed pointers). E.g. in the RCU policy a cpu
+         * that is idle or in userspace is in an extended idle state, and
+         * therefore there is no need to check its local epoch to determine if
+         * it's safe to fire callback items.
+         */
+        sl::Atomic<size_t> idle;
+
+        IplSpinLock<Ipl::Dpc> listLock;
+        EbrItemList list;
+        size_t listLength;
+
+        struct
+        {
+            size_t idleCache;
+            bool done;
+        } engine;
+    };
+
+    /* - ebr is a general mechanism, RCU is the policy must users are after.
+     */
+    struct EbrDomain
+    {
+        sl::Atomic<size_t> epoch;
+        sl::Atomic<size_t> pending;
+        sl::Span<EbrActor> actors;
+        EbrNudgeActor nudge;
+
+        struct
+        {
+            WorkItem workItem;
+            ClockEvent clockEvent;
+            Dpc clockDpc;
+            size_t targetEpoch;
+            sl::Atomic<bool> inFlight;
+            sl::Atomic<bool> expedite;
+        } engine;
+    };
+
+    using RcuItem = EbrItem;
+    using RcuReadToken = Ipl;
+
+    struct VmSpace;
+
+    struct SystemDomain
+    {
+        Paddr physOffset;
+        PageInfo* pfndb;
+
+        CpuId smpBase;
+        sl::Span<SmpControl> smpControls;
+
+        EbrDomain rcu;
+
+        uintptr_t pmaBase;
+        HwMap* kernelMap;
+        VmSpace* kernelSpace;
+        Paddr zeroPage;
+        
+        struct
+        {
+            IplSpinLock<Ipl::Dpc> lock;
+            size_t pageCount;
+            PageList free;
+            PageList zeroed;
+        } freeLists;
+
+        struct 
+        {
+            Mutex lock;
+            PageList active;
+            PageList dirty;
+            PageList standby;
+        } liveLists;
+
+        //TODO: io + device linkage
+    };
 
     extern SystemDomain sysDomain0;
 
@@ -978,20 +1063,11 @@ namespace Npk
      */
     SystemDomain& MySystemDomain();
 
-    /* Returns the kernel map (page table root) used by the current cpu.
-     */
-    SL_ALWAYS_INLINE
-    HwMap MyKernelMap()
-    {
-        return MySystemDomain().kernelMap;
-    }
-
-    /* Attempts to allocate a page of usable memory. The page is filled with
-     * zeroes before returning to the caller.
-     * If `canFail` is set, this function will return immediately if there
-     * are no pages available, and will return a nullptr. If `canFail` is false
-     * the function will block until a page can be allocated.
-     * Care should be taken when calling with `canFail = false`.
+    /* Attempts to allocate a page of zero-filled usable memory.
+     * If `canFail` is set, the function returns `nullptr` upon exhaustion,
+     * otherwse it will wait until free memory is available. If `canFail` is
+     * set this function must be called at passive IPL, otherwise it can be 
+     * called at passive or dpc IPLs.
      */
     PageInfo* AllocPage(bool canFail);
 
@@ -999,7 +1075,6 @@ namespace Npk
      * use by the rest of the system.
      */
     void FreePage(PageInfo* page);
-
 
     /* Attempts to copy `buffer.Size()` bytes into the memory specified by
      * `buffer` from the physical memory range starting at `base`.
@@ -1271,6 +1346,102 @@ namespace Npk
      * wakes waiting threads.
      */
     void ReleaseSxMutexExclusive(SxMutex* mutex);
+
+    /*
+     */
+    NpkStatus ResetEbrDomain(EbrDomain& dom, size_t actorCount, 
+        EbrNudgeActor nudge);
+
+    /* Notifies the EBR engine that actor `who` is quiescent and updates the
+     * actors epoch to match the domain's epoch.
+     */
+    void NudgeEpoch(EbrDomain& dom, size_t who);
+
+    /* Notifies the EBR engine that actor `who` is entering an extended
+     * quiescent state where it will not access any EBR managed pointers
+     * until the next call to `ExitNoEpochState()`.
+     */
+    void EnterNoEpochState(EbrDomain& dom, size_t who);
+
+    /* Undoes the effects of the previous call to `EnterNoEpochState()`: meaning
+     * the actor identified by `who` is no longer idle and may acquire EBR
+     * managed pointers - so the engine should consider this actor when retiring
+     * epochs.
+     */
+    void ExitNoEpochState(EbrDomain& dom, size_t who);
+
+    /* Queues `item` on the specified actor (`who`) to be excuted when all 
+     * actors in the domain have passed the current domain epoch. Note that the
+     * item's callback is not necessarily run by the specified actor.
+     *
+     * The caller is responsible for ensuring any resources `item->callback`
+     * wants to release have already been made unobtainable before this call.
+     * The EBR engine ensures existing consumers have finished with the resource
+     * but it does not prevent new ones obtaining it in the meantime.
+     */
+    NpkStatus EbrCall(EbrDomain& dom, size_t who, EbrItem* item);
+
+    /* Must be called at passive IPL, this function waits until a full epoch
+     * has elapsed on the target domain. This is done via a callback item on
+     * the actor `who`. Typically the actor should the local one, but it is not
+     * required to be. This is equivalent to an `EbrCall()` which the caller
+     * waits on the completion of.
+     */
+    void EbrSync(EbrDomain& dom, size_t who);
+
+    /* Must be called at passive IPL. This functions waits until all currently
+     * outstanding items for `dom` have executed. This requires synchronization
+     * with every actor in the domain and is therefore a heavyweight option
+     * compared to `EbrSync()`.
+     */
+    void EbrBarrier(EbrDomain& dom);
+
+    /* Begins an RCU reader-side critical section. When in this section the
+     * caller is not allowed to wait or perform any blocking actions, and the
+     * RCU engine guarantees that any pointers acquired by `RcuConsume()` will
+     * remain valid until a matching call to `RcuReadUnlock()`.
+     * This function returns a token that *must* be passed to the matching
+     * `RcuReadUnlock()` call. Reader-side locks can be acquired recursively.
+     * This function must be called from or at DPC IPL.
+     */
+    RcuReadToken RcuReadLock();
+
+    /* Marks the end of an RCU read section, requires a token returned from an
+     * earlier `RcuReadLock()` call. Any pointers maintained alive by RCU may
+     * become invalid after this call unless they are kept alive by another
+     * mechanism.
+     */
+    void RcuReadUnlock(RcuReadToken token);
+
+    /* See `EbrCall()`: the actor is the current cpu.
+     */
+    NpkStatus RcuCall(RcuItem* item);
+
+    /* See `EbrSync()`: the actor is the current cpu.
+     */
+    void RcuSync();
+
+    /* See `EbrBarrier()`.
+     */
+    void RcuBarrier();
+
+    /* Sugar-function: used to correctly update an RCU-managed pointer.
+     */
+    template<typename T>
+    SL_ALWAYS_INLINE
+    void RcuPublish(sl::Atomic<T*> ptr, T* value)
+    {
+        ptr.Store(value, sl::Release);
+    }
+
+    /* Sugar-function: used to correct consume/acquire an RCU-managed pointer.
+     */
+    template<typename T>
+    SL_ALWAYS_INLINE
+    T* RcuConsume(sl::Atomic<T*> ptr)
+    {
+        return ptr.Load(sl::Acquire);
+    }
 }
 
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)

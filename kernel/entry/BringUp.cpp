@@ -474,6 +474,15 @@ R"(                                             888                      )"
         InitKernelVmSpace(lowBase, lowTop - lowBase, highBase, 
             highTop - highBase);
 
+        ResetEbrDomain(sysDomain0.rcu, sysDomain0.smpControls.Size(),
+            [](EbrDomain& dom, size_t who) -> void 
+            { 
+                (void)dom; 
+
+                who += MySystemDomain().smpBase;
+                NudgeCpu(who); 
+            });
+
         Private::InitNamespace();
         InitProcessSubsystem();
 
@@ -491,6 +500,11 @@ R"(                                             888                      )"
 
         Log("Init program loaded, entering idle thread.", LogLevel::Trace);
         while (true)
+        {
+            auto& dom = MySystemDomain();
+            EnterNoEpochState(dom..rcu, MyCoreId() - dom.smpBase);
             WaitForIntr();
+            ExitNoEpochState(dom.rcu, MyCoreId() - dom.smpBase);
+        }
     }
 }

@@ -1,5 +1,5 @@
 KERNEL_CXX_SRCS += Status.cpp \
-	core/Clock.cpp core/Config.cpp core/CppRuntime.cpp \
+	core/Clock.cpp core/Config.cpp core/CppRuntime.cpp core/Ebr.cpp \
 	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp \
 	core/Panic.cpp core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
 	core/Worker.cpp\
