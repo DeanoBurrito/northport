@@ -288,8 +288,9 @@ namespace Npk
      */
     NpkStatus ClearKernelMap(uintptr_t vaddr, Paddr* paddr);
 
-    /* Attempts to allocate a kernel stack, the base (higher numerical) address
-     * is placed into `*stack` on success. This memory is backed immediately.
+    /* Attempts to allocate a kernel stack. The architectural base is placed
+     * in `*stack` on success, this is the value that is typically placed into
+     * the stack pointer register.
      */
     NpkStatus AllocKernelStack(void** stack);
 
@@ -301,9 +302,15 @@ namespace Npk
 
     void* PoolAlloc(size_t len, HeapTag tag, bool wired, sl::TimeCount timeout 
         = sl::NoTimeout);
-    bool PoolFree(void* ptr, size_t len, HeapTag tag, bool wired, 
+    NpkStatus PoolFree(void* ptr, size_t len, HeapTag tag, bool wired, 
         sl::TimeCount timeout = sl::NoTimeout);
 
+    /* Attempts to allocate `len` bytes from the paged pool, with the specified
+     * allocation tag. Returns `nullptr` on failure.
+     *
+     * Paged allocations are only safe to access from passive IPL. This function
+     * must be called from passive IPL.
+     */
     SL_ALWAYS_INLINE
     void* PoolAllocPaged(size_t len, HeapTag tag, sl::TimeCount timeout 
         = sl::NoTimeout)
@@ -311,6 +318,10 @@ namespace Npk
         return PoolAlloc(len, tag, false, timeout);
     }
 
+    /* Attempts to allocate `len` bytes from the wired pool, with the specified
+     * allocation tag. Returns `nullptr` on failure.
+     * This function must be called from passive IPL.
+     */
     SL_ALWAYS_INLINE
     void* PoolAllocWired(size_t len, HeapTag tag, sl::TimeCount timeout 
         = sl::NoTimeout)
@@ -318,15 +329,27 @@ namespace Npk
         return PoolAlloc(len, tag, true, timeout);
     }
 
+    /* Attempts to free `len` bytes at `ptr`. Partial frees of an allocated
+     * region are not permitted, the length is used as a hint for the free
+     * routine but is required to be the same as the one passed to the matching
+     * PoolAllocPaged() call. The allocator tag must also match.
+     * Returns whether freeing was successfully or not.
+     */
     SL_ALWAYS_INLINE
-    bool PoolFreePaged(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout
+    NpkStatus PoolFreePaged(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout
         = sl::NoTimeout)
     {
         return PoolFree(ptr, len, tag, false, timeout);
     }
 
+    /* Attempts to free `len` bytes at `ptr`. Partial frees of an allocated
+     * region are not permitted, the length is used as a hint for the free
+     * routine but is required to be the same as the one passed to the matching
+     * PoolAllocPaged() call. The allocator tag must also match.
+     * Returns whether freeing was successfully or not.
+     */
     SL_ALWAYS_INLINE
-    bool PoolFreeWired(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout
+    NpkStatus PoolFreeWired(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout
         = sl::NoTimeout)
     {
         return PoolFree(ptr, len, tag, true, timeout);

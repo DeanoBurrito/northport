@@ -36,6 +36,6 @@ namespace Npk::Private
     void InitPool(uintptr_t base, size_t length);
     void* PoolAlloc(size_t len, HeapTag tag, bool paged, sl::TimeCount timeout 
         = sl::NoTimeout);
-    bool PoolFree(void* ptr, size_t len, HeapTag tag, bool paged, 
+    NpkStatus PoolFree(void* ptr, size_t len, HeapTag tag, bool paged, 
         sl::TimeCount timeout = sl::NoTimeout);
 }

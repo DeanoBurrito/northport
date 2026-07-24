@@ -264,21 +264,21 @@ namespace Npk::Private
         return node;
     }
 
-    bool PoolFree(void* ptr, size_t len, HeapTag tag, bool paged, 
+    NpkStatus PoolFree(void* ptr, size_t len, HeapTag tag, bool paged, 
         sl::TimeCount timeout)
     {
-        NPK_CHECK(ptr != nullptr, true);
-        NPK_CHECK(len != 0, true);
+        NPK_CHECK(ptr != nullptr, NpkStatus::Success);
+        NPK_CHECK(len != 0, NpkStatus::Success);
 
         const auto addr = reinterpret_cast<uintptr_t>(ptr);
-        NPK_CHECK((addr & (MinAllocSize - 1)) == 0, false);
+        NPK_CHECK((addr & (MinAllocSize - 1)) == 0, NpkStatus::BadVaddr);
 
         len = sl::AlignUp(len, MinAllocSize);
 
         Pool& pool = paged ? pagedPool : wiredPool;
         auto result = AcquireMutex(&pool.mutex, timeout, NPK_WAIT_LOCATION);
         if (result != NpkStatus::Success)
-            return false;
+            return result;
 
         //TODO: replace list here with tree keyed by address to handle large
         //pools.
@@ -320,7 +320,7 @@ namespace Npk::Private
             for (uintptr_t i = unmapBegin; i < unmapEnd; i += PageSize())
             {
                 Paddr paddr;
-                auto result = ClearKernelMap(i, &paddr);
+                result = ClearKernelMap(i, &paddr);
                 NPK_ASSERT(result == NpkStatus::Success);
 
                 FreePage(LookupPageInfo(paddr));
@@ -331,31 +331,40 @@ namespace Npk::Private
                 node = TryCoalesce(pool, node);
 
             InsertFreeNode(pool, node);
+            result = NpkStatus::Success;
         }
         else if (node != nullptr && node->tag == FreeTag)
         {
             Log("Double free of %s-pool pointer: %p", LogLevel::Error, 
                 paged ? "paged" : "wired", ptr);
+
+            result = NpkStatus::NotFound;
         }
         else if (node != nullptr && node->tag != tag)
         {
             Log("Bad tag for free of %s-pool pointer: %p", LogLevel::Error, 
                 paged ? "paged" : "wired", ptr);
+
+            result = NpkStatus::InvalidArg;
         }
         else if (node != nullptr && node->length != len)
         {
             Log("Incorrectly sized free of %s-pool pointer: %p, passed 0x%zu"
                 " bytes, expected %zu", LogLevel::Error, 
                 paged ? "paged" : "wired", ptr, len, node->length);
+
+            result = NpkStatus::InvalidArg;
         }
         else
         {
             Log("Failed to free %s-pool pointer: %p", LogLevel::Error, 
                 paged ? "paged" : "wired", ptr);
+
+            result = NpkStatus::InternalError;
         }
         ReleaseMutex(&pool.mutex);
 
-        return true;
+        return result;
     }
 
     static void InitSpecificPool(Pool& pool, uintptr_t base, size_t length)
@@ -426,7 +435,7 @@ namespace Npk
         return Private::PoolAlloc(len, tag, !wired, timeout);
     }
     
-    bool PoolFree(void* ptr, size_t len, HeapTag tag, bool wired, 
+    NpkStatus PoolFree(void* ptr, size_t len, HeapTag tag, bool wired, 
         sl::TimeCount timeout)
     {
         return Private::PoolFree(ptr, len, tag, !wired, timeout);

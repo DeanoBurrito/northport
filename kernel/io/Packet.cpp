@@ -149,11 +149,11 @@ namespace Npk
         bool isWired = packet->flags.Load(sl::Relaxed).Has(IopFlag::Wired);
         const size_t allocSize = sizeof(Iop) + packet->frameCapacity 
             * sizeof(IopFrame);
-        const bool success = PoolFree(packet, allocSize, Private::IoHeapTag, 
+        auto result = PoolFree(packet, allocSize, Private::IoHeapTag, 
                 isWired);
 
-        if (!success)
-            return NpkStatus::InternalError;
+        if (result != NpkStatus::Success)
+            return result;
         Private::UnrefIoInterface(target);
 
         return NpkStatus::Success;
