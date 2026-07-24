@@ -26,6 +26,8 @@
     
     #define SL_LIKELY(x) __builtin_expect(!!(x), 1)
     #define SL_UNLIKELY(x) __builtin_expect(!!(x), 0)
+
+    #define SL_TRAILING_ZEROS(x) __builtin_ctzl(x)
 #else
     #error "Failed to detect compiler."
 #endif
