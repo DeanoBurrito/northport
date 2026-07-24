@@ -4,69 +4,7 @@
 
 namespace sl
 {
-    struct QueueSpMcHook
-    {
-        Atomic<void*> next;
-    };
-
-    template<typename T, QueueSpMcHook T::*Hook>
-    class QueueSpMc
-    {
-    private:
-        T stub;
-        Atomic<T*> tail;
-
-        static QueueSpMcHook* Hk(T* node)
-        {
-            return &(node->*Hook);
-        }
-
-    public:
-        constexpr QueueSpMc()
-            : stub {}, tail(&stub)
-        {
-            Hk(&stub)->next.Store(nullptr, Relaxed);
-        }
-
-        QueueSpMc(const QueueSpMc&) = delete;
-        QueueSpMc& operator=(const QueueSpMc&) = delete;
-        QueueSpMc(QueueSpMc&&) = delete;
-        QueueSpMc& operator=(QueueSpMc&&) = delete;
-
-        void Push(T* item)
-        {
-            Hk(item)->next.Store(nullptr, Relaxed);
-            auto* prev = tail.Exchange(item, AcqRel);
-            Hk(prev)->next.Store(item, Release);
-        }
-
-        T* Pop()
-        {
-            while (true)
-            {
-                T* candidate = static_cast<T*>(Hk(&stub)->next.Load(Acquire));
-
-                if (candidate == nullptr)
-                    return nullptr;
-
-                T* next = static_cast<T*>(Hk(candidate)->next.Load(Acquire));
-                if (next == nullptr)
-                {
-                    if (candidate != tail.Load(Acquire))
-                        continue;
-                }
-
-                void* expected = static_cast<void*>(candidate);
-                if (Hk(&stub)->next.CompareExchange(expected,
-                    static_cast<void*>(next), AcqRel))
-                {
-                    return candidate;
-                }
-            }
-        }
-    };
-
-/*  The MPSC queue below is based on the work of Dmitry Vyukov (formerly 
+/*  The MPSC queue below is based on the work of Dmitry Vyukov (formerly
  *  1024cores.net). All code used is licensed under BSD 2 clause license,
  *  and as required the license text is below:
  *
