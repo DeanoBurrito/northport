@@ -179,22 +179,6 @@ namespace sl
             return temp;
         }
 
-        template<typename Comparison>
-        void Sort(Comparison comp)
-        {
-            for (auto i = head; i != nullptr; i = static_cast<T*>(Hk(i)->next))
-            {
-                for (auto j = Hk(i)->next; j != nullptr; j = Hk(j)->next)
-                {
-                    if (comp(*i, *j))
-                    {
-                        sl::Swap(*i, *j);
-                        sl::Swap(Hk(i)->next, Hk(j)->next);
-                    }
-                }
-            }
-        }
-
         void InsertSorted(T* value, bool (*LessThan)(T* a, T* b))
         {
             if (Empty() || LessThan(value, head))
