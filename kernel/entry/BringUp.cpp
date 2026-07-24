@@ -179,46 +179,93 @@ namespace Npk
         init.pmaSlots = reinterpret_cast<uintptr_t>(pmaSlots);
 
         //4. Init list of free pages
-        rangesBase = init.pmAllocIndex;
-        size_t totalPages = 0;
+        const size_t startIndex = init.pmAllocIndex;
+        MemoryRange* gathered = ranges;
+        size_t rangeCount = GetUsableRanges(ranges, startIndex);
+
+        //its uncommon but on some systems we can end up with a load of usable
+        //memory ranges. In this case the stack allocated array isn't big enough
+        //so we carve one into the kernel's runtime page map and copy the map
+        //data there.
+        if (rangeCount == MaxLoaderRanges)
+        {
+            const size_t rangesPerPage = PageSize() / sizeof(MemoryRange);
+            NPK_ASSERT(PageSize() % sizeof(MemoryRange) == 0);
+
+            rangesBase = rangeCount;
+            while (true)
+            {
+                const size_t count = GetUsableRanges(ranges, rangesBase);
+                rangesBase += count;
+                rangeCount += count;
+
+                if (count != MaxLoaderRanges)
+                    break;
+            }
+
+            gathered = reinterpret_cast<MemoryRange*>(
+                init.VmAlloc(rangeCount * sizeof(MemoryRange)));
+
+            MemoryRange* spillPage = nullptr;
+            size_t spilled = 0;
+            for (size_t base = startIndex;;)
+            {
+                const size_t count = GetUsableRanges(ranges, base);
+                base += count;
+
+                for (size_t i = 0; i < count; i++, spilled++)
+                {
+                    if (spilled % rangesPerPage != 0)
+                    {
+                        spillPage[spilled & rangesPerPage] = ranges[i];
+
+                        continue;
+                    }
+
+                    const Paddr page = init.PmAlloc();
+                    const uintptr_t vaddr =
+                        reinterpret_cast<uintptr_t>(gathered)
+                        + spilled * sizeof(MemoryRange);
+
+                    HwEarlyMap(init, page, vaddr, MmuFlag::Write);
+
+                    spillPage = reinterpret_cast<MemoryRange*>(
+                        init.dmBase + page);
+                }
+
+                if (count < MaxLoaderRanges)
+                    break;
+            }
+        }
+
+        //switch to the runtime kernel map, after this point we're no longer
+        //able to access loader data + InitState allocators.
+        HwCompleteBspMmuInit();
 
         Log("Populating PM freelist from bootloader map:", LogLevel::Verbose);
         Log("%9s|%18s|%12s|%12s", LogLevel::Verbose, 
             "New Pages", "Base Address", "Total Pages", "Total Size");
 
-        while (true)
+        size_t totalPages = 0;
+        for (size_t i = 0; i < rangeCount; i++)
         {
-            const size_t count = GetUsableRanges(ranges, rangesBase);
-            rangesBase += count;
+            const Paddr top = gathered[i].base + gathered[i].length;
+            const Paddr base = sl::Max(gathered[i].base, init.pmAllocHead);
+            const size_t pageCount = (top - base) >> PfnShift();
 
-            for (size_t i = 0; i < count; i++)
-            {
-                const Paddr top = ranges[i].base + ranges[i].length;
-                const Paddr base = sl::Max(ranges[i].base, init.pmAllocHead);
-                const size_t pageCount = (top - base) >> PfnShift();
+            if (pageCount == 0)
+                continue;
 
-                if (pageCount == 0)
-                    continue;
+            totalPages += pageCount;
+            const auto conv = sl::ConvertUnits(totalPages << PfnShift());
+            Log("%9zu|%#18tx|%12zu|%4zu.%03zu %sB", LogLevel::Verbose,
+                pageCount, base, totalPages, conv.major, conv.minor,
+                conv.prefix);
 
-                totalPages += pageCount;
-                const auto conv = sl::ConvertUnits(totalPages << PfnShift());
-                Log("%9zu|%#18tx|%12zu|%4zu.%03zu %sB", LogLevel::Verbose,
-                    pageCount, base, totalPages, conv.major, conv.minor, 
-                    conv.prefix);
-
-                HwMap loaderMap;
-                HwKernelMap(&loaderMap, {});
-
-                PageInfo* info = LookupPageInfo(base);
-                info->pm.count = pageCount;
-                sysDomain0.freeLists.free.PushBack(info);
-                sysDomain0.freeLists.pageCount += pageCount;
-
-                HwKernelMap(nullptr, loaderMap);
-            }
-
-            if (count < MaxLoaderRanges)
-                break;
+            PageInfo* info = LookupPageInfo(base);
+            info->pm.count = pageCount;
+            sysDomain0.freeLists.free.PushBack(info);
+            sysDomain0.freeLists.pageCount += pageCount;
         }
 
         const auto conv = sl::ConvertUnits(totalPages << PfnShift());
@@ -417,10 +464,10 @@ R"(                                             888                      )"
         initState.vmAllocHead = HwInitBspMmu(initState, initState.pmaCount);
         sysDomain0.zeroPage = initState.PmAlloc();
 
-        //3. Setup kernel virtual address space and switch to it.
+        //3. Setup kernel virtual address space (it switches to it
+        //internally, since the pmm freelist needs the kernel tables active.
         SetupKernelAddressSpace(initState, loadState);
-        HwKernelMap(nullptr, {});
-
+        
         //4. Load cpu-local variables for the BSP. The storage used for these
         //is the original copy of the cpu-locals in the kernel image. Other
         //cpus will make a copy of this memory for their local variables but

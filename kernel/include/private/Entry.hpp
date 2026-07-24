@@ -157,6 +157,7 @@ namespace Npk
     void HwEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, 
         MmuFlags flags);
     size_t HwGetCpuCount();
+    void HwCompleteBspMmuInit();
     void ArchInitFull(uintptr_t& virtBase);
     void PlatInitFull(uintptr_t& virtBase);
     void HwBootAps(uintptr_t& virtBase, PerCpuData data);
