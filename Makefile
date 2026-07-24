@@ -118,6 +118,6 @@ $(LIMINE_BINARIES):
 	$(LOUD)-rm -rf $(LIMINE_BINARIES)
 	$(LOUD)git clone https://github.com/limine-bootloader/limine.git \
 		--branch=v8.x-binary --depth 1 $(LIMINE_BINARIES)
-	$(LOUD)cd $(LIMINE_BINARIES); make all
+	$(LOUD)cd $(LIMINE_BINARIES) && $(MAKE) all
 	@printf "$(C_YELLOW)[Cache]$(C_RST) Limine repo cloned to local cache.\r\n"
 

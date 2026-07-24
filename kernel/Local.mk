@@ -1,23 +1,55 @@
-KERNEL_CXX_SRCS += Status.cpp \
-	core/Clock.cpp core/Config.cpp core/CppRuntime.cpp core/Ebr.cpp \
-	core/Ipl.cpp core/Logging.cpp core/PageAccess.cpp core/PageAlloc.cpp \
-	core/Panic.cpp core/Scheduler.cpp core/Smp.cpp core/Wait.cpp \
+KERNEL_CXX_SRCS += \
+	Status.cpp \
+	core/Clock.cpp \
+	core/Completion.cpp \
+	core/Config.cpp \
+	core/CppRuntime.cpp \
+	core/Ebr.cpp \
+	core/Ipl.cpp \
+	core/Logging.cpp \
+	core/PageAccess.cpp \
+	core/PageAlloc.cpp \
+	core/Panic.cpp \
+	core/Scheduler.cpp \
+	core/Smp.cpp \
+	core/Wait.cpp \
 	core/Worker.cpp\
-	debugger/EnclaveApi.cpp debugger/Event.cpp debugger/GdbProtocol.cpp \
+	debugger/EnclaveApi.cpp \
+	debugger/Event.cpp \
+	debugger/Expression.cpp \
+	debugger/GdbProtocol.cpp \
 	debugger/KernelApi.cpp \
-	entry/Allocators.cpp entry/BringUp.cpp entry/ConfigRoot.cpp \
-	entry/EfiRuntime.cpp entry/InitProgram.cpp \
-	io/Interfaces.cpp io/Packet.cpp \
-	lib/Memory.cpp lib/Printf.cpp lib/Time.cpp lib/Units.cpp \
-	loader/Elf.cpp loader/Filter.cpp \
-	namespace/Handles.cpp namespace/Objects.cpp \
-	process/Init.cpp process/Job.cpp process/Process.cpp process/Signals.cpp \
+	entry/Allocators.cpp \
+	entry/BringUp.cpp \
+	entry/ConfigRoot.cpp \
+	entry/EfiRuntime.cpp \
+	entry/InitProgram.cpp \
+	io/Packet.cpp \
+	lib/Memory.cpp \
+	lib/Printf.cpp \
+	lib/Time.cpp \
+	lib/Units.cpp \
+	loader/Elf.cpp \
+	loader/Filter.cpp \
+	namespace/Handles.cpp \
+	namespace/Mounting.cpp \
+	namespace/Objects.cpp \
+	namespace/PathCache.cpp \
+	process/Init.cpp \
+	process/Job.cpp \
+	process/Process.cpp \
+	process/Signals.cpp \
 	process/Thread.cpp \
-	video/Video.cpp video/Text.cpp \
-	vm/KernelStack.cpp vm/PageTables.cpp vm/Pool.cpp vm/Space.cpp \
-	$(BAKED_CONSTANTS_FILE) $(addprefix np-syslib/, $(LIB_SYSLIB_CXX_SRCS))
+	video/Video.cpp \
+	video/Text.cpp \
+	vm/Anon.cpp \
+	vm/Fault.cpp \
+	vm/KernelStack.cpp \
+	vm/Pool.cpp \
+	vm/Space.cpp \
+	Fireworks.cpp \
+	$(BAKED_CONSTANTS_FILE)
 
-# TODO: ASAN support
 ifeq ($(ENABLE_KERNEL_UBSAN), yes)
 	KERNEL_CXX_SRCS += cpp/UBSan.cpp
 	KERNEL_CXX_FLAGS += -fsanitize=undefined

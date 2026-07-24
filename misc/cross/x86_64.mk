@@ -1,6 +1,6 @@
 ifeq ($(TOOLCHAIN), gcc)
 	X_CXX_BIN = $(TOOLCHAIN_PREFIX)x86_64-elf-g++
-	X_CC_BIN = $(TOOLCHAIN_PREIFX)x86_64-elf-gcc
+	X_CC_BIN = $(TOOLCHAIN_PREFIX)x86_64-elf-gcc
 	X_AS_BIN = $(TOOLCHAIN_PREFIX)x86_64-elf-as
 	X_LD_BIN = $(TOOLCHAIN_PREFIX)x86_64-elf-ld
 else ifeq ($(TOOLCHAIN), clang)
