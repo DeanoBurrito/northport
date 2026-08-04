@@ -360,4 +360,17 @@ namespace Npk
     /* TODO:
      */
     NpkStatus SpaceClone(VmSpace** clone, VmSpace& source);
+
+    struct CpuBitsetAlloc
+    {
+        static void* Allocate(size_t bytes)
+        {
+            return PoolAllocWired(bytes, NPK_MAKE_HEAP_TAG("BitS"));
+        }
+
+        static void Free(void* ptr, size_t bytes)
+        {
+            PoolFreeWired(ptr, bytes, NPK_MAKE_HEAP_TAG("BitS"));
+        }
+    };
 }

@@ -7,6 +7,74 @@
 #include <lib/Locks.hpp>
 #include <lib/Efi.hpp>
 
+namespace Npk 
+{ 
+    [[noreturn]]
+    void Panic(sl::StringSpan msg, TrapFrame* frame, ...);
+}
+
+/* Defines a per-cpu variable: `T` is the type, `id` is the identifier.
+ */
+#define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)
+
+/* Defines a per-node variable: `T` is the type, `id` is the identifier.
+ */
+#define NODE_LOCAL(T, id) SL_TAGGED(nodelocal, Npk::NodeLocal<T> id)
+
+#define CPU_LOCAL_CTOR(BODY) CPU_LOCAL_CTOR2(BODY, __COUNTER__)
+#define CPU_LOCAL_CTOR2(BODY, ID) CPU_LOCAL_CTOR3(BODY, ID)
+#define CPU_LOCAL_CTOR3(BODY, ID) \
+    static void cpu_local_ctor_##ID() BODY \
+    SL_USED \
+    SL_SECTION(".preinit_array", static auto* cpu_local_ctor_ptr_##ID) \
+        = &cpu_local_ctor_##ID;
+
+/* Fatal error checking path: if `cond` evaluates to false the kernel panics
+ * emitting an error message containing the condition + source file and line
+ * info.
+ */
+#define NPK_ASSERT(cond) \
+    if (SL_UNLIKELY(!(cond))) \
+    { \
+        Npk::Panic("Assert failed %s:%i: %s, caller=%p", nullptr, \
+            SL_FILENAME_MACRO, __LINE__, #cond, SL_RETURN_ADDR); \
+    }
+
+/* Used to indicate a codepath should not be reached: if execution reaches this
+ * macro the kernel will panic.
+ */
+#define NPK_UNREACHABLE() \
+    do \
+    { \
+        NPK_ASSERT(!"Unreachable code reached."); \
+        SL_UNREACHABLE(); \
+    } \
+    while (false)
+
+/* Soft error checking path: if `cond` evaluates to false, an error message is
+ * logged and `ret` is returned to the caller.
+ */
+#define NPK_CHECK(cond, ret) \
+    if (SL_UNLIKELY(!(cond))) \
+    { \
+        Npk::Log("Check failed %s:%i: %s, caller=%p", LogLevel::Error, \
+            SL_FILENAME_MACRO, __LINE__, #cond, SL_RETURN_ADDR); \
+        return ret; \
+    }
+
+#define NPK_ASSERT_STRINGIFY2(x) #x
+#define NPK_ASSERT_STRINGIFY(x) NPK_ASSERT_STRINGIFY2(x)
+#define NPK_WAIT_LOCATION \
+    SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__)
+
+/* Sugar macro: emits a log of level `lvl` indicating that `status` was an not
+ * expected at the current location. Has no effect on control flow.
+ */
+#define NPK_UNEXPECTED_STATUS(status, lvl) \
+    Log("(" SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__) \
+        ") Unexpected status code %zu, %s", lvl, \
+    status, StatusStr(status))
+
 extern "C" char KERNEL_CPULOCALS_BEGIN[];
 extern "C" char KERNEL_NODELOCALS_BEGIN[];
 
@@ -60,6 +128,12 @@ namespace Npk
      * as relative to `BaseNiceness`.
      */
     constexpr uint8_t MaxNiceness = 39;
+
+    constexpr size_t MaxActivationArgs = 5;
+
+    struct CpuBitsetAlloc;
+
+    using CpuBitset = sl::InlineBitmap<1, CpuBitsetAlloc>;
 
     /* Spinlock which disables interrupts on the local cpu while held.
      */
@@ -443,7 +517,7 @@ namespace Npk
         void Set(void* data, CompletionType type)
         {
             auto ptr = reinterpret_cast<uintptr_t>(data);
-            //NPK_ASSERT((ptr & TypeMask) == 0);
+            NPK_ASSERT((ptr & TypeMask) == 0);
 
             ptr |= static_cast<decltype(ptr)>(type) & TypeMask;
 
@@ -536,7 +610,15 @@ namespace Npk
         Clean,
     };
 
-    using PageVmFlags = sl::Flags<PageVmFlag, uint32_t>;
+    using PageVmFlags = sl::Flags<PageVmFlag, uint8_t>;
+
+    constexpr uintptr_t PageVmOwnerTypeMask = 0b11;
+
+    enum class PageVmOwnerType
+    {
+        Source,
+        Anon,
+    };
 
     struct PageInfo
     {
@@ -552,15 +634,11 @@ namespace Npk
             struct
             {
                 char placeholder[sizeof(vmoList)];
+                uintptr_t owner; //NOTE: dont use directly, see helpers below.
+                uint32_t offset; //of page in object, counts in pages.
+                uint32_t refcount : 24;
                 PageVmFlags flags;
-                uint16_t offset;
-                uint16_t refcount;
             } vm;
-
-            struct
-            {
-                uint16_t validPtes;
-            } mmu;
         };
     };
     static_assert(sizeof(PageInfo) <= (sizeof(void*) * 4));
@@ -924,6 +1002,34 @@ namespace Npk
 
         if (lastIpl < max)
             LowerIpl(lastIpl);
+    }
+
+    /* Helper function for accessing `PageInfo::vm::owner` field, which is a
+     * tagged pointer. This function returns the usable pointer stored in
+     * `info->vm.owner` and the type of the pointed at value in `outType`.
+     */
+    SL_ALWAYS_INLINE
+    void* PageInfoGetVmOwner(PageVmOwnerType& outType, PageInfo* info)
+    {
+        const auto ptr = info->vm.owner;
+        outType = static_cast<PageVmOwnerType>(ptr & PageVmOwnerTypeMask);
+
+        return reinterpret_cast<void*>(ptr & ~PageVmOwnerTypeMask);
+    }
+
+    /* Helper function for accessing `PageInfo::vm::owner` field, which is a
+     * tagged pointer. This function constructs the tagged pointer for a page
+     * info struct from `ptr` and `type`, and stores it into `info->vm.owner`.
+     */
+    SL_ALWAYS_INLINE
+    void PageInfoSetVmOwner(PageInfo* info, void* ptr, PageVmOwnerType type)
+    {
+        auto value = reinterpret_cast<uintptr_t>(ptr);
+        NPK_ASSERT((value & PageVmOwnerTypeMask) == 0);
+
+        value |= static_cast<decltype(value)>(type);
+
+        info->vm.owner = value;
     }
 
     /* Resets and initializes a DPC instance struct.
@@ -1533,47 +1639,3 @@ namespace Npk
      */
     NpkStatus PeekActivation(Activation** outAct, HwUserContext& context);
 }
-
-#define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)
-#define NODE_LOCAL(T, id) SL_TAGGED(nodelocal, Npk::NodeLocal<T> id)
-
-#define CPU_LOCAL_CTOR(BODY) CPU_LOCAL_CTOR2(BODY, __COUNTER__)
-#define CPU_LOCAL_CTOR2(BODY, ID) CPU_LOCAL_CTOR3(BODY, ID)
-#define CPU_LOCAL_CTOR3(BODY, ID) \
-    static void cpu_local_ctor_##ID() BODY \
-    SL_USED \
-    SL_SECTION(".preinit_array", static auto* cpu_local_ctor_ptr_##ID) \
-        = &cpu_local_ctor_##ID;
-
-#define NPK_ASSERT(cond) \
-    if (SL_UNLIKELY(!(cond))) \
-    { \
-        Npk::Panic("Assert failed %s:%i: %s, caller=%p", nullptr, \
-            SL_FILENAME_MACRO, __LINE__, #cond, SL_RETURN_ADDR); \
-    }
-
-#define NPK_UNREACHABLE() \
-    do \
-    { \
-        NPK_ASSERT(!"Unreachable code reached."); \
-        SL_UNREACHABLE(); \
-    } \
-    while (false)
-
-#define NPK_CHECK(cond, ret) \
-    if (SL_UNLIKELY(!(cond))) \
-    { \
-        Npk::Log("Check failed %s:%i: %s, caller=%p", LogLevel::Error, \
-            SL_FILENAME_MACRO, __LINE__, #cond, SL_RETURN_ADDR); \
-        return ret; \
-    }
-
-#define NPK_ASSERT_STRINGIFY2(x) #x
-#define NPK_ASSERT_STRINGIFY(x) NPK_ASSERT_STRINGIFY2(x)
-#define NPK_WAIT_LOCATION \
-    SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__)
-
-#define NPK_UNEXPECTED_STATUS(status, lvl) \
-    Log("(" SL_FILENAME_MACRO ":" NPK_ASSERT_STRINGIFY(__LINE__) \
-        ") Unexpected status code %zu, %s", lvl, \
-    status, StatusStr(status))
