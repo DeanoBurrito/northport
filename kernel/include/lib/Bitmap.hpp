@@ -107,6 +107,24 @@ namespace sl
         return bitCount;
     }
 
+    inline size_t BitmapCount(const uintptr_t* words, size_t bitCount)
+    {
+        size_t count = 0;
+
+        for (size_t i = 0; i < bitCount; i += BitmapWordBits)
+        {
+            uintptr_t word = words[BitmapWordFor(i)];
+            const size_t remaining = bitCount - i;
+
+            if (remaining < BitmapWordBits)
+                word &= (static_cast<uintptr_t>(1) << remaining) - 1;
+
+            count += SL_POPCOUNT(word);
+        }
+
+        return count;
+    }
+
     template<size_t InlineWords, typename Alloc>
     class InlineBitmap
     {
@@ -190,6 +208,11 @@ namespace sl
         size_t Size() const
         {
             return words * BitmapWordBits;
+        }
+
+        size_t Count() const
+        {
+            return BitmapCount(Store(), Size());
         }
 
         size_t FindSet(size_t from = 0) const

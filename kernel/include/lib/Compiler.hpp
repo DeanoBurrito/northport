@@ -28,6 +28,7 @@
     #define SL_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
     #define SL_TRAILING_ZEROS(x) __builtin_ctzl(x)
+    #define SL_POPCOUNT(x) __builtin_popcountl(x)
 #else
     #error "Failed to detect compiler."
 #endif
