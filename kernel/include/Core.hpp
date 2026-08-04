@@ -5,6 +5,7 @@
 #include <lib/LruCache.hpp>
 #include <lib/Queue.hpp>
 #include <lib/Locks.hpp>
+#include <lib/Bitmap.hpp>
 #include <lib/Efi.hpp>
 
 namespace Npk 
