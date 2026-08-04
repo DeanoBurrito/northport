@@ -1,5 +1,6 @@
 KERNEL_CXX_SRCS += \
 	Status.cpp \
+	core/Activation.cpp \
 	core/Clock.cpp \
 	core/Completion.cpp \
 	core/Config.cpp \

@@ -444,8 +444,7 @@ namespace Npk
             auto ptr = reinterpret_cast<uintptr_t>(data);
             //NPK_ASSERT((ptr & TypeMask) == 0);
 
-            ptr &= ~TypeMask;
-            ptr = static_cast<decltype(ptr)>(type) & TypeMask;
+            ptr |= static_cast<decltype(ptr)>(type) & TypeMask;
 
             value.Store(ptr, sl::Release);
         }
@@ -794,6 +793,31 @@ namespace Npk
         } liveLists;
 
         //TODO: io + device linkage
+    };
+
+    struct Activation
+    {
+        sl::ListHook hook;
+
+        uintptr_t entry;
+        uintptr_t stack;
+        uintptr_t result;
+        uintptr_t args[MaxActivationArgs];
+        HwUserExitInfo exitInfo;
+        void* hwPrivate;
+        bool linked;
+    };
+
+    struct ActivationList 
+        : public sl::List<Activation, &Activation::hook> 
+    {
+        //a little bit of fuckery here so we can forward declare this in
+        //`Hardware.hpp` directly, getting our type safety but not exposing
+        //the implementation details.
+        //This technique is abhorrent and has so many sharp edges it's not
+        //funny, but a lot of them are mitigated by the restrictions of how
+        //the list template is defined and then how memory management works in
+        //the kernel.
     };
 
     extern SystemDomain sysDomain0;
@@ -1474,6 +1498,38 @@ namespace Npk
     {
         return ptr.Load(sl::Acquire);
     }
+
+    NpkStatus CreateActivation(Activation** outAct, sl::Opt<uintptr_t> entry, 
+        sl::Opt<uintptr_t> stack, sl::Span<uintptr_t> args);
+
+    /* Destroys the activation and any attached resources. Note this does not
+     * include the referenced stack as that was provided by the caller. The
+     * activation must not be attached to a user context.
+     * After calling this function the memory used by the activation is freed
+     * should be considered invalid regardless of the return value.
+     * Must be called at passive IPL.
+     */
+    NpkStatus DestroyActivation(Activation* act);
+
+    /* Attaches an activation to a context, placing it as the top-most one for
+     * that context. The `act` argument must not already be attached to a user
+     * context.
+     */
+    NpkStatus PushActivation(Activation& act, HwUserContext& context);
+
+    /* Detachs the top-most activation for a context and places it in
+     * `*outAct` if success is returned. If an error is returned, `*outAct` is
+     * untouched.
+     */
+    NpkStatus PopActivation(Activation** outAct, HwUserContext& context);
+
+    /* If a context has any attached activations, a pointer to the top-most one
+     * is placed in `*outAct` and success if returned. Note that there is no
+     * synchronization performed on accessing the user context here, and no
+     * lifetime guarantee made about `*outAct`. This is typically fine as this
+     * state is protected by a higher level lock, but worth being aware of.
+     */
+    NpkStatus PeekActivation(Activation** outAct, HwUserContext& context);
 }
 
 #define CPU_LOCAL(T, id) SL_TAGGED(cpulocal, Npk::CpuLocal<T> id)

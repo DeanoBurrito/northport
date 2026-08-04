@@ -356,40 +356,60 @@ namespace Npk
     void HwPrimeThread(HwThreadContext** store, uintptr_t stub, uintptr_t entry,
         uintptr_t arg, uintptr_t stack);
 
-    /* Initializes a user mode context, typically to be used for the current
-     * thread, but no such binding is enforced.
+    /* Attempts to create a new user context, on success a pointer to the
+     * context is placed in `*context`.
      */
-    void HwPrimeUserContext(HwUserContext* context, uintptr_t entry, 
-        uintptr_t arg, uintptr_t stack);
+    NpkStatus HwCreateUserContext(HwUserContext** context);
 
-    /* Cleans up and releases any resources the hardware layer may have attached
-     * to a user context. This function is destructive and renders the user 
-     * context unusable without another call to `HwPrimeUserContext()`.
+    /* Attempts to destroy a user context, releasing any associated resources.
+     * Note that the context must have no activations currently attached to it,
+     * and must be active/entered on any cpu.
      */
-    void HwCleanupUserContext(HwUserContext* context);
+    NpkStatus HwDestroyUserContext(HwUserContext* context);
 
-    /* This function places the current cpu in user mode and transfers control
-     * to the code specified in the user context. This function will eventually
-     * return when this thread's user code causes an event requiring the kernel
-     * to take action. Some events may not cause this function to return, and
-     * instead route to other subsystems, like a page fault. Page faults are
-     * routed to the virtual memory subsystem initially, and are only cause
-     * for a usermode exit (meaning this function returns) if the fault was bad.
+    /* This function places the current cpu in an unprivileged (user) mode and
+     * transfers control to the top-most activation linked to `context`. This
+     * function will eventually return when the unprivileged code causes an exit
+     * event that requires action from the kernel, the event details are
+     * returned from this function. Some events may not cause this function to
+     * directly return, and may route directly to other subsystems first. For 
+     * example a page fault is routed to the virtual memory subsystem and only
+     * if it is found to be a bad page fault does the user context exit and this
+     * function return, otherwise it is handled transparently.
      *
-     * Other exit events include system calls and synchronous cpu exceptions.
-     * Asynchronous exceptions and device interrupts do not cause UM exits, as
-     * they have no relation to the currently executing code.
+     * Other exit events include system calls and synchronous cpu exceptions,
+     * asynchronous exceptions and device interrupts are not related to the
+     * context so they do cause an exit from usermode.
      */
-    HwUserExitInfo HwEnterUserContext(HwUserContext* context);
+    HwUserExitInfo HwEnterUserContext(HwUserContext& context);
 
     /* Allows for reading, and more importantly - setting, feature flags/values
      * for a user context. Each feature has different semantics, most will be
-     * binary flags or limited-range intergers. See the comments of each value
+     * binary flags or limited-range integers. See the comments of each value
      * in the `HwUserFeature` enum for details of each feature.
      * The return value is whether the get/set operation was successful.
      */
-    bool HwGetSetUserContextFeature(HwUserContext* context, 
+    bool HwGetSetUserContextFeature(HwUserContext& context, 
         HwUserFeature feat, size_t* value, bool set);
+
+    /* Hook function called when creating a new activation. This function is
+     * called at passive IPL and may block if needed, the value in `*outPrivate`
+     * after returning is placed into the activation's `hwPrivate` field.
+     * This is intended for storing hardware specific state required by an
+     * activation, such as extended or system registers.
+     */
+    NpkStatus HwCreateUserActivation(void** outPrivate);
+
+    /* Companion function to `HwCreateUserActivation()`, called to clean up
+     * resources previously allocated by a call to that function. These
+     * functions are always called in matched pairs, there is only one destroy
+     * call for one create call.
+     */
+    NpkStatus HwDestroyUserActivation(void* privateData);
+
+    /* Returns a reference to the activations list for the specified context.
+     */
+    ActivationList& HwGetUserContextActivations(HwUserContext& context);
 
     /* Halts (or at least stalls) the current cpu core until an interrupt
      * fires. This should ideally put the cpu into a low(er) power state.
