@@ -12,8 +12,6 @@ namespace Npk::Private
 {
     constexpr auto VmSourceTag = NPK_MAKE_HEAP_TAG("VSrc");
 
-    MmuFlags VmToMmuFlags(VmFlags flags, MmuFlags extra);
-
     NpkStatus CreateAnonPage(AnonPage** page);
     void DestroyAnonPage(AnonPage* page);
     NpkStatus AnonPageGetPage(PageInfo** info, AnonPageRef page);

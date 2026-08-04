@@ -75,13 +75,6 @@ namespace Npk
                 SetCondition(mail->onComplete);
         }
 
-        FlushRequest* shootdown = nullptr;
-        while ((shootdown = control->shootdowns.Pop()) != nullptr)
-        {
-            HwFlushTlb(shootdown->base, shootdown->length);
-            shootdown->acknowledgements.Sub(1, sl::Release);
-        }
-
         control->status.lastIpi.Store({}, sl::Release);
         Private::ArmPendingRcuQuiesce();
     }
@@ -103,43 +96,6 @@ namespace Npk
 
         control->mail.Push(mail);
         NudgeCpu(who);
-    }
-
-    void FlushRemoteTlbs(sl::Span<CpuId> who, FlushRequest* what, bool sync)
-    {
-        NPK_CHECK(what != nullptr, );
-
-        what->acknowledgements.Store(who.Size(), sl::Release);
-
-        for (size_t i = 0; i < who.Size(); i++)
-        {
-            auto control = GetControl(who[i]);
-            if (control == nullptr)
-            {
-                what->acknowledgements.Sub(1, sl::Release);
-                continue;
-            }
-
-            control->shootdowns.Push(what);
-            NudgeCpu(who[i]);
-        }
-
-        if (!sync)
-            return;
-
-        size_t count = 0;
-        while (what->acknowledgements.Load(sl::Relaxed))
-        {
-            count++;
-            if (count == 123456)
-            {
-                Log("TLB shootdown is taking a long time: 0x%tx->0x%tx",
-                    LogLevel::Warning, what->base, what->base + what->length);
-                count = 0;
-            }
-
-            sl::HintSpinloop();
-        }
     }
 
     void SetMyIpiId(void* id)

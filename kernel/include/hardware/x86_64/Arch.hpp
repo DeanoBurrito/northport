@@ -64,16 +64,6 @@ namespace Npk
     NPK_MAKE_HW_REG(fs, System, 4);
     NPK_MAKE_HW_REG(gs, System, 5);
 
-    struct HwMap
-    {
-        Paddr ptRoot;
-    };
-
-    struct HwPte
-    {
-        uint64_t value;
-    };
-
     struct UserFrame;
 
     struct HwUserContext

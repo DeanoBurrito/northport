@@ -51,7 +51,8 @@ namespace Npk
         {
             const Paddr paddr = (Paddr)i - imageOffset;
             const uintptr_t vaddr = (uintptr_t)i;
-            const MmuFlags flags = MmuFlag::Fetch;
+            const MmuPermissions perms = MmuPermission::Write 
+                | MmuPermission::Fetch;
 
             if (i == AlignDownPage(KERNEL_TEXT_BEGIN))
             {
@@ -59,7 +60,7 @@ namespace Npk
                     "text", vaddr, paddr);
             }
 
-            HwEarlyMap(init, paddr, vaddr, flags);
+            HwEarlyMap(init, paddr, vaddr, perms, {});
         }
 
         for (char* i = AlignDownPage(KERNEL_RODATA_BEGIN); i <KERNEL_RODATA_END;
@@ -67,7 +68,7 @@ namespace Npk
         {
             const Paddr paddr = (Paddr)i - imageOffset;
             const uintptr_t vaddr = (uintptr_t)i;
-            const MmuFlags flags = {};
+            const MmuPermissions perms = {};
 
             if (i == AlignDownPage(KERNEL_RODATA_BEGIN))
             {
@@ -75,7 +76,7 @@ namespace Npk
                     "rodata", vaddr, paddr);
             }
 
-            HwEarlyMap(init, paddr, vaddr, flags);
+            HwEarlyMap(init, paddr, vaddr, perms, {});
         }
 
         for (char* i = AlignDownPage(KERNEL_DATA_BEGIN); i < KERNEL_DATA_END;
@@ -83,7 +84,7 @@ namespace Npk
         {
             const Paddr paddr = (Paddr)i - imageOffset;
             const uintptr_t vaddr = (uintptr_t)i;
-            const MmuFlags flags = MmuFlag::Write;
+            const MmuPermissions perms = MmuPermission::Write;
 
             if (i == AlignDownPage(KERNEL_DATA_BEGIN))
             {
@@ -91,7 +92,7 @@ namespace Npk
                     "data", vaddr, paddr);
             }
 
-            HwEarlyMap(init, paddr, vaddr, flags);
+            HwEarlyMap(init, paddr, vaddr, perms, {});
         }
 
         //1. Copy command line to the new address space
@@ -106,7 +107,7 @@ namespace Npk
             sl::MemCopy(reinterpret_cast<void*>(page + init.dmBase),
                 loader.commandLine.Begin() + i, len);
             HwEarlyMap(init, page, reinterpret_cast<uintptr_t>(cmdlineDest) + i,
-                {});
+                {}, {});
         }
         init.mappedCmdLine = { cmdlineDest, cmdlineSize };
 
@@ -165,7 +166,7 @@ namespace Npk
                 {
                     Paddr p = init.PmAlloc();
                     uintptr_t v = dbOffset + s;
-                    HwEarlyMap(init, p, v, MmuFlag::Write);
+                    HwEarlyMap(init, p, v, MmuPermission::Write, {});
                 }
             }
 
@@ -227,7 +228,7 @@ namespace Npk
                         reinterpret_cast<uintptr_t>(gathered)
                         + spilled * sizeof(MemoryRange);
 
-                    HwEarlyMap(init, page, vaddr, MmuFlag::Write);
+                    HwEarlyMap(init, page, vaddr, MmuPermission::Write, {});
 
                     spillPage = reinterpret_cast<MemoryRange*>(
                         init.dmBase + page);
@@ -514,8 +515,7 @@ R"(                                             888                      )"
         BringCpuOnline(&idleContext);
 
         const uintptr_t lowBase = virtBase;
-        const uintptr_t lowTop = AlignDownPage((uintptr_t)KERNEL_BLOB_BEGIN 
-            - virtBase);
+        const uintptr_t lowTop = AlignDownPage((uintptr_t)KERNEL_BLOB_BEGIN);
         const uintptr_t highBase = AlignUpPage((uintptr_t)KERNEL_BLOB_END);
         const uintptr_t highTop = AlignDownPage((uintptr_t)~0);
         InitKernelVmSpace(lowBase, lowTop - lowBase, highBase, 

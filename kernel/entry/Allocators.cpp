@@ -16,7 +16,10 @@ namespace Npk
     {
         char* base = VmAlloc(length);
         for (size_t i = 0; i < length; i += PageSize())
-            HwEarlyMap(*this, PmAlloc(), (uintptr_t)base + i, MmuFlag::Write);
+        {
+            HwEarlyMap(*this, PmAlloc(), (uintptr_t)base + i,
+                MmuPermission::Write, {});
+        }
 
         return base;
     }

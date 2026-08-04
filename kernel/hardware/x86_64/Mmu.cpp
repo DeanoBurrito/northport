@@ -1,16 +1,12 @@
 #include <private/Hardware.hpp>
-#include <hardware/x86_64/Private.hpp>
+#include <hardware/common/mmu/PageTables.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
-#include <Core.hpp>
+#include <hardware/x86_64/Private.hpp>
+#include <private/Core.hpp>
 #include <private/Entry.hpp>
-#include <lib/Memory.hpp>
+#include <Core.hpp>
 #include <lib/Maths.hpp>
-
-#define INVLPG(vaddr) \
-    do \
-    { \
-        asm volatile("invlpg (%0)" :: "r"(vaddr) : "memory"); \
-    } while (false)
+#include <lib/Memory.hpp>
 
 #define COPY_PTE(dest_ptr, src_ptr) \
     do \
@@ -19,136 +15,445 @@
             "r"(dest_ptr), "r"(src_ptr) : "memory", "rcx"); \
     } while (false)
 
+#define INVLPG(vaddr) \
+    do \
+    { \
+        asm volatile("invlpg (%0)" :: "r"(vaddr) : "memory"); \
+    } while (false)
+
 namespace Npk
 {
+    constexpr uint64_t Cr4Pge = 1 << 7;
+    constexpr uint64_t Cr4La57 = 1 << 12;
     constexpr size_t PtEntries = 512;
 
-    constexpr uint64_t PresentFlag = 1 << 0;
-    constexpr uint64_t WriteFlag = 1 << 1;
-    constexpr uint64_t UserFlag = 1 << 2;
-    constexpr uint64_t NxFlag = 1ul << 63;
-    constexpr uint64_t PatBitsMask = (1 << 7) | (1 << 4) | (1 << 3);
-    constexpr uint64_t PatUcFlag = (1 << 4) | (1 << 3); //(3) for UC
-    constexpr uint64_t PatWcFlag = (1 << 7) | (1 << 3); //(5) for WC
+    constexpr uint64_t PresentBit = 1 << 0;
+    constexpr uint64_t WriteBit = 1 << 1;
+    constexpr uint64_t UserBit = 1 << 2;
+    constexpr uint64_t AccessedBit = 1 << 5;
+    constexpr uint64_t DirtyBit = 1 << 6;
+    constexpr uint64_t BigPageBit = 1 << 7;
+    constexpr uint64_t GlobalBit = 1 << 8;
+    constexpr uint64_t NxBit = 1ull << 63;
 
-    struct PageTable
-    {
-        HwPte ptes[PtEntries];
-    };
+    //NOTE: this only works on 4K pages.
+    constexpr uint64_t CacheMask = (1 << 3) | (1 << 4) | (1 << 7);
+    //NOTE: that pat indices assume the PAT layout defined by limine protocol.
+    constexpr uint64_t PatUcBits = (1 << 4) | (1 << 3);
+    constexpr uint64_t PatWcBits = (1 << 7) | (1 << 3);
+    constexpr uint64_t LegacyUcBits = (1 << 4) | (1 << 3);
 
+    static bool nxSupport;
+    static bool patSupport;
+    static uint64_t mmioBits;
+    static uint64_t framebufferBits;
     static uint64_t addrMask;
     static size_t ptLevels;
-    static bool nxSupported;
-    static bool patSupported;
 
-    uintptr_t tempMapBase;
-    sl::Span<uint64_t> tempMapAccess;
-
-    Paddr kernelMap;
+    Paddr kernelRoot;
     Paddr apBootPage;
 
+    static uintptr_t tempMapBase;
+    static sl::Span<uint64_t> tempMapAccess;
+
+    constexpr uint8_t PtLevelShifts[] = 
+    { 
+        12, 
+        21, 
+        30, 
+        39, 
+        48
+    };
+
+    constexpr uintptr_t PtLevelMasks[] = 
+    { 
+        0x1FF,
+        0x1FF,
+        0x1FF,
+        0x1FF,
+        0x1FF
+    };
+
+    constexpr size_t PtLevelSizes[] = 
+    {
+        0x1000, 
+        0x1000, 
+        0x1000, 
+        0x1000, 
+        0x1000
+    };
+
+    static PageTableConfig ptConf
+    {
+        .levelCount = 0, //set by `HwInitBspMmu()`.
+        .levelShift = PtLevelShifts,
+        .levelMask = PtLevelMasks,
+        .levelPtSize = PtLevelSizes,
+        .leafLevelMask = 0x1FF,
+        .pteSize = 8,
+        .kernelFirstIndex = 256,
+        .kernelLastIndex = 511,
+        .splitRoot = false,
+        .hwAccessedBit = true,
+        .hwDirtyBit = true,
+        .hasCustomWritePte = false,
+        .hasCustomExchange = false,
+        .hasCustomCompareExchange = false,
+    };
+
+    const PageTableConfig& GetPageTableConfig()
+    {
+        return ptConf;
+    }
+
+    void SetUserRoot(Paddr root, Asid asid)
+    {
+        (void)asid; //TODO: detect pcid support
+
+        WRITE_CR(3, root);
+    }
+
+    Paddr GetUserRoot()
+    {
+        const uint64_t value = READ_CR(3);
+
+        return value & addrMask;
+    }
+
+    void MakeLeafPte(void* pte, Paddr paddr, MmuPermissions perms, 
+        MmuCacheMode cacheMode, bool kernel, size_t level)
+    {
+        uint64_t value = (paddr & addrMask) | PresentBit;
+        if (perms.Has(MmuPermission::Write))
+            value |= WriteBit;
+
+        if (!kernel)
+            value |= UserBit;
+        else
+            value |= GlobalBit;
+
+        if (nxSupport && !perms.Has(MmuPermission::Fetch))
+            value |= NxBit;
+        if (level != 0)
+            value |= BigPageBit;
+
+        switch (cacheMode)
+        {
+        case MmuCacheMode::Mmio:
+            value |= mmioBits;
+            break;
+        
+        case MmuCacheMode::Framebuffer:
+            value |= framebufferBits;
+            break;
+
+        default:
+            break;
+        }
+
+        COPY_PTE(pte, &value);
+    }
+
+    void MakeIntermediatePte(void* pte, Paddr child, bool kernel)
+    {
+        uint64_t value = (child & addrMask) | PresentBit | WriteBit;
+
+        if (!kernel)
+            value |= UserBit;
+        else
+            value |= GlobalBit;
+
+        COPY_PTE(pte, &value);
+    }
+
+    void MakeInvalidPte(void* pte)
+    {
+        uint64_t value = 0;
+
+        COPY_PTE(pte, &value);
+    }
+
+    void SetPtePerms(void* pte, MmuPermissions perms)
+    {
+        uint64_t* ptr = static_cast<uint64_t*>(pte);
+
+        *ptr = *ptr & ~(WriteBit | NxBit);
+
+        if (perms.Has(MmuPermission::Write))
+            *ptr |= WriteBit;
+        if (nxSupport && !perms.Has(MmuPermission::Fetch))
+            *ptr |= NxBit;
+    }
+
+    bool IsPteValid(const void* pte)
+    {
+        const uint64_t value = *static_cast<const uint64_t*>(pte);
+
+        return value & PresentBit;
+    }
+
+    bool IsLeafPte(const void* pte, size_t level)
+    {
+        const uint64_t value = *static_cast<const uint64_t*>(pte);
+
+        if (level == 0)
+            return value & PresentBit;
+        return value & BigPageBit;
+    }
+
+    Paddr GetPteAddr(const void* pte)
+    {
+        const uint64_t value = *static_cast<const uint64_t*>(pte);
+
+        return value & addrMask;
+    }
+
+    MmuPermissions GetPtePerms(const void* pte)
+    {
+        const uint64_t value = *static_cast<const uint64_t*>(pte);
+        MmuPermissions perms {};
+
+        if (value & WriteBit)
+            perms.Set(MmuPermission::Write);
+        if (!nxSupport || !(value & NxBit))
+            perms.Set(MmuPermission::Fetch);
+
+        return perms;
+    }
+
+    MmuCacheMode GetPteCacheMode(const void* pte)
+    {
+        const uint64_t value = *static_cast<const uint64_t*>(pte);
+
+        if (patSupport)
+        {
+            if ((value & CacheMask) == mmioBits)
+                return MmuCacheMode::Mmio;
+            if ((value & CacheMask) == framebufferBits)
+                return MmuCacheMode::Framebuffer;
+
+            return MmuCacheMode::Default;
+        }
+
+        if ((value & LegacyUcBits) == LegacyUcBits)
+            return MmuCacheMode::Mmio;
+
+        return MmuCacheMode::Default;
+    }
+
+    bool IsPteAccessed(const void* pte)
+    {
+        const uint64_t value = *static_cast<const uint64_t*>(pte);
+
+        return value & AccessedBit;
+    }
+
+    bool IsPteDirty(const void* pte)
+    {
+        const uint64_t value = *static_cast<const uint64_t*>(pte);
+
+        return value & DirtyBit;
+    }
+
+    void WritePte(void* dest, const void* source)
+    {
+        (void)dest;
+        (void)source;
+
+        NPK_UNREACHABLE();
+    }
+
+    void ExchangePte(void* dest, const void* source, void* prev)
+    {
+        (void)dest;
+        (void)source;
+        (void)prev;
+
+        NPK_UNREACHABLE();
+    }
+
+    bool CompareExchangePte(void* dest, void* expected, const void* desired)
+    {
+        (void)dest;
+        (void)expected;
+        (void)desired;
+
+        NPK_UNREACHABLE();
+    }
+
+    bool ClearPteAccessed(void* pte)
+    {
+        auto* ptr = static_cast<sl::Atomic<uint64_t>*>(pte);
+
+        return ptr->FetchAnd(~AccessedBit, sl::SeqCst) & AccessedBit;
+    }
+
+    bool ClearPteDirty(void* pte)
+    {
+        auto* ptr = static_cast<sl::Atomic<uint64_t>*>(pte);
+
+        return ptr->FetchAnd(~DirtyBit, sl::SeqCst) & DirtyBit;
+    }
+
+    bool SetPteAccessed(void* pte)
+    {
+        auto* ptr = static_cast<sl::Atomic<uint64_t>*>(pte);
+
+        return ptr->FetchOr(AccessedBit, sl::SeqCst) & AccessedBit;
+    }
+
+    bool SetPteDirty(void* pte)
+    {
+        auto* ptr = static_cast<sl::Atomic<uint64_t>*>(pte);
+
+        return ptr->FetchOr(DirtyBit, sl::SeqCst) & DirtyBit;
+    }
+
+    bool PteIsWriteTrackable(const void* pte)
+    {
+        (void)pte;
+
+        NPK_UNREACHABLE();
+    }
+
     static Paddr DoEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr,
-        MmuFlags flags)
+        MmuPermissions perms, MmuCacheMode cacheMode)
     {
         size_t indices[6];
+
         indices[5] = (vaddr >> 48) & 0x1FF;
         indices[4] = (vaddr >> 39) & 0x1FF;
         indices[3] = (vaddr >> 30) & 0x1FF;
         indices[2] = (vaddr >> 21) & 0x1FF;
         indices[1] = (vaddr >> 12) & 0x1FF;
-        indices[0] = 0;
 
-        auto pt = reinterpret_cast<PageTable*>(kernelMap + state.dmBase);
+        auto* pt = reinterpret_cast<uint64_t*>(kernelRoot + state.dmBase);
+
         for (size_t i = ptLevels; i != 1; i--)
         {
-            auto pte = &pt->ptes[indices[i]];
-            if ((pte->value & PresentFlag) == 0)
+            uint64_t* pte = &pt[indices[i]];
+
+            if ((*pte & PresentBit) == 0)
             {
-                HwPte localPte {};
-                localPte.value = state.PmAlloc() | PresentFlag | WriteFlag;
-                COPY_PTE(&pte->value, &localPte);
+                uint64_t value;
+                MakeIntermediatePte(&value, state.PmAlloc(), true);
+
+                COPY_PTE(pte, &value);
             }
 
-            pt = reinterpret_cast<PageTable*>((pte->value & addrMask)
-                + state.dmBase);
+            pt = reinterpret_cast<uint64_t*>((*pte & addrMask) + state.dmBase);
         }
 
-        HwPte pte {};
-        HwPteFlags(&pte, flags);
-        pte.value |= (paddr & addrMask) | PresentFlag;
-        COPY_PTE(&pt->ptes[indices[1]].value, &pte.value);
+        uint64_t leaf;
+        MakeLeafPte(&leaf, paddr, perms, cacheMode, true, 0);
+        COPY_PTE(&pt[indices[1]], &leaf);
 
-        return reinterpret_cast<Paddr>(pt) - state.dmBase;
+        return reinterpret_cast<uintptr_t>(pt) - state.dmBase;
     }
 
     uintptr_t HwInitBspMmu(InitState& state, size_t tempMapCount)
     {
+        ptLevels = 4;
+
         const uint64_t cr4 = READ_CR(4);
-        ptLevels = (cr4 & (1 << 12)) ? 5 : 4;
+        if (cr4 & Cr4La57)
+            ptLevels = 5;
+        ptConf.levelCount = ptLevels;
 
-        nxSupported = CpuHasFeature(CpuFeature::NoExecute);
-        patSupported = CpuHasFeature(CpuFeature::Pat);
+        nxSupport = CpuHasFeature(CpuFeature::NoExecute);
+        patSupport = CpuHasFeature(CpuFeature::Pat);
 
-        if (!patSupported)
-            Log("PAT not supported on this cpu.", LogLevel::Warning);
-        //TODO: support non-PAT systems properly
+        if (patSupport)
+        {
+            mmioBits = PatUcBits;
+            framebufferBits = PatWcBits;
+        }
+        else
+        {
+            mmioBits = LegacyUcBits;
+            framebufferBits = LegacyUcBits;
+        }
 
         addrMask = 1ull << (9 * ptLevels + 12);
         addrMask--;
         addrMask &= ~0xFFFul;
 
-        kernelMap = state.PmAlloc();
-        sysDomain0.kernelMap.ptRoot = kernelMap;
-        //TODO: software direct map as PageAccess optimization
+        //TODO: software direct map segments
+        //- opt-in via command line flag since this is a huge security risk,
+        //make it the user's choice to trae security vs speed.
+        //- use larger page sizes where possible
+        //- ensure its mapped no-execute
+        //- dont make the software map if physical ram is limited, if the
+        //direct map would consume too much ram limit it's size or skip it.
+        //- ensure kernel image isn't mapped.
+        //- ensure only usable ram regions are mapped, otherwise some AMD cpus
+        //can fire an MCE
+        // - https://github.com/torvalds/linux/commit/66520ebc2df3fe52eb4792f8101fac573b766baf
+
+        //the kernel root has to exist before any early mapping, since that is
+        //the table DoEarlyMap() populates.
+        kernelRoot = state.PmAlloc();
+
+        //for AP bringup purposes the kernel root PT must be 32-bit addressable.
+        NPK_ASSERT(kernelRoot >> 32 == 0);
 
         apBootPage = state.PmAlloc();
-        HwEarlyMap(state, apBootPage, apBootPage, 
-            MmuFlag::Write | MmuFlag::Fetch);
-        const size_t blobLength = 
-            (uintptr_t)_EndOfSpinupBlob - (uintptr_t)SpinupBlob;
-        NPK_ASSERT(blobLength <= PageSize());
+        HwEarlyMap(state, apBootPage, apBootPage,
+            MmuPermission::Write | MmuPermission::Fetch, {});
 
-        sl::MemCopy(reinterpret_cast<void*>(apBootPage + state.dmBase), 
+        const size_t blobLength = reinterpret_cast<uintptr_t>(_EndOfSpinupBlob)
+            - reinterpret_cast<uintptr_t>(SpinupBlob);
+        NPK_ASSERT(blobLength <= PageSize());
+        sl::MemCopy(reinterpret_cast<void*>(apBootPage + state.dmBase),
             SpinupBlob, blobLength);
         Log("AP boot blob @ 0x%tx", LogLevel::Verbose, apBootPage);
 
-        uintptr_t vmAllocHead = -(1ull << (9 * ptLevels + 11)); 
+        state.vmAllocHead = -(1ull << (9 * ptLevels + 11));
 
-        tempMapBase = vmAllocHead;
+        tempMapBase = state.vmAllocHead;
         tempMapCount = sl::AlignUp(tempMapCount, PtEntries);
-        vmAllocHead += tempMapCount << PfnShift();
-        tempMapAccess = { reinterpret_cast<uint64_t*>(vmAllocHead), tempMapCount };
+        state.vmAllocHead += tempMapCount << PfnShift();
+        tempMapAccess = { reinterpret_cast<uint64_t*>(state.vmAllocHead),
+            tempMapCount };
 
         for (size_t i = 0; i < tempMapCount; i++)
         {
-            const Paddr pt = DoEarlyMap(state, 0, 
-                tempMapBase + (i << PfnShift()), MmuFlag::Write);
+            const Paddr pt = DoEarlyMap(state, 0,
+                tempMapBase + (i << PfnShift()), MmuPermission::Write, {});
 
             if ((i & (PtEntries - 1)) == 0)
             {
-                HwEarlyMap(state, pt, vmAllocHead, MmuFlag::Write);
-                vmAllocHead += PageSize();
+                HwEarlyMap(state, pt, state.vmAllocHead, MmuPermission::Write,
+                    {});
+                state.vmAllocHead += PageSize();
             }
         }
         Log("Temp mappings prepared: 0x%tx (access @ %p, %zu)", LogLevel::Info,
             tempMapBase, tempMapAccess.Begin(), tempMapAccess.Size());
 
-        return vmAllocHead;
+        sysDomain0.kernelMap = HwCreateKernelMap(state, kernelRoot);
+
+        return state.vmAllocHead;
+    }
+
+    void HwCompleteBspMmuInit()
+    {
+        WRITE_CR(3, kernelRoot);
     }
 
     void HwEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr,
-        MmuFlags flags)
+        MmuPermissions perms, MmuCacheMode mode)
     {
-        DoEarlyMap(state, paddr, vaddr, flags);
+        DoEarlyMap(state, paddr, vaddr, perms, mode);
     }
-    
+
     void* HwSetTempMapSlot(size_t index, Paddr paddr)
     {
         if (index >= tempMapAccess.Size())
             return nullptr;
 
         const uintptr_t vaddr = (index << PfnShift()) + tempMapBase;
-        const uint64_t pte = (paddr & addrMask) | PresentFlag | WriteFlag;
+        const uint64_t pte = (paddr & addrMask) | PresentBit | WriteBit;
 
         COPY_PTE(&tempMapAccess[index], &pte);
         INVLPG(vaddr);
@@ -156,8 +461,46 @@ namespace Npk
         return reinterpret_cast<void*>(vaddr);
     }
 
-    void HwFlushTlb(uintptr_t base, size_t length)
+    HwAddressRange HwGetUserAddressRange()
     {
+        //The only interesting thing here is we keep the highest page of the
+        //lower half as unmappable, since there can be bugs with placing a 
+        //`syscall` instruction at the end of the last page. On some cpus this
+        //can lead to a matching `sysret` faulting in the kernel while trying to
+        //return to userspace, allowing user mode software to trigger a kernel
+        //mode fault.
+        const uintptr_t Max = (1ull << (9 * ptLevels + 11)) - PageSize();
+
+        //for > 32-bit address spaces mark the lower 4G as unusable by userspace
+        //to help catch any badly typed casts (pointers as `int`s etc). Not a
+        //real constraint, but an easy way to catch this type of bug.
+        //On all address spaces we prevent the lowest page (PFN 0) from being
+        //valid, to catch null pointer usage.
+        if constexpr (sizeof(uintptr_t) == 4)
+            return { 4 * KiB, Max };
+        else
+            return { 4 * GiB, Max };
+    }
+
+    sl::Span<HwAddressRange> HwGetKernelAddressRanges()
+    {
+        //TODO:
+        return {};
+    }
+
+    sl::Span<const HwDirectMapSegment> HwGetDirectMapSegments()
+    {
+        return {};
+    }
+
+    void HwFlushTlb(Asid asid, uintptr_t base, size_t length)
+    {
+        //TODO: once PCIDs are in we'll need the code below for the case of
+        //AsidNone being passed as `asid`, meaning it must affect all spaces.
+        //Otherwise we can use invlpcid (type 0) to save some parts of the tlb
+        //(hopefully).
+        (void)asid;
+
         const uintptr_t top = base + length;
         base = AlignDownPage(base);
 
@@ -168,249 +511,37 @@ namespace Npk
         }
     }
 
-    void HwFlushTlbAll()
+    void HwFlushTlbAll(Asid asid)
     {
+        (void)asid;
+
+        //a cr3 reload does not evict global entries, and kernel mappings are
+        //marked global: when global pages are enabled the whole TLB is only
+        //dropped by toggling cr4.pge.
+        if (CpuHasFeature(CpuFeature::GlobalPages))
+        {
+            const uint64_t cr4 = READ_CR(4);
+            WRITE_CR(4, cr4 & ~Cr4Pge);
+            WRITE_CR(4, cr4);
+
+            return;
+        }
+
         const uint64_t prev = READ_CR(3);
         WRITE_CR(3, prev);
     }
 
-    void HwKernelMap(HwMap* prev, sl::Opt<HwMap> next)
+    bool HwHasBroadcastInvalidate()
     {
-        if (prev != nullptr)
-            prev->ptRoot = READ_CR(3);
-
-        if (next.HasValue())
-            WRITE_CR(3, *next);
-        else
-            WRITE_CR(3, kernelMap);
-    }
-
-    void HwUserMap(HwMap* prev, sl::Opt<HwMap> next)
-    {
-        if (prev != nullptr)
-            prev->ptRoot = READ_CR(3);
-
-        //TODO: ensure higher half is in sync: we should just map 
-        //pml4[256-511]in all addr spaces and then clone them.
-        if (next.HasValue())
-            WRITE_CR(3, *next);
-    }
-
-    bool HwWalkMap(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
-        void* ptRef)
-    {
-        PageAccessRef ref = AccessPage(root.ptRoot);
-        result.level = ptLevels - 1;
-        result.complete = false;
-        result.pte = nullptr;
-
-        if (HwContinueWalk(root, vaddr, result, &ref))
-        {
-            *static_cast<PageAccessRef*>(ptRef) = ref;
-            return true;
-        }
-
+        //TODO: invlpgb + tlbsync support, <3 AMD.
         return false;
     }
 
-    bool HwContinueWalk(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
-        void* ptRef)
+    size_t HwGetTlbFlushThreshold()
     {
-        (void)root;
+        //TODO: detremine from cpuid, the value below is copied from managarm
+        //as a starter.
 
-        if (result.complete || ptRef == nullptr)
-            return false;
-
-        size_t indices[6];
-        indices[5] = (vaddr >> 48) & 0x1FF;
-        indices[4] = (vaddr >> 39) & 0x1FF;
-        indices[3] = (vaddr >> 30) & 0x1FF;
-        indices[2] = (vaddr >> 21) & 0x1FF;
-        indices[1] = (vaddr >> 12) & 0x1FF;
-        indices[0] = 0;
-
-        size_t level = result.level + 1;
-        PageAccessRef nextPtRef = *static_cast<PageAccessRef*>(ptRef);
-        PageAccessRef localPtRef {};
-        HwPte* pte = result.pte;
-
-        while (level != 0)
-        {
-            if (!nextPtRef.Valid())
-                return false;
-
-            auto pt = static_cast<PageTable*>(nextPtRef.vaddr);
-            pte = &pt->ptes[indices[level]];
-            level--;
-            localPtRef = nextPtRef;
-
-            if (level == 0)
-                break;
-
-            if ((pte->value & PresentFlag) == 0)
-            {
-                result.complete = false;
-                result.level = level;
-                result.pte = pte;
-                *static_cast<PageAccessRef*>(ptRef) = localPtRef;
-
-                return true;
-            }
-
-            const Paddr nextPt = pte->value & addrMask;
-            nextPtRef = AccessPage(nextPt);
-        }
-
-        if (level == result.level + 1u)
-            return false;
-
-        result.complete = pte->value & PresentFlag;
-        result.pte = pte;
-        result.level = level;
-        *static_cast<PageAccessRef*>(ptRef) = localPtRef;
-
-        return true;
-    }
-
-    bool HwIntermediatePte(HwPte* pte, sl::Opt<Paddr> next, bool valid)
-    {
-        HwPte localPte {};
-
-        if (valid)
-            localPte.value |= PresentFlag | WriteFlag;
-        if (next.HasValue())
-            localPte.value |= *next;
-
-        COPY_PTE(pte, &localPte);
-
-        return true;
-    }
-
-    bool HwPteValid(HwPte* pte, sl::Opt<bool> set)
-    {
-        if (pte == nullptr)
-            return false;
-
-        const bool prev = pte->value & PresentFlag;
-
-        if (set.HasValue())
-        {
-            HwPte localPte;
-
-            COPY_PTE(&localPte, pte);
-            if (*set)
-                localPte.value |= PresentFlag;
-            else
-                localPte.value &= ~PresentFlag;
-            COPY_PTE(pte, &localPte);
-        }
-
-        return prev;
-    }
-
-    MmuFlags HwPteFlags(HwPte* pte, sl::Opt<MmuFlags> set)
-    {
-        if (pte == nullptr)
-            return {};
-
-        MmuFlags current {};
-        if (pte->value & WriteFlag)
-            current |= MmuFlag::Write;
-        if (pte->value & UserFlag)
-            current |= MmuFlag::User;
-        if (!nxSupported || ((pte->value & NxFlag) == 0))
-            current |= MmuFlag::Fetch;
-        if (patSupported && ((pte->value & PatUcFlag) == PatUcFlag))
-            current |= MmuFlag::Mmio;
-        if (patSupported && ((pte->value & PatWcFlag) == PatWcFlag))
-            current |= MmuFlag::Framebuffer;
-
-        if (set.HasValue())
-        {
-            pte->value &= ~WriteFlag;
-            if (set->Has(MmuFlag::Write))
-                pte->value |= WriteFlag;
-
-            pte->value &= ~UserFlag;
-            if (set->Has(MmuFlag::User))
-                pte->value |= UserFlag;
-
-            if (nxSupported)
-            {
-                pte->value &= ~NxFlag;
-                if (!set->Has(MmuFlag::Fetch))
-                    pte->value |= NxFlag;
-            }
-
-            if (patSupported)
-            {
-                pte->value &= ~PatBitsMask;
-                if (set->Has(MmuFlag::Framebuffer))
-                    pte->value |= PatWcFlag;
-                else if (set->Has(MmuFlag::Mmio))
-                    pte->value |= PatUcFlag;
-            }
-        }
-
-        return current;
-    }
-
-    Paddr HwPteAddr(HwPte* pte, sl::Opt<Paddr> set)
-    {
-        if (pte == nullptr)
-            return 0;
-
-        const Paddr prev = pte->value & addrMask;
-
-        if (set.HasValue())
-        {
-            HwPte localPte;
-
-            COPY_PTE(&localPte, pte);
-            localPte.value = localPte.value & ~addrMask;
-            localPte.value |= *set;
-            COPY_PTE(pte, &localPte);
-        }
-
-        return prev;
-    }
-
-    void HwCopyPte(HwPte* dest, const HwPte* src)
-    {
-        COPY_PTE(dest, src);
-    }
-
-    size_t HwGetPageTableSize(size_t level)
-    {
-        (void)level;
-
-        return 0x1000;
-    }
-
-    bool HwIsCanonicalUserAddress(uintptr_t addr)
-    {
-        //Usually you leave the fist page unmapped, on 32-bit systems we'll do
-        //this but for 64-bit systems I'm choosing to leave the whole 32-bit
-        //range unmapped to help find bugs where software may use the wrong
-        //integer type for pointers (`int`).
-        constexpr uintptr_t Min = 4 * GiB;
-
-        //The only interesting thing here is we keep the highest page of the
-        //lower half as unmappable, since there can be bugs with placing a 
-        //`syscall` instruction at the end of the last page. On some cpus this
-        //can lead to a matching `sysret` faulting in the kernel while trying to
-        //return to userspace, allowing user mode software to trigger a kernel
-        //mode fault.
-        const uintptr_t Max = (1ull << (9 * ptLevels + 11))  - PageSize();
-
-        if (addr < Min || addr >= Max)
-            return false;
-
-        return true;
-    }
-
-    sl::Span<const HwDirectMapSegment> HwGetDirectMapSegments()
-    {
-        return {};
+        return 64;
     }
 }

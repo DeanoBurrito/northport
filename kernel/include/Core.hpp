@@ -246,7 +246,7 @@ namespace Npk
         Paddr paddr;
 
         PageAccessRef() 
-            : slot {}
+            : slot {}, vaddr { nullptr }, paddr {}
         {}
 
         PageAccessRef(PageAccessCache::CacheRef slot)
@@ -480,17 +480,6 @@ namespace Npk
 
     using MailQueue = sl::QueueMpSc<SmpMail, &SmpMail::mpscHook>;
 
-    struct FlushRequest
-    {
-        sl::QueueMpScHook hook;
-
-        uintptr_t base;
-        size_t length;
-        sl::Atomic<size_t> acknowledgements;
-    };
-
-    using FlushRequestQueue = sl::QueueMpSc<FlushRequest, &FlushRequest::hook>;
-
     struct LocalScheduler;
 
     struct RemoteCpuStatus
@@ -508,7 +497,6 @@ namespace Npk
     {
         void* ipiId;
         MailQueue mail;
-        FlushRequestQueue shootdowns;
         RemoteCpuStatus status;
     };
 
@@ -971,14 +959,6 @@ namespace Npk
      * consider using a work item.
      */
     void SendMail(CpuId who, SmpMail* mail);
-
-    /* Order all the cpus in `who` to flush a range of vaddrs from their local
-     * TLBs. If `sync` is true, this function will spin until all cpus have
-     * completed acknowledged and completed the flush. If `sync` is false,
-     * the function returns after the work is queued on the remote cpus and no
-     * guarantee is made about when the TLB flushes will occur.
-     */
-    void FlushRemoteTlbs(sl::Span<CpuId> who, FlushRequest* what, bool sync);
 
     /* Set the hardware-specific id for the local cpu, usually the ID of the
      * cpu-local interrupt controller.

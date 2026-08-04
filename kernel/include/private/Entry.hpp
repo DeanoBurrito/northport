@@ -155,7 +155,7 @@ namespace Npk
     void HwInitEarly();
     uintptr_t HwInitBspMmu(InitState& state, size_t tempMapCount);
     void HwEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, 
-        MmuFlags flags);
+        MmuPermissions perms, MmuCacheMode cacheMode);
     size_t HwGetCpuCount();
     void HwCompleteBspMmuInit();
     void ArchInitFull(uintptr_t& virtBase);

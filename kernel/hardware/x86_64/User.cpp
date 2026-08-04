@@ -54,8 +54,10 @@ namespace Npk
         NPK_CHECK(context != nullptr, );
         NPK_CHECK(context->frame != nullptr, );
 
-        NPK_ASSERT(
-            PoolFreePaged(context->frame, sizeof(UserFrame), UserHeapTag));
+        auto result = PoolFreePaged(context->frame, sizeof(UserFrame), 
+            UserHeapTag);
+        NPK_ASSERT(result == NpkStatus::Success);
+
         context->frame = nullptr;
         context->resumePc = 0;
         context->resumeSp = 0;

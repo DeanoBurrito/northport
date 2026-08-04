@@ -56,6 +56,7 @@ namespace Npk
     };
 
     extern Paddr apBootPage;
+    extern Paddr kernelRoot;
 
     void InitUarts();
     void InitMachineChecking();

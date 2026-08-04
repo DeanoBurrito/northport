@@ -151,7 +151,7 @@ namespace Npk
 
     struct VmSpace
     {
-        HwMap map;
+        HwMap* map;
 
         Mutex freeRangesMutex;
         VmFreeRangeTree freeRanges;
@@ -250,42 +250,7 @@ namespace Npk
     void InitKernelVmSpace(uintptr_t lowBase, size_t lowLen, uintptr_t highBase,
         size_t highLen);
 
-    /* Allocates and emplaces all intermediate page tables required for mapping
-     * a physical address at `vaddr` using `map`, but does not populate the last
-     * PTE. This allows later code to complete the mapping without requiring
-     * access to allocators or other resources, by only manipulating the bits
-     * of the final PTE.
-     */
-    NpkStatus PrimeMapping(HwMap map, uintptr_t vaddr, MmuWalkResult& result, 
-        PageAccessRef& ref);
-
-    /* Sets the mapping for kernel translations at `vaddr` using `map` (direct
-     * or indirect translations) to `paddr`. A direct translation one performed
-     * by the hardware while the mapped is loaded and active, an indirect 
-     * translation is performed by software. 
-     * This is a low level function and skips some checks and features provided
-     * at high levels in the virtual memory subsystem.
-     */
-    NpkStatus SetMap(HwMap map, uintptr_t vaddr, Paddr paddr, VmFlags flags);
-
-    /* Ensures that address translations for `vaddr` using `map` (directly or
-     * indirectly) will fail, and returns whether a mapping was undone
-     * (something was mapped prior to this call).
-     * If this function returns success and `paddr` is non-null, the unmapped
-     * physical address is placed in `*paddr`.
-     */
-    NpkStatus ClearMap(HwMap map, uintptr_t vaddr, Paddr* paddr);
-
-    /* Same as `PrimeMap()` but exclusively uses the current kernel map.
-     */
-    NpkStatus PrimeKernelMap(uintptr_t vaddr);
-
-    /* Same as `SetMap()` but exclusively uses the current kernel map.
-     */
     NpkStatus SetKernelMap(uintptr_t vaddr, Paddr paddr, VmFlags flags);
-
-    /* Same as `ClearMap()` but exclusively uses the current kernel map.
-     */
     NpkStatus ClearKernelMap(uintptr_t vaddr, Paddr* paddr);
 
     /* Attempts to allocate a kernel stack. The architectural base is placed
@@ -294,7 +259,7 @@ namespace Npk
      */
     NpkStatus AllocKernelStack(void** stack);
 
-    /* Immediately released memory used by a kernel stack, DO NOT call this
+    /* Immediately releases memory used by a kernel stack, DO NOT call this
      * for the current stack (insert stick in bicycle spoke meme here) - instead
      * a defer-based mechanism should be used (RCU, DPCs, WorkItems).
      */

@@ -9,14 +9,29 @@
 
 namespace Npk
 {
-    /* Opaque type, must be copyable. Represents the root of an address
-     * translation set.
+    /* Opaque type, represents a virtual address translation set.
      */
     struct HwMap;
 
-    /* Opaque type representing a single page table entry, must be copyable.
+    /* Address Space IDentifier: not required to have as many bits as the type
+     * used below, the exact bit count cant be known until runtime on some
+     * hardware. These are used as an optimization for local TLB ops, as only
+     * entries with the matching asid are updated. The exception is when 
+     * `AsidNone` (see below) is used, which indicates the operation should
+     * affect tlb entries with no asid tag or other flags that would prevent
+     * the operation from normally effecting it (x86 global flag).
+     *
+     * For systems without asid support, the meaning above still carries but 
+     * all values that are not `AsidNone` carry the same meaning and touch
+     * all regular tlb entries (those that would carry an asid if present).
      */
-    struct HwPte;
+    using Asid = uint32_t;
+
+    /* Special ASID, which must never be returned from the asid allocator.
+     * This value indicates the tlb operation should effect all entries not
+     * associated with a particular space, typically kernel entries.
+     */
+    constexpr Asid AsidNone = 0;
 
     /* Opaque type. Represents stored register state before a synchronous
      * exception/trap was fired.
@@ -29,10 +44,23 @@ namespace Npk
      */
     struct HwThreadContext;
 
-    /* Opaque type. Represents arch-specific state required for a thread to
-     * enter user mode.
+    /* Opaque type. Represents the blackbox that is userspace, including any
+     * resources required to manage, enter, and exit it. There is no binding
+     * between a kernel thread and a particular `HwUserContext`, the user
+     * context is implicitly relevant inside of calls to `HwEnterUserContext()`.
+     *
+     * Note that a user context by itself is useless and trying to enter it will
+     * abort. At least one `HwUserActivation` must exist for the user context
+     * to be enterable. The activation contains the register image and execution
+     * environment needed for the cpu to continue executing in userspace.
+     *
+     * TODO: better docs!
      */
     struct HwUserContext;
+
+    /* Forward declaration, see Core.hpp.
+     */
+    struct ActivationList;
 
     /* Describes the major reason for an exit from a user mode context.
      */
@@ -92,45 +120,26 @@ namespace Npk
      */
     enum class DebugEventType;
 
-    enum class MmuFlag
+    /* Determines additional permissions for an operation. Note that a read
+     * permission is always implied. If a non-readable mapping is required, dont
+     * map it!
+     */
+    enum class MmuPermission
     {
         Write,
         Fetch,
-        User,
+    };
+
+    using MmuPermissions = sl::Flags<MmuPermission>;
+
+    /* Caching modes for HwMap entries. These are used to describe the intent
+     * of the mapping.
+     */
+    enum class MmuCacheMode
+    {
+        Default,
         Mmio,
         Framebuffer,
-    };
-
-    using MmuFlags = sl::Flags<MmuFlag>;
-
-    enum class MmuError
-    {
-        Success = 0,
-        InvalidArg,
-        PageAllocFailed,
-        NoMap,
-        MapAlreadyExits
-    };
-
-    struct MmuWalkResult
-    {
-        /* Opaque pointer to a specific page table entry. If non-null, this can
-         * be queried and modified via `HwPte...()` functions.
-         */
-        HwPte* pte;
-        
-        /* 0-based distance from the smallest granularity.
-         * For example on x86_64 by default there are 4 levels, the lowest 3
-         * of which can be translations. We would number these as 0
-         * (4K translations, the last possible level), 1 (2M translations),
-         * 2 (1G translations), and 3 (top level, no translations allowed).
-         */
-        uint8_t level;
-        
-        /* Whether this walk would be considered complete by the mmu,
-         * and would map some area of physical memory.
-         */
-        bool complete;
     };
 
     /*
@@ -241,6 +250,12 @@ namespace Npk
         /* Determines the length of the segment.
          */
         size_t length;
+    };
+
+    struct HwAddressRange
+    {
+        uintptr_t base;
+        uintptr_t top;
     };
 
     /* Calls `func` passing `a`/`b`/`c` as params to it, optionally placing
@@ -476,13 +491,110 @@ namespace Npk
      */
     void* HwSetTempMapSlot(size_t index, Paddr paddr);
 
-    /* Flush the local TLB for virtual addresses in `base` -> `base + length`
+    /* Returns the valid range of userspace addresses based on platform limits.
+     * Note this does not check with the VM subsystem to determine if the
+     * address is valid, just that it makes sense.
      */
-    void HwFlushTlb(uintptr_t base, size_t length);
+    HwAddressRange HwGetUserAddressRange();
 
-    /* Flush the local TLB for all addresses.
+    /* Returns any valid address ranges that might be used by the kernel, based
+     * on platform limitations. This is similar to the userspace counterpart
+     * (`HwGetUserAddressRange()`) in that it does not check with the VM 
+     * subsystem.
      */
-    void HwFlushTlbAll();
+    sl::Span<HwAddressRange> HwGetKernelAddressRanges();
+
+    /* Returns the available direct map segments. Note that these values are
+     * not allowed to change after the first call of this function: the 
+     * direct map segments are immutable once setup.
+     */
+    sl::Span<const HwDirectMapSegment> HwGetDirectMapSegments();
+
+    /*
+     */
+    NpkStatus HwMapCreate(HwMap** map);
+
+    /*
+     */
+    void HwMapDestroy(HwMap* map);
+
+    /*
+     */
+    HwMap* HwKernelMap();
+
+    /*
+     */
+    void HwMapActivate(HwMap* map);
+
+    /*
+     */
+    NpkStatus HwMapAdd(HwMap* map, uintptr_t vaddr, Paddr paddr, 
+        MmuPermissions perms, MmuCacheMode cacheMode, bool wired);
+
+    /*
+     */
+    NpkStatus HwMapRemove(HwMap* map, uintptr_t vaddr, size_t count);
+
+    /*
+     */
+    NpkStatus HwMapProtect(HwMap* map, uintptr_t vaddr, size_t count, 
+        MmuPermissions perms);
+
+    /*
+     */
+    NpkStatus HwMapExtract(Paddr* outPaddr, MmuPermissions* outFlags, 
+        MmuCacheMode* outMode, HwMap* map, uintptr_t vaddr);
+
+    /*
+     */
+    void HwMapSetWired(HwMap* map, uintptr_t vaddr, bool wired);
+
+    /*
+     */
+    bool HwMapGetAccessed(HwMap* map, uintptr_t vaddr);
+
+    /*
+     */
+    bool HwMapGetDirty(HwMap* map, uintptr_t vaddr);
+
+    /*
+     */
+    bool HwMapClearAccessed(HwMap* map, uintptr_t vaddr);
+
+    /*
+     */
+    bool HwMapClearDirty(HwMap* map, uintptr_t vaddr);
+
+    /*
+     */
+    bool HwHandleMinorFaultOnMap(HwMap* map, uintptr_t vaddr, bool write);
+
+    /*
+     */
+    void HwMapUpdate(HwMap* map, bool sync);
+
+    /*
+     */
+    bool HwHasBroadcastInvalidate();
+
+    /*
+     */
+    void HwInvalidateTlbs(HwMap* map, uintptr_t vaddr, size_t length);
+
+    /*
+     */
+    void HwSyncTlbs();
+
+    size_t HwGetTlbFlushThreshold();
+
+    /* Flush the local TLB for virtual addresses in `base` -> `base + length`,
+     * for entries tagged with `asid`.
+     */
+    void HwFlushTlb(Asid asid, uintptr_t base, size_t length);
+
+    /* Flush local TLB entries tagged with `asid`, regardless of address.
+     */
+    void HwFlushTlbAll(Asid asid);
 
     /* Flush caches relevant to the local cpu for addresses in the range
      * indicated by `base` and `length`. The `types` field determines which
@@ -501,85 +613,6 @@ namespace Npk
      * current kernel.
      */
     size_t HwGetCacheLineSize();
-
-    /* Sets the current kernel page table root pointer to `*next` if valid.
-     * If `prev` is non-null, `*prev` is set to the current root pointer.
-     *
-     * On platforms that only support a single root pointer, the split behaviour
-     * is emulated.
-     */
-    void HwKernelMap(HwMap* prev, sl::Opt<HwMap> next);
-
-    /* Sets the current user-mode page table pointer to the `*next` field,
-     * if its valid.
-     * If `prev` is non-null, `*prev` is set to the current root pointer.
-     */
-    void HwUserMap(HwMap* prev, sl::Opt<HwMap> next);
-
-    /* Walks a page tree represented by `root`, for a given `vaddr`.
-     * This function will walk the tree as far as it can go, and write details
-     * about where it stopped to `result`.
-     * 
-     * Returns whether the walk was successful or not. If false, `result` is
-     * untouched and may not be valid.
-     */
-    bool HwWalkMap(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
-        void* ptRef);
-
-    /* Similar to `HwWalkMap()`, except this function assumes `ptRef` and
-     * `result` have been filled in by a successful call to `HwWalkMap()`
-     * earlier. This function will attempt to continue the page-table walk
-     * as far as it'll go.
-     *
-     * Returns whether `result` and `ptRef` were updated. If false, the walk
-     * could not be continued.
-     */
-    bool HwContinueWalk(HwMap root, uintptr_t vaddr, MmuWalkResult& result, 
-        void* ptRef);
-
-    /* Manipulates an intermediate PTE (i.e. one that is not a final
-     * level/translation).
-     */
-    bool HwIntermediatePte(HwPte* pte, sl::Opt<Paddr> next, bool valid);
-
-    /* Returns whether a PTE is considered valid/present. If `set` is valid,
-     * the valid/present state of a PTE is updated to `*set`.
-     */
-    bool HwPteValid(HwPte* pte, sl::Opt<bool> set);
-
-    /* Returns the flags set in a translatable PTE (i.e. the PTE must be at a
-     * level where the MMU would complete address translation).
-     * If `set` is valid, the PTE flags are updated to `*set`.
-     */
-    MmuFlags HwPteFlags(HwPte* pte, sl::Opt<MmuFlags> set);
-
-    /* Returns the physical address mapped by a PTE. If `set` is valid,
-     * the PTE's address is updated to `*set`.
-     */
-    Paddr HwPteAddr(HwPte* pte, sl::Opt<Paddr> set);
-
-    /* Atomically copies a PTE from `src` to `dest`. PTEs should only be
-     * modified as local copies (i.e. the PTE is not currently in an active
-     * page table) as some MMUs may cache PTEs at *any* time.
-     */
-    void HwCopyPte(HwPte* dest, const HwPte* src);
-
-    /* Returns the size (in bytes) of a page table at a given level.
-     */
-    size_t HwGetPageTableSize(size_t level);
-
-    /* Checks if an address could be a valid user-space address. This function
-     * only checks platform constraints, it does not consult the virtual
-     * memory subsystem to see if anything is mapped or will be mapped at
-     * this address.
-     */
-    bool HwIsCanonicalUserAddress(uintptr_t addr);
-
-    /* Returns the available direct map segments. Note that these values are
-     * not allowed to change after the first call of this function: the 
-     * direct map segments are immutable once setup.
-     */
-    sl::Span<const HwDirectMapSegment> HwGetDirectMapSegments();
 
     /* Places the stack of return addresses into `store`.
      * `start` is the frame base pointer to begin at, or `0` if wanting to use

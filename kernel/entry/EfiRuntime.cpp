@@ -222,7 +222,7 @@ namespace Npk
             rtDescIndex++;
         }
 
-        HwFlushTlbAll();
+        HwFlushTlbAll(AsidNone);
 
         NpkStatus result = NpkStatus::Success;
         auto* rtIdent = reinterpret_cast<sl::EfiRuntimeServices*>(rtPaddr);
@@ -274,7 +274,7 @@ namespace Npk
                     ClearKernelMap(paddr, nullptr);
             }
         }
-        HwFlushTlbAll();
+        HwFlushTlbAll(AsidNone);
 
         if (result != NpkStatus::Success)
         {
@@ -293,7 +293,7 @@ namespace Npk
             //we undid all higher half mappings so it's safe to reset
             //`virtBase` back to how it was, to avoid leaking address space.
             virtBase = rtDescsBase;
-            HwFlushTlbAll();
+            HwFlushTlbAll(AsidNone);
 
             return result;
         }
