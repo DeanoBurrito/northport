@@ -11,13 +11,13 @@ namespace sl
         AccessType out;
 #ifdef __x86_64__
         if constexpr (sizeof(AccessType) == 1)
-            asm volatile("movb (%1), %0" : "=a"(out) : "r"(addr));
+            asm volatile("movb (%1), %0" : "=a"(out) : "r"(addr) : "memory");
         else if constexpr (sizeof(AccessType) == 2)
-            asm volatile("movw (%1), %0" : "=a"(out) : "r"(addr));
+            asm volatile("movw (%1), %0" : "=a"(out) : "r"(addr) : "memory");
         else if constexpr (sizeof(AccessType) == 4)
-            asm volatile("movl (%1), %0" : "=a"(out) : "r"(addr));
+            asm volatile("movl (%1), %0" : "=a"(out) : "r"(addr) : "memory");
         else if constexpr (sizeof(AccessType) == 8)
-            asm volatile("movq (%1), %0" : "=a"(out) : "r"(addr));
+            asm volatile("movq (%1), %0" : "=a"(out) : "r"(addr) : "memory");
         else
             SL_UNREACHABLE();
 #else
@@ -51,13 +51,13 @@ namespace sl
     {
 #ifdef __x86_64__
         if constexpr (sizeof(AccessType) == 1)
-            asm volatile("movb %0, (%1)" :: "a"(value), "r"(addr));
+            asm volatile("movb %0, (%1)" :: "a"(value), "r"(addr) : "memory");
         else if constexpr (sizeof(AccessType) == 2)
-            asm volatile("movw %0, (%1)" :: "a"(value), "r"(addr));
+            asm volatile("movw %0, (%1)" :: "a"(value), "r"(addr) : "memory");
         else if constexpr (sizeof(AccessType) == 4)
-            asm volatile("movl %0, (%1)" :: "a"(value), "r"(addr));
+            asm volatile("movl %0, (%1)" :: "a"(value), "r"(addr) : "memory");
         else if constexpr (sizeof(AccessType) == 8)
-            asm volatile("movq %0, (%1)" :: "a"(value), "r"(addr));
+            asm volatile("movq %0, (%1)" :: "a"(value), "r"(addr) : "memory");
         else
             SL_UNREACHABLE();
 #else

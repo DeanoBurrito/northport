@@ -75,8 +75,9 @@ namespace Npk
 
         inline void Lock()
         {
-            prevIntrs = IntrsOff();
+            const bool restoreIntrs = IntrsOff();
             lock.Lock();
+            prevIntrs = restoreIntrs;
         }
 
         inline bool TryLock()
@@ -838,7 +839,7 @@ namespace Npk
      * This function can be called from any IPL and never returns.
      */
     [[noreturn]]
-    void Panic(sl::StringSpan message, TrapFrame* frame, ...);
+    void Panic(sl::StringSpan msg, TrapFrame* frame, ...);
 
     void AddLogSink(LogSink& sink);
 
@@ -904,9 +905,10 @@ namespace Npk
             RaiseIpl(max);
         const bool success = lock.TryLock();
 
-        prevIpl = lastIpl;
         if (!success)
             LowerIpl(prevIpl);
+        else
+            prevIpl = lastIpl;
 
         return success;
     }

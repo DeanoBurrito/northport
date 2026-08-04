@@ -24,9 +24,16 @@ namespace Npk
             }
 
             auto access = AccessPage(page);
-            sl::MemSet(access.vaddr, 0, PageSize());
+            if (!access.Valid())
+            {
+                dom.freeLists.free.PushFront(page);
 
+                return nullptr;
+            }
+
+            sl::MemSet(access.vaddr, 0, PageSize());
             dom.freeLists.pageCount--;
+
             return page;
         }
 

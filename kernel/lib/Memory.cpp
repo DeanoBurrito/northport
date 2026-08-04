@@ -128,9 +128,11 @@ namespace sl
     template<typename T>
     void* MemSet(void* dest, int value, size_t len)
     {
-        T fill = value;
+        const uint8_t fillByte = static_cast<uint8_t>(value);
+
+        T fill = fillByte;
         for (size_t i = 0; i < sizeof(T); i++)
-            fill = (fill << 8) | value;
+            fill = (fill << 8) | fillByte;
         Word<T> pattern = static_cast<Word<T>>(fill);
 
         auto curDest = reinterpret_cast<unsigned char*>(dest);
@@ -138,7 +140,7 @@ namespace sl
         constexpr uintptr_t Mask = sizeof(T) - 1;
         while ((reinterpret_cast<uintptr_t>(curDest) & Mask) && len > 0)
         {
-            *curDest++ = value;
+            *curDest++ = fillByte;
             --len;
         }
 
@@ -183,7 +185,7 @@ namespace sl
 
         while (len != 0)
         {
-            *curDest++ = value;
+            *curDest++ = fillByte;
             len--;
         }
 

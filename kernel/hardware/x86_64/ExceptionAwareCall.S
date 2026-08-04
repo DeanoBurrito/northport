@@ -58,7 +58,7 @@ ExceptionAwareCall:
     pop %r15
     mov %r15, %gs:32
     pop %r15
-    mov %rax, %gs:40
+    mov %r15, %gs:40
 
     pop %rbx
     pop %rbp
