@@ -634,6 +634,12 @@ namespace Npk
      */
     size_t HwGetCacheLineSize();
 
+    /* Returns the worst (largest) cache line size expected on a the target
+     * system. This must be known at compile time so it can be used for aligning
+     * and padding structs.
+     */
+    constexpr size_t HwGetStaticCacheLineSize();
+
     /* Places the stack of return addresses into `store`.
      * `start` is the frame base pointer to begin at, or `0` if wanting to use
      * the current frame base pointer. `offset` allows a number of frames to

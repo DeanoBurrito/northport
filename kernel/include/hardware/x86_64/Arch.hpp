@@ -164,6 +164,11 @@ namespace Npk
         return ret;
     }
     static_assert(DebugEventVector == 0xFB);
+
+    constexpr size_t HwGetStaticCacheLineSize()
+    {
+        return 64;
+    }
 }
 
 #define READ_CR(num) ({ uint64_t val; asm("mov %%cr" #num ", %0" : "=r"(val)); val; })
