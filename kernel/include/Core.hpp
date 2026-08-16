@@ -637,7 +637,7 @@ namespace Npk
                 char placeholder[sizeof(vmoList)];
                 uintptr_t owner; //NOTE: dont use directly, see helpers below.
                 uint32_t offset; //of page in object, counts in pages.
-                uint32_t refcount : 24;
+                uint32_t pins : 24;
                 PageVmFlags flags;
             } vm;
         };
@@ -1005,34 +1005,6 @@ namespace Npk
             LowerIpl(lastIpl);
     }
 
-    /* Helper function for accessing `PageInfo::vm::owner` field, which is a
-     * tagged pointer. This function returns the usable pointer stored in
-     * `info->vm.owner` and the type of the pointed at value in `outType`.
-     */
-    SL_ALWAYS_INLINE
-    void* PageInfoGetVmOwner(PageVmOwnerType& outType, PageInfo* info)
-    {
-        const auto ptr = info->vm.owner;
-        outType = static_cast<PageVmOwnerType>(ptr & PageVmOwnerTypeMask);
-
-        return reinterpret_cast<void*>(ptr & ~PageVmOwnerTypeMask);
-    }
-
-    /* Helper function for accessing `PageInfo::vm::owner` field, which is a
-     * tagged pointer. This function constructs the tagged pointer for a page
-     * info struct from `ptr` and `type`, and stores it into `info->vm.owner`.
-     */
-    SL_ALWAYS_INLINE
-    void PageInfoSetVmOwner(PageInfo* info, void* ptr, PageVmOwnerType type)
-    {
-        auto value = reinterpret_cast<uintptr_t>(ptr);
-        NPK_ASSERT((value & PageVmOwnerTypeMask) == 0);
-
-        value |= static_cast<decltype(value)>(type);
-
-        info->vm.owner = value;
-    }
-
     /* Resets and initializes a DPC instance struct.
      */
     NpkStatus ResetDpc(Dpc* dpc, DpcEntry func, void* arg, bool force);
@@ -1219,9 +1191,68 @@ namespace Npk
         return paddr + sysDomain0.physOffset;
     }
 
+    /* Returns whether `paddr` has a valid page info struct, implying that the 
+     * paddr is runtime usable ram (although this is not necessarily true).
+     * If this function returns true it means it is safe to pass `paddr` to
+     * the `LookupPageInfo()` and `LookupPagePaddr()` functions.
+     */
+    SL_ALWAYS_INLINE
+    bool PaddrHasPageInfo(Paddr paddr)
+    {
+        const Paddr offset = paddr - sysDomain0.physOffset;
+        if (offset >= sysDomain0.pfndbCount)
+            return false;
+
+        auto* page = LookupPageInfo(paddr);
+        const auto value = reinterpret_cast<uintptr_t>(page->mmList.next);
+
+        //NOTE: the bit indicates if the page is *invalid*, its naturally zero
+        //for real info structs as this field is a pointer, which requires
+        //alignment typically > 4.
+
+        return !(value & 1);
+    }
+
+    /* Helper function for accessing `PageInfo::vm::owner` field, which is a
+     * tagged pointer. This function returns the usable pointer stored in
+     * `info->vm.owner` and the type of the pointed at value in `outType`.
+     */
+    SL_ALWAYS_INLINE
+    void* PageInfoGetVmOwner(PageVmOwnerType& outType, PageInfo* info)
+    {
+        const auto ptr = info->vm.owner;
+        outType = static_cast<PageVmOwnerType>(ptr & PageVmOwnerTypeMask);
+
+        return reinterpret_cast<void*>(ptr & ~PageVmOwnerTypeMask);
+    }
+
+    /* Helper function for accessing `PageInfo::vm::owner` field, which is a
+     * tagged pointer. This function constructs the tagged pointer for a page
+     * info struct from `ptr` and `type`, and stores it into `info->vm.owner`.
+     */
+    SL_ALWAYS_INLINE
+    void PageInfoSetVmOwner(PageInfo* info, void* ptr, PageVmOwnerType type)
+    {
+        auto value = reinterpret_cast<uintptr_t>(ptr);
+        NPK_ASSERT((value & PageVmOwnerTypeMask) == 0);
+
+        value |= static_cast<decltype(value)>(type);
+
+        info->vm.owner = value;
+    }
+
     /* Returns the system domain for the current cpu.
      */
     SystemDomain& MySystemDomain();
+
+    /* Returns the software assigned id of the current cpu, relative to the
+     * base cpu id for current system domain.
+     */
+    SL_ALWAYS_INLINE
+    CpuId MyRelativeCoreId()
+    {
+        return MyCoreId() - MySystemDomain().smpBase;
+    }
 
     /* Attempts to allocate a page of zero-filled usable memory.
      * If `canFail` is set, the function returns `nullptr` upon exhaustion,
