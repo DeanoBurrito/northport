@@ -536,6 +536,7 @@ R"(                                             888                      )"
         //6. BSP initialization is complete.
         Log("BSP init done, loading init program.", LogLevel::Trace);
         IntrsOn();
+        HwReleaseAps();
 
         //7. Load userspace init program.
         auto result = LoadInitProgram();

@@ -12,6 +12,38 @@
 
 namespace Npk
 {
+    static bool IsValidLapicEntry(uint32_t* outId, const sl::MadtSource& source)
+    {
+        using namespace sl::MadtSources;
+
+        if (source.type == sl::MadtSourceType::LocalApic)
+        {
+            auto& entry = static_cast<const LocalApic&>(source);
+
+            if (!entry.flags.Has(LocalApicFlag::Enabled))
+                return false;
+            
+            if (outId != nullptr)
+                *outId = entry.apicId;
+
+            return true;
+        }
+        else if (source.type == sl::MadtSourceType::LocalX2Apic)
+        {
+            auto& entry = static_cast<const LocalX2Apic&>(source);
+
+            if (!entry.flags.Has(LocalApicFlag::Enabled))
+                return false;
+
+            if (outId != nullptr)
+                *outId = entry.apicId;
+
+            return true;
+        }
+
+        return false;
+    }
+
     size_t HwGetCpuCount()
     {
         auto maybeMadt = GetAcpiTable(sl::SigMadt);
@@ -24,8 +56,7 @@ namespace Npk
         for (auto source = sl::NextMadtSubtable(madt); source != nullptr;
             source = sl::NextMadtSubtable(madt, source))
         {
-            if (source->type == sl::MadtSourceType::LocalApic
-                || source->type == sl::MadtSourceType::LocalX2Apic)
+            if (IsValidLapicEntry(nullptr, *source))
                 accum++;
         }
 
@@ -43,6 +74,8 @@ namespace Npk
     };
 
     static sl::Span<uint64_t> savedMtrrs;
+    static sl::Atomic<size_t> readyCpus;
+    static sl::Atomic<bool> unleashAps;
 
     static void ApEntryFunc(uint64_t localStorage)
     {
@@ -62,6 +95,11 @@ namespace Npk
 
         Log("AP init thread done, becoming idle thread.", LogLevel::Verbose);
         IntrsOn();
+
+        readyCpus.Add(1, sl::Release);
+        while (!unleashAps.Load(sl::Acquire))
+            sl::HintSpinloop();
+
         while (true)
         {
             auto& dom = MySystemDomain();
@@ -159,29 +197,17 @@ namespace Npk
         bootInfo->cr3 = reinterpret_cast<uint64_t>(kernelRoot);
 
         size_t idAlloc = 1; //id=0 is BSP (the currently executing core)
+        unleashAps.Store(false, sl::Release);
+        readyCpus.Store(1, sl::Release);
 
         auto madt = static_cast<const sl::Madt*>(*maybeMadt);
         for (auto source = sl::NextMadtSubtable(madt); source != nullptr; 
             source = sl::NextMadtSubtable(madt, source))
         {
             uint32_t targetLapicId = MyLapicId();
-            if (source->type == sl::MadtSourceType::LocalApic)
-            {
-                auto src = static_cast<const sl::MadtSources::LocalApic*>(source);
-                if (src->flags.Has(sl::MadtSources::LocalApicFlag::Enabled) || 
-                    src->flags.Has(sl::MadtSources::LocalApicFlag::OnlineCapable))
-                    targetLapicId = src->apicId;
-            }
-            else if (source->type == sl::MadtSourceType::LocalX2Apic)
-            {
-                auto src = static_cast<const sl::MadtSources::LocalX2Apic*>(source);
-                if (src->flags.Has(sl::MadtSources::LocalApicFlag::Enabled) || 
-                    src->flags.Has(sl::MadtSources::LocalApicFlag::OnlineCapable))
-                    targetLapicId = src->apicId;
-            }
-            else
-                continue;
 
+            if (!IsValidLapicEntry(&targetLapicId, *source))
+                continue;
             if (targetLapicId == MyLapicId())
                 continue;
 
@@ -209,6 +235,14 @@ namespace Npk
             idAlloc++;
         }
 
+        while (idAlloc > readyCpus.Load(sl::Acquire))
+            sl::HintSpinloop();
+
         Log("AP startup done, %zu cpus running", LogLevel::Info, idAlloc);
+    }
+
+    void HwReleaseAps()
+    {
+        unleashAps.Store(true, sl::Release);
     }
 }

@@ -161,6 +161,7 @@ namespace Npk
     void ArchInitFull(uintptr_t& virtBase);
     void PlatInitFull(uintptr_t& virtBase);
     void HwBootAps(uintptr_t& virtBase, PerCpuData data);
+    void HwReleaseAps();
     
     NpkStatus LoadInitProgram();
 }
