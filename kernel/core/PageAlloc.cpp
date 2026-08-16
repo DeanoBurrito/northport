@@ -14,7 +14,7 @@ namespace Npk
 
         if (!dom.freeLists.free.Empty())
         {
-            PageInfo* page = dom.freeLists.free.PopFront();
+            auto* page = dom.freeLists.free.PopFront();
 
             if (page->pm.count > 1)
             {
@@ -42,10 +42,10 @@ namespace Npk
 
     PageInfo* AllocPage(bool canFail)
     {
-        SystemDomain& dom = MySystemDomain();
+        auto& dom = MySystemDomain();
 
         dom.freeLists.lock.Lock();
-        PageInfo* page = TakePage(dom);
+        auto* page = TakePage(dom);
         dom.freeLists.lock.Unlock();
 
         if (page != nullptr || canFail)
@@ -56,12 +56,28 @@ namespace Npk
 
     void FreePage(PageInfo* page)
     {
-        SystemDomain& dom = MySystemDomain();
+        auto& dom = MySystemDomain();
 
         dom.freeLists.lock.Lock();
         page->pm.count = 1;
         dom.freeLists.free.PushBack(page);
         dom.freeLists.pageCount++;
+        dom.freeLists.lock.Unlock();
+    }
+
+    void FreePageList(PageList& pages)
+    {
+        auto& dom = MySystemDomain();
+
+        dom.freeLists.lock.Lock();
+        while (!pages.Empty())
+        {
+            auto* page = pages.PopFront();
+
+            page->pm.count = 1;
+            dom.freeLists.free.PushBack(page);
+            dom.freeLists.pageCount++;
+        }
         dom.freeLists.lock.Unlock();
     }
 }

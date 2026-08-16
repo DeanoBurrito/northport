@@ -1236,6 +1236,13 @@ namespace Npk
      */
     void FreePage(PageInfo* page);
 
+    /* Similar to `FreePage()`, but accepts a list of pages. Note `PageList`
+     * uses the memory management subsystem hook in `struct PageInfo`, meaning
+     * these pages cannot be in use by that subsystem.
+     * All free pages will be removed from the list.
+     */
+    void FreePageList(PageList& pages);
+
     /* Attempts to copy `buffer.Size()` bytes into the memory specified by
      * `buffer` from the physical memory range starting at `base`.
      * Returns the number of bytes copied, which may be less than 
