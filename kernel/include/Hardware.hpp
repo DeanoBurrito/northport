@@ -6,6 +6,7 @@
 #include <lib/Flags.hpp>
 #include <lib/Time.hpp>
 #include <lib/Memory.hpp>
+#include <lib/List.hpp>
 
 namespace Npk
 {
@@ -257,6 +258,47 @@ namespace Npk
         uintptr_t base;
         uintptr_t top;
     };
+
+    enum class PageVmFlag
+    {
+        Busy,
+        Clean,
+    };
+
+    using PageVmFlags = sl::Flags<PageVmFlag, uint8_t>;
+
+    constexpr uintptr_t PageVmOwnerTypeMask = 0b11;
+
+    enum class PageVmOwnerType
+    {
+        Source,
+        Anon,
+    };
+
+    struct PageInfo
+    {
+        sl::FwdListHook mmList;
+        union
+        {
+            struct
+            {
+                size_t count;
+            } pm;
+
+            sl::FwdListHook vmoList;
+            struct
+            {
+                char placeholder[sizeof(vmoList)];
+                uintptr_t owner; //NOTE: dont use directly, see helpers below.
+                uint32_t offset; //of page in object, counts in pages.
+                uint32_t pins : 24;
+                PageVmFlags flags;
+            } vm;
+        };
+    };
+    static_assert(sizeof(PageInfo) <= (sizeof(void*) * 4));
+
+    using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
 
     /* Calls `func` passing `a`/`b`/`c` as params to it, optionally placing
      * the return value of `func` into `*r` if non-null. If a synchronous
@@ -591,7 +633,7 @@ namespace Npk
 
     /*
      */
-    void HwMapUpdate(HwMap* map, bool sync);
+    void HwMapUpdate(HwMap* map, bool sync, PageList& freeAfter);
 
     /*
      */

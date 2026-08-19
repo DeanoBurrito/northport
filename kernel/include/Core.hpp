@@ -604,47 +604,6 @@ namespace Npk
 
     using LogSinkList = sl::List<LogSink, &LogSink::listHook>;
 
-    enum class PageVmFlag
-    {
-        Busy,
-        Clean,
-    };
-
-    using PageVmFlags = sl::Flags<PageVmFlag, uint8_t>;
-
-    constexpr uintptr_t PageVmOwnerTypeMask = 0b11;
-
-    enum class PageVmOwnerType
-    {
-        Source,
-        Anon,
-    };
-
-    struct PageInfo
-    {
-        sl::FwdListHook mmList;
-        union
-        {
-            struct
-            {
-                size_t count;
-            } pm;
-
-            sl::FwdListHook vmoList;
-            struct
-            {
-                char placeholder[sizeof(vmoList)];
-                uintptr_t owner; //NOTE: dont use directly, see helpers below.
-                uint32_t offset; //of page in object, counts in pages.
-                uint32_t pins : 24;
-                PageVmFlags flags;
-            } vm;
-        };
-    };
-    static_assert(sizeof(PageInfo) <= (sizeof(void*) * 4));
-
-    using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
-
     /* Possible states of existence for a thread.
      */
     enum class ThreadState : uint8_t
