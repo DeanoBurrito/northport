@@ -265,8 +265,23 @@ namespace Npk
      */
     void FreeKernelStack(void* stack);
 
+    /* Attempts to allocate `len` bytes from a general purpose pool, with the
+     * specified allocation tag. Returns `nullptr` on failure. The `wired` param
+     * determines if the memory is unavailable to be paged out. Non wired memory
+     * should be preferred where possible but it can only be accessed at passive
+     * IPL.
+     *
+     * This function must be called from passive IPL.
+     */
     void* PoolAlloc(size_t len, HeapTag tag, bool wired, sl::TimeCount timeout 
         = sl::NoTimeout);
+
+    /* Attempts to free `len` bytes `ptr` from either the paged or wired pools,
+     * as specified by `wired`. This function can fail for a number of reasons,
+     * including if `tag` does not match what was passed to the alloc call that
+     * returned this pointer.
+     * Must be called from passive IPL.
+     */
     NpkStatus PoolFree(void* ptr, size_t len, HeapTag tag, bool wired, 
         sl::TimeCount timeout = sl::NoTimeout);
 
