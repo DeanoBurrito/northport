@@ -45,6 +45,7 @@ namespace Npk
 
     static bool nxSupport;
     static bool patSupport;
+    static bool globalPageSupport;
     static uint64_t mmioBits;
     static uint64_t framebufferBits;
     static uint64_t addrMask;
@@ -362,6 +363,7 @@ namespace Npk
 
         nxSupport = CpuHasFeature(CpuFeature::NoExecute);
         patSupport = CpuHasFeature(CpuFeature::Pat);
+        globalPageSupport = CpuHasFeature(CpuFeature::GlobalPages);
 
         if (patSupport)
         {
@@ -515,10 +517,7 @@ namespace Npk
     {
         (void)asid;
 
-        //a cr3 reload does not evict global entries, and kernel mappings are
-        //marked global: when global pages are enabled the whole TLB is only
-        //dropped by toggling cr4.pge.
-        if (CpuHasFeature(CpuFeature::GlobalPages))
+        if (globalPageSupport)
         {
             const uint64_t cr4 = READ_CR(4);
             WRITE_CR(4, cr4 & ~Cr4Pge);
