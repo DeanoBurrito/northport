@@ -2,6 +2,7 @@
 #include <hardware/x86_64/PortIo.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Msr.hpp>
+#include <hardware/x86_64/Private.hpp>
 #include <hardware/x86_64/RefTimers.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <private/Hardware.hpp>
@@ -89,6 +90,8 @@ namespace Npk
 
     CPU_LOCAL(LocalApic, lapic);
     uintptr_t lapicMmioBase;
+
+    sl::Span<uint32_t> apicIds;
 
     static bool PrepareLocalApic()
     {
@@ -244,7 +247,7 @@ namespace Npk
         lapic->Write(LApicReg::LvtError, LvtMasked | LapicSpuriousVector);
         lapic->Write(LApicReg::TimerInitCount, 0);
 
-        SetMyIpiId(reinterpret_cast<void*>(MyLapicId()));
+        apicIds[MyCoreId()] = MyLapicId();
 
         if (!lapic->hasTscDeadline)
             NPK_ASSERT(CalibrateLapicTimer());

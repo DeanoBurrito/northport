@@ -57,6 +57,7 @@ namespace Npk
 
     extern Paddr apBootPage;
     extern Paddr kernelRoot;
+    extern sl::Span<uint32_t> apicIds; //indexed by software cpuid.
 
     void InitUarts();
     void InitMachineChecking();

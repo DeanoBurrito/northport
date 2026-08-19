@@ -6,6 +6,7 @@
 #include <hardware/x86_64/RefTimers.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <Core.hpp>
+#include <Vm.hpp>
 #include <private/Entry.hpp>
 #include <lib/Memory.hpp>
 #include <lib/Maths.hpp>
@@ -202,6 +203,20 @@ namespace Npk
 
     void ArchInitFull(uintptr_t& virtBase)
     {
+        const size_t cpuCount = MySystemDomain().smpControls.Size();
+        const size_t lapicIdsPages = AlignUpPage(sizeof(uint32_t) * cpuCount) 
+            >> PfnShift();
+
+        auto page = AllocPage(false);
+        NPK_ASSERT(page != nullptr);
+        auto result = SetKernelMap(virtBase, LookupPagePaddr(page), VmFlag::Write);
+        NPK_ASSERT(result == NpkStatus::Success);
+        apicIds = { reinterpret_cast<uint32_t*>(virtBase), cpuCount };
+
+        Log("Software ID to LAPIC IDs map allocated, at 0x%tx", LogLevel::Info,
+            virtBase);
+        virtBase += lapicIdsPages << PfnShift();
+
         NPK_ASSERT(InitBspLapic(virtBase));
         InitRefTimers(virtBase);
         CalibrateTsc();
@@ -254,6 +269,8 @@ namespace Npk
 
         if (brandLen != 0)
             Print("Brand: %.*s\r\n", (int)brandLen, brandBuffer);
+
+        Print("LAPIC Id: 0x%" PRIu32 "\r\n", MyLapicId());
     }
 
 
@@ -276,9 +293,11 @@ namespace Npk
     //ReadPvSystemTime() returns nanoseconds
     static_assert(sl::TimePoint::Frequency == sl::TimeScale::Nanos);
 
-    void HwSendIpi(void* id)
+    void HwSendIpi(CpuId who)
     {
-        const uint32_t apicId = reinterpret_cast<uintptr_t>(id);
-        SendIpi(apicId, IpiType::Fixed, LapicIpiVector);
+        NPK_ASSERT(who < apicIds.Size());
+            
+        const auto target = apicIds[who];
+        SendIpi(target, IpiType::Fixed, LapicIpiVector);
     }
 }

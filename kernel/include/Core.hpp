@@ -568,9 +568,8 @@ namespace Npk
         sl::Atomic<uint8_t> efficiencyClass;
     };
 
-    struct alignas(64) SmpControl
+    struct alignas(HwGetStaticCacheLineSize()) SmpControl
     {
-        void* ipiId;
         MailQueue mail;
         RemoteCpuStatus status;
     };
@@ -1064,15 +1063,6 @@ namespace Npk
      * consider using a work item.
      */
     void SendMail(CpuId who, SmpMail* mail);
-
-    /* Set the hardware-specific id for the local cpu, usually the ID of the
-     * cpu-local interrupt controller.
-     */
-    void SetMyIpiId(void* id);
-
-    /* Returns the value set by the latest call to `SetMyIpiId()`.
-     */
-    void* GetIpiId(CpuId id);
 
     /* Send an IPI to a remote cpu with no further instructions.
      * This is useful as a building block of other operations, as it forces

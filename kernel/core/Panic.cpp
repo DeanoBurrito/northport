@@ -62,7 +62,7 @@ namespace Npk
         const auto date = sl::CalendarPoint::From(realTime);
 
         PanicPrint("System info:\r\n");
-        PanicPrint("Panic CPU id (sw, hw): %zu, %p\r\n", myId, GetIpiId(myId));
+        PanicPrint("Panic CPU id: %zu\r\n", myId);
         PanicPrint("Time: up=%" PRIu64", real=%" PRIu64" (%02u:%02u.%02u "
             "%02u/%02u/%u)\r\n", uptime.epoch, realTime.epoch, date.hour, 
             date.minute, date.second, date.dayOfMonth, date.month, date.year);
@@ -192,6 +192,8 @@ namespace Npk
         FreezeAllCpus(true);
         //Only one cpu will be executing past this point
 
+        //TODO: from this point on everything should be wrapped in SEH
+        //style handling, just in case. This makes every op falliable.
         Private::AcquirePanicOutputs(panicOutputs);
         for (auto it = panicOutputs.Begin(); it != panicOutputs.End(); ++it)
         {

@@ -761,11 +761,11 @@ namespace Npk
             asm volatile("");
     }
 
-    /* Sends an inter-processor interrupt to the cpu represented by `id`. The id
-     * value is platform specific and can be obtained from a `CpuId` via a
-     * call to `GetIpiId()` (see Core.hpp).
+    /* Causes an interrupt to be received on the cpu with software assigned id
+     * `who`. This will appear to portable kernel code as a call to
+     * `DispatchIpi()` on the target cpu.
      */
-    void HwSendIpi(void* id);
+    void HwSendIpi(CpuId who);
 }
 
 #ifdef __x86_64__

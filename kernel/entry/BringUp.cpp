@@ -311,7 +311,8 @@ namespace Npk
         //uses the original storage thats part of the kernel image.
         const auto localsBegin = (uintptr_t)KERNEL_CPULOCALS_BEGIN;
         const auto localsEnd = (uintptr_t)KERNEL_CPULOCALS_END;
-        const size_t localsStride = sl::AlignUp(localsEnd - localsBegin, 64);
+        const size_t localsStride = sl::AlignUp(localsEnd - localsBegin,
+            HwGetStaticCacheLineSize());
         const size_t localsSize = localsStride * (cpus - 1);
         const uintptr_t localsBase = virtBase;
 

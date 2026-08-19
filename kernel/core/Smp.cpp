@@ -98,24 +98,6 @@ namespace Npk
         NudgeCpu(who);
     }
 
-    void SetMyIpiId(void* id)
-    {
-        Log("Setting ipi id to %p", LogLevel::Verbose, id);
-
-        auto control = GetControl(MyCoreId());
-        NPK_CHECK(control != nullptr, );
-        control->ipiId = id;
-    }
-
-    void* GetIpiId(CpuId id)
-    {
-        auto control = GetControl(id);
-        if (control == nullptr)
-            return nullptr;
-
-        return control->ipiId;
-    }
-
     void NudgeCpu(CpuId who)
     {
         auto control = GetControl(who);
@@ -129,7 +111,7 @@ namespace Npk
         sl::TimePoint expected { lastIpi };
         sl::TimePoint desired { GetMonotonicTime().epoch + IpiDebounceTime.ticks };
         if (control->status.lastIpi.CompareExchange(expected, desired, sl::Acquire))
-            HwSendIpi(control->ipiId);
+            HwSendIpi(who);
     }
 
     size_t FreezeAllCpus(bool allowDefer)
@@ -160,7 +142,7 @@ namespace Npk
             if (GetMonotonicTime().epoch >= endTime)
             {
                 for (size_t i = 0; i < cpuCount; i++)
-                    HwSendIpi(GetIpiId(i));
+                    HwSendIpi(i);
 
                 startTime = GetMonotonicTime();
                 endTime = startTime.epoch;
