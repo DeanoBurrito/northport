@@ -69,11 +69,17 @@ namespace Npk
             {
             case Ipl::Interrupt:
                 break;
+
+            case Ipl::Tlb:
+                TlbSyncQuiesce();
+                break;
+
             case Ipl::Dpc:
                 RunDpcs();
                 if (target == Ipl::Passive)
                     Private::PrePassiveRunLevel();
                 break;
+
             case Ipl::Passive:
                 break;
             }

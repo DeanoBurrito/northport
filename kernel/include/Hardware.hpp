@@ -635,18 +635,31 @@ namespace Npk
      */
     void HwMapUpdate(HwMap* map, bool sync, PageList& freeAfter);
 
-    /*
+    /* Returns if the current system has hardware support for invalidating 
+     * remote TLBs. If true, `HwInvalidateTlbs()` and `HwSyncTlbs()` will be
+     * used. If false, a software based tlb sync mechanism will be used and 
+     * those functions won't be called.
      */
     bool HwHasBroadcastInvalidate();
 
-    /*
+    /* Asks all cpus aware of `map` to invalidate `vaddr` -> `vaddr + len`.
+     * This function returns after starting the operation but does not wait for
+     * it to finish on remote cpus, meaning the system still has an inconsistent
+     * view of memory. See `HwSyncTlbs()` below for that behaviour.
+     * Only called when `HwHasBroadcastInvalidate()` returns true.
      */
     void HwInvalidateTlbs(HwMap* map, uintptr_t vaddr, size_t length);
 
-    /*
+    /* Holds the current cpu (not waiting or otherwise blocking) until all
+     * prior calls to `HwInvalidateTlbs()` on this cpu have been confirmed
+     * actioned by all targetted cpus.
+     * Only called when `HwHasBroadcastInvalidate()` returns true.
      */
     void HwSyncTlbs();
 
+    /* Returns the count where it's cheaper to flush the whole tlb rather than
+     * individual entries.
+     */
     size_t HwGetTlbFlushThreshold();
 
     /* Flush the local TLB for virtual addresses in `base` -> `base + length`,

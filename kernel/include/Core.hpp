@@ -189,6 +189,7 @@ namespace Npk
     {
         Passive,
         Dpc,
+        Tlb,
         Interrupt,
     };
 
@@ -808,6 +809,7 @@ namespace Npk
         sl::Span<SmpControl> smpControls;
 
         EbrDomain rcu;
+        EbrDomain tlb;
 
         uintptr_t pmaBase;
         HwMap* kernelMap;
