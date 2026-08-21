@@ -1,5 +1,5 @@
 #include <hardware/common/mmu/PageTables.hpp>
-#include <hardware/common/mmu/Shootdown2.hpp>
+#include <hardware/common/mmu/TlbSync.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
 #include <private/Entry.hpp>
@@ -35,7 +35,7 @@ namespace Npk
             count = 0;
         }
 
-        bool IsFull()
+        bool IsFull() const
         {
             return count == MaxPendingRanges;
         }
@@ -87,10 +87,12 @@ namespace Npk
 
     struct PtPageInfo
     {
-        uint16_t validCount;
         sl::FwdListHook freeHook;
+        uint16_t validCount;
     };
     static_assert(sizeof(PtPageInfo) <= sizeof(PageInfo));
+    static_assert(offsetof(PtPageInfo, freeHook) == 0);
+    static_assert(alignof(decltype(PtPageInfo::freeHook)) > 1);
 
     struct PtWalkPath
     {
@@ -214,6 +216,14 @@ namespace Npk
         default:
             NPK_UNREACHABLE();
         }
+    }
+
+    static void PublishDirtyBit(Paddr paddr)
+    {
+        if (!PaddrHasPageInfo(paddr))
+            return;
+
+        LookupPageInfo(paddr)->vm.flags.Clear(PageVmFlag::Clean);
     }
 
     static PtPageInfo& PtMetadata(Paddr paddr)
@@ -379,6 +389,18 @@ namespace Npk
         return WalkResult::Success;
     }
 
+    static uintptr_t NextSubtree(uintptr_t vaddr, size_t level)
+    {
+        const auto& conf = GetPageTableConfig();
+        const uintptr_t span = static_cast<uintptr_t>(1)
+            << conf.levelShift[level];
+
+        auto next = vaddr + span;
+        next &= span - 1;
+
+        return next;
+    }
+
     static void FreeEmptyTables(HwMap& map, const PtWalkPath& path,
         uintptr_t vaddr)
     {
@@ -520,7 +542,8 @@ namespace Npk
         map->pendingUpdates.Saturate();
         map->lock.Unlock();
 
-        HwMapUpdate(map, true);
+        PageList emptyList {};
+        HwMapUpdate(map, true, emptyList);
 
         map->activeCpus.Destroy();
         PoolFreeWired(map, sizeof(HwMap), HwMapTag);
@@ -579,7 +602,7 @@ namespace Npk
     {
         NPK_ASSERT(map != nullptr);
 
-        const size_t self = MyCoreId() - MySystemDomain().smpBase;
+        const size_t self = MyRelativeCoreId();
         auto* prev = *activeHwMap;
 
         if (prev != map)
@@ -682,9 +705,10 @@ namespace Npk
             if (Walk(table, index, *map, vaddr, false, &path)
                 != WalkResult::Success)
             {
-                const uintptr_t span = (conf.levelMask[0] + 1)
-                    << conf.levelShift[0];
-                vaddr = (vaddr + span) & ~(span - 1);
+                const uintptr_t next = NextSubtree(vaddr, level);
+                if (next <= vaddr)
+                    break;
+                vaddr = next;
 
                 continue;
             }
@@ -712,7 +736,7 @@ namespace Npk
                 ExchangePte(conf, conf.pteSize, pte, invalid.data, old.data);
 
                 if (IsPteDirty(old.data))
-                    FoldPteDirty(GetPteAddr(old.data));
+                    PublishDirtyBit(GetPteAddr(old.data));
 
                 map->pendingUpdates.Add(vaddr, PageSize());
                 PtMetadata(table).validCount--;
@@ -748,9 +772,10 @@ namespace Npk
             //as in HwMapRemove(): a block mapping is left alone.
             if (Walk(table, index, *map, vaddr, false) != WalkResult::Success)
             {
-                const uintptr_t span = (conf.levelMask[0] + 1)
-                    << conf.levelShift[0];
-                vaddr = (vaddr + span) & ~(span - 1);
+                const uintptr_t next = NextSubtree(vaddr, level);
+                if (next <= vaddr)
+                    break;
+                vaddr = next;
 
                 continue;
             }
@@ -784,7 +809,7 @@ namespace Npk
                     next.data));
 
                 if (!perms.Has(MmuPermission::Write) && IsPteDirty(old.data))
-                    FoldDirtyBit(GetPteAddr(old.data));
+                    PublishDirtyBit(GetPteAddr(old.data));
 
                 map->pendingUpdates.Add(vaddr, PageSize());
 
@@ -905,22 +930,14 @@ namespace Npk
         return GetOrClearAdBits(map, vaddr, true, true);
     }
 
-    bool HwHandleMinorFaultOnMap(HwMap* map, uintptr_t vaddr, bool write)
+    static bool DoMinorFault(HwMap& map, uintptr_t vaddr, bool write)
     {
-        if (map == nullptr)
-            return false;
-
         const auto& conf = GetPageTableConfig();
-
-        if (conf.hwAccessedBit)
-            return false;
-
-        sl::ScopedLock scopeLock(map->lock);
 
         Paddr table;
         size_t index;
-        if (Walk(table, index, *map, vaddr, false) != WalkResult::Success)
-            return false; //not mapped: real fault
+        if (Walk(table, index, map, vaddr, false) != WalkResult::Success)
+            return false;
 
         auto ref = AccessPage(table);
         if (!ref.Valid())
@@ -935,32 +952,106 @@ namespace Npk
             if (conf.hwDirtyBit)
                 return false;
 
-            //a genuinely read-only entry means this was a protection
-            //violation, not stale dirty bookkeeping.
             if (!PteIsWriteTrackable(pte))
                 return false;
 
             SetPteDirty(pte);
-
-            const auto pageAddr = GetPteAddr(pte);
-            const auto page = LookupPageInfo(pageAddr);
-
-            page->vm.flags.Clear(PageVmFlag::Clean);
-
+            PublishDirtyBit(GetPteAddr(pte));
             SetPteAccessed(pte);
 
             return true;
         }
 
-        //a read or fetch fault is only ours if the accessed bit was the reason
-        //for it. If it was already set the access was rejected on its merits
-        //(no-execute, a permission mismatch), and returning true here would
-        //retry the same faulting access forever.
         return !SetPteAccessed(pte);
     }
 
-    void HwMapUpdate(HwMap* map, bool sync)
+    bool HwHandleMinorFaultOnMap(HwMap* map, uintptr_t vaddr, bool write)
+    {
+        if (map == nullptr)
+            return false;
+
+        const auto& conf = GetPageTableConfig();
+
+        if (conf.hwAccessedBit)
+            return false;
+
+        //NOTE: we can't take the map's lock here since we're above DPC IPL,
+        //so instead the minor fault code is written using atomic primitives.
+        //The only issue this doesnt solve is page tables being freed while 
+        //we're walking them. For that the solution is to raise the local IPL
+        //to Tlb level: while at this level this cpu wont acknowledge any tlb
+        //invalidations, since these are processed when lowering from that IPL.
+        //Therefore being at this level prevents any page tables this cpu knows
+        //about (due to them being part of the current map) being freed while
+        //we walk them.
+        const Ipl prevIpl = CurrentIpl();
+        const bool raised = prevIpl < Ipl::Tlb;
+        if (raised)
+            RaiseIpl(Ipl::Tlb);
+
+        const bool handled = DoMinorFault(*map, vaddr, write);
+
+        if (raised)
+            LowerIpl(prevIpl);
+
+        return handled;
+    }
+
+    void HwMapUpdate(HwMap* map, bool sync, PageList& freeAfter)
     {
         NPK_ASSERT(map != nullptr);
+
+        map->lock.Lock();
+
+        const PendingRanges ranges = map->pendingUpdates;
+        map->pendingUpdates.Reset();
+
+        PageList dead {};
+        while (!map->pendingFree.Empty())
+            dead.PushBack(map->pendingFree.PopFront());
+
+        while (!freeAfter.Empty())
+            dead.PushBack(freeAfter.PopFront());
+
+        //the kernel map shouldn't have a target list of cpus since its active
+        //on all of them.
+        const CpuBitset* targets = (map == MySystemDomain().kernelMap) 
+            ? nullptr : &map->activeCpus;
+
+        if (HwHasBroadcastInvalidate())
+        {
+            if (ranges.IsFull())
+                HwInvalidateTlbs(map, 0, static_cast<size_t>(-1));
+            else
+            {
+                for (size_t i = 0; i < ranges.count; i++)
+                    HwInvalidateTlbs(map, ranges.bases[i], ranges.lengths[i]);
+            }
+
+            HwSyncTlbs();
+            map->lock.Unlock();
+
+            FreePageList(dead);
+
+            return;
+        }
+        //else: no hardware support, software tlb sync path.
+
+        if (ranges.IsFull())
+            TlbSyncDepositAll(targets, map->asid);
+        else
+        {
+            for (size_t i = 0; i < ranges.count; i++)
+            {
+                TlbSyncDeposit(targets, map->asid, ranges.bases[i],
+                    ranges.lengths[i]);
+            }
+        }
+
+        TlbSyncReclaim(dead);
+        map->lock.Unlock();
+
+        if (sync)
+            TlbSyncWait();
     }
 }

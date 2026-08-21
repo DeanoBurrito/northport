@@ -507,8 +507,7 @@ R"(                                             888                      )"
             Log("EFI runtime services not available.", LogLevel::Info);
 
         const auto smpData = InitPerCpuData(virtBase);
-        ArchInitFull(virtBase);
-        PlatInitFull(virtBase);
+        HwInitFull(virtBase);
         HwBootAps(virtBase, smpData);
         InitDebugger(virtBase);
 
@@ -528,9 +527,10 @@ R"(                                             888                      )"
                 (void)dom; 
 
                 who += MySystemDomain().smpBase;
-                NudgeCpu(who); 
+                HwSendIpi(who);
             });
 
+        HwLateInit();
         Private::InitNamespace();
         InitProcessSubsystem();
 

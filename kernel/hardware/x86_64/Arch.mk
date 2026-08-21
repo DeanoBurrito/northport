@@ -5,7 +5,7 @@ KERNEL_CXX_SRCS += $(ARCH_DIR)/ApBringup.cpp $(ARCH_DIR)/Arch.cpp \
 	$(ARCH_DIR)/PvClock.cpp $(ARCH_DIR)/RefTimers.cpp \
 	$(ARCH_DIR)/TrapFrame.cpp $(ARCH_DIR)/Tsc.cpp $(ARCH_DIR)/User.cpp \
 	hardware/common/timer/AcpiTimer.cpp hardware/common/uart/Ns16550.cpp \
-	hardware/common/mmu/PageTables.cpp
+	hardware/common/mmu/PageTables.cpp hardware/common/mmu/TlbSync.cpp
 
 KERNEL_AS_SRCS += $(ARCH_DIR)/Entry.S $(ARCH_DIR)/ExceptionAwareCall.S \
 	$(ARCH_DIR)/Spinup.S $(ARCH_DIR)/Switch.S

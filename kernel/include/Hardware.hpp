@@ -631,7 +631,25 @@ namespace Npk
      */
     bool HwHandleMinorFaultOnMap(HwMap* map, uintptr_t vaddr, bool write);
 
-    /*
+    /* Changes to a `HwMap` may not take effect immediately, and on remote cpus
+     * these changes may take even longer to take effect. If an existing mapping
+     * has been modified there may be stale caches of it on some cpus.
+     *
+     * This function is a synchronization point for a `HwMap`: it causes all
+     * cpus in the same domain to ensure they see the latest version (when this
+     * function was called) of what the map contains. Note that if permissions
+     * are added to a mapping, or the mapping is new, the page fault handler
+     * or hardware will take care of that. A call to this function is required
+     * when a mapping's permissions are decreased or the mapping is removed.
+     *
+     * The `sync` argument determines if this function should wait until all
+     * relevant cpus have actioned and acknowledged the update. If clear this
+     * function returns after only synchronizing the local cpu's view of the
+     * map. Any pages in `freeAfter` are freed after all cpus have acknowledged
+     * the map update.
+     *
+     * This function must be called at passive IPL if `sync` is set, otherwise
+     * it may be called at DPC IPL.
      */
     void HwMapUpdate(HwMap* map, bool sync, PageList& freeAfter);
 
