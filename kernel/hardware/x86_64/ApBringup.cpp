@@ -145,7 +145,7 @@ namespace Npk
         return false;
     }
 
-    void HwBootAps(uintptr_t& virtBase, PerCpuData data)
+    size_t HwBootAps(uintptr_t& virtBase, PerCpuData data)
     {
         if (CpuHasFeature(CpuFeature::Mtrr))
         {
@@ -175,7 +175,7 @@ namespace Npk
         NPK_ASSERT(!savedMtrrs.Empty());
 
         auto maybeMadt = GetAcpiTable(sl::SigMadt);
-        NPK_CHECK(maybeMadt.HasValue(), );
+        NPK_CHECK(maybeMadt.HasValue(), 0);
 
         //TODO: detect the default programmatically
         const bool modernDelays = 
@@ -239,6 +239,8 @@ namespace Npk
             sl::HintSpinloop();
 
         Log("AP startup done, %zu cpus running", LogLevel::Info, idAlloc);
+
+        return idAlloc - 1;
     }
 
     void HwReleaseAps()

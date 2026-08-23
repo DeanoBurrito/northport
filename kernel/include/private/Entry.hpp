@@ -156,12 +156,55 @@ namespace Npk
     uintptr_t HwInitBspMmu(InitState& state, size_t tempMapCount);
     void HwEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, 
         MmuPermissions perms, MmuCacheMode cacheMode);
-    size_t HwGetCpuCount();
+
+    /* Simlar to `HwEarlyMap()` but always maps the same `paddr`, used to place
+     * a static poison value in ranges of memory. This is a separate function to
+     * allow the hardware layer to optimize the implementation: e.g. on
+     * page table based systems a single page table for each level can be used,
+     * since the translation always resolves the same way. The mapping must be
+     * readonly.
+     */
+    void HwEarlyMapPoison(InitState& state, Paddr paddr, uintptr_t vaddr,
+        size_t length);
+
+    /* Called to switch to the kernel's runtime map, and ditch the bootloader
+     * provided map (if present). No further access to loader data happens
+     * beyond this point.
+     */
     void HwCompleteBspMmuInit();
-    void ArchInitFull(uintptr_t& virtBase);
-    void PlatInitFull(uintptr_t& virtBase);
-    void HwBootAps(uintptr_t& virtBase, PerCpuData data);
+
+    /* Returns the maximum number of available CPUs (including the BSP) in the
+     * system. The kernel has its own address map active at this point so
+     * the page access cache and direct map (if present) are accessible at this
+     * stage.
+     */
+    size_t HwGetCpuCount();
+
+    /* Hook for hardware layer init, called after per-cpu stores are allocated
+     * but before APs are booted. This runs with the kernel runtime address map
+     * active. The `virtBase` argument is a bump allocator for address space.
+     */
+    void HwInitFull(uintptr_t& virtBase);
+
+    /* Boots all available APs (CPUs other than the BSP/boot cpu). The per-cpu
+     * data ranges contain space for the number of cpus reported by
+     * `HwGetCpuCount()`, but this function is allowed to boot less than that,
+     * if errors occur during bootup. APs booted will initialize themselves and
+     * their local data but are not allowed to touch shared data until
+     * `HwReleaseAps()` is called.
+     *
+     * This function returns the number of APs it booted.
+     */
+    size_t HwBootAps(uintptr_t& virtBase, PerCpuData data);
+
+    /* Companion function to `HwBootAps()`: this function allows booted APs to
+     * access shared data and continue on (and finish) their init.
+     */
     void HwReleaseAps();
+
+    /* Hook for hardware layer to perform further init, this is called after 
+     * the virtual memory subsystem is ready.
+     */
     void HwLateInit();
     
     NpkStatus LoadInitProgram();

@@ -508,7 +508,18 @@ R"(                                             888                      )"
 
         const auto smpData = InitPerCpuData(virtBase);
         HwInitFull(virtBase);
-        HwBootAps(virtBase, smpData);
+        const size_t bootedAps = HwBootAps(virtBase, smpData);
+        if (bootedAps < MySystemDomain().smpControls.Size())
+        {
+            auto& controls = MySystemDomain().smpControls;
+
+            Log("%zu of %zu APs booted, truncating live cpu count",
+                LogLevel::Warning, bootedAps, controls.Size() - 1);
+
+            MySystemDomain().smpControls = controls.Subspan(0, bootedAps + 1);
+            //NOTE: we do leak some memory here, in an ideal world I wouldn't.
+        }
+
         InitDebugger(virtBase);
 
         ThreadContext idleContext {};
