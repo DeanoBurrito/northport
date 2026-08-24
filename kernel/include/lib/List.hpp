@@ -439,6 +439,8 @@ namespace sl
                 if (LessThan(value, &*it))
                     return InsertBefore(it, value);
             }
+
+            PushBack(value);
         }
 
         Iterator Remove(T* value)
