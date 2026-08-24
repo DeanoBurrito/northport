@@ -339,6 +339,54 @@ namespace Npk
 
     };
 
+    enum class CompletionType : uintptr_t
+    {
+        None,
+        Condition,
+        Dpc,
+        WorkItem,
+        Apc,
+        EventPort,
+    };
+
+    struct CompletionTarget
+    {
+        void* data;
+        CompletionType type;
+    };
+
+    /*
+     */
+    struct Completion
+    {
+        constexpr static uintptr_t TypeMask = 0b111;
+
+        sl::Atomic<uintptr_t> value;
+
+        SL_ALWAYS_INLINE
+        void Set(void* data, CompletionType type)
+        {
+            auto ptr = reinterpret_cast<uintptr_t>(data);
+            NPK_ASSERT((ptr & TypeMask) == 0);
+
+            ptr |= static_cast<decltype(ptr)>(type) & TypeMask;
+
+            value.Store(ptr, sl::Release);
+        }
+
+        SL_ALWAYS_INLINE
+        CompletionTarget Get()
+        {
+            auto data = value.Load(sl::Acquire);
+
+            CompletionTarget target {};
+            target.data = reinterpret_cast<void*>(data & ~TypeMask);
+            target.type = static_cast<CompletionType>(data & TypeMask);
+
+            return target;
+        }
+    };
+
     struct Dpc;
 
     using DpcEntry = void (*)(Dpc* self, void* arg);
@@ -498,52 +546,6 @@ namespace Npk
 
     using WaitableMpScQueue = sl::QueueMpSc<Waitable, &Waitable::mpscHook>;
     using WaitableOwnerList = sl::FwdList<Waitable, &Waitable::ownerListHook>;
-
-    enum class CompletionType : uintptr_t
-    {
-        None,
-        Condition,
-        Dpc,
-        WorkItem,
-        Apc,
-        EventPort,
-    };
-
-    /*
-     */
-    struct Completion
-    {
-        constexpr static uintptr_t TypeMask = 0b111;
-
-        sl::Atomic<uintptr_t> value;
-
-        SL_ALWAYS_INLINE
-        void Set(void* data, CompletionType type)
-        {
-            auto ptr = reinterpret_cast<uintptr_t>(data);
-            NPK_ASSERT((ptr & TypeMask) == 0);
-
-            ptr |= static_cast<decltype(ptr)>(type) & TypeMask;
-
-            value.Store(ptr, sl::Release);
-        }
-
-        SL_ALWAYS_INLINE
-        CompletionType Type()
-        {
-            const auto ptr = value.Load(sl::Acquire);
-
-            return static_cast<CompletionType>(ptr & TypeMask);
-        }
-
-        SL_ALWAYS_INLINE
-        void* Data()
-        {
-            const auto ptr = value.Load(sl::Acquire);
-
-            return reinterpret_cast<void*>(ptr & ~TypeMask);
-        }
-    };
     
     using MailFunction = void (*)(void* arg);
 
