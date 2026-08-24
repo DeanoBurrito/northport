@@ -138,12 +138,27 @@ namespace Npk
                 break;
         }
 
-        const size_t pfndbSize = ((maxUsablePaddr - minUsablePaddr) >> 
-            PfnShift()) * sizeof(PageInfo);
+        const size_t pfndbSize = AlignUpPage(((maxUsablePaddr - minUsablePaddr)
+            >> PfnShift()) * sizeof(PageInfo));
         sysDomain0.physOffset = minUsablePaddr;
+        sysDomain0.pfndbCount = maxUsablePaddr - minUsablePaddr;
         sysDomain0.pfndb = reinterpret_cast<PageInfo*>(init.VmAlloc(pfndbSize));
 
-        const uintptr_t dbOffset = reinterpret_cast<uintptr_t>(sysDomain0.pfndb);
+        //to be able to implement `PaddrHasPageInfo()` ("is this physical addr
+        //ram managed by the kernel, or is it something else?") we need to be
+        //able to probe addresses within the pfndb that might not be real page
+        //info structs, so we store a poison value for partial pages and map
+        //a single page of poison values to page aligned gaps.
+        const Paddr poison = init.PmAlloc();
+        const auto poisonValue = reinterpret_cast<void*>(1);
+        auto* poisonEntries = reinterpret_cast<PageInfo*>(init.dmBase + poison);
+        for (size_t i = 0; i < PageSize() / sizeof(PageInfo); i++)
+            poisonEntries[i].mmList.next = poisonValue;
+
+        const uintptr_t dbOffset = 
+            reinterpret_cast<uintptr_t>(sysDomain0.pfndb);
+        Paddr prevRangeTop = 0;
+        Paddr prevDbTop = 0;
         rangesBase = 0;
         while (true)
         {
@@ -152,15 +167,27 @@ namespace Npk
 
             for (size_t i = 0; i < count; i++)
             {
+                NPK_ASSERT(ranges[i].base >= prevRangeTop);
+                prevRangeTop = ranges[i].base + ranges[i].length;
+
                 Paddr base = ranges[i].base - sysDomain0.physOffset;
                 Paddr top = base + ranges[i].length;
 
                 base = AlignDownPage((base >> PfnShift()) * sizeof(PageInfo));
                 top = AlignUpPage((top >> PfnShift()) * sizeof(PageInfo));
 
-                Log("PageInfo region: 0x%tx-0x%tx -> 0x%tx-0x%tx",
-                    LogLevel::Info, ranges[i].base, ranges[i].base + 
-                    ranges[i].length, base, top);
+                if (base > prevDbTop)
+                {
+                    Log("Poisoned region: 0x%tx-0x%tx",
+                        LogLevel::Info, prevDbTop, base - prevDbTop);
+                    HwEarlyMapPoison(init, poison, dbOffset + prevDbTop,
+                        base - prevDbTop);
+                }
+                prevDbTop = top;
+
+                Log("PageInfo region: 0x%tx-0x%tx (phys 0x%tx-0x%tx)",
+                    LogLevel::Info, base, top, ranges[i].base, ranges[i].base
+                    + ranges[i].length);
 
                 for (Paddr s = base; s < top; s += PageSize())
                 {
@@ -172,6 +199,14 @@ namespace Npk
 
             if (count < MaxLoaderRanges)
                 break;
+        }
+
+        if (prevDbTop < pfndbSize)
+        {
+            Log("Poisoned region: 0x%tx-0x%tx",
+                LogLevel::Info, prevDbTop, pfndbSize - prevDbTop);
+            HwEarlyMapPoison(init, poison, dbOffset + prevDbTop,
+                pfndbSize - prevDbTop);
         }
 
         //3. Setup PMA (physical memory access)/temp mappings
@@ -509,7 +544,7 @@ R"(                                             888                      )"
         const auto smpData = InitPerCpuData(virtBase);
         HwInitFull(virtBase);
         const size_t bootedAps = HwBootAps(virtBase, smpData);
-        if (bootedAps < MySystemDomain().smpControls.Size())
+        if (bootedAps < MySystemDomain().smpControls.Size() - 1)
         {
             auto& controls = MySystemDomain().smpControls;
 

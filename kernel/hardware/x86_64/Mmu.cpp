@@ -43,6 +43,10 @@ namespace Npk
     constexpr uint64_t PatWcBits = (1 << 7) | (1 << 3);
     constexpr uint64_t LegacyUcBits = (1 << 4) | (1 << 3);
 
+    constexpr uint64_t InvlpgbVaValid = 1 << 0;
+    constexpr uint64_t InvlpgbPcidValid = 1 << 1;
+    constexpr uint64_t InvlpgbIncludeGlobal = 1 << 3;
+
     static bool nxSupport;
     static bool patSupport;
     static bool globalPageSupport;
@@ -50,12 +54,16 @@ namespace Npk
     static uint64_t framebufferBits;
     static uint64_t addrMask;
     static size_t ptLevels;
+    static size_t maxInvlpgbPages;
 
     Paddr kernelRoot;
     Paddr apBootPage;
 
     static uintptr_t tempMapBase;
     static sl::Span<uint64_t> tempMapAccess;
+
+    static Paddr poisonPage = 0;
+    static Paddr poisonTables[5];
 
     constexpr uint8_t PtLevelShifts[] = 
     { 
@@ -365,15 +373,35 @@ namespace Npk
         patSupport = CpuHasFeature(CpuFeature::Pat);
         globalPageSupport = CpuHasFeature(CpuFeature::GlobalPages);
 
+        if (CpuHasFeature(CpuFeature::BroadcastInvlpg))
+        {
+            CpuidLeaf cpuid;
+            DoCpuid(ExtendedLeaf, 0, cpuid);
+            NPK_ASSERT(cpuid.a >= 8);
+
+            DoCpuid(ExtendedLeaf + 8, 0, cpuid);
+            maxInvlpgbPages = cpuid.d & 0xFFFF;
+
+            Log("CPU supports invlpgb, max invalidation count: 0x%zx.",
+                LogLevel::Verbose, maxInvlpgbPages);
+        }
+        else
+            maxInvlpgbPages = 0;
+
         if (patSupport)
         {
             mmioBits = PatUcBits;
             framebufferBits = PatWcBits;
+
+            Log("CPU supports PAT.", LogLevel::Verbose);
         }
         else
         {
             mmioBits = LegacyUcBits;
             framebufferBits = LegacyUcBits;
+
+            Log("CPU does not support PAT, using legacy cache mode bits.",
+                LogLevel::Verbose);
         }
 
         addrMask = 1ull << (9 * ptLevels + 12);
@@ -447,6 +475,96 @@ namespace Npk
         MmuPermissions perms, MmuCacheMode mode)
     {
         DoEarlyMap(state, paddr, vaddr, perms, mode);
+    }
+
+    static void SplicePoisonTable(InitState& state, Paddr table, uintptr_t vaddr,
+        size_t level)
+    {
+        size_t indices[6];
+
+        indices[5] = (vaddr >> 48) & 0x1FF;
+        indices[4] = (vaddr >> 39) & 0x1FF;
+        indices[3] = (vaddr >> 30) & 0x1FF;
+        indices[2] = (vaddr >> 21) & 0x1FF;
+        indices[1] = (vaddr >> 12) & 0x1FF;
+
+        auto* pt = reinterpret_cast<uint64_t*>(kernelRoot + state.dmBase);
+
+        for (size_t i = ptLevels; i != level + 1; i--)
+        {
+            uint64_t* pte = &pt[indices[i]];
+
+            if ((*pte & PresentBit) == 0)
+            {
+                uint64_t value;
+                MakeIntermediatePte(&value, state.PmAlloc(), true);
+                COPY_PTE(pte, &value);
+            }
+
+            pt = reinterpret_cast<uint64_t*>((*pte & addrMask) + state.dmBase);
+        }
+
+        uint64_t value;
+        MakeIntermediatePte(&value, table, true);
+        COPY_PTE(&pt[indices[level + 1]], &value);
+    }
+
+    void HwEarlyMapPoison(InitState& state, Paddr paddr, uintptr_t vaddr,
+        size_t length)
+    {
+        if (poisonPage == 0) //lazy init
+        {
+            poisonPage = paddr;
+
+            for (size_t level = 1; level < ptLevels; level++)
+            {
+                const Paddr table = state.PmAlloc();
+                auto* ptes = reinterpret_cast<uint64_t*>(table + state.dmBase);
+
+                for (size_t i = 0; i < PtEntries; i++)
+                {
+                    if (level == 1)
+                        MakeLeafPte(&ptes[i], paddr, {}, {}, true, 0);
+                    else
+                        MakeIntermediatePte(&ptes[i], poisonTables[level - 2],
+                            true);
+                }
+
+                poisonTables[level - 1] = table;
+            }
+        }
+        NPK_ASSERT(poisonPage == paddr);
+
+        constexpr auto TableSpan = [](size_t level) -> uintptr_t
+        {
+            return 1ull << (12 * 9 * level);
+        };
+
+        const uintptr_t end = vaddr + length;
+        while (vaddr < end)
+        {
+            size_t level = 0;
+            for (size_t i = 1; i < ptLevels; i++)
+            {
+                const uintptr_t span = TableSpan(i);
+
+                if ((vaddr & (span - 1)) != 0 || vaddr + span > end)
+                    break;
+
+                level = i;
+            }
+
+            if (level == 0)
+            {
+                DoEarlyMap(state, poisonPage, vaddr, {}, {});
+
+                vaddr += PageSize();
+                continue;
+            }
+
+            SplicePoisonTable(state, poisonTables[level - 1], vaddr, level);
+            vaddr += TableSpan(level);
+        }
     }
 
     void* HwSetTempMapSlot(size_t index, Paddr paddr)
@@ -532,8 +650,38 @@ namespace Npk
 
     bool HwHasBroadcastInvalidate()
     {
-        //TODO: invlpgb + tlbsync support, <3 AMD.
-        return false;
+        return maxInvlpgbPages != 0;
+    }
+
+    void HwInvalidateTlbs(HwMap* map, uintptr_t vaddr, size_t length)
+    {
+        NPK_ASSERT(maxInvlpgbPages != 0);
+
+        //TODO: this is untested as I dont have access to this hardware,
+        //if you're here because of a bug I'm sorry! Please report it though!
+
+        length = length >> PfnShift();
+        while (length > 0)
+        {
+            const size_t invalCount = sl::Min(maxInvlpgbPages, length);
+
+            uint64_t rax = vaddr & addrMask;
+            rax |= InvlpgbVaValid;
+
+            uint32_t ecx = invalCount - 1;
+            (void)map; //TODO: PCIDs
+            uint32_t edx = 0;
+
+            asm volatile("invlpgb" :: "a"(rax), "c"(ecx), "d"(edx) : "memory");
+
+            length -= invalCount;
+            vaddr += invalCount << PfnShift();
+        }
+    }
+
+    void HwSyncTlbs()
+    {
+        asm volatile("tlbsync" ::: "memory");
     }
 
     size_t HwGetTlbFlushThreshold()
