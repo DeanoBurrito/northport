@@ -130,6 +130,8 @@ namespace Npk
      */
     constexpr uint8_t MaxNiceness = 39;
 
+    /* Upper limit on count ofarguments accepted by a user activation.
+     */
     constexpr size_t MaxActivationArgs = 5;
 
     struct CpuBitsetAlloc;
@@ -804,6 +806,7 @@ namespace Npk
     {
         Paddr physOffset;
         PageInfo* pfndb;
+        Paddr pfndbCount;
 
         CpuId smpBase;
         sl::Span<SmpControl> smpControls;
@@ -880,6 +883,11 @@ namespace Npk
     [[noreturn]]
     void Panic(sl::StringSpan msg, TrapFrame* frame, ...);
 
+    /* Registers a sink as a destination for kernel log output. The sink begins
+     * receiving messages from this point on, and is reset first if it provides
+     * a `Reset` callback. A given sink should only be registered once.
+     * Safe to call at any IPL.
+     */
     void AddLogSink(LogSink& sink);
 
     /* Detaches a previously registered log sink. Once removed the sink receives
@@ -1068,10 +1076,26 @@ namespace Npk
     CycleAccount SetCycleAccount(CycleAccount who);
     void AddClockEvent(ClockEvent* event);
     bool RemoveClockEvent(ClockEvent* event);
+
+    /* Returns the current wall clock time. Safe to call at any IPL.
+     */
     sl::TimePoint GetTime();
+
+    /* Returns the offset applied to the monotonic clock to determine wall time.
+     * Safe to call at any IPL.
+     */
     sl::TimePoint GetTimeOffset();
+
+    /* Sets the offset applied to the monotonic clock when wall clock time is
+     * desired, the result of this is available as `GetTime()`.
+     * Can be called at any IPL.
+     */
     void SetTimeOffset(sl::TimePoint offset);
 
+    /* Reads and returns the system's monotonic clock, the returned value is
+     * not affected by the time offset like `GetTime()` is.
+     * May be called at any IPL.
+     */
     SL_ALWAYS_INLINE
     sl::TimePoint GetMonotonicTime()
     {
@@ -1272,13 +1296,19 @@ namespace Npk
     void SetCpuPerformanceData(CpuId who, uint8_t performance,
         uint8_t efficiency);
 
-    /*
+    /* Resets a thread context. The thread must be a dead (freshly allocated or
+     * exited) state for this call to succeed. After a successful reset the 
+     * thread can be initialized with `PrepareThread()` and friends.
      */
     NpkStatus ResetThread(ThreadContext* thread);
 
-    /*
+    /* Prepares a (reset) thread context for execution. The `entry`, `arg` and
+     * `stack` arguments should be self explanatory, `affinity` is optional and
+     * gives the thread context a hard affinity for the specified cpu core, 
+     * which is applied the first time the thread is scheduled.
+     * Must be called at or below DPC IPL.
      */
-    NpkStatus PrepareThread(ThreadContext* thread, uintptr_t entry, 
+    NpkStatus PrepareThread(ThreadContext* thread, uintptr_t entry,
         uintptr_t arg, uintptr_t stack, sl::Opt<CpuId> affinity);
 
     /* Must be called at passive IPL with no locks held. This function does not
@@ -1540,8 +1570,11 @@ namespace Npk
      * the actor `who`. Typically the actor should the local one, but it is not
      * required to be. This is equivalent to an `EbrCall()` which the caller
      * waits on the completion of.
+     * If `expedited` is set all other actors in the domain are nudged to
+     * reduce the latency of this wait. If clear, actors progress through
+     * epochs at their natural rate.
      */
-    void EbrSync(EbrDomain& dom, size_t who);
+    void EbrSync(EbrDomain& dom, size_t who, bool expedited);
 
     /* Must be called at passive IPL. This functions waits until all currently
      * outstanding items for `dom` have executed. This requires synchronization
@@ -1597,6 +1630,13 @@ namespace Npk
         return ptr.Load(sl::Acquire);
     }
 
+    /* Attempts to create an activation, placing a pointer to it in `*outAct` 
+     * if successful. The `entry` and `stack` arguments allow for optionally
+     * setting these values at creation time (they can be modified later).
+     * The `args` argument is similar, note there is a limit to the number of
+     * accepted arguments for an activation (see `MaxActivationArgs`).
+     * Must be called at passive IPL.
+     */
     NpkStatus CreateActivation(Activation** outAct, sl::Opt<uintptr_t> entry, 
         sl::Opt<uintptr_t> stack, sl::Span<uintptr_t> args);
 
