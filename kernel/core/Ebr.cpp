@@ -191,7 +191,9 @@ namespace Npk
         for (size_t i = 0; i < actorCount; i++)
             new (&actors[i]) EbrActor {};
 
-        dom.engine.clockEvent.dpc = &dom.engine.clockDpc;
+        Completion completion;
+        completion.Set(&dom.engine.clockDpc, CompletionType::Dpc);
+        ResetClockEvent(&dom.engine.clockEvent, {}, {}, completion);
         dom.nudge = nudge;
         dom.actors = { actors, actorCount };
 
@@ -316,14 +318,14 @@ namespace Npk
 
     NpkStatus RcuCall(RcuItem* item)
     {
-        const auto who = MyCoreId() - MySystemDomain().smpBase;
+        const auto who = MyRelativeCoreId();
 
         return EbrCall(MySystemDomain().rcu, who, item);
     }
 
     void RcuSync()
     {
-        const auto who = MyCoreId() - MySystemDomain().smpBase;
+        const auto who = MyRelativeCoreId();
 
         EbrSync(MySystemDomain().rcu, who);
     }
@@ -349,7 +351,7 @@ namespace Npk
         if (dom.rcu.actors.Size() == 0)
             return;
 
-        NudgeEpoch(dom.rcu, MyCoreId() - dom.smpBase);
+        NudgeEpoch(dom.rcu, MyRelativeCoreId());
         QueueWorkItem(&dom.rcu.engine.workItem, {});
     }
 }

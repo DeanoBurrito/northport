@@ -53,7 +53,7 @@ namespace Npk
 
     //NOTE: called at Ipl::Dpc with interrupts enabled, when about to lower
     //to Ipl::Passive.
-    void Private::PrePassiveRunLevel()
+    void Private::SignalPendingWaitables()
     {
         Waitable* pending = nullptr;
         while ((pending = pendingWaitables->Pop()) != nullptr)
@@ -308,7 +308,6 @@ namespace Npk
     NpkStatus WaitMany(sl::Span<Waitable*> what, WaitEntry* entries, 
         sl::TimeCount timeout, sl::StringSpan reason)
     {
-        //TODO: any other pre-checks that thread is safe to wait
         if (CurrentIpl() != Ipl::Passive)
             return NpkStatus::NotAvailable;
         if (entries == nullptr && !what.Empty())
@@ -390,22 +389,22 @@ namespace Npk
         }
 
         Dpc wakeDpc {};
-        wakeDpc.arg = thread;
-        wakeDpc.function = WakeThreadDpc;
+        ResetDpc(&wakeDpc, WakeThreadDpc, thread, true);
         waiter.wakeDpc = &wakeDpc;
 
         Dpc timeoutDpc {};
-        timeoutDpc.arg = thread;
-        timeoutDpc.function = WaitTimeoutDpc;
+        ResetDpc(&timeoutDpc, WaitTimeoutDpc, thread, true);
+
+        Completion timeoutComp {};
+        ResetCompletion(timeoutComp, CompletionType::Dpc, &timeoutDpc);
 
         ClockEvent timeoutEvent {};
-        timeoutEvent.dpc = &timeoutDpc;
+        ResetClockEvent(&timeoutEvent, GetMonotonicTime() + timeout, {}, 
+            timeoutComp);
+
         const bool anyTimeout = timeout != sl::NoTimeout && timeout.ticks != 0;
         if (anyTimeout)
-        {
-            timeoutEvent.expiry = GetMonotonicTime() + timeout;
             AddClockEvent(&timeoutEvent);
-        }
 
         //2. main waiting loop.
         auto result = satisfied ? NpkStatus::Success : NpkStatus::Timeout;
@@ -502,7 +501,7 @@ namespace Npk
 
         if (anyTimeout)
         {
-            if (!RemoveClockEvent(&timeoutEvent))
+            if (CancelClockEvent(&timeoutEvent) != NpkStatus::Success)
                 SpinUntilDpcCompleted(&timeoutDpc);
         }
 
@@ -610,17 +609,15 @@ namespace Npk
         return result;
     }
 
-    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry, Dpc* dpc)
+    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry, Completion& comp)
     {
         auto result = ResetWaitable(what, WaitableType::Timer, 1);
         if (result != NpkStatus::Success)
             return result;
 
-        what->clockEvent.waitable = what;
-        what->clockEvent.expiry = expiry;
-        what->clockEvent.dpc = dpc;
+        result = ResetClockEvent(&what->clockEvent, expiry, {}, comp);
 
-        return NpkStatus::Success;
+        return result;
     }
 
     NpkStatus ResetMutex(Mutex* what, size_t tickets)

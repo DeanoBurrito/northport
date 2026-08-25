@@ -11,8 +11,10 @@ namespace Npk::Private
     void SetMyNodePointer(uintptr_t addr);
     void InitLocalScheduler(ThreadContext* idle);
     void InitLocalWorker();
-    void PrePassiveRunLevel();
-    void OnPassiveRunLevel();
+    void SignalPendingWaitables();
+    void CheckPendingContextSwitch();
+    bool AlarmIplHasPendingWork();
+    void OnAlarmIpl();
     void BeginWait(sl::Span<WaitEntry> waitingOn);
     void EndWait();
     void WakeThread(ThreadContext* thread);

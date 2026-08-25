@@ -4,12 +4,13 @@ namespace Npk
 {
     NpkStatus ResetCompletion(Completion& comp, CompletionType type, void* data)
     {
+        comp.Set(data, type);
+
+        return NpkStatus::Success;
     }
 
-    void NotifyCompletion(Completion& comp)
+    void NotifyCompletion(CompletionTarget target)
     {
-        auto target = comp.Get();
-
         switch (target.type)
         {
         case CompletionType::None:

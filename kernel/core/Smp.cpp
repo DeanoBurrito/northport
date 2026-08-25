@@ -69,10 +69,12 @@ namespace Npk
         SmpMail* mail = nullptr;
         while ((mail = control->mail.Pop()) != nullptr)
         {
+            auto target = mail->completion.Get();
+
             if (mail->function != nullptr)
                 mail->function(mail->arg);
-            if (mail->onComplete != nullptr)
-                SetCondition(mail->onComplete);
+
+            NotifyCompletion(target);
         }
 
         control->status.lastIpi.Store({}, sl::Release);
@@ -85,6 +87,20 @@ namespace Npk
         NPK_CHECK(control != nullptr, nullptr);
 
         return &control->status;
+    }
+
+    NpkStatus ResetMail(SmpMail* mail, MailFunction func, void* arg,
+        const Completion& onComplete)
+    {
+        if (mail == nullptr)
+            return NpkStatus::InvalidArg;
+
+        const auto target = onComplete.Get();
+        mail->arg = arg;
+        mail->function = func;
+        mail->completion.Set(target.data, target.type);
+
+        return NpkStatus::Success;
     }
 
     void SendMail(CpuId who, SmpMail* mail)

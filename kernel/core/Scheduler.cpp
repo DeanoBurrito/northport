@@ -6,7 +6,6 @@
 namespace Npk
 {
     constexpr CpuId NoAffinity = static_cast<CpuId>(~0);
-    constexpr uint8_t NicenessBias = 20;
     constexpr size_t MaxPriorityInheritenceDepth = 8;
     constexpr size_t PriorityScale = 4;
     constexpr size_t RtQueueCount = 
@@ -20,7 +19,7 @@ namespace Npk
     constexpr size_t AffinityHysteresis = 12;
     constexpr size_t MinQuantum = 5;
     constexpr size_t MaxQuantum = 100;
-    constexpr size_t QuantumPriorityScale = 1;
+    constexpr size_t QuantumPriorityScale = 20;
 
     struct SchedGroup;
 
@@ -292,9 +291,12 @@ namespace Npk
             MinQuantum, MaxQuantum);
 
         ResetDpc(&sched.quantumEventDpc, QuantumExpired, &sched, true);
-        sched.quantumEvent.expiry = sched.quantumStart.epoch 
+
+        Completion completion {};
+        completion.Set(&sched.quantumEventDpc, CompletionType::Dpc);
+        const auto expiry = sched.quantumStart.epoch 
             + (quantum * sched.quantumStart.Frequency / sl::Millis);
-        sched.quantumEvent.dpc = &sched.quantumEventDpc;
+        ResetClockEvent(&sched.quantumEvent, expiry, {}, completion);
 
         AddClockEvent(&sched.quantumEvent);
         sched.quantumEventArmed.Store(true, sl::Release);
@@ -518,10 +520,14 @@ namespace Npk
             return NpkStatus::InvalidArg;
 
         auto& data = thread->scheduling;
-        if (data.state != ThreadState::Dead)
-            return NpkStatus::InvalidArg;
 
         data.lock.Lock();
+        if (data.state != ThreadState::Dead)
+        {
+            data.lock.Unlock();
+
+            return NpkStatus::InvalidArg;
+
         if (!data.heldLocks.Empty() || !data.waitingOn.Empty())
         {
             data.lock.Unlock();
@@ -540,7 +546,7 @@ namespace Npk
         data.boostPriority = 0;
         data.isPinned = false;
         data.isInteractive = false;
-        data.niceness = NicenessBias;
+        data.niceness = BaseNiceness;
         data.agingBoost = false;
         data.inRunQueue = false;
         data.lock.Unlock();
@@ -708,7 +714,7 @@ namespace Npk
         //cpu. There are ways this can happen, but its rare.
         if (sched.quantumEventArmed.Load(sl::Relaxed))
         {
-            if (RemoveClockEvent(&sched.quantumEvent))
+            if (CancelClockEvent(&sched.quantumEvent) == NpkStatus::Success)
             {
                 auto runtime = GetMonotonicTime().epoch 
                     - sched.quantumStart.epoch;
@@ -1084,7 +1090,7 @@ namespace Npk
         SetCurrentThread(idle);
     }
 
-    void Private::OnPassiveRunLevel()
+    void Private::CheckPendingContextSwitch()
     {
         auto& sched = *localSched;
 

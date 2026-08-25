@@ -93,7 +93,7 @@ namespace Npk
         if (target == Ipl::Passive)
         {
             Private::CheckPendingRcuQuiesce();
-            Private::OnPassiveRunLevel();
+            Private::CheckPendingContextSwitch();
         }
     }
 

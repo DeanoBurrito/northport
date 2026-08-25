@@ -349,13 +349,22 @@ namespace Npk
         EventPort,
     };
 
+    /* A snapshot of a completion target, this form is more expensive to store
+     * than a `struct Completion` and cannot be modified atomically. This
+     * version is useful for intermediate processing, it costs memory but is
+     * easier to work with as there are no atomic operations to use it.
+     */
     struct CompletionTarget
     {
         void* data;
         CompletionType type;
     };
 
-    /*
+    /* Represents an follow-up to an operation, stored as a single pointer
+     * sized word. This struct uses atomic operations internally so it is
+     * more expensive to work with, for local work on a completion see
+     * `struct CompletionTarget` instead. This version should be preferred for
+     * embedding in other structs due to its small size.
      */
     struct Completion
     {
@@ -375,7 +384,7 @@ namespace Npk
         }
 
         SL_ALWAYS_INLINE
-        CompletionTarget Get()
+        CompletionTarget Get() const
         {
             auto data = value.Load(sl::Acquire);
 
@@ -555,7 +564,7 @@ namespace Npk
 
         MailFunction function;
         void* arg;
-        Waitable* onComplete;
+        Completion completion;
     };
 
     using MailQueue = sl::QueueMpSc<SmpMail, &SmpMail::mpscHook>;
@@ -1029,6 +1038,11 @@ namespace Npk
      */
     RemoteCpuStatus* RemoteStatus(CpuId who);
 
+    /* Resets a mail item and initializes callback and completion elements.
+     */
+    NpkStatus ResetMail(SmpMail* mail, MailFunction func, void* arg,
+        const Completion& onComplete);
+
     /* Queue a function to run on a remote cpu, mail is processed at interrupt
      * IPL and can be a heavy primitive to use. For less-than-urgent work
      * consider using a work item.
@@ -1436,12 +1450,11 @@ namespace Npk
      * currently waiting are woken with a `Reset` status. The timer does not
      * begin counting until `SetTimer()` is called; `ResetTimer()` only
      * establishes the type and initial state.
-     * An optional `dpc` callback will be run at `Ipl::Dpc` when the timer
-     * fires, alongside waking any waiting threads. Pass null if no extra
-     * action is needed at fire time.
+     * A completion target `comp` will be notified when the timer fires,
+     * alongside waking any waiting threads.
      * Returns `Busy` if the waitable is currently held and cannot be reset.
      */
-    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry, Dpc* dpc);
+    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry, Completion& comp);
 
     /* Must be called from passive IPL. Prepares `what` for use as a blocking
      * mutex (semaphore), setting `tickets` as the initial number of available
