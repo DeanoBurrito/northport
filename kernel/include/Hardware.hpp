@@ -809,11 +809,23 @@ namespace Npk
      */
     bool HwGetSingleStep(TrapFrame& frame);
 
-    /* Arms the local per-cpu timer to fire exactly once at a specified
-     * time in the future. `expiry` is relative to same point in time as
-     * the value returned by `HwReadTimestamp()`.
+    /* Arms the local per-cpu hardware timer and sets the local deadline for 
+     * `expiry`. The expiry time is relative to the same point as
+     * `HwReadTimestamp()` (often system uptime). The implementation must handle
+     * `expiry` being set to a current or past time and should fire the alarm
+     * as soon as possible. The alarm is allowed to fire early as it is only
+     * advisory.
+     * Once the timer is armed it is expected to generate exactly one timer
+     * interrupt (resulting in a call to `DispatchAlarm()`) unless 
+     * `HwClearAlarm()` is successfully called before expiry. Further calls to
+     * this function while the timer is armed update it's expiry time but leave
+     * it logically armed.
      */
     void HwSetAlarm(sl::TimePoint expiry);
+
+    /* Cancels the pending alarm for the per-cpu timer.
+     */
+    void HwClearAlarm();
 
     /* Returns the counter of a system-wide (or observed as such) monotonic
      * counter. The zero reference of the timer is assumed to be the (rough)

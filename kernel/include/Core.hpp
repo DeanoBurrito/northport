@@ -7,6 +7,7 @@
 #include <lib/Locks.hpp>
 #include <lib/Bitmap.hpp>
 #include <lib/Efi.hpp>
+#include <lib/Stats.hpp>
 
 namespace Npk 
 { 
@@ -191,6 +192,7 @@ namespace Npk
     {
         Passive,
         Dpc,
+        Alarm,
         Tlb,
         Interrupt,
     };
@@ -442,27 +444,57 @@ namespace Npk
         KernelInterrupt,
         Driver,
         DriverInterrupt,
+        Idle,
+
+        Count
     };
 
-    struct Waitable;
-    struct ClockQueue;
+    using CycleAccountStats = sl::Stats<CycleAccount, 
+        (size_t)CycleAccount::Count>;
 
+    enum class ClockEventState
+    {
+        Idle,
+        Armed,
+        Expired,
+    };
+
+    /* A `ClockEvent` is a way to queue a completion target to run after an
+     * amount of time has passed, either one-shot or periodicially.
+     * The details of this struct are private to the implementation and should
+     * not be modified directly, instead use the helper functions.
+     * Before using a clock event it should be reset by calling
+     * `ResetClockEvent()` on it.
+     */
     struct ClockEvent
     {
-        Dpc* dpc;
-        Waitable* waitable;
         sl::ListHook hook;
+        Completion completion;
         sl::TimePoint expiry;
-        sl::Atomic<ClockQueue*> queue;
+        uint64_t periodNs;
+        CpuId owner;
+        sl::Atomic<ClockEventState> state;
     };
 
     using ClockList = sl::List<ClockEvent, &ClockEvent::hook>;
 
-    struct ClockQueue
+    enum class ClockStat
     {
-        IplSpinLock<Ipl::Dpc> lock;
-        ClockList events;
+        EventsArmed,
+        EventsCancelled,
+        EventsExpired,
+        RemoteCancels,
+        AlarmPasses,
+        EmptyPasses,
+        TimerArms,
+        PeriodsMissed,
+        PassLimitHit,
+        QueueDepth,
+
+        Count
     };
+
+    using ClockStats = sl::Stats<ClockStat, (size_t)ClockStat::Count>;
 
     enum class WaitStage : uint8_t
     {
@@ -1090,8 +1122,46 @@ namespace Npk
     void RunOnFrozenCpu(CpuId who, void (*What)(void* arg), void* arg);
     
     CycleAccount SetCycleAccount(CycleAccount who);
-    void AddClockEvent(ClockEvent* event);
-    bool RemoveClockEvent(ClockEvent* event);
+
+    /* Attempts to obtain the cycle accounting data for the specified cpu.
+     * Can be called any IPL.
+     */
+    NpkStatus GetCycleAccounting(CycleAccountStats& outStats, CpuId who);
+
+    /* Initializes a clock event (`event`) with an expiry time and completion
+     * target. The `period` argument allows for the event to re-arm with itself
+     * unless cancelled with the specified period. If `period` has 0 for either
+     * field of the count, it is ignored and the event is treated as a oneshot.
+     */
+    NpkStatus ResetClockEvent(ClockEvent* event, sl::TimePoint expiry,
+        sl::TimeCount period, const Completion& completion);
+
+    /* Arms `event` and places it in the local clock event queue. Events with
+     * expiry times in the past are still placed in the queue and completed
+     * next time the queue is observed.
+     * Note that the event must have been reset before being passed to this
+     * function, or it will be rejected.
+     * Must be called below alarm IPL.
+     */
+    NpkStatus AddClockEvent(ClockEvent* event);
+
+    /* Attempts to cancel a clock event, this function returns when it is
+     * certain the clock event is no longer is any queues and returns a
+     * status describing the event's state before cancellation. Note this
+     * function makes no guarantees about the state of a clock event's 
+     * completion: that may be pending and synchronizing with it is left to
+     * the caller.
+     * Must be called below alarm IPL if the event is queued on the current
+     * cpu, or at passive IPL otherwise. If unsure where the event is queued,
+     * call this function at passive IPL.
+     */
+    NpkStatus CancelClockEvent(ClockEvent* event);
+
+    /* Returns the expiry time of the next clock event for the current cpu,
+     * if any.
+     * Must be called at or below alarm IPL.
+     */
+    sl::Opt<sl::TimePoint> NextClockEvent();
 
     /* Returns the current wall clock time. Safe to call at any IPL.
      */

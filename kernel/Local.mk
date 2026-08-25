@@ -13,6 +13,7 @@ KERNEL_CXX_SRCS += \
 	core/Panic.cpp \
 	core/Scheduler.cpp \
 	core/Smp.cpp \
+	core/Time.cpp \
 	core/Wait.cpp \
 	core/Worker.cpp\
 	debugger/EnclaveApi.cpp \

@@ -1,239 +1,311 @@
 #include <private/Core.hpp>
-#include <Hardware.hpp>
 
-/* Clock Subsystem:
- * There's a few things happening in this file:
- * - The first is 'cycle accounting', a name shamelessly stolen from minoca
- *   sources. This is just tracking who's been using cpu processing time.
- * - The second is the clock queue(s). This allows us to multiplex 1 hardware
- *   timer (that provides a timestamp + interrupt capabilities) into as many
- *   events as we need in software. All clock queue related code runs at DPC
- *   IPL. Each cpu core maintains its own clock queue, which is a lock and
- *   a doubly linked list of clock events, sorted with the soonest-expiring
- *   first. Generally a cpu only managed it's local clock queue, with the
- *   exception being cancelling a queued clock event. Since a thread might
- *   have migrated between starting and wanting to stop a clock event, we need
- *   to support this, hence why each clock queue has a lock.
- * - The third is correlating real world time with system time, we do this
- *   via `systemTimeOffset` which is added to the platform provided timestamp.
- */
 namespace Npk
 {
-    constexpr size_t AlarmFreeMs = 100;
-    constexpr sl::TimePoint AlarmFreeInterval =
-    { 
-        AlarmFreeMs * (sl::TimePoint::Frequency / sl::TimeScale::Millis) 
-    };
+    constexpr size_t MaxPasses = 8;
 
-    //NOT a real queue! we need a magic value for some logic down below, that
-    //is non-null.
-    static ClockQueue* const enqueuing = 
-        reinterpret_cast<ClockQueue*>(alignof(ClockQueue*));
-
-    struct CycleAccounting
+    struct ClockCancelRequest
     {
-        IntrSpinLock lock;
-        CycleAccount account;
-        sl::TimePoint periodBegin;
-
-        uint64_t user;
-        uint64_t kernel;
-        uint64_t kernelInterrupt;
-        uint64_t driver;
-        uint64_t driverInterrupt;
+        sl::QueueMpScHook hook;
+        ClockEvent* event;
+        NpkStatus result;
+        sl::Atomic<bool> hasResult;
     };
 
-    CPU_LOCAL(CycleAccounting, accounting);
+    using ClockCancelQueue = sl::QueueMpSc<ClockCancelRequest, 
+        &ClockCancelRequest::hook>;
+
+    struct ClockQueue
+    {
+        ClockList events;
+        sl::TimePoint armedExpiry;
+        sl::Atomic<bool> alarmArmed;
+        sl::Atomic<bool> alarmPending;
+
+        ClockStats stats;
+
+        alignas(HwGetStaticCacheLineSize())
+        ClockCancelQueue cancelRequests;
+    };
 
     CPU_LOCAL(ClockQueue, clockQueue);
-    CPU_LOCAL(Dpc, clockDpc);
-    CPU_LOCAL(sl::Atomic<bool>, clockDpcPending);
 
-    CycleAccount SetCycleAccount(CycleAccount who)
+    //returns whether event was inserted at the front or not
+    static bool InsertEvent(ClockQueue& queue, ClockEvent& event)
     {
-        sl::ScopedLock scopeLock(accounting->lock);
-
-        auto currentThread = GetCurrentThread();
-        const auto now = HwReadTimestamp();
-        const auto period = now - accounting->periodBegin;
-        NPK_ASSERT(period.Frequency == sl::Nanos);
-
-        switch (accounting->account)
+        if (queue.events.Empty())
         {
-        case CycleAccount::User:
-            if (currentThread != nullptr)
-                currentThread->accounting.userNanos += period.epoch;
-            accounting->user += period.epoch;
-            break;
-        case CycleAccount::Kernel:
-            if (currentThread != nullptr)
-                currentThread->accounting.kernelNanos += period.epoch;
-            accounting->kernel += period.epoch;
-            break;
-        case CycleAccount::KernelInterrupt:
-            accounting->kernelInterrupt += period.epoch;
-            break;
-        case CycleAccount::Driver:
-            //TODO: update active driver block
-            accounting->driver += period.epoch;
-            break;
-        case CycleAccount::DriverInterrupt:
-            accounting->driverInterrupt += period.epoch;
-            break;
-        default:
-            NPK_UNREACHABLE();
+            queue.events.PushFront(&event);
+
+            return true;
         }
 
-        const auto prevAccount = accounting->account;
-        accounting->account = who;
-        accounting->periodBegin = now;
-
-        return prevAccount;
-    }
-
-    //NOTE: clockQueue->lock is held
-    static void ArmLocalAlarm()
-    {
-        if (!clockQueue->events.Empty())
-            return HwSetAlarm(clockQueue->events.Front().expiry);
-
-        Log("Empty clock queue, alarm set for free interval of %zums", 
-            LogLevel::Info, AlarmFreeMs);
-        HwSetAlarm(HwReadTimestamp() + AlarmFreeInterval);
-    }
-
-    static void UpdateClockQueue(Dpc* self, void* arg)
-    {
-        (void)self;
-        (void)arg;
-
-        clockDpcPending->Store(false);
-        ClockList expiredEvents {};
-
-        clockQueue->lock.Lock();
-        while (!clockQueue->events.Empty())
+        if (event.expiry < queue.events.Front().expiry)
         {
-            if (clockQueue->events.Front().expiry > HwReadTimestamp())
-                break;
+            queue.events.PushFront(&event);
 
-            auto expired = clockQueue->events.PopFront();
-            expired->queue.Store(nullptr, sl::Release);
-            expiredEvents.PushBack(expired);
+            return true;
         }
 
-        ArmLocalAlarm();
-        clockQueue->lock.Unlock();
-
-        while (!expiredEvents.Empty())
+        if (queue.events.Back().expiry <= event.expiry)
         {
-            auto event = expiredEvents.PopFront();
+            queue.events.PushBack(&event);
 
-            if (event->dpc != nullptr)
-                QueueDpc(event->dpc);
-            if (event->waitable != nullptr)
-                Private::SignalTimerWaitable(event->waitable);
-        }
-    }
-
-    static void QueueClockDpc()
-    {
-        if (clockDpcPending->Exchange(true))
-            return;
-
-        clockDpc->function = UpdateClockQueue;
-        QueueDpc(&*clockDpc);
-    }
-
-    void AddClockEvent(ClockEvent* event)
-    {
-        NPK_ASSERT(event != nullptr);
-        NPK_ASSERT(event->dpc != nullptr || event->waitable != nullptr);
-
-        //NOTE: there's no grace period for this comparison, if the event expires
-        //between now and the time of adding it to the queue and re-arming
-        //the alarm, the alarm code is guaranteed to handle this for us,
-        //and should call `DispatchAlarm()`. Most of this time can actually
-        //be handled by hardware.
-        //This allows the logic here to be simpler, and we dont have to decide on
-        //an arbitrary grace period.
-        if (event->expiry < (HwReadTimestamp()))
-        {
-            if (event->dpc != nullptr)
-                QueueDpc(event->dpc);
-            if (event->waitable != nullptr)
-                Private::SignalTimerWaitable(event->waitable);
-            return;
-        }
-
-        const auto intent = enqueuing;
-        event->queue.Store(intent, sl::Release);
-        clockQueue->lock.Lock();
-        auto prevQueue = event->queue.Exchange(&*clockQueue, sl::Acquire);
-
-        if (prevQueue == intent)
-        {
-            clockQueue->events.InsertSorted(event, 
-                [](auto* a, auto* b) 
-                { 
-                    return a->expiry < b->expiry; 
-                });
-            ArmLocalAlarm();
-        }
-        clockQueue->lock.Unlock();
-    }
-
-    bool RemoveClockEvent(ClockEvent* event)
-    {
-        NPK_ASSERT(event != nullptr);
-
-        auto queue = event->queue.Exchange(nullptr, sl::AcqRel);
-        if (queue == nullptr || queue == enqueuing)
             return false;
+        }
 
-        queue->lock.Lock();
-        NPK_ASSERT(!queue->events.Empty());
+        auto scan = queue.events.Begin();
+        while (scan->expiry <= event.expiry)
+            ++scan;
+        queue.events.InsertBefore(scan, &event);
 
-        const bool isFirst = &queue->events.Front() == event;
-        queue->events.Remove(event);
-
-        if (isFirst && queue == &*clockQueue)
-            ArmLocalAlarm();
-        queue->lock.Unlock();
-
-        return true;
+        return false;
     }
 
-    //Called by the hardware layer when the hardware alarm interrupt has fired,
-    //from within the interrupt handler.
+    NpkStatus ResetClockEvent(ClockEvent* event, sl::TimePoint expiry,
+        sl::TimeCount period, const Completion& completion)
+    {
+        if (event == nullptr)
+            return NpkStatus::InvalidArg;
+        if (event->state.Load(sl::Acquire) != ClockEventState::Idle)
+            return NpkStatus::Busy;
+
+        const auto target = completion.Get();
+        event->completion.Set(target.data, target.type);
+        event->expiry = expiry;
+
+        event->periodNs = 0;
+        if (period.ticks != 0 && period.frequency != 0)
+            event->periodNs = period.Rebase(sl::Nanos).ticks;
+
+        return NpkStatus::Success;
+    }
+
+    NpkStatus AddClockEvent(ClockEvent* event)
+    {
+        if (event == nullptr)
+            return NpkStatus::InvalidArg;
+
+        auto prevIpl = RaiseIpl(Ipl::Alarm);
+        auto& queue = *clockQueue;
+
+        if (event->state.Load(sl::Relaxed) != ClockEventState::Idle)
+        {
+            LowerIpl(prevIpl);
+
+            return NpkStatus::Busy;
+        }
+
+        event->owner = MyCoreId();
+        event->state.Store(ClockEventState::Armed, sl::Relaxed);
+        if (InsertEvent(queue, *event))
+            queue.alarmPending.Store(true, sl::Relaxed);
+
+        queue.stats.Add(ClockStat::EventsArmed, 1);
+        queue.stats.Add(ClockStat::QueueDepth, 1);
+
+        LowerIpl(prevIpl);
+
+        return NpkStatus::Success;
+    }
+
+    static NpkStatus DoCancel(ClockQueue& queue, ClockEvent& event)
+    {
+        switch (event.state.Load(sl::Relaxed))
+        {
+        case ClockEventState::Idle:
+            return NpkStatus::NotAvailable;
+
+        //TODO: other states
+        case ClockEventState::Armed:
+            break;
+        }
+
+        const bool wasFront = &queue.events.Front() == &event;
+        queue.events.Remove(&event);
+        event.state.Store(ClockEventState::Idle, sl::Relaxed);
+
+        queue.stats.Add(ClockStat::EventsCancelled, 1);
+        queue.stats.Sub(ClockStat::QueueDepth, 1);
+
+        if (wasFront)
+            queue.alarmPending.Store(true, sl::Relaxed);
+
+        return NpkStatus::Success;
+    }
+
+    static void CancelMailCallback(void* arg)
+    {
+        auto* request = static_cast<ClockCancelRequest*>(arg);
+        auto& queue = *clockQueue;
+
+        queue.cancelRequests.Push(request);
+        queue.alarmPending.Store(true, sl::Relaxed);
+    }
+
+    static NpkStatus CancelRemoteEvent(ClockEvent& event, CpuId owner)
+    {
+        ClockCancelRequest request {};
+        request.event = &event;
+
+        SmpMail mail {};
+        ResetMail(&mail, CancelMailCallback, &request, {});
+
+        SendMail(owner, &mail);
+
+        while (!request.hasResult.Load(sl::Acquire))
+            sl::HintSpinloop();
+
+        return request.result;
+    }
+
+    NpkStatus CancelClockEvent(ClockEvent* event)
+    {
+        if (event == nullptr)
+            return NpkStatus::InvalidArg;
+
+        auto prevIpl = RaiseIpl(Ipl::Alarm);
+        if (event->state.Load(sl::Acquire) == ClockEventState::Idle)
+        {
+            LowerIpl(prevIpl);
+
+            return NpkStatus::NotAvailable;
+        }
+
+        const auto owner = event->owner;
+        if (owner == MyCoreId())
+        {
+            auto result = DoCancel(*clockQueue, *event);
+            LowerIpl(prevIpl);
+
+            return result;
+        }
+        LowerIpl(prevIpl);
+
+        if (CurrentIpl() != Ipl::Passive)
+            return NpkStatus::Unsupported;
+
+        return CancelRemoteEvent(*event, owner);
+    }
+
+    static void SetAlarmForQueue(ClockQueue& queue)
+    {
+        if (queue.events.Empty())
+        {
+            if (queue.alarmArmed.Exchange(false, sl::Relaxed))
+                HwClearAlarm();
+
+            return;
+        }
+
+        const auto expiry = queue.events.Front().expiry;
+        if (queue.alarmArmed.Load(sl::Relaxed) && queue.armedExpiry == expiry)
+            return;
+
+        queue.armedExpiry = expiry;
+        queue.alarmArmed.Store(true, sl::Relaxed);
+        HwSetAlarm(expiry);
+
+        queue.stats.Add(ClockStat::TimerArms, 1);
+    }
+
+    void Private::OnAlarmIpl()
+    {
+        auto& queue = *clockQueue;
+        size_t passes = 0;
+
+        while (queue.alarmPending.Exchange(false, sl::Acquire))
+        {
+            if (++passes > MaxPasses)
+            {
+                queue.stats.Add(ClockStat::PassLimitHit, 1);
+                break;
+            }
+
+            queue.stats.Add(ClockStat::AlarmPasses, 1);
+
+            while (auto* req = queue.cancelRequests.Pop())
+            {
+                req->result = DoCancel(queue, *req->event);
+                req->hasResult.Sub(true, sl::Release);
+
+                queue.stats.Add(ClockStat::RemoteCancels, 1);
+            }
+            
+            ClockList expired {};
+            size_t expiredCount = 0;
+            const auto now = HwReadTimestamp();
+
+            while (!queue.events.Empty())
+            {
+                if (queue.events.Front().expiry > now)
+                    break;
+
+                auto* event = queue.events.PopFront();
+                expired.PushBack(event);
+                expiredCount++;
+            }
+
+            while (!expired.Empty())
+            {
+                auto* event = expired.PopFront();
+
+                if (event->periodNs != 0)
+                {
+                    event->expiry.epoch += event->periodNs;
+                    if (event->expiry.epoch <= now.epoch)
+                    {
+                        queue.stats.Add(ClockStat::PeriodsMissed, 1);
+                        event->expiry = { now.epoch + event->periodNs };
+                    }
+
+                    event->state.Store(ClockEventState::Armed, sl::Relaxed);
+                    InsertEvent(queue, *event);
+                    queue.stats.Add(ClockStat::QueueDepth, 1);
+
+                    const auto completion = event->completion.Get();
+                    NotifyCompletion(completion);
+                    continue;
+                }
+
+                const auto completion = event->completion.Get();
+                event->state.Store(ClockEventState::Expired, sl::Release);
+
+                NotifyCompletion(completion);
+            }
+
+            SetAlarmForQueue(queue);
+
+            queue.stats.Add(ClockStat::EventsExpired, 1);
+            queue.stats.Sub(ClockStat::QueueDepth, 1);
+            if (expiredCount == 0)
+                queue.stats.Add(ClockStat::EmptyPasses, 1);
+        }
+    }
+
+    bool Private::AlarmIplHasPendingWork()
+    {
+        return clockQueue->alarmPending.Load(sl::Relaxed);
+    }
+
     void DispatchAlarm()
     {
-        QueueClockDpc();
+        AssertIpl(Ipl::Interrupt);
+
+        clockQueue->alarmArmed.Store(false, sl::Relaxed);
+        clockQueue->alarmPending.Store(true, sl::Release);
     }
 
-    static sl::Atomic<sl::TimePoint> systemTimeOffset {};
-
-    sl::TimePoint GetTime()
+    sl::Opt<sl::TimePoint> NextClockEvent()
     {
-        return HwReadTimestamp() + systemTimeOffset.Load(sl::Relaxed);
-    }
+        const auto prevIpl = RaiseIpl(Ipl::Alarm);
 
-    sl::TimePoint GetTimeOffset()
-    {
-        return systemTimeOffset.Load(sl::Relaxed);
-    }
+        sl::Opt<sl::TimePoint> expiry {};
+        if (!clockQueue->events.Empty())
+            expiry = clockQueue->events.Front().expiry;
 
-    void SetTimeOffset(sl::TimePoint offset)
-    {
-        auto prev = systemTimeOffset.Exchange(offset, sl::Relaxed);
+        LowerIpl(prevIpl);
 
-        const auto dirStr = offset.epoch > prev.epoch ? "+" : "-";
-        const auto diff = offset.epoch > prev.epoch ? offset.epoch - prev.epoch
-            : prev.epoch - offset.epoch;
-        auto date = sl::CalendarPoint::From(offset);
-
-        Log("System time offset set: %s%zu, new base is %02u/%02u/%02" 
-            PRIu32" %02u:%02u.%02u",
-            LogLevel::Info, dirStr, diff, date.dayOfMonth, date.month, 
-            date.year, date.hour, date.minute, date.second);
+        return expiry;
     }
 }

@@ -57,36 +57,55 @@ namespace Npk
     {
         while (true)
         {
-            const Ipl currentIpl = *localIpl;
-            if (currentIpl == target)
+            const auto current = *localIpl;
+            if (current == target)
                 break;
 
-            //finish any pending work for this IPL, then decrement it to
-            //the next IPL.
-            const bool restoreIntrs = IntrsOff();
-
-            switch (currentIpl)
+            const bool prevIntrs = IntrsOff();
+            bool moreWork = false;
+            switch (current)
             {
             case Ipl::Interrupt:
                 break;
 
             case Ipl::Tlb:
+                IntrsOn();
                 TlbSyncQuiesce();
+                IntrsOff();
+                break;
+
+            case Ipl::Alarm:
+                IntrsOn();
+                Private::OnAlarmIpl();
+                IntrsOff();
+                moreWork = Private::AlarmIplHasPendingWork();
                 break;
 
             case Ipl::Dpc:
+                IntrsOn();
                 RunDpcs();
-                if (target == Ipl::Passive)
-                    Private::PrePassiveRunLevel();
+                IntrsOff();
+                dpcQueueLock->Lock();
+                moreWork = !dpcQueue->Empty();
+                dpcQueueLock->Unlock();
+
+                if (!moreWork && target == Ipl::Passive)
+                    Private::SignalPendingWaitables();
                 break;
 
             case Ipl::Passive:
                 break;
             }
 
-            localIpl = (Ipl)((unsigned)currentIpl - 1);
+            if (moreWork)
+            {
+                if (prevIntrs)
+                    IntrsOn();
+                continue;
+            }
 
-            if (restoreIntrs)
+            localIpl = (Ipl)((unsigned)current - 1);
+            if (prevIntrs)
                 IntrsOn();
         }
 
