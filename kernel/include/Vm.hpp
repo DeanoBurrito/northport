@@ -316,8 +316,8 @@ namespace Npk
      * Returns whether freeing was successfully or not.
      */
     SL_ALWAYS_INLINE
-    NpkStatus PoolFreePaged(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout
-        = sl::NoTimeout)
+    NpkStatus PoolFreePaged(void* ptr, size_t len, HeapTag tag, 
+        sl::TimeCount timeout = sl::NoTimeout)
     {
         return PoolFree(ptr, len, tag, false, timeout);
     }
@@ -329,8 +329,8 @@ namespace Npk
      * Returns whether freeing was successfully or not.
      */
     SL_ALWAYS_INLINE
-    NpkStatus PoolFreeWired(void* ptr, size_t len, HeapTag tag, sl::TimeCount timeout
-        = sl::NoTimeout)
+    NpkStatus PoolFreeWired(void* ptr, size_t len, HeapTag tag, 
+        sl::TimeCount timeout = sl::NoTimeout)
     {
         return PoolFree(ptr, len, tag, true, timeout);
     }

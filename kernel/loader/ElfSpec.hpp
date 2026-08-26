@@ -59,7 +59,7 @@ namespace Npk
         Elf_Half e_shstrndx;
     };
 
-    constexpr Elf_Char ExpectedMagic[] = 
+    constexpr Elf_Char ElfMagic[] = 
     { 
         0x7F, 
         'E', 
@@ -644,6 +644,7 @@ namespace Npk
     constexpr Elf_Word PT_HIOS = 0x6FFF'FFFF;
     constexpr Elf_Word PT_LOPROC = 0x7000'0000;
     constexpr Elf_Word PT_HIPROC = 0x7FFF'FFFF;
+    constexpr Elf_Word PT_NPK_DRIVER = 0x6E70'6B64; //'npkd'
 
     constexpr Elf_Word PF_X = 0x1;
     constexpr Elf_Word PF_W = 0x2;
@@ -711,6 +712,7 @@ namespace Npk
     constexpr Elf_Sword DT_RELR = 36;
     constexpr Elf_Sword DT_RELRENT = 37;
     constexpr Elf_Sword DT_SYMTABSZ = 39;
+    constexpr Elf_Sword DT_GNU_HASH = 0x6FFF'FEF5;
     constexpr Elf_Sword DT_LOOS = 0x6000'0000;
     constexpr Elf_Sword DT_HIOS = 0x6FFF'FFFF0;
     constexpr Elf_Sword DT_LPROC = 0x7000'0000;

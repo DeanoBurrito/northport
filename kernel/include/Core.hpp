@@ -1121,6 +1121,13 @@ namespace Npk
      */
     void RunOnFrozenCpu(CpuId who, void (*What)(void* arg), void* arg);
     
+    /* Switches the bucket that the local cpu's elapsed time is attributed to,
+     * closing the time spent since the previous switch against the old bucket
+     * (and the running thread) before the new one takes over. 
+     * Returns the previously active bucket, so callers can restore it once 
+     * their accounting window is over.
+     * Safe to call at any IPL.
+     */
     CycleAccount SetCycleAccount(CycleAccount who);
 
     /* Attempts to obtain the cycle accounting data for the specified cpu.
@@ -1611,12 +1618,33 @@ namespace Npk
      */
     void ReleaseSxMutexExclusive(SxMutex* mutex);
 
+    /* Resets and initializes the internal state word of a completion.
+     * Must be called on a completion before handing to any componenets that
+     * may call `NotifyCompletion()` on it.
+     * Safe to call at any IPL.
+     */
     NpkStatus ResetCompletion(Completion& comp, CompletionType type,
         void* data);
 
-    void NotifyCompletion(Completion& comp);
+    /* The exact meaning of this function varies depending on the type of the
+     * completion target, but the intent is it queues the target for execution.
+     * For example, a Condition target is signalled, a Dpc target is enqueued
+     * to the local pending DPC list.
+     * The important part is that this function only *queues* the target for
+     * running, the target is never run directly inline: it may still appear
+     * to run inline for external reasons however. If this behaviour is 
+     * undesired its the caller's responsiblity to ensure this can't happen.
+     *
+     * Safe to call at any IPL.
+     */
+    void NotifyCompletion(CompletionTarget target);
 
-    /*
+    /* Resets and initializes an EBR domain with the specified number of
+     * actors (`actorCount`). The `nudge` callback is the function used to
+     * prompt an actor for their attention, with the intent that they nudge
+     * the domain `dom` asap rather than at their own pace.
+     *
+     * Must be called at passive IPL.
      */
     NpkStatus ResetEbrDomain(EbrDomain& dom, size_t actorCount, 
         EbrNudgeActor nudge);
