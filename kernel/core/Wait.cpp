@@ -501,7 +501,7 @@ namespace Npk
 
         if (anyTimeout)
         {
-            if (CancelClockEvent(&timeoutEvent) != NpkStatus::Success)
+            if (CancelClockEvent(&timeoutEvent) == NpkStatus::TooLate)
                 SpinUntilDpcCompleted(&timeoutDpc);
         }
 
@@ -535,8 +535,17 @@ namespace Npk
             break;
 
         case WaitableType::Timer:
-            if (!RemoveClockEvent(&what->clockEvent))
-                SpinUntilDpcCompleted(what->clockEvent.dpc);
+            if (CancelClockEvent(&what->clockEvent) == NpkStatus::TooLate)
+            {
+                //TooLate + this core being at passive ipl =
+                //another cpu is about to clear the ticket count for this timer
+                //(signalling it). So we dont make a mess of things we wait
+                //for the signalling to complete before continuing with the
+                //reset.
+
+                while (what->tickets.Load(sl::Acquire) != 0)
+                    sl::HintSpinloop();
+            }
             break;
 
         case WaitableType::Mutex:
@@ -609,11 +618,14 @@ namespace Npk
         return result;
     }
 
-    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry, Completion& comp)
+    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry)
     {
         auto result = ResetWaitable(what, WaitableType::Timer, 1);
         if (result != NpkStatus::Success)
             return result;
+
+        Completion comp {};
+        comp.Set(what, CompletionType::Condition);
 
         result = ResetClockEvent(&what->clockEvent, expiry, {}, comp);
 
@@ -641,7 +653,12 @@ namespace Npk
     {
         if (what == nullptr)
             return;
-        if (what->type != WaitableType::Condition)
+        //NOTE: we allow this function for timer-type waitables, its not
+        //documented in the header but its required for timer waitables to work
+        //nicely: the inline clock event has its completion targetting the
+        //waitable as a condition and the rest falls into place nicely.
+        if (what->type != WaitableType::Condition
+            && what->type != WaitableType::Timer)
             return;
 
         const auto prev = what->tickets.FetchSub(count, sl::AcqRel);
@@ -663,20 +680,6 @@ namespace Npk
             return;
 
         QueueWaitable(what);
-    }
-
-    void Private::SignalTimerWaitable(Timer* timer)
-    {
-        if (timer == nullptr)
-            return;
-        if (timer->type != WaitableType::Timer)
-            return;
-
-        const auto prev = timer->tickets.Exchange(0);
-        if (prev == 0)
-            return;
-
-        QueueWaitable(timer);
     }
 
     void SetTimer(Timer* timer, sl::Opt<sl::TimePoint> expiry)

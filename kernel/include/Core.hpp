@@ -488,7 +488,6 @@ namespace Npk
         EmptyPasses,
         TimerArms,
         PeriodsMissed,
-        PassLimitHit,
         QueueDepth,
 
         Count
@@ -996,7 +995,10 @@ namespace Npk
         const bool success = lock.TryLock();
 
         if (!success)
-            LowerIpl(prevIpl);
+        {
+            if (lastIpl < max)
+                LowerIpl(lastIpl);
+        }
         else
             prevIpl = lastIpl;
 
@@ -1139,6 +1141,9 @@ namespace Npk
      * target. The `period` argument allows for the event to re-arm with itself
      * unless cancelled with the specified period. If `period` has 0 for either
      * field of the count, it is ignored and the event is treated as a oneshot.
+     * Note that if `period` is too small (sub nanosecond range) it may be
+     * rejected due to conversion limitations.
+     * Can be called at any IPL.
      */
     NpkStatus ResetClockEvent(ClockEvent* event, sl::TimePoint expiry,
         sl::TimeCount period, const Completion& completion);
@@ -1148,7 +1153,7 @@ namespace Npk
      * next time the queue is observed.
      * Note that the event must have been reset before being passed to this
      * function, or it will be rejected.
-     * Must be called below alarm IPL.
+     * Must be called at or below alarm IPL.
      */
     NpkStatus AddClockEvent(ClockEvent* event);
 
@@ -1158,14 +1163,18 @@ namespace Npk
      * function makes no guarantees about the state of a clock event's 
      * completion: that may be pending and synchronizing with it is left to
      * the caller.
-     * Must be called below alarm IPL if the event is queued on the current
-     * cpu, or at passive IPL otherwise. If unsure where the event is queued,
-     * call this function at passive IPL.
+     * Must be called at or below alarm IPL if the event is queued on the
+     * current cpu, or at passive IPL otherwise. If unsure where the event is
+     * queued, call this function at passive IPL.
+     * This function returns `NotAvailable` if the event was already idle,
+     * `TooLate` if the event has expired (and the callback has either executed
+     * or is about to and cannot be cancelled), or `Success` if the event was
+     * removed from a queue.
      */
     NpkStatus CancelClockEvent(ClockEvent* event);
 
-    /* Returns the expiry time of the next clock event for the current cpu,
-     * if any.
+    /* Returns (as a best effort) the expiry time of the next clock event for
+     * the current cpu, if any.
      * Must be called at or below alarm IPL.
      */
     sl::Opt<sl::TimePoint> NextClockEvent();
@@ -1527,11 +1536,9 @@ namespace Npk
      * currently waiting are woken with a `Reset` status. The timer does not
      * begin counting until `SetTimer()` is called; `ResetTimer()` only
      * establishes the type and initial state.
-     * A completion target `comp` will be notified when the timer fires,
-     * alongside waking any waiting threads.
      * Returns `Busy` if the waitable is currently held and cannot be reset.
      */
-    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry, Completion& comp);
+    NpkStatus ResetTimer(Timer* what, sl::TimePoint expiry);
 
     /* Must be called from passive IPL. Prepares `what` for use as a blocking
      * mutex (semaphore), setting `tickets` as the initial number of available

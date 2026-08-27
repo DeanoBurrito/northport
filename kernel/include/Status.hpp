@@ -26,6 +26,7 @@ namespace Npk
         Aborted,
         Timeout,
         Reset,
+        TooLate,
     };
 
     const char* StatusStr(NpkStatus what);

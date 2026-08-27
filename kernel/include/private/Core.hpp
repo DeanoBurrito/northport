@@ -19,7 +19,6 @@ namespace Npk::Private
     void EndWait();
     void WakeThread(ThreadContext* thread);
     void WorkItemThreadEntry(void* arg);
-    void SignalTimerWaitable(Timer* timer);
     void ArmPendingRcuQuiesce();
     void CheckPendingRcuQuiesce();
 

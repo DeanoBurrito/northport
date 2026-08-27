@@ -46,6 +46,8 @@ namespace Npk
             return "timeout";
         case NpkStatus::Reset:
             return "reset";
+        case NpkStatus::TooLate:
+            return "too late";
         default:
             return "<>";
         }
