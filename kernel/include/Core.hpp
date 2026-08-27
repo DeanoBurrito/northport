@@ -957,6 +957,12 @@ namespace Npk
      */
     Ipl RaiseIpl(Ipl target);
 
+    /* Similar to `RaiseIpl()` but it tolerates the local IPL already being at
+     * `target` level. The local IPL before the call is returned so it can be
+     * restored via a call to `LowerIpl()`.
+     */
+    Ipl EnsureIpl(Ipl target);
+
     /* Strict lowers the local cpu's IPL to `target`, unmasking any activity
      * that held off at higher levels. Any work at the newly unmasked levels is
      * performed before this function returns.

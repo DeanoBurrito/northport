@@ -21,12 +21,26 @@ namespace Npk
         const bool prevIntrs = IntrsOff();
 
         const Ipl prev = *localIpl;
-        localIpl = target;
         NPK_ASSERT(target > prev);
+        localIpl = target;
 
         if (prevIntrs)
             IntrsOn();
         return prev;
+    }
+
+    Ipl EnsureIpl(Ipl target)
+    {
+        const bool prevIntrs = IntrsOff();
+
+        const auto prevIpl = *localIpl;
+        NPK_ASSERT(target >= prevIpl);
+        localIpl = target;
+
+        if (prevIntrs)
+            IntrsOn();
+
+        return prevIpl;
     }
 
     static void RunDpcs()
@@ -55,6 +69,8 @@ namespace Npk
 
     void LowerIpl(Ipl target)
     {
+        NPK_ASSERT(target < CurrentIpl());
+
         while (true)
         {
             const auto current = *localIpl;
