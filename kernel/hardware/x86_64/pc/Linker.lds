@@ -71,6 +71,8 @@ SECTIONS
     {
         *(COMMON)
 
+        . = ALIGN(64);
+
         KERNEL_CPULOCALS_BEGIN = .;
         KEEP(*(.sl_tagged.cpubase .sl_tagged.cpubase.*))
         KEEP(*(.sl_tagged.cpulocal .sl_tagged.cpulocal.*))
