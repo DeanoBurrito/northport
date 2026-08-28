@@ -467,6 +467,7 @@ R"(                                             888                      )"
         }
 
         Private::InitLocalScheduler(idle);
+        Private::ResetCycleAccounts(CycleAccount::Kernel);
         SetCurrentThread(idle);
         Log("Cpu %zu is online and available.", LogLevel::Info, MyCoreId());
     }

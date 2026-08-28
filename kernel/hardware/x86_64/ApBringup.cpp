@@ -88,10 +88,11 @@ namespace Npk
         RestoreMtrrs(savedMtrrs);
         CommonCpuSetup();
 
-        ThreadContext idleContext {};
-        BringCpuOnline(&idleContext);
         CalibrateTsc();
         NPK_ASSERT(InitApLapic());
+
+        ThreadContext idleContext {};
+        BringCpuOnline(&idleContext);
 
         Log("AP init thread done, becoming idle thread.", LogLevel::Verbose);
         IntrsOn();
@@ -103,9 +104,9 @@ namespace Npk
         while (true)
         {
             auto& dom = MySystemDomain();
-            EnterNoEpochState(dom.rcu, MyCoreId() - dom.smpBase);
+            EnterNoEpochState(dom.rcu, MyRelativeCoreId());
             WaitForIntr();
-            ExitNoEpochState(dom.rcu, MyCoreId() - dom.smpBase);
+            ExitNoEpochState(dom.rcu, MyRelativeCoreId());
         }
     }
 

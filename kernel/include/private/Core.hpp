@@ -8,6 +8,7 @@
  */
 namespace Npk::Private
 {
+    void ResetCycleAccounts(CycleAccount first);
     void SetMyNodePointer(uintptr_t addr);
     void InitLocalScheduler(ThreadContext* idle);
     void InitLocalWorker();

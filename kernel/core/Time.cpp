@@ -12,6 +12,18 @@ namespace Npk
     CPU_LOCAL(CycleAccounting, localCycles);
     static sl::Atomic<sl::TimePoint> systemTimeOffset {};
 
+    void Private::ResetCycleAccounts(CycleAccount first)
+    {
+        const bool prevIntrs = IntrsOff();
+
+        localCycles->stats.Reset();
+        localCycles->current = first;
+        localCycles->periodBegin = HwReadTimestamp();
+
+        if (prevIntrs)
+            IntrsOn();
+    }
+
     CycleAccount SetCycleAccount(CycleAccount who)
     {
         const bool prevIntrs = IntrsOff();
