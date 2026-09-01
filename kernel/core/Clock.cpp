@@ -28,6 +28,11 @@ namespace Npk
 
     CPU_LOCAL(ClockQueue, clockQueue);
 
+    CPU_LOCAL_CTOR(
+    {
+        new (clockQueue.Get()) ClockQueue {};
+    });
+
     //returns whether event was inserted at the front or not
     static bool InsertEvent(ClockQueue& queue, ClockEvent& event)
     {
