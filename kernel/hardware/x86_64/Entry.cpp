@@ -74,7 +74,10 @@ namespace Npk
                 frame->rdi = (uint64_t)localHeader.exceptRecoveryStack;
             }
             else if (prevIpl != Ipl::Passive)
-                Panic("Page fault at non-passive IPL", frame);
+            {
+                Panic("Page fault at non-passive IPL, addr=0x%tx, ec=0x%tx", 
+                    frame, READ_CR(2), frame->ec);
+            }
             else
             {
                 const bool write = frame->ec & 0b10;
