@@ -42,7 +42,7 @@ namespace Npk
         uint64_t accuracy;
     };
 
-    struct TscMeasurement
+    struct TscSample
     {
         uint64_t frequency;
         uint64_t errorPpm;
@@ -147,7 +147,7 @@ namespace Npk
         return sample;
     }
 
-    static TscMeasurement DoMeasureTsc(uint64_t sampleNs)
+    static TscSample DoMeasureTsc(uint64_t sampleNs)
     {
         NPK_CHECK(refTimer.which != RefTimerType::None, {});
 
@@ -177,7 +177,7 @@ namespace Npk
             * 1'000'000 / tscDelta;
         const uint64_t refPpm = 1'000'000 / refDelta;
 
-        TscMeasurement result {};
+        TscSample result {};
         result.frequency = freq;
         result.errorPpm = bracketPpm + refPpm;
         result.valid = true;
@@ -190,10 +190,10 @@ namespace Npk
         return result;
     }
 
-    static TscMeasurement MeasureTsc(uint64_t sampleNs, uint64_t targetPpm,
+    static TscSample MeasureTsc(uint64_t sampleNs, uint64_t targetPpm,
         size_t maxRuns)
     {
-        TscMeasurement best {};
+        TscSample best {};
 
         for (size_t i = 0; i < maxRuns; i++)
         {
