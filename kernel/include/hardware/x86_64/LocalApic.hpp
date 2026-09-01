@@ -17,8 +17,10 @@ namespace Npk
     uint32_t MyLapicId();
     uint8_t MyLapicVersion();
 
-    void ArmTscInterrupt(uint64_t expiry);
-    void HandleLapicTimerInterrupt();
+    sl::TimeConversion CalibrateLapicTimer();
+    void SetupLapicTimer(bool useTscDeadline);
+    void ArmLapicTimer(uint32_t ticks);
+    void DisarmLapicTimer();
     void HandleLapicErrorInterrupt();
 
     enum class IpiType

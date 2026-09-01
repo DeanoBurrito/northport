@@ -85,8 +85,7 @@ $(KERNEL_TARGET): $(KERNEL_OBJS) $(KERNEL_LD_SCRIPT)
 $(UNITY_SOURCE_FILE): kernel/$(BAKED_CONSTANTS_FILE)
 	@mkdir -p $(@D)
 	$(file > $(UNITY_SOURCE_FILE))
-	$(foreach S, $(KERNEL_CXX_SRCS), \
-		$(shell printf "#include <$S>\n" >> $(UNITY_SOURCE_FILE)))
+	$(foreach S,$(KERNEL_CXX_SRCS),$(file >> $(UNITY_SOURCE_FILE),#include <$(S)>))
 
 $(UNITY_SOURCE_FILE).$(KERNEL_CXX_FLAGS_HASH).o: $(UNITY_SOURCE_FILE)
 	@printf "$(C_BLUE)[Kernel]$(C_RST) Compiling unity source file: $<\n"

@@ -1,176 +1,349 @@
 #include <hardware/x86_64/Tsc.hpp>
-#include <hardware/x86_64/RefTimers.hpp>
+#include <hardware/x86_64/Hpet.hpp>
+#include <hardware/x86_64/Pit.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
+#include <hardware/x86_64/PvClock.hpp>
+#include <hardware/common/timer/AcpiTimer.hpp>
 #include <Core.hpp>
-#include <lib/Maths.hpp>
 #include <lib/Units.hpp>
 
 namespace Npk
 {
-    constexpr uint64_t TscFreqUndetermined = 0;
-    constexpr uint64_t TscFreqPending = 1;
-
-    /* Protocol: a value of 0 means tsc frequency is undetermined for this
-     * group of cores, a value of 1 means a cpu is currently determining the
-     * frequency, all other values are the tsc frequency.
-     * The first cpu to request the frequency will see it's value 0, so it
-     * knows it should set it to 1 and begin calibration. Other cpus reading a
-     * value of 1 will spin until the value changes.
-     */
-    sl::Atomic<uint64_t> tscFrequency = TscFreqUndetermined;
-    //TODO: this should be per-socket, or more easily per-node
-
-    static void DoTscCalibration()
+    enum class RefTimerType
     {
-        if (auto freq = ReadConfigUint("npk.x86.tsc_freq_override", 0); freq)
-        {
-            Log("TSC frequency set to %zuHZ by command line", LogLevel::Info,
-                freq);
+        None,
+        AcpiPm,
+        Hpet,
+        Pit,
+    };
 
-            tscFrequency.Store(freq, sl::Release);
-            return;
+    enum class FreqSource
+    {
+        None,
+        UserConfig,
+        PvClock,
+        Cpuid15,
+        HypervisorLeaf,
+        Measured,
+        Cpuid16,
+    };
+
+    struct RefTimerControl
+    {
+        RefTimerType which;
+        uint64_t frequency;
+        uint64_t counterMask;
+    };
+
+    struct RefSample
+    {
+        uint64_t tsc;
+        uint64_t ref;
+        uint64_t accuracy;
+    };
+
+    struct TscMeasurement
+    {
+        uint64_t frequency;
+        uint64_t errorPpm;
+        bool valid;
+    };
+
+    static sl::SpinLock pitLock;
+    static RefTimerControl refTimer;
+    static uint64_t tscFreq;
+    static FreqSource tscFreqSource;
+    static RefSample tscBootSample;
+
+    static uint64_t CalcDeltaPpm(uint64_t a, uint64_t b)
+    {
+        const auto diff = a > b ? a - b : b - a;
+        const auto base = a > b ? b : a;
+
+        if (base == 0)
+            return ~0ull;
+
+        return diff * 1'000'000 / base;
+    }
+
+    void InitRefTimers(uintptr_t& virtBase)
+    {
+        if (InitAcpiTimer(virtBase))
+        {
+            refTimer.which = RefTimerType::AcpiPm;
+            refTimer.frequency = AcpiTimerFrequency();
+            refTimer.counterMask = 0xFF'FFFFull;
+            if (AcpiTimerIs32Bit())
+                refTimer.counterMask |= 0xFFull << 24;
+        }
+        else if (InitHpet(virtBase))
+        {
+            refTimer.which = RefTimerType::Hpet;
+            refTimer.frequency = HpetFrequency();
+            refTimer.counterMask = 0xFFFF'FFFFull;
+            if (HpetIs64Bit())
+                refTimer.counterMask = ~0ull;
+        }
+        else
+        {
+            NPK_ASSERT(!ReadConfigUint("npk.x86.ignore_pit", false));
+
+            refTimer.which = RefTimerType::Pit;
+            refTimer.frequency = PitFrequency;
+            refTimer.counterMask = 0xFFFF;
         }
 
-        CpuidLeaf cpuid {};
-        const size_t baseLeaves = DoCpuid(BaseLeaf, 0, cpuid).a;
-
-        DoCpuid(0x15, 0, cpuid);
-        if (baseLeaves >= 0x15 && cpuid.b != 0 && cpuid.a != 0)
+        const char* timerName = [](RefTimerType t) -> auto
         {
-            const uint64_t freq = (cpuid.c * cpuid.b) / cpuid.a;
-            Log("TSC frequency from cpuid 0x15 set to %luHz", LogLevel::Info,
-                freq);
-
-            tscFrequency.Store(freq, sl::Release);
-            return;
-        }
-
-        DoCpuid(HypervisorLeaf, 0, cpuid);
-        if (cpuid.a >= 0x10 && DoCpuid(HypervisorLeaf + 0x10, 0, cpuid).a != 0)
-        {
-            const uint64_t freq = cpuid.a * 1000;
-            Log("TSC frequency from cpuid 0x4000'0010: %luHz", LogLevel::Trace,
-                freq);
-
-            tscFrequency.Store(freq, sl::Release);
-            return;
-        }
-
-        DoCpuid(0x16, 0, cpuid);
-        if (baseLeaves >= 0x16 && cpuid.a != 0)
-        {
-            const uint64_t freq = cpuid.a * 1'000'000;
-            Log("TSC frequency from cpuid 0x15: %luHz", LogLevel::Info,
-                freq);
-
-            tscFrequency.Store(freq, sl::Release);
-            return;
-        }
-
-        constexpr size_t MaxRuns = 64;
-        uint64_t data[MaxRuns];
-
-        const auto runs = sl::Clamp<size_t>(
-            ReadConfigUint("npk.x86.tsc_calibration_runs", 10), 1, MaxRuns);
-        const auto sampleFreq = sl::Clamp<size_t>(
-            ReadConfigUint("npk.x86.tsc_sample_freq", 100), 10, 1000);
-        const auto neededRuns = sl::Clamp<size_t>(
-            ReadConfigUint("npk.x86.tsc_needed_runs", 7), 1, runs);
-        const auto controlRuns = sl::Clamp<size_t>(
-            ReadConfigUint("npk.x86.tsc_control_runs", 5), 1, MaxRuns);
-        const auto dumpResults = 
-            ReadConfigUint("npk.x86.tsc_show_calibration", true);
-
-        size_t controlOffset = 0;
-        const uint64_t calibNanos = 
-            sl::TimeCount(sampleFreq, 1).Rebase(sl::Nanos).ticks;
-
-        Log("Calibrating TSC: sampling=%zuHz, runs=%zu (%zu needed)",
-            LogLevel::Verbose, sampleFreq, runs, neededRuns);
-
-        //control runs, determine time taken to read reference timer
-        for (size_t i = 0; i < controlRuns; i++)
-        {
-            AcquireRefTimersLock();
-            const auto tscBegin = ReadTsc();
-            RefTimersSleep(0);
-            const auto tscEnd = ReadTsc();
-            ReleaseRefTimersLock();
-
-            controlOffset += tscEnd - tscBegin;
-        }
-        controlOffset /= controlRuns;
-
-        if (controlRuns != 0)
-        {
-            Log("Control runs: %zu, average tsc ticks taken = %zu",
-                LogLevel::Verbose, controlRuns, controlOffset);
-        }
-
-        for (size_t i = 0; i < runs; i++)
-        {
-            AcquireRefTimersLock();
-            const auto tscBegin = ReadTsc();
-            const auto sleptNanos = RefTimersSleep(calibNanos);
-            const auto tscEnd = ReadTsc();
-            ReleaseRefTimersLock();
-
-            if (sleptNanos == 0)
+            switch (t)
             {
-                //reference timer wasn't happy with something.
-                data[i] = 0;
+            case RefTimerType::AcpiPm:
+                return "ACPI PM";
+            case RefTimerType::Hpet:
+                return "HPET";
+            case RefTimerType::Pit:
+                return "PIT";
+            default:
+                return "unknown";
+            }
+        }(refTimer.which);
+
+        const auto conv = sl::ConvertUnits(refTimer.frequency, 
+            sl::UnitBase::Decimal);
+        Log("Reference timer: %s, %zuHz (%zu.%zu %sHz), %zu-bit counter",
+            LogLevel::Info, timerName, refTimer.frequency, conv.major,
+            conv.minor, conv.prefix, sl::PopCount(refTimer.counterMask));
+    }
+
+    static uint64_t ReadRefTimer()
+    {
+        switch (refTimer.which)
+        {
+        case RefTimerType::AcpiPm:
+            return AcpiTimerRead();
+
+        case RefTimerType::Hpet:
+            return HpetRead();
+
+        case RefTimerType::Pit:
+            return ReadPit();
+
+        default:
+            NPK_UNREACHABLE();
+        }
+    }
+
+    static RefSample TakeSample()
+    {
+        const uint64_t t0 = ReadTsc();
+        const uint64_t ref = ReadRefTimer();
+        const uint64_t t1 = ReadTsc();
+
+        RefSample sample {};
+        sample.tsc = t0 + ((t1 - t0) / 2);
+        sample.ref = ref;
+        sample.accuracy = t1 - t0;
+
+        return sample;
+    }
+
+    static TscMeasurement DoMeasureTsc(uint64_t sampleNs)
+    {
+        NPK_CHECK(refTimer.which != RefTimerType::None, {});
+
+        auto ticks = sampleNs * refTimer.frequency / sl::Nanos;
+        ticks = sl::Clamp(ticks, (uint64_t)1, refTimer.counterMask / 4);
+
+        if (refTimer.which == RefTimerType::Pit)
+        {
+            pitLock.Lock();
+            StartPit();
+        }
+
+        const auto begin = TakeSample();
+        auto end = begin;
+        while (((end.ref - begin.ref) & refTimer.counterMask) < ticks)
+            end = TakeSample();
+
+        if (refTimer.which == RefTimerType::Pit)
+            pitLock.Unlock();
+
+        const uint64_t refDelta = (end.ref - begin.ref) & refTimer.counterMask;
+        const uint64_t tscDelta = end.tsc - begin.tsc;
+        NPK_CHECK(refDelta != 0 && tscDelta != 0, {});
+
+        const uint64_t freq = tscDelta * refTimer.frequency / refDelta;
+        const uint64_t bracketPpm = ((begin.accuracy - end.accuracy) / 2) 
+            * 1'000'000 / tscDelta;
+        const uint64_t refPpm = 1'000'000 / refDelta;
+
+        TscMeasurement result {};
+        result.frequency = freq;
+        result.errorPpm = bracketPpm + refPpm;
+        result.valid = true;
+
+        const auto conv = sl::ConvertUnits(freq, sl::UnitBase::Decimal);
+        Log("TSC measurement: freq=%zu (%zu.%zu %sHz), +/- %zuppm",
+            LogLevel::Verbose, result.frequency, conv.major, conv.minor,
+            conv.prefix, result.errorPpm);
+
+        return result;
+    }
+
+    static TscMeasurement MeasureTsc(uint64_t sampleNs, uint64_t targetPpm,
+        size_t maxRuns)
+    {
+        TscMeasurement best {};
+
+        for (size_t i = 0; i < maxRuns; i++)
+        {
+            const auto run = DoMeasureTsc(sampleNs);
+            if (!run.valid)
                 continue;
-            }
 
-            data[i] = (tscEnd - tscBegin);
-            data[i] = data[i] - controlOffset;
-            data[i] = (data[i] * calibNanos) / sleptNanos;
+            if (!best.valid || run.errorPpm < best.errorPpm)
+                best = run;
+            if (best.errorPpm <= targetPpm)
+                break;
+        }
 
-            if (dumpResults)
+        return best;
+    }
+
+    static uint64_t CalibrateTsc(FreqSource& outSrc)
+    {
+        const char* source = "unknown";
+        uint64_t freq = 0;
+
+        const auto override = ReadConfigUint("npk.x86.tsc_freq", 0);
+        if (override != 0)
+        {
+            source = "config override";
+            freq = override;
+            outSrc = FreqSource::UserConfig;
+        }
+
+        auto pvFreq = PvClockTscFrequency();
+        if (pvFreq.HasValue())
+        {
+            source = "pv clock";
+            freq = *pvFreq;
+            outSrc = FreqSource::PvClock;
+        }
+
+        CpuidLeaf leaf {};
+        const size_t maxBaseLeaf = DoCpuid(0, 0, leaf).a;
+        const size_t maxHypervisorLeaf = DoCpuid(HypervisorLeaf, 0, leaf).a;
+        if (freq == 0 && maxBaseLeaf >= 0x15)
+        {
+            DoCpuid(0x15, 0, leaf);
+            
+            if (leaf.a != 0 && leaf.b != 0 && leaf.c != 0)
             {
-                Log("Calibration run %zu: begin=%zu, end=%zu, adjusted=%zu, "
-                    "slept=%zu", LogLevel::Trace, i, tscBegin, tscEnd, data[i],
-                    sleptNanos);
+                source = "cpuid 0x15";
+                freq = ((uint64_t)leaf.c * (uint64_t)leaf.b) / (uint64_t)leaf.a;
+                outSrc = FreqSource::Cpuid15;
             }
         }
 
-        const auto period = CoalesceTimerData({ data, runs }, runs -neededRuns);
-        NPK_ASSERT(period.HasValue());
-
-        const auto freq = *period * sampleFreq;
-        const auto conv = sl::ConvertUnits(freq, sl::UnitBase::Decimal);
-        Log("TSC calibrated as %zuHz (%zu.%zu %sHz)", LogLevel::Info, freq,
-            conv.major, conv.minor, conv.prefix);
-
-        tscFrequency.Store(freq, sl::Release);
-    }
-
-    void CalibrateTsc()
-    {
-        uint64_t freq = tscFrequency.Load(sl::Acquire);
-        if (freq == TscFreqUndetermined)
+        if (freq == 0 && maxHypervisorLeaf >= HypervisorLeaf + 0x10)
         {
-            if (tscFrequency.CompareExchange(freq, TscFreqPending, sl::AcqRel))
-                DoTscCalibration();
+            DoCpuid(HypervisorLeaf + 0x10, 0, leaf);
+            
+            if (leaf.a != 0)
+            {
+                source = "cpuid 0x4000'0010";
+                freq = (uint64_t)leaf.a * 1000;
+                outSrc = FreqSource::HypervisorLeaf;
+            }
         }
 
-        while (freq == TscFreqPending)
+        const uint64_t calibNs = ReadConfigUint("npk.x86.tsc_calib_ns", 
+            50'000'000); //50ms
+        const uint64_t targetPpm = ReadConfigUint("npk.x86.tsc_target_ppm", 20);
+        const size_t maxRuns = ReadConfigUint("npk.x86.tsc_calib_runs", 10);
+
+        //we measure regardless of the above attempts, so we can do a sanity
+        //check.
+        const auto measured = MeasureTsc(calibNs, targetPpm, maxRuns);
+        if (freq == 0 && measured.valid)
         {
-            sl::HintSpinloop();
-            freq = tscFrequency.Load(sl::Acquire);
+            freq = measured.frequency;
+            source = "measurement";
+            outSrc = FreqSource::Measured;
+
+            Log("TSC frequency measured with +/- %zuppm", LogLevel::Info,
+                measured.errorPpm);
+
+            //since tsc frequency is measured, store a snapshot of the
+            //reference timer for refining the tsc freq later on.
+            //NOTE: the PIT is not allowed for this use as its counter is
+            //very smol.
+            if (refTimer.which != RefTimerType::Pit)
+                tscBootSample = TakeSample();
+            else
+                tscBootSample = {};
+        }
+        
+        if (freq == 0 && maxBaseLeaf >= 0x16)
+        {
+            DoCpuid(0x16, 0, leaf);
+
+            if (leaf.a != 0)
+            {
+                source = "cpuid 0x16";
+                freq = (uint64_t)leaf.a * 1'000'000;
+                outSrc = FreqSource::Cpuid16;
+            }
         }
 
         const auto conv = sl::ConvertUnits(freq, sl::UnitBase::Decimal);
-        Log("Local TSC frequency is %zuHz (%zu.%zu %sHz)", LogLevel::Verbose, 
-            freq, conv.major, conv.minor, conv.prefix);
-    }
+        Log("TSC frequency is %zuHz (%zu.%zu %sHz) according to %s",
+            LogLevel::Info, freq, conv.major, conv.minor, conv.prefix, source);
 
-    uint64_t MyTscFrequency()
-    {
-        uint64_t freq = tscFrequency.Load(sl::Acquire);
-        if (freq <= TscFreqPending)
-            return 0;
+        //do a sanity check, catches bad hypervisors.
+        if (measured.valid)
+        {
+            const auto delta = CalcDeltaPpm(freq, measured.frequency);
+
+            if (delta > 1000)
+            {
+                Log("TSC frequency from %s varies from measurements: %zu vs %zu"
+                    ", +/- %zuppm", LogLevel::Warning, source, freq,
+                    measured.frequency, delta);
+            }
+        }
 
         return freq;
+    }
+
+    void InitTsc()
+    {
+        if (MyCoreId() == 0)
+        {
+            tscFreq = CalibrateTsc(tscFreqSource);
+            NPK_ASSERT(tscFreq != 0 && tscFreqSource != FreqSource::None);
+            return;
+        }
+
+        if (!ReadConfigUint("npk.x86.tsc_verify", true))
+            return;
+
+        const auto sampleNs = ReadConfigUint("npk.x86.tsc_verify_ns",
+            2'000'000);
+        const auto measured = DoMeasureTsc(sampleNs);
+        NPK_CHECK(measured.valid, );
+
+        const auto delta = CalcDeltaPpm(tscFreq, measured.frequency);
+        NPK_ASSERT(delta + measured.errorPpm < 10'000);
+
+        auto conv = sl::ConvertUnits(measured.frequency, sl::UnitBase::Decimal);
+        Log("TSC frequency verified as %zuHz (%zu.%zu %sHz)", LogLevel::Verbose,
+            measured.frequency, conv.major, conv.minor, conv.prefix);
+    }
+
+    uint64_t TscFrequency()
+    {
+        return tscFreq;
     }
 }

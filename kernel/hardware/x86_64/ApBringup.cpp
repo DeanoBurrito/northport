@@ -4,6 +4,7 @@
 #include <hardware/x86_64/LocalApic.hpp>
 #include <hardware/x86_64/Private.hpp>
 #include <hardware/x86_64/Msr.hpp>
+#include <hardware/x86_64/PvClock.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <lib/AcpiTypes.hpp>
 #include <lib/Maths.hpp>
@@ -87,9 +88,12 @@ namespace Npk
 
         RestoreMtrrs(savedMtrrs);
         CommonCpuSetup();
+        SetLocalSystemDomain();
 
-        CalibrateTsc();
+        LocalPvClockInit();
+        InitTsc();
         NPK_ASSERT(InitApLapic());
+        InitLocalAlarm();
 
         ThreadContext idleContext {};
         BringCpuOnline(&idleContext);

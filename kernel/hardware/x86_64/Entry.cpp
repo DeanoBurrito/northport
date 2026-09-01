@@ -108,7 +108,7 @@ namespace Npk
             break;
 
         case LapicTimerVector:
-            HandleLapicTimerInterrupt();
+            HandleAlarmInterrupt();
             break;
 
         case LapicIpiVector:

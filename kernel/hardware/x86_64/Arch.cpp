@@ -3,7 +3,6 @@
 #include <hardware/x86_64/Msr.hpp>
 #include <hardware/x86_64/LocalApic.hpp>
 #include <hardware/x86_64/PvClock.hpp>
-#include <hardware/x86_64/RefTimers.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <hardware/common/mmu/TlbSync.hpp>
 #include <Core.hpp>
@@ -200,8 +199,6 @@ namespace Npk
         CommonCpuSetup();
     }
 
-    static bool hasPvClocks;
-
     void HwInitFull(uintptr_t& virtBase)
     {
         const size_t cpuCount = MySystemDomain().smpControls.Size();
@@ -220,10 +217,10 @@ namespace Npk
 
         NPK_ASSERT(InitBspLapic(virtBase));
         InitRefTimers(virtBase);
-        CalibrateTsc();
-
-        if (CpuHasFeature(CpuFeature::VGuest))
-            hasPvClocks = TryInitPvClocks(virtBase);
+        TryInitPvClocks(virtBase);
+        LocalPvClockInit();
+        InitTsc();
+        InitLocalAlarm();
     }
 
     void HwLateInit()
@@ -284,26 +281,6 @@ namespace Npk
 
         Print("LAPIC Id: 0x%" PRIu32 "\r\n", MyLapicId());
     }
-
-
-    void HwSetAlarm(sl::TimePoint expiry)
-    {
-        auto ticks = sl::TimeCount(expiry.Frequency, expiry.epoch).Rebase(
-            MyTscFrequency()).ticks;
-        ArmTscInterrupt(ticks);
-    }
-
-    sl::TimePoint HwReadTimestamp()
-    {
-        if (hasPvClocks)
-            return { ReadPvSystemTime() };
-
-        const auto timestamp = sl::TimeCount(MyTscFrequency(), ReadTsc());
-        const auto ticks = timestamp.Rebase(sl::TimePoint::Frequency).ticks;
-        return { ticks };
-    }
-    //ReadPvSystemTime() returns nanoseconds
-    static_assert(sl::TimePoint::Frequency == sl::TimeScale::Nanos);
 
     void HwSendIpi(CpuId who)
     {

@@ -61,7 +61,9 @@ namespace Npk
 
     void InitUarts();
     void InitMachineChecking();
+    void InitLocalAlarm();
 
+    void HandleAlarmInterrupt();
     void HandleDebugException(TrapFrame* frame, bool int3);
     void HandleMachineCheckException(TrapFrame* frame);
 }

@@ -3,7 +3,6 @@
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/Msr.hpp>
 #include <hardware/x86_64/Private.hpp>
-#include <hardware/x86_64/RefTimers.hpp>
 #include <hardware/x86_64/Tsc.hpp>
 #include <private/Hardware.hpp>
 #include <Core.hpp>
@@ -20,6 +19,7 @@ namespace Npk
     constexpr uint32_t LvtActiveLow = 1 << 13;
     constexpr uint32_t LvtLevelTrigger = 1 << 14;
     constexpr uint8_t PicIrqBase = 0x20;
+    constexpr uint32_t TimerDivisor1 = 0b1011;
 
     enum class LApicReg
     {
@@ -59,11 +59,8 @@ namespace Npk
     struct LocalApic
     {
         sl::MmioRegisters<LApicReg, uint32_t> mmio;
-        uint64_t tscExpiry;
-        uint64_t timerFreq;
         uint32_t acpiId;
         bool x2Mode;
-        bool hasTscDeadline;
 
         inline Msr RegToMsr(LApicReg reg)
         {
@@ -88,6 +85,13 @@ namespace Npk
         }
     };
 
+    struct LapicSample
+    {
+        uint64_t tsc;
+        uint32_t count;
+        uint64_t accuracy;
+    };
+
     CPU_LOCAL(LocalApic, lapic);
     uintptr_t lapicMmioBase;
 
@@ -105,141 +109,16 @@ namespace Npk
         if (lapic->x2Mode)
             WriteMsr(Msr::ApicBase, ReadMsr(Msr::ApicBase) | (1 << 10));
 
-        if (CpuHasFeature(CpuFeature::TscDeadline))
-        {
-            lapic->hasTscDeadline = true;
-            WriteMsr(Msr::TscDeadline, 0);
-        }
-
         return true;
     }
 
-    static bool CalibrateLapicTimer()
+    static bool FinishLapicInit(sl::Madt* madt)
     {
-        //this follows a similar pattern to calibrating the tsc, see that
-        //file for more thoughts.
-        if (auto freq = ReadConfigUint("npk.x86.lapic_freq_override", 0); freq != 0)
-        {
-            Log("LAPIC timer frequency set to %zuHz by command line override",
-                LogLevel::Trace, freq);
-            lapic->timerFreq = freq;
-            return true;
-        }
+        using namespace sl::MadtSources;
 
-        CpuidLeaf cpuid {};
-        const size_t baseLeaves = DoCpuid(BaseLeaf, 0, cpuid).a;
+        if (madt == nullptr)
+            return false;
 
-        DoCpuid(0x15, 0, cpuid);
-        if (baseLeaves > 0x15 && cpuid.c != 0)
-        {
-            Log("LAPIC timer frequency acquired from cpuid 0x15: %uHz",
-                LogLevel::Trace, cpuid.c);
-            lapic->timerFreq = cpuid.c;
-            return true;
-        }
-
-        DoCpuid(0x16, 0, cpuid);
-        if (baseLeaves > 0x16 && cpuid.c != 0)
-        {
-            Log("LAPIC timer frequency acquired from cpuid 0x16: %uMHz",
-                LogLevel::Trace, cpuid.c);
-            lapic->timerFreq = cpuid.c;
-            return true;
-        }
-
-        DoCpuid(HypervisorLeaf, 0, cpuid);
-        if (cpuid.a >= 0x10 && DoCpuid(HypervisorLeaf + 0x10, 0, cpuid).b != 0)
-        {
-            Log("LAPIC timer acquired from cpuid 0x4000'1000: %uKHz",
-                LogLevel::Trace, cpuid.b);
-            lapic->timerFreq = cpuid.b * 1000;
-            return true;
-        }
-
-        constexpr size_t MaxCalibRuns = 64;
-        const size_t calibRuns = sl::Clamp<size_t>(
-            ReadConfigUint("npk.x86.lapic_calibration_runs", 10), 1, MaxCalibRuns);
-        const size_t sampleFreq = sl::Clamp<size_t>(
-            ReadConfigUint("npk.x86.lapic_sample_freq", 100), 10, 1000);
-        const size_t neededRuns = sl::Clamp<size_t>(
-            ReadConfigUint("npk.x86.lapic_needed_runs", 7), 1, calibRuns);
-        const size_t controlRuns = sl::Clamp<size_t>(
-            ReadConfigUint("npk.x86.lapic_control_runs", 5), 1, calibRuns);
-        const bool dumpCalibData = 
-            ReadConfigUint("npk.x86.lapic_dump_calibration", true);
-
-        size_t controlOffset = 0;
-        uint64_t calibData[MaxCalibRuns];
-        auto calibNanos = sl::TimeCount(sampleFreq, 1).Rebase(sl::Nanos).ticks;
-        Log("Calibrating LAPIC timer: sampling=%zu hz, runs=%zu (mulligans=%zu,"
-            "control=%zu)", LogLevel::Trace, sampleFreq, calibRuns,
-            calibRuns - neededRuns, controlRuns);
-
-        lapic->Write(LApicReg::LvtTimer, (0b00 << 17) | LvtMasked);
-        lapic->Write(LApicReg::TimerDivisor, 0);
-
-        for (size_t i = 0; i < controlRuns; i++)
-        {
-            constexpr uint32_t BeginValue = 0xFFFF'FFFF;
-
-            AcquireRefTimersLock();
-            lapic->Write(LApicReg::TimerInitCount, BeginValue);
-            RefTimersSleep(0);
-            const uint32_t endValue = lapic->Read(LApicReg::TimerCount);
-            ReleaseRefTimersLock();
-
-            lapic->Write(LApicReg::TimerInitCount, 0);
-            controlOffset += BeginValue - endValue;
-        }
-
-        controlOffset /= controlRuns;
-        Log("Control offset for reference timer: %zu lapic ticks", 
-            LogLevel::Trace, controlOffset);
-
-        for (size_t i = 0; i < calibRuns; i++)
-        {
-            constexpr uint32_t BeginValue = 0xFFFF'FFFF;
-
-            AcquireRefTimersLock();
-            lapic->Write(LApicReg::TimerInitCount, BeginValue);
-            const uint64_t realCalibNanos = RefTimersSleep(calibNanos);
-            const uint32_t stopValue = lapic->Read(LApicReg::TimerCount);
-            ReleaseRefTimersLock();
-
-            lapic->Write(LApicReg::TimerInitCount, 0);
-            NPK_CHECK(stopValue != 0, false);
-
-            if (realCalibNanos == 0)
-            {
-                calibData[i] = 0;
-                continue;
-            }
-
-            calibData[i] = BeginValue - stopValue;
-            calibData[i] = (calibData[i] * calibNanos) / realCalibNanos;
-            if (dumpCalibData)
-            {
-                Log("LAPIC timer calibratun run: begin=%u, end=%u, adjusted=%zu"
-                    ", slept=%zuns", LogLevel::Verbose, BeginValue, stopValue, 
-                    calibData[i], realCalibNanos);
-            }
-        }
-
-        sl::Span<uint64_t> runs { calibData, calibRuns };
-        const auto maybePeriod = CoalesceTimerData(runs, calibRuns - neededRuns);
-        NPK_CHECK(maybePeriod.HasValue(), false);
-
-        const uint64_t timerFreq = *maybePeriod * sampleFreq;
-        const auto conv = sl::ConvertUnits(timerFreq, sl::UnitBase::Decimal);
-        Log("LAPIC timer calibrated as %zu Hz (%zu.%zu %sHz)", LogLevel::Info, 
-            timerFreq, conv.major, conv.minor, conv.prefix);
-
-        lapic->timerFreq = timerFreq;
-        return true;
-    }
-
-    static void FinishLapicInit(sl::Madt* madt)
-    {
         lapic->Write(LApicReg::SpuriousVector, LapicSpuriousVector);
         lapic->Write(LApicReg::LvtTimer, LvtMasked | LapicSpuriousVector);
         lapic->Write(LApicReg::LvtLint0, LvtMasked | LapicSpuriousVector);
@@ -248,59 +127,58 @@ namespace Npk
         lapic->Write(LApicReg::TimerInitCount, 0);
 
         apicIds[MyCoreId()] = MyLapicId();
-
-        if (!lapic->hasTscDeadline)
-            NPK_ASSERT(CalibrateLapicTimer());
-
-        if (madt == nullptr)
-            return;
-
         const uint32_t myLapicId = MyLapicId();
 
         //first pass: find the acpi processor id associated with this lapic
         lapic->acpiId = -1;
-        for (auto source = sl::NextMadtSubtable(madt); source != nullptr; source = sl::NextMadtSubtable(madt, source))
+        for (auto s = sl::NextMadtSubtable(madt); s != nullptr;
+            s = sl::NextMadtSubtable(madt, s))
         {
-            if (source->type == sl::MadtSourceType::LocalApic)
+            if (s->type == sl::MadtSourceType::LocalApic)
             {
-                auto src = static_cast<const sl::MadtSources::LocalApic*>(source);
+                auto src = static_cast<const sl::MadtSources::LocalApic*>(s);
+
                 if (src->apicId == myLapicId)
                     lapic->acpiId = src->acpiProcessorId;
             }
-            else if (source->type == sl::MadtSourceType::LocalX2Apic)
+            else if (s->type == sl::MadtSourceType::LocalX2Apic)
             {
-                auto src = static_cast<const sl::MadtSources::LocalX2Apic*>(source);
+                auto src = static_cast<const LocalX2Apic*>(s);
+
                 if (src->apicId == myLapicId)
                     lapic->acpiId = src->acpiProcessorId;
             }
         }
+
         if (lapic->acpiId == (uint32_t)-1)
         {
-            Log("LAPIC %u has no entry in MADT, cannot determine acpi processor id.",
-                LogLevel::Error, myLapicId);
-            return;
+            Log("LAPIC %u has no entry in MADT", LogLevel::Error, myLapicId);
+
+            return false;
         }
 
         //second pass: find any nmi entries that apply to this lapic
-        for (auto source = sl::NextMadtSubtable(madt); source != nullptr; source = sl::NextMadtSubtable(madt, source))
+        for (auto s = sl::NextMadtSubtable(madt); s != nullptr; 
+            s = sl::NextMadtSubtable(madt, s))
         {
             uint32_t targetAcpiId;
             uint16_t polarityModeFlags;
             uint8_t inputNumber;
 
-            if (source->type == sl::MadtSourceType::LocalApicNmi)
+            if (s->type == sl::MadtSourceType::LocalApicNmi)
             {
-                auto nmi = static_cast<const sl::MadtSources::LocalApicNmi*>(source);
+                auto nmi = static_cast<const LocalApicNmi*>(s);
 
                 targetAcpiId = nmi->acpiProcessorId;
                 if (targetAcpiId == 0xFF)
                     targetAcpiId = 0xFFFF'FFFF;
+
                 polarityModeFlags = nmi->polarityModeFlags;
                 inputNumber = nmi->lintNumber;
             }
-            else if (source->type == sl::MadtSourceType::LocalX2ApicNmi)
+            else if (s->type == sl::MadtSourceType::LocalX2ApicNmi)
             {
-                auto nmi = static_cast<const sl::MadtSources::LocalX2ApicNmi*>(source);
+                auto nmi = static_cast<const LocalX2ApicNmi*>(s);
 
                 targetAcpiId = nmi->acpiProcessorId;
                 polarityModeFlags = nmi->polarityModeFlags;
@@ -309,13 +187,18 @@ namespace Npk
             else
                 continue;
 
-            //0xFFFF'FFFF (and 0xFF for non-x2 apics) is a special ID meaning 'everyone'
+            //0xFFFF'FFFF (and 0xFF for non-x2 apics) means 'apply to all'
             if (targetAcpiId != 0xFFFF'FFFF && targetAcpiId != lapic->acpiId)
                 continue;
 
-            const LApicReg lvt = inputNumber == 1 ? LApicReg::LvtLint1 : LApicReg::LvtLint0;
-            const bool activeLow = (polarityModeFlags & sl::MadtSources::PolarityMask) == sl::MadtSources::PolarityLow;
-            const bool levelTriggered = (polarityModeFlags & sl::MadtSources::TriggerModeMask) == sl::MadtSources::TriggerModeLevel;
+            LApicReg lvt = LApicReg::LvtLint0;
+            if (inputNumber == 1)
+                lvt = LApicReg::LvtLint1;
+
+            const bool activeLow =
+                (polarityModeFlags & PolarityMask) == PolarityLow;
+            const bool levelTriggered =
+                (polarityModeFlags & TriggerModeMask) == TriggerModeLevel;
             const uint32_t value = LvtModeNmi 
                 | (activeLow ? LvtActiveLow : 0) 
                 | (levelTriggered ? LvtLevelTrigger : 0);
@@ -325,16 +208,22 @@ namespace Npk
                 LogLevel::Verbose, inputNumber, activeLow ? "low" : "high", 
                 levelTriggered ? "level" : "edge");
         }
+
+        return true;
     }
 
     static void EnableLocalApic()
     {
         lapic->Write(LApicReg::SpuriousVector, LapicSpuriousVector | (1 << 8));
 
-        //https://github.com/projectacrn/acrn-hypervisor/blob/master/hypervisor/arch/x86/lapic.c#L65
-        //tl;dr: sometimes are pending interrupts left over from when the firmware or bootloader
-        //was using the hardware, so we acknowledge any pending interrupts now, so the
-        //kernel starts with a clean slate.
+        //https://github.com/projectacrn/acrn-hypervisor/blob/master/
+        //hypervisor/arch/x86/lapic.c#L65
+        //
+        //the issue here is sometimes there are pending interrupts from earlier
+        //in the system's life (e.g. when firmware was running or before a
+        //reset), so we keep signalling EOI until those are all handled,
+        //so the kernel begins with the assumed clean slate.
+
         for (size_t i = 8; i > 0; i--)
         {
             const LApicReg reg = static_cast<LApicReg>(
@@ -355,22 +244,28 @@ namespace Npk
             lapicMmioBase = virtBase;
             const size_t cpuCount = MySystemDomain().smpControls.Size();
             virtBase += PageSize() * cpuCount;
-            Log("Reserved address space for %zu LAPICs", LogLevel::Trace, cpuCount);
+            Log("Reserved address space for %zu LAPICs", LogLevel::Trace, 
+                cpuCount);
 
             lapic->mmio = lapicMmioBase;
             const Paddr mmioAddr = ReadMsr(Msr::ApicBase) & ~0xFFFul;
             SetKernelMap(lapic->mmio.BaseAddress(), mmioAddr, 
                 VmFlag::Write | VmFlag::Mmio);
-            Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
+            Log("LAPIC registers mapped at %p", LogLevel::Verbose,
+                lapic->mmio.BasePointer());
         }
 
         auto maybeMadt = GetAcpiTable(sl::SigMadt);
-        auto madt = maybeMadt.HasValue() ? static_cast<sl::Madt*>(*maybeMadt) : nullptr;
-        FinishLapicInit(madt);
+        NPK_CHECK(maybeMadt.HasValue() && *maybeMadt != nullptr, false);
+        auto madt = static_cast<sl::Madt*>(*maybeMadt);
+
+        if (!FinishLapicInit(madt))
+            return false;
 
         if (madt != nullptr && madt->flags.Has(sl::MadtFlag::PcAtCompat))
         {
-            //BSP should take care of initializing, remapping and masking the PICs.
+            //BSP takes responsiblity for masking and rebasing the PICs
+
             Out8(Port::Pic0Command, 0x11);
             Out8(Port::Pic1Command, 0x11);
             Out8(Port::Pic0Data, PicIrqBase);
@@ -381,10 +276,13 @@ namespace Npk
             Out8(Port::Pic1Data, 1);
             Out8(Port::Pic0Data, 0xFF);
             Out8(Port::Pic1Data, 0xFF);
+        
+            Log("Legacy PICs rebased and masked.", LogLevel::Verbose);
         }
 
         EnableLocalApic();
         Log("BSP local APIC initialized.", LogLevel::Verbose);
+
         return true;
     }
 
@@ -401,15 +299,21 @@ namespace Npk
             const Paddr mmioAddr = ReadMsr(Msr::ApicBase) & ~0xFFFul;
             SetKernelMap(lapic->mmio.BaseAddress(), mmioAddr,
                 VmFlag::Write | VmFlag::Mmio);
-            Log("LAPIC registers mapped at %p", LogLevel::Verbose, lapic->mmio.BasePointer());
+
+            Log("LAPIC registers mapped at %p", LogLevel::Verbose, 
+                lapic->mmio.BasePointer());
         }
 
         auto maybeMadt = GetAcpiTable(sl::SigMadt);
-        auto madt = maybeMadt.HasValue() ? static_cast<sl::Madt*>(*maybeMadt) : nullptr;
-        FinishLapicInit(madt);
+        NPK_CHECK(maybeMadt.HasValue() && *maybeMadt != nullptr, false);
+        auto madt = static_cast<sl::Madt*>(*maybeMadt);
+
+        if (!FinishLapicInit(madt))
+            return false;
 
         EnableLocalApic();
         Log("AP local APIC initialized.", LogLevel::Verbose);
+
         return true;
     }
 
@@ -428,53 +332,101 @@ namespace Npk
         return lapic->Read(LApicReg::Version) & 0xFF;
     }
 
-    static void ArmLapicTimer()
+    static LapicSample SampleLapicTimer()
     {
-        const uint64_t tscTicks = lapic->tscExpiry - ReadTsc();
-        const uint64_t lapicTicks = tscTicks * lapic->timerFreq / MyTscFrequency();
-        const uint32_t intrTicks = sl::Min<uint32_t>(0xFFFF'FFFF, lapicTicks);
+        const uint64_t t0 = ReadTsc();
+        const uint32_t count = lapic->Read(LApicReg::TimerCount);
+        const uint64_t t1 = ReadTsc();
 
-        lapic->Write(LApicReg::LvtTimer, LapicTimerVector);
-        lapic->Write(LApicReg::TimerInitCount, intrTicks);
+        LapicSample sample {};
+        sample.tsc = t0 + ((t1 - t0) / 2);
+        sample.count = count;
+        sample.accuracy = t1 - t0;
+
+        return sample;
     }
 
-    void ArmTscInterrupt(uint64_t expiry)
+    sl::TimeConversion CalibrateLapicTimer()
     {
-        const bool restoreIntrs = IntrsOff();
-        if (lapic->hasTscDeadline)
+        constexpr uint32_t BeginCount = 0xFFFF'FFFF;
+
+        const size_t runs = ReadConfigUint("npk.x86.lapic_calib_runs", 5);
+        const uint64_t sampleWindow = TscFrequency() 
+            / ReadConfigUint("npk.x86.lapic_calib_hz", 1000);
+
+        lapic->Write(LApicReg::TimerDivisor, TimerDivisor1);
+        lapic->Write(LApicReg::LvtTimer, LvtMasked | LapicSpuriousVector);
+
+        uint64_t accuracy = ~0ull;
+        uint64_t tscValue = 0;
+        uint64_t lapicValue = 0;
+
+        for (size_t i = 0; i < runs; i++)
         {
-            lapic->Write(LApicReg::LvtTimer, (0b10 << 17) | LapicTimerVector);
-            WriteMsr(Msr::TscDeadline, expiry);
+            lapic->Write(LApicReg::TimerInitCount, BeginCount);
+
+            const auto begin = SampleLapicTimer();
+            while (ReadTsc() - begin.tsc < sampleWindow)
+                sl::HintSpinloop();
+            const auto end = SampleLapicTimer();
+
+            lapic->Write(LApicReg::TimerInitCount, 0);
+            if (end.count == 0 || end.count >= begin.count)
+                continue;
+
+            const uint64_t bracket = begin.accuracy + end.accuracy;
+            if (bracket >= accuracy)
+                continue;
+
+            accuracy = bracket;
+            tscValue = end.tsc - begin.tsc;
+            lapicValue = begin.count - end.count;
+        }
+
+        NPK_ASSERT(tscValue != 0 && lapicValue != 0);
+
+        const auto lapicHz = lapicValue * TscFrequency() / tscValue;
+        const auto conv = sl::ConvertUnits(lapicHz, sl::UnitBase::Decimal);
+        Log("LAPIC timer is %zuHz (%zu.%zu %sHz), +/- %zuppm",
+            LogLevel::Info, lapicHz, conv.major, conv.minor, conv.prefix,
+            accuracy);
+
+        const auto ratio = sl::TimeConversion::Create(tscValue, lapicValue);
+
+        return ratio;
+    }
+
+    void SetupLapicTimer(bool useTscDeadline)
+    {
+        if (useTscDeadline)
+        {
+            lapic->Write(LApicReg::LvtTimer, LapicTimerVector | (1 << 18));
+            asm volatile("mfence" ::: "memory");
         }
         else
         {
-            lapic->tscExpiry = expiry;
-            ArmLapicTimer();
+            lapic->Write(LApicReg::TimerDivisor, TimerDivisor1);
+            lapic->Write(LApicReg::LvtTimer, LapicTimerVector);
         }
-
-        if (restoreIntrs)
-            IntrsOn();
     }
 
-    void HandleLapicTimerInterrupt()
+    void ArmLapicTimer(uint32_t ticks)
     {
-        if (lapic->hasTscDeadline)
-            return DispatchAlarm();
+        lapic->Write(LApicReg::TimerInitCount, ticks);
+    }
 
-        //we're emulating the tsc, check if we dispatch the alarm now
-        if (ReadTsc() >= lapic->tscExpiry)
-            return DispatchAlarm();
-
-        ArmLapicTimer();
+    void DisarmLapicTimer()
+    {
+        lapic->Write(LApicReg::TimerInitCount, 0);
     }
 
     void HandleLapicErrorInterrupt()
     {
         const uint32_t status = lapic->Read(LApicReg::ErrorStatus);
+        lapic->Write(LApicReg::ErrorStatus, 0);
 
         Log("Local APIC error: lapic-%u%s, status=0x%x", LogLevel::Error, 
             MyLapicId(), lapic->x2Mode ? ", x2-mode" : "", status);
-        lapic->Write(LApicReg::ErrorStatus, 0);
     }
 
     void SendIpi(uint32_t dest, IpiType type, uint8_t vector)

@@ -1,86 +1,111 @@
 #include <Core.hpp>
 #include <Vm.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
-#include <hardware/x86_64/Tsc.hpp>
 #include <hardware/x86_64/Msr.hpp>
+#include <hardware/x86_64/PvClock.hpp>
 #include <lib/Mmio.hpp>
 #include <lib/Memory.hpp>
 
 namespace Npk
 {
-    struct SL_PACKED(PvSystemTime
-    {
-        uint32_t version;
-        uint32_t reserved0;
-        uint64_t tscReference;
-        uint64_t systemTime;
-        uint32_t tscToSystemMul;
-        int8_t tscShift;
-        uint8_t flags;
-        uint8_t reserved1[2];
-    });
-
-    static PvSystemTime* systemTime;
+    static uintptr_t pvClockBase;
+    CPU_LOCAL(PvSystemTime*, localPvClock);
 
     bool TryInitPvClocks(uintptr_t& virtBase)
     {
-        const uint32_t EnableBit = 1 << 0;
-
+        if (ReadConfigUint("npk.x86.ignore_pv_clock", false))
+            return false;
         if (!CpuHasFeature(CpuFeature::PvClock))
             return false;
 
-        auto page = AllocPage(true);
-        NPK_CHECK(page != nullptr, false);
+        pvClockBase = virtBase;
 
-        const Paddr paddr = LookupPagePaddr(page);
-        if (SetKernelMap(virtBase, paddr, VmFlag::Mmio) != NpkStatus::Success)
+        auto flags = VmFlag::Mmio | VmFlag::Write;
+        for (size_t i = 0; i < MySystemDomain().smpControls.Size(); i++)
         {
-            FreePage(page);
-            return false;
+            auto page = AllocPage(true);
+            NPK_ASSERT(page != nullptr);
+            auto paddr = LookupPagePaddr(page);
+
+            auto result = SetKernelMap(virtBase, paddr, flags);
+            NPK_ASSERT(result == NpkStatus::Success);
+
+            sl::MmioRegister<Paddr> store = virtBase;
+            store.Write(paddr);
+
+            virtBase += PageSize();
         }
 
-        WriteMsr(Msr::PvSystemTime, paddr | EnableBit);
-        systemTime = reinterpret_cast<PvSystemTime*>(virtBase);
-        virtBase += PageSize();
+        Log("PvClock available, IO at 0x%tx", LogLevel::Info,
+            pvClockBase);
 
-        Log("PvClock enabled, io at 0x%tx", LogLevel::Info, paddr);
         return true;
     }
 
-    uint64_t ReadPvSystemTime()
+    bool LocalPvClockInit()
     {
-        if (systemTime == nullptr)
+        constexpr uint64_t EnableBit = 1 << 0;
+
+        if (!CpuHasFeature(CpuFeature::PvClock))
+            return false;
+        if (pvClockBase == 0)
+            return false;
+
+        const auto vaddr = pvClockBase + (MyRelativeCoreId() << PfnShift());
+        sl::MmioRegister<Paddr> store = vaddr;
+        const auto paddr = store.Read();
+        store.Write(0);
+
+        WriteMsr(Msr::PvSystemTime, paddr | EnableBit);
+        localPvClock = reinterpret_cast<PvSystemTime*>(vaddr);
+
+        return true;
+    }
+
+    bool PvClockAvailable()
+    {
+        return *localPvClock != nullptr;
+    }
+
+    uint32_t PvClockVersion()
+    {
+        sl::MmioRegister<uint32_t> reg = &(*localPvClock)->version;
+        const auto ver = reg.Read();
+
+        return ver;
+    }
+
+    PvSystemTime ReadPvClock()
+    {
+        return **localPvClock;
+    }
+
+    uint64_t PvClockFrequency(const PvSystemTime& clock)
+    {
+        if (clock.tscToSystemMul == 0)
             return 0;
 
-        PvSystemTime copy;
+        auto freq = static_cast<uint64_t>(sl::Nanos) << 32;
+        freq /= clock.tscToSystemMul;
 
-        sl::MmioRegister<decltype(PvSystemTime::version)> versionReg = 
-            &systemTime->version;
-
-        while (true)
-        {
-            uint32_t version;
-            while ((version = versionReg.Read()) & 0b1)
-                sl::HintSpinloop();
-
-            sl::MemCopy(&copy, systemTime, sizeof(copy));
-
-            const uint32_t endVersion = versionReg.Read();
-            if (version == endVersion)
-                break;
-        }
-        
-        //NOTE: __uint128_t is a gcc/clang compiler extension only present
-        //on some platforms. PvClock is only available on x86, so there are no
-        //portability concerns here.
-        __uint128_t time = ReadTsc() - copy.tscReference;
-        if (copy.tscShift < 0)
-            time >>= -copy.tscShift;
+        if (clock.tscShift < 0)
+            freq <<= -clock.tscShift;
         else
-            time <<= copy.tscShift;
-        time = (time * copy.tscToSystemMul) >> 32;
-        time += copy.systemTime;
+            freq >>= clock.tscShift;
 
-        return static_cast<uint64_t>(time);
+        return freq;
+    }
+
+    sl::Opt<uint64_t> PvClockTscFrequency()
+    {
+        if (!PvClockAvailable())
+            return {};
+
+        const PvSystemTime clock = ReadPvClock();
+        const uint64_t freq = PvClockFrequency(clock);
+        if (freq == 0)
+            return {};
+
+        return freq;
     }
 }

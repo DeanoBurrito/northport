@@ -450,7 +450,7 @@ R"(                                             888                      )"
         return **localSystemDomain;
     }
 
-    void BringCpuOnline(ThreadContext* idle)
+    void SetLocalSystemDomain()
     {
         localSystemDomain = &sysDomain0; //TODO: multi-domain
 
@@ -465,7 +465,10 @@ R"(                                             888                      )"
             Log("Ran %zu local constructor%s.", LogLevel::Verbose, ctorCount,
                 ctorCount == 1 ? "" : "s");
         }
+    }
 
+    void BringCpuOnline(ThreadContext* idle)
+    {
         Private::InitLocalScheduler(idle);
         Private::ResetCycleAccounts(CycleAccount::Kernel);
         SetCurrentThread(idle);
