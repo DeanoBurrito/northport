@@ -173,7 +173,7 @@ namespace Npk
         NPK_CHECK(refDelta != 0 && tscDelta != 0, {});
 
         const uint64_t freq = tscDelta * refTimer.frequency / refDelta;
-        const uint64_t bracketPpm = ((begin.accuracy - end.accuracy) / 2) 
+        const uint64_t bracketPpm = ((begin.accuracy + end.accuracy) / 2)
             * 1'000'000 / tscDelta;
         const uint64_t refPpm = 1'000'000 / refDelta;
 
@@ -331,9 +331,11 @@ namespace Npk
 
         const auto sampleNs = ReadConfigUint("npk.x86.tsc_verify_ns",
             2'000'000);
-        const auto measured = DoMeasureTsc(sampleNs);
-        NPK_CHECK(measured.valid, );
+        const auto targetPpm = ReadConfigUint("npk.x86.tsc_target_ppm", 20);
+        const auto runs = ReadConfigUint("npk.x86.tsc_verify_runs", 2);
+        const auto measured = MeasureTsc(sampleNs, targetPpm, runs);
 
+        NPK_CHECK(measured.valid, );
         const auto delta = CalcDeltaPpm(tscFreq, measured.frequency);
         NPK_ASSERT(delta + measured.errorPpm < 10'000);
 
