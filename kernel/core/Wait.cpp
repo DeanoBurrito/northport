@@ -183,7 +183,7 @@ namespace Npk
         auto blocked = WaitStage::Blocked;
         const auto desired = WaitStage::Cancelled;
 
-        if (!waiter.stage.CompareExchange(blocked, desired, sl::AcqRel))
+        if (!waiter.status.CompareExchange(blocked, desired, sl::AcqRel))
             return NpkStatus::NotAvailable;
 
         if (waiter.wakeDpc == nullptr)
@@ -213,10 +213,10 @@ namespace Npk
         NPK_ASSERT(thread != nullptr);
         auto& waiter = thread->waiting;
 
-        auto blocked = WaitStage::Blocked;
-        const auto desired = WaitStage::Timedout;
+        auto blocked = WaitStatus::Blocked;
+        const auto desired = WaitStatus::Timedout;
         
-        if (waiter.stage.CompareExchange(blocked, desired, sl::AcqRel))
+        if (waiter.status.CompareExchange(blocked, desired, sl::AcqRel))
             Private::WakeThread(thread);
     }
 
@@ -313,17 +313,17 @@ namespace Npk
         if (entries == nullptr && !what.Empty())
             return NpkStatus::InvalidArg;
 
-        auto WaitStageToStatus = [](WaitStage stage) -> NpkStatus
+        auto WaitStageToStatus = [](WaitStatus stage) -> NpkStatus
         {
             switch (stage)
             {
-            case WaitStage::Timedout:
+            case WaitStatus::Timedout:
                 return NpkStatus::Timeout;
-            case WaitStage::Reset:
+            case WaitStatus::Reset:
                 return NpkStatus::Reset;
-            case WaitStage::Cancelled:
+            case WaitStatus::Cancelled:
                 return NpkStatus::Aborted;
-            case WaitStage::Satisfied:
+            case WaitStatus::Satisfied:
                 return NpkStatus::Success;
             default:
                 return NpkStatus::InternalError;
@@ -334,7 +334,7 @@ namespace Npk
         thread->scheduling.wakePending.Store(false, sl::Release);
 
         auto& waiter = thread->waiting;
-        waiter.stage.Store(WaitStage::Blocked, sl::Release);
+        waiter.status.Store(WaitStatus::Blocked, sl::Release);
         waiter.lock.Lock();
         waiter.reason = reason;
         waiter.lock.Unlock();
@@ -357,7 +357,7 @@ namespace Npk
             //try an eager acquire of the waitable now.
             if (TryAcquireWaitable(entry, false))
             {
-                waiter.stage.Store(WaitStage::Satisfied, sl::Release);
+                waiter.status.Store(WaitStatus::Satisfied, sl::Release);
                 satisfied = true;
                 break;
             }
@@ -380,7 +380,7 @@ namespace Npk
 
                 if (what[i]->type == WaitableType::SxMutex && entry.isExclusive)
                     AdjustExclusiveCount(waitable, false);
-                waiter.stage.Store(WaitStage::Satisfied, sl::Release);
+                waiter.status.Store(WaitStatus::Satisfied, sl::Release);
                 satisfied = true;
 
                 break;
@@ -413,8 +413,8 @@ namespace Npk
         {
             RaiseIpl(Ipl::Dpc);
 
-            const auto armed = waiter.stage.Load(sl::Acquire);
-            if (armed != WaitStage::Blocked)
+            const auto armed = waiter.status.Load(sl::Acquire);
+            if (armed != WaitStatus::Blocked)
             {
                 result = WaitStageToStatus(armed);
                 LowerIpl(Ipl::Passive);
@@ -431,8 +431,8 @@ namespace Npk
                     RaiseIpl(Ipl::Dpc); //we're back! Let's see why we woke up.
                 }
 
-                const auto stage = waiter.stage.Load(sl::Acquire);
-                if (stage != WaitStage::Blocked)
+                const auto stage = waiter.status.Load(sl::Acquire);
+                if (stage != WaitStatus::Blocked)
                 {
                     result = WaitStageToStatus(stage);
                     break;
@@ -445,7 +445,7 @@ namespace Npk
                     if (!TryAcquireWaitable(entry, true))
                         continue;
 
-                    waiter.stage.Store(WaitStage::Satisfied, sl::Release);
+                    waiter.status.Store(WaitStatus::Satisfied, sl::Release);
 
                     what[i]->listLock.Lock();
                     if (entry.inList)
@@ -573,9 +573,9 @@ namespace Npk
             auto* entry = what->waitersList.PopFront();
             entry->inList = false;
 
-            auto& stage = entry->thread->waiting.stage;
-            auto blocked = WaitStage::Blocked;
-            auto desired = WaitStage::Reset;
+            auto& stage = entry->thread->waiting.status;
+            auto blocked = WaitStatus::Blocked;
+            auto desired = WaitStatus::Reset;
 
             if (stage.CompareExchange(blocked, desired, sl::AcqRel))
                 Private::WakeThread(entry->thread);
