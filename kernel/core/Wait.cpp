@@ -23,6 +23,7 @@ namespace Npk
     };
     static_assert(sizeof(SxMutexState) == sizeof(size_t));
 
+    CPU_LOCAL(sl::Atomic<bool>, static waitablesPending);
     CPU_LOCAL(WaitableMpScQueue, static pendingWaitables);
 
     CPU_LOCAL_CTOR(
@@ -51,10 +52,17 @@ namespace Npk
         }
     }
 
+    bool Private::HasPendingWaitables()
+    {
+        return waitablesPending->Load(sl::Acquire);
+    }
+
     //NOTE: called at Ipl::Dpc with interrupts enabled, when about to lower
     //to Ipl::Passive.
     void Private::SignalPendingWaitables()
     {
+        waitablesPending->Store(false, sl::Release);
+
         Waitable* pending = nullptr;
         while ((pending = pendingWaitables->Pop()) != nullptr)
         {
@@ -154,6 +162,7 @@ namespace Npk
         }
 
         pendingWaitables->Push(what);
+        waitablesPending->Store(true, sl::Release);
 
         //bump IPL to DPC and back if we need to, to trigger draing
         //the local pending queue of waitables.
@@ -171,25 +180,19 @@ namespace Npk
 
         auto& waiter = thread->waiting;
 
-        auto preparing = WaitStage::Preparing;
         auto blocked = WaitStage::Blocked;
         const auto desired = WaitStage::Cancelled;
 
-        if (waiter.stage.CompareExchange(preparing, desired, sl::AcqRel))
-            return NpkStatus::Success;
+        if (!waiter.stage.CompareExchange(blocked, desired, sl::AcqRel))
+            return NpkStatus::NotAvailable;
 
         if (waiter.wakeDpc == nullptr)
             return NpkStatus::InternalError;
-        if (waiter.stage.CompareExchange(blocked, desired, sl::AcqRel))
-        {
-            //QueueDpc() is the secret ingredient that makes calling CancelWait
-            //safe from any IPL.
-            QueueDpc(waiter.wakeDpc);
+        //QueueDpc() is the secret ingredient that makes calling CancelWait
+        //safe from any IPL.
+        QueueDpc(waiter.wakeDpc);
 
-            return NpkStatus::Success;
-        }
-
-        return NpkStatus::NotAvailable;
+        return NpkStatus::Success;
     }
 
     static void WakeThreadDpc(Dpc* self, void* arg)
@@ -210,13 +213,10 @@ namespace Npk
         NPK_ASSERT(thread != nullptr);
         auto& waiter = thread->waiting;
 
-        auto preparing = WaitStage::Preparing;
         auto blocked = WaitStage::Blocked;
         const auto desired = WaitStage::Timedout;
         
-        if (waiter.stage.CompareExchange(preparing, desired, sl::AcqRel))
-        {} //no-op, thread will see the new stage on it's own.
-        else if (waiter.stage.CompareExchange(blocked, desired, sl::AcqRel))
+        if (waiter.stage.CompareExchange(blocked, desired, sl::AcqRel))
             Private::WakeThread(thread);
     }
 
@@ -331,9 +331,10 @@ namespace Npk
         };
 
         auto* thread = GetCurrentThread();
-        auto& waiter = thread->waiting;
+        thread->scheduling.wakePending.Store(false, sl::Release);
 
-        waiter.stage.Store(WaitStage::Preparing, sl::Release);
+        auto& waiter = thread->waiting;
+        waiter.stage.Store(WaitStage::Blocked, sl::Release);
         waiter.lock.Lock();
         waiter.reason = reason;
         waiter.lock.Unlock();
@@ -412,22 +413,23 @@ namespace Npk
         {
             RaiseIpl(Ipl::Dpc);
 
-            auto expected = WaitStage::Preparing;
-            auto desired = WaitStage::Blocked;
-            if (!waiter.stage.CompareExchange(expected, desired, sl::AcqRel))
+            const auto armed = waiter.stage.Load(sl::Acquire);
+            if (armed != WaitStage::Blocked)
             {
-                //someone else moved us to a terminal wait stage, abort the
-                //wait and report that to the caller.
-                result = WaitStageToStatus(expected);
+                result = WaitStageToStatus(armed);
                 LowerIpl(Ipl::Passive);
+
                 break;
             }
 
-            Private::BeginWait({ entries, what.Size() });
+            bool shouldBlock = Private::BeginWait({ entries, what.Size() });
             while (true)
             {
-                LowerIpl(Ipl::Passive); //allow preemption to take place.
-                RaiseIpl(Ipl::Dpc); //we're back! Let's see why we woke up.
+                if (shouldBlock)
+                {
+                    LowerIpl(Ipl::Passive); //allow preemption to take place.
+                    RaiseIpl(Ipl::Dpc); //we're back! Let's see why we woke up.
+                }
 
                 const auto stage = waiter.stage.Load(sl::Acquire);
                 if (stage != WaitStage::Blocked)
@@ -464,7 +466,7 @@ namespace Npk
                     break;
 
                 //re-arm for another sleep
-                Private::BeginWait({ entries, what.Size() });
+                shouldBlock = Private::BeginWait({ entries, what.Size() });
             }
 
             Private::EndWait();
@@ -572,13 +574,10 @@ namespace Npk
             entry->inList = false;
 
             auto& stage = entry->thread->waiting.stage;
-            auto preparing = WaitStage::Preparing;
             auto blocked = WaitStage::Blocked;
             auto desired = WaitStage::Reset;
 
-            if (stage.CompareExchange(preparing, desired, sl::AcqRel))
-            {} //no-op, thread will detect the new state and error out
-            else if (stage.CompareExchange(blocked, desired, sl::AcqRel))
+            if (stage.CompareExchange(blocked, desired, sl::AcqRel))
                 Private::WakeThread(entry->thread);
         }
 

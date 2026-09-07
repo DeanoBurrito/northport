@@ -14,10 +14,14 @@ namespace Npk::Private
     void InitLocalWorker();
 
     void SignalPendingWaitables();
+    bool HasPendingWaitables();
     void CheckPendingContextSwitch();
     bool AlarmIplHasPendingWork();
     void OnAlarmIpl();
-    void BeginWait(sl::Span<WaitEntry> waitingOn);
+
+    //returns whether scheduler accepted beginning a wait. If false means
+    //the caller (wait subsystem) should re-check its state.
+    bool BeginWait(sl::Span<WaitEntry> waitingOn);
     void EndWait();
     void WakeThread(ThreadContext* thread);
 

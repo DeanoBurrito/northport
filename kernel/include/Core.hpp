@@ -495,9 +495,8 @@ namespace Npk
 
     using ClockStats = sl::Stats<ClockStat, (size_t)ClockStat::Count>;
 
-    enum class WaitStage : uint8_t
+    enum class WaitStatus : uint8_t
     {
-        Preparing,
         Blocked,
         Satisfied,
         Timedout,
@@ -749,7 +748,7 @@ namespace Npk
 
         struct
         {
-            sl::Atomic<WaitStage> stage;
+            sl::Atomic<WaitStatus> status;
             Dpc* wakeDpc;
             IplSpinLock<Ipl::Dpc> lock;
             sl::StringSpan reason;
