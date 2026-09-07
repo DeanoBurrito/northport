@@ -333,6 +333,13 @@ namespace Npk
         return newPriority > activePriority;
     }
 
+    static void NotifyScheduler(LocalScheduler& sched, CpuId who)
+    {
+        sched.switchPending.Store(true, sl::Release);
+        if (who != MyCoreId())
+            HwSendIpi(who);
+    }
+
     //NOTE: expects thread->scheduling.lock to be held!
     static CpuId SelectScheduler(ThreadContext* context)
     {
@@ -449,6 +456,8 @@ namespace Npk
         localSched->status.Store(status, sl::Release);
 
         prev->scheduling.agingBoost = false;
+        CpuId nudgeTarget = NoAffinity;
+
         switch (prev->scheduling.state)
         {
         case ThreadState::WaitPending:
@@ -464,13 +473,18 @@ namespace Npk
                 break; //idle thread shouldn't go back in a queue
 
             prev->scheduling.state = ThreadState::Ready;
-            auto& targetSched = RemoteSched(prev->scheduling.affinity);
 
-            sl::ScopedLock scopeLock(targetSched.queuesLock);
-            PushThread(targetSched, prev);
+            const auto affinity = prev->scheduling.affinity;
+            auto& targetSched = RemoteSched(affinity);
 
-            if (!prev->scheduling.isPinned)
-                targetSched.stealableLoad++;
+            {
+                sl::ScopedLock scopeLock(targetSched.queuesLock);
+                PushThread(targetSched, prev);
+            }
+
+            if (affinity != MyCoreId() || current == localSched->idle)
+                nudgeTarget = affinity;
+
             break;
         }
 
@@ -504,14 +518,19 @@ namespace Npk
         }
         (void)prev;
 
-        const auto priority = EffectivePriority(current);
-        if (priority >= MinTsPriority && priority <= MaxTsPriority)
-            ArmQuantumEvent(*localSched, current);
+        if (nudgeTarget != NoAffinity)
+            NotifyScheduler(RemoteSched(nudgeTarget), nudgeTarget);
+
+        ArmQuantumEvent(*localSched, current);
+
+        auto& dom = MySystemDomain();
+        const size_t who = MyRelativeCoreId();
+        const size_t observed = ObserveEpoch(dom.rcu);
 
         LowerIpl(Ipl::Passive);
 
         auto& dom = MySystemDomain();
-        NudgeEpoch(dom.rcu, MyCoreId() - dom.smpBase);
+        NudgeEpoch(dom.rcu, who, observed);
     }
 
     NpkStatus ResetThread(ThreadContext* thread)
@@ -527,6 +546,7 @@ namespace Npk
             data.lock.Unlock();
 
             return NpkStatus::InvalidArg;
+        }
 
         if (!data.heldLocks.Empty() || !data.waitingOn.Empty())
         {
@@ -725,14 +745,17 @@ namespace Npk
             sched.quantumEventArmed.Store(false, sl::Release);
         }
 
-        auto next = sched.nextThread.Exchange(nullptr, sl::Acquire);
-        if (next == nullptr)
+        ThreadContext* next = nullptr;
         {
             sl::ScopedLock qlock(sched.queuesLock);
             next = PopThread(sched);
         }
-        if (next == nullptr)
-            next = TryStealThread(sched);
+
+        if (next == nullptr && TryStealThread(sched))
+        {
+            sl::ScopedLock qlock(sched.queuesLock);
+            next = PopThread(sched);
+        }
         if (next == nullptr)
             next = sched.idle;
 
@@ -783,28 +806,15 @@ namespace Npk
         data.state = ThreadState::Ready;
 
         auto& sched = RemoteSched(affinity);
-        if (WouldPreemptOn(thread, sched))
-        {
-            sched.queuesLock.Lock();
-            sched.totalLoad++;
-            sched.queuesLock.Unlock();
 
-            scopeLock.Release();
-            SetNextThread(sched, thread);
+        sched.queuesLock.Lock();
+        PushThread(sched, thread);
+        sched.totalLoad++;
+        sched.queuesLock.Unlock();
 
-            sched.switchPending.Store(true, sl::Release);
-            if (affinity != MyCoreId())
-                NudgeCpu(affinity);
-        }
-        else
-        {
-            sl::ScopedLock qlock(sched.queuesLock);
-            PushThread(sched, thread);
+        scopeLock.Release();
 
-            sched.totalLoad++;
-            if (!data.isPinned)
-                sched.stealableLoad++;
-        }
+        NotifyScheduler(sched, affinity);
     }
 
     void SetThreadNiceness(ThreadContext* thread, uint8_t value)
@@ -840,6 +850,12 @@ namespace Npk
             const auto oldAffinity = thread->scheduling.affinity;
 
             oldSched.queuesLock.Lock();
+            if (!thread->scheduling.inRunQueue)
+            {
+                oldSched.queuesLock.Unlock();
+
+                break;
+            }
             RemoveThread(oldSched, thread, oldEffective);
             oldSched.queuesLock.Unlock();
 
@@ -861,8 +877,6 @@ namespace Npk
 
                 oldSched.queuesLock.Lock();
                 oldSched.totalLoad--;
-                if (!thread->scheduling.isPinned)
-                    oldSched.stealableLoad--;
                 oldSched.queuesLock.Unlock();
 
                 thread->scheduling.affinity = targetCpu;
@@ -872,16 +886,9 @@ namespace Npk
                 targetSched.queuesLock.Lock();
                 PushThread(targetSched, thread);
                 targetSched.totalLoad++;
-                if (!thread->scheduling.isPinned)
-                    targetSched.stealableLoad++;
                 targetSched.queuesLock.Unlock();
 
-                if (WouldPreemptOn(thread, targetSched))
-                {
-                    targetSched.switchPending.Store(true, sl::Release);
-                    if (targetCpu != MyCoreId())
-                        NudgeCpu(targetCpu);
-                }
+                NotifyScheduler(targetSched, targetCpu);
             }
             break;
         }
@@ -896,10 +903,8 @@ namespace Npk
 
             status.activePriority = newEffective;
             sched.status.Store(status, sl::Release);
-            sched.switchPending.Store(true, sl::Release);
 
-            if (thread->scheduling.affinity != MyCoreId())
-                NudgeCpu(thread->scheduling.affinity);
+            NotifyScheduler(sched, thread->scheduling.affinity);
             break;
         }
 
@@ -920,10 +925,6 @@ namespace Npk
             return;
 
         const auto oldAffinity = data.affinity;
-        const auto wasPinned = data.isPinned;
-
-        data.affinity = who;
-        data.isPinned = true;
 
         switch (data.state)
         {
@@ -934,37 +935,44 @@ namespace Npk
             auto& newSched = RemoteSched(who);
 
             oldSched.queuesLock.Lock();
+            if (!thread->scheduling.inRunQueue)
+            {
+                oldSched.queuesLock.Unlock();
+
+                data.affinity = who;
+                data.isPinned = true;
+
+                NotifyScheduler(oldSched, oldAffinity);
+                break;
+            }
             RemoveThread(oldSched, thread, oldEffective);
             oldSched.totalLoad--;
-            if (!wasPinned)
-                oldSched.stealableLoad--;
             oldSched.queuesLock.Unlock();
+
+            data.affinity = who;
+            data.isPinned = true;
 
             newSched.queuesLock.Lock();
             PushThread(newSched, thread);
             newSched.totalLoad++;
             newSched.queuesLock.Unlock();
 
-            if (WouldPreemptOn(thread, newSched))
-            {
-                newSched.switchPending.Store(true, sl::Release);
-                if (who != MyCoreId())
-                    NudgeCpu(who);
-            }
+            NotifyScheduler(newSched, who);
             break;
         }
 
         case ThreadState::Executing:
         {
-            auto& sched = RemoteSched(oldAffinity);
+            data.affinity = who;
+            data.isPinned = true;
 
-            sched.switchPending.Store(true, sl::Release);
-            if (oldAffinity != MyCoreId())
-                NudgeCpu(oldAffinity);
+            NotifyScheduler(RemoteSched(oldAffinity), oldAffinity);
             break;
         }
 
         default:
+            data.affinity = who;
+            data.isPinned = true;
             break;
         }
     }
@@ -993,16 +1001,28 @@ namespace Npk
 
         if (!data.isPinned)
             return;
-        data.isPinned = false;
 
         if (data.state != ThreadState::Ready)
+        {
+            data.isPinned = false;
+
             return;
+        }
 
         auto& sched = RemoteSched(data.affinity);
+        const auto priority = EffectivePriority(thread);
 
-        sched.queuesLock.Lock();
-        sched.stealableLoad++;
-        sched.queuesLock.Unlock();
+        sl::ScopedLock qlock(sched.queuesLock);
+        if (!data.inRunQueue)
+        {
+            data.isPinned = false;
+
+            return;
+        }
+
+        RemoveThread(sched, thread, priority);
+        data.isPinned = false;
+        PushThread(sched, thread);
     }
 
     sl::Opt<uint8_t> GetThreadNiceness(ThreadContext* thread)
@@ -1176,7 +1196,7 @@ namespace Npk
         }
     }
 
-    void Private::BeginWait(sl::Span<WaitEntry> waitingOn)
+    bool Private::BeginWait(sl::Span<WaitEntry> waitingOn)
     {
         AssertIpl(Ipl::Dpc);
 
@@ -1186,6 +1206,14 @@ namespace Npk
             NPK_ASSERT(!"Idle thread cannot block");
 
         thread->scheduling.lock.Lock();
+
+        if (thread->scheduling.wakePending.Exchange(false, sl::Acquire))
+        {
+            thread->scheduling.lock.Unlock();
+
+            return false;
+        }
+
         thread->scheduling.state = ThreadState::WaitPending;
         thread->scheduling.waitingOn = waitingOn;
         thread->scheduling.sleepBegin = GetMonotonicTime();
@@ -1204,6 +1232,8 @@ namespace Npk
         }
 
         localSched->switchPending.Store(true, sl::Release);
+
+        return true;
     }
 
     void Private::EndWait()
@@ -1231,6 +1261,7 @@ namespace Npk
         if (state != ThreadState::Waiting && state != ThreadState::WaitPending)
         {
             //someone else woke the thread first.
+            thread->scheduling.wakePending.Store(true, sl::Release);
             thread->scheduling.lock.Unlock();
 
             return;

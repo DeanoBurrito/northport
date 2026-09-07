@@ -741,6 +741,8 @@ namespace Npk
             PowerHint powerHint;
             bool agingBoost; //TODO: implement
             bool inRunQueue;
+            sl::Atomic<bool> wakePending;
+
             sl::Span<WaitEntry> waitingOn;
             WaitableOwnerList heldLocks;
         } scheduling;
