@@ -56,21 +56,21 @@ namespace sl
             EndWrite();
         }
 
-        void Add(Selector what, size_t count)
+        void Add(Selector what, CountType count)
         {
             BeginWrite();
             values[static_cast<size_t>(what)] += count;
             EndWrite();
         }
 
-        void Sub(Selector what, size_t count)
+        void Sub(Selector what, CountType count)
         {
             BeginWrite();
             values[static_cast<size_t>(what)] -= count;
             EndWrite();
         }
 
-        void Set(Selector what, size_t value)
+        void Set(Selector what, CountType value)
         {
             BeginWrite();
             values[static_cast<size_t>(what)] = value;
