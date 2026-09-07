@@ -150,6 +150,7 @@ namespace Npk
     NpkStatus TryEnableEfiRuntimeServices(const Loader::EfiDetails& details, 
         uintptr_t& virtBase);
     void InitPageAccessCache(size_t entries, uintptr_t slots);
+    void SetLocalSystemDomain();
 
     void HwSetMyLocals(uintptr_t where, CpuId softwareId);
     void HwInitEarly();

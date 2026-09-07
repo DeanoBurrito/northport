@@ -3,7 +3,6 @@
 
 namespace Npk
 {
-    constexpr sl::TimeCount IpiDebounceTime = 1_ms;
     constexpr sl::TimeCount FreezePingTime = 10_ms;
     constexpr CpuId FreezeTargetAll = static_cast<CpuId>(-1);
 
@@ -77,7 +76,6 @@ namespace Npk
             NotifyCompletion(target);
         }
 
-        control->status.lastIpi.Store({}, sl::Release);
         Private::ArmPendingRcuQuiesce();
     }
 
@@ -111,23 +109,7 @@ namespace Npk
         NPK_CHECK(control != nullptr, );
 
         control->mail.Push(mail);
-        NudgeCpu(who);
-    }
-
-    void NudgeCpu(CpuId who)
-    {
-        auto control = GetControl(who);
-        NPK_CHECK(control != nullptr, );
-
-        const auto lastIpi = control->status.lastIpi.Load(sl::Relaxed);
-        auto nextIpi = IpiDebounceTime.Rebase(lastIpi.Frequency).ticks + lastIpi.epoch;
-        if (nextIpi > GetMonotonicTime().epoch)
-            return;
-
-        sl::TimePoint expected { lastIpi };
-        sl::TimePoint desired { GetMonotonicTime().epoch + IpiDebounceTime.ticks };
-        if (control->status.lastIpi.CompareExchange(expected, desired, sl::Acquire))
-            HwSendIpi(who);
+        HwSendIpi(who);
     }
 
     size_t FreezeAllCpus(bool allowDefer)

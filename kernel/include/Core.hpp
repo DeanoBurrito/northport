@@ -604,7 +604,6 @@ namespace Npk
 
     struct RemoteCpuStatus
     {
-        sl::Atomic<sl::TimePoint> lastIpi;
         LocalScheduler* scheduler;
         WorkItemQueue workItems;
         Condition workItemsPending;
@@ -1088,12 +1087,6 @@ namespace Npk
      * consider using a work item.
      */
     void SendMail(CpuId who, SmpMail* mail);
-
-    /* Send an IPI to a remote cpu with no further instructions.
-     * This is useful as a building block of other operations, as it forces
-     * the remote cpu to run through an interrupt entry and exit cycle.
-     */
-    void NudgeCpu(CpuId who);
 
     /* Attempts to freeze all other cpus in the system. Upon success it will
      * returns the number of frozen cpus +1 (read: total number of cpus in the
