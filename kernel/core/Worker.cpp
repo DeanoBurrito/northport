@@ -97,7 +97,7 @@ namespace Npk
 
         const auto entry = reinterpret_cast<uintptr_t>(WorkItemThreadEntry);
         const uintptr_t arg = reinterpret_cast<uintptr_t>(status);
-        const auto stack = reinterpret_cast<uintptr_t>(WorkItemThreadEntry);
+        const auto stack = reinterpret_cast<uintptr_t>(stackPtr);
 
         ResetThread(&primaryWorker);
         result = PrepareThread(&primaryWorker, entry, arg, stack, MyCoreId());
