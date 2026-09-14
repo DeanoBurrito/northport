@@ -121,6 +121,7 @@ namespace Npk
         uintptr_t dmBase;
         size_t pmaCount;
         uintptr_t pmaSlots;
+        uintptr_t pmaBase;
 
         uintptr_t vmAllocHead;
         Paddr pmAllocHead;
@@ -128,33 +129,34 @@ namespace Npk
         size_t usedPages;
 
         sl::StringSpan mappedCmdLine;
+        void* bspTempMapToken;
 
         char* VmAlloc(size_t length);
         char* VmAllocAnon(size_t length);
         Paddr PmAlloc();
     };
 
-    struct PerCpuData
+    struct PerCpuConfig
     {
         uintptr_t localsBase;
         uintptr_t apStacksBase;
+        uintptr_t tempSlotsBase;
         size_t localsStride;
         size_t stackStride;
+        size_t tempSlotsCount;
     };
 
     [[noreturn]]
     void EarlyPanic(sl::StringSpan why);
 
     void SetConfigRoot(const Loader::LoadState& loaderState);
-    void TryMapAcpiTables(uintptr_t& virtBase);
+    NpkStatus TryMapAcpiTables(uintptr_t& virtBase);
     NpkStatus TryEnableEfiRuntimeServices(const Loader::EfiDetails& details, 
         uintptr_t& virtBase);
-    void InitPageAccessCache(size_t entries, uintptr_t slots);
-    void SetLocalSystemDomain();
 
     void HwSetMyLocals(uintptr_t where, CpuId softwareId);
     void HwInitEarly();
-    uintptr_t HwInitBspMmu(InitState& state, size_t tempMapCount);
+    uintptr_t HwInitBspMmu(InitState& state);
     void HwEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr, 
         MmuPermissions perms, MmuCacheMode cacheMode);
 
@@ -173,13 +175,36 @@ namespace Npk
      * beyond this point.
      */
     void HwCompleteBspMmuInit();
-
+    
     /* Returns the maximum number of available CPUs (including the BSP) in the
      * system. The kernel has its own address map active at this point so
      * the page access cache and direct map (if present) are accessible at this
      * stage.
      */
     size_t HwGetCpuCount();
+
+    /* Returns the granularity the hardware layer requires for the temp mapping
+     * window: how many slots it will round to, and what the window's base must
+     * be aligned to. On page-table based architectures this is often the PTE
+     * count of a last level page table.
+     */
+    size_t HwTempMapGranularity();
+
+    /* Prepares a region of the kernel address for use as temporary mapping
+     * space. The `base` is in virtual address space, and `slots` counts the
+     * number of temp mapping slots (read: pages). Both must be aligned to
+     * `HwTempMapGranularity()`.
+     * The `state` provides the early allocators if this function is being
+     * called before the kernel address space is active, and is otherwise null
+     * meaning regular memory management functions are available. The `token`
+     * argument is used to return data required to managed the temporary map
+     * slots by the hardware layer, and should be passed to `HwSetTempMap()`
+     * later on.
+     */
+    NpkStatus HwMakeTempMapSpace(void** token, InitState* state, uintptr_t base,
+        size_t slots);
+
+    NpkStatus HwSetTempMap(void* token, uintptr_t base, size_t slots);
 
     /* Hook for hardware layer init, called after per-cpu stores are allocated
      * but before APs are booted. This runs with the kernel runtime address map
@@ -196,7 +221,14 @@ namespace Npk
      *
      * This function returns the number of APs it booted.
      */
-    size_t HwBootAps(uintptr_t& virtBase, PerCpuData data);
+    size_t HwBootAps(uintptr_t& virtBase, PerCpuConfig data);
+
+    /* Upcall from hardware code, should be called as early as possible as it
+     * enables the cpu to access local (as in per-cpu) kernel facilities such
+     * as the page access mechanism.
+     */
+    void InitLocalState(void* hwToken, uintptr_t slotsBase, size_t slotsCount,
+        uintptr_t tempMapBase);
 
     /* Companion function to `HwBootAps()`: this function allows booted APs to
      * access shared data and continue on (and finish) their init.
@@ -209,6 +241,12 @@ namespace Npk
     void HwLateInit();
     
     NpkStatus LoadInitProgram();
+
+    /* Upcall from hardware layer, enters the current thread into the idle
+     * loop, never returns.
+     */
+    [[noreturn]]
+    void EnterIdleLoop();
 }
 
 /* These link to variables provided by a file that the build system

@@ -1366,7 +1366,10 @@ namespace Npk
      * `paddr` field contains the same value as the `paddr` argument.
      *
      * The mapping only exists until the nearest page boundary either side of
-     * `paddr` and until the returned struct has its destructor called.
+     * `paddr` and until the returned struct has its destructor called. The
+     * mapping is local to this cpu, and therefore callers should ensure it is
+     * accessed only on the core it was minted on. This function must also be
+     * called at DPC IPL, which causes preemption to be disabled.
      *
      * Note that this mechanism is only intended for general purpose memory
      * types (e.g. firmware or system provided data). It's not safe to use this
@@ -1377,6 +1380,8 @@ namespace Npk
 
     /* Manually call the destructor for a page access struct. After calling
      * this function `*ref` is considered invalid and should not be used.
+     * 
+     * Must be called at DPC IPL.
      */
     void DestroyPageAccess(PageAccessRef* ref);
 

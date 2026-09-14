@@ -59,9 +59,6 @@ namespace Npk
     Paddr kernelRoot;
     Paddr apBootPage;
 
-    static uintptr_t tempMapBase;
-    static sl::Span<uint64_t> tempMapAccess;
-
     static Paddr poisonPage = 0;
     static Paddr poisonTables[5];
 
@@ -325,6 +322,8 @@ namespace Npk
         NPK_UNREACHABLE();
     }
 
+    //maps vaddr to paddr with perms + caching mode, returns the paddr of the
+    //final level table.
     static Paddr DoEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr,
         MmuPermissions perms, MmuCacheMode cacheMode)
     {
@@ -360,7 +359,7 @@ namespace Npk
         return reinterpret_cast<uintptr_t>(pt) - state.dmBase;
     }
 
-    uintptr_t HwInitBspMmu(InitState& state, size_t tempMapCount)
+    uintptr_t HwInitBspMmu(InitState& state)
     {
         ptLevels = 4;
 
@@ -439,28 +438,6 @@ namespace Npk
         Log("AP boot blob @ 0x%tx", LogLevel::Verbose, apBootPage);
 
         state.vmAllocHead = -(1ull << (9 * ptLevels + 11));
-
-        tempMapBase = state.vmAllocHead;
-        tempMapCount = sl::AlignUp(tempMapCount, PtEntries);
-        state.vmAllocHead += tempMapCount << PfnShift();
-        tempMapAccess = { reinterpret_cast<uint64_t*>(state.vmAllocHead),
-            tempMapCount };
-
-        for (size_t i = 0; i < tempMapCount; i++)
-        {
-            const Paddr pt = DoEarlyMap(state, 0,
-                tempMapBase + (i << PfnShift()), MmuPermission::Write, {});
-
-            if ((i & (PtEntries - 1)) == 0)
-            {
-                HwEarlyMap(state, pt, state.vmAllocHead, MmuPermission::Write,
-                    {});
-                state.vmAllocHead += PageSize();
-            }
-        }
-        Log("Temp mappings prepared: 0x%tx (access @ %p, %zu)", LogLevel::Info,
-            tempMapBase, tempMapAccess.Begin(), tempMapAccess.Size());
-
         sysDomain0.kernelMap = HwCreateKernelMap(state, kernelRoot);
 
         return state.vmAllocHead;
@@ -469,6 +446,79 @@ namespace Npk
     void HwCompleteBspMmuInit()
     {
         WRITE_CR(3, kernelRoot);
+    }
+
+    size_t HwTempMapGranularity()
+    {
+        return PtEntries;
+    }
+
+    NpkStatus HwMakeTempMapSpace(void** token, InitState* state, uintptr_t base,
+        size_t slots)
+    {
+        const size_t granuleSize = PtEntries << PfnShift();
+        NPK_CHECK((base & (granuleSize - 1)) == 0, NpkStatus::InvalidArg);
+        NPK_CHECK((slots & (PtEntries - 1)) == 0, NpkStatus::InvalidArg);
+
+        if (state != nullptr)
+        {
+            const auto perms = MmuPermission::Write;
+            const auto mode = MmuCacheMode::Default;
+
+            uintptr_t manageVaddr = state->vmAllocHead;
+
+            for (size_t i = 0; i < slots; i++)
+            {
+                const auto vaddr = base + (i << PfnShift());
+                const auto pt = DoEarlyMap(*state, 0, vaddr, perms, mode);
+
+                if ((i & (PtEntries - 1)) == 0)
+                {
+                    //first slot in a new PT, map the table
+                    HwEarlyMap(*state, pt, state->vmAllocHead, perms, mode);
+                    state->vmAllocHead += PageSize();
+                }
+            }
+
+            *token = reinterpret_cast<void*>(manageVaddr);
+        }
+        else
+        {
+            NPK_UNREACHABLE(); //TODO: implement this!
+        }
+
+        Log("Temp mapping window prepared: 0x%tx-0x%tx (%zu slots)",
+            LogLevel::Verbose, base, base + (slots << PfnShift()), slots);
+
+        return NpkStatus::Success;
+    }
+
+    CPU_LOCAL(uintptr_t, static tempMapBase);
+    CPU_LOCAL(sl::Span<uint64_t>, static tempMapControl);
+
+    NpkStatus HwSetTempMap(void* token, uintptr_t base, size_t slots)
+    {
+        if (*tempMapBase != 0 || !tempMapControl->Empty())
+            return NpkStatus::NotAvailable;
+
+        tempMapBase = base;
+        tempMapControl = { static_cast<uint64_t*>(token), slots };
+
+        return NpkStatus::Success;
+    }
+
+    void* HwSetTempMapSlot(size_t index, Paddr paddr)
+    {
+        if (index >= tempMapControl->Size())
+            return nullptr;
+
+        const auto vaddr = *tempMapBase + (index << PfnShift());
+        const auto pte = (paddr & addrMask) | PresentBit | WriteBit;
+
+        COPY_PTE(&(*tempMapControl)[index], &pte);
+        INVLPG(vaddr);
+
+        return reinterpret_cast<void*>(vaddr);
     }
 
     void HwEarlyMap(InitState& state, Paddr paddr, uintptr_t vaddr,
@@ -565,20 +615,6 @@ namespace Npk
             SplicePoisonTable(state, poisonTables[level - 1], vaddr, level);
             vaddr += TableSpan(level);
         }
-    }
-
-    void* HwSetTempMapSlot(size_t index, Paddr paddr)
-    {
-        if (index >= tempMapAccess.Size())
-            return nullptr;
-
-        const uintptr_t vaddr = (index << PfnShift()) + tempMapBase;
-        const uint64_t pte = (paddr & addrMask) | PresentBit | WriteBit;
-
-        COPY_PTE(&tempMapAccess[index], &pte);
-        INVLPG(vaddr);
-
-        return reinterpret_cast<void*>(vaddr);
     }
 
     HwAddressRange HwGetUserAddressRange()

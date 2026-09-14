@@ -179,7 +179,7 @@ namespace Npk
                 if (base > prevDbTop)
                 {
                     Log("Poisoned region: 0x%tx-0x%tx",
-                        LogLevel::Info, prevDbTop, base - prevDbTop);
+                        LogLevel::Info, prevDbTop, base);
                     HwEarlyMapPoison(init, poison, dbOffset + prevDbTop,
                         base - prevDbTop);
                 }
@@ -209,10 +209,20 @@ namespace Npk
                 pfndbSize - prevDbTop);
         }
 
-        //3. Setup PMA (physical memory access)/temp mappings
+        //3. Setup PMA (physical memory access)/temp mappings for the bsp.
         size_t pmaSlotsSize = init.pmaCount * sizeof(PageAccessCache::Slot);
         auto pmaSlots = init.VmAllocAnon(pmaSlotsSize);
         init.pmaSlots = reinterpret_cast<uintptr_t>(pmaSlots);
+
+        const size_t granule = HwTempMapGranularity() << PfnShift();
+        init.vmAllocHead = sl::AlignUp(init.vmAllocHead, granule);
+
+        auto pmaWindow = init.VmAlloc(init.pmaCount << PfnShift());
+        init.pmaBase = reinterpret_cast<uintptr_t>(pmaWindow);
+
+        auto result = HwMakeTempMapSpace(&init.bspTempMapToken, &init,
+            init.pmaBase, init.pmaCount);
+        NPK_ASSERT(result == NpkStatus::Success);
 
         //4. Init list of free pages
         const size_t startIndex = init.pmAllocIndex;
@@ -311,37 +321,40 @@ namespace Npk
             usedConv.major, usedConv.minor, usedConv.prefix);
     }
 
-    static PerCpuData InitPerCpuData(uintptr_t& virtBase)
+    static PerCpuConfig InitPerCpuData(uintptr_t& virtBase)
     {
         const size_t cpus = HwGetCpuCount();
         Log("Setting up control structures for %zu cpu%s.", LogLevel::Info,
             cpus, cpus != 1 ? "s" : "");
 
-        //0. allocate and map stacks for AP idle threads
+        //0. Allocate and map stacks for AP idle threads
         //We dont allocate a stack for the BSP since we're already using it,
         //as its part of the kernel image.
         const size_t stackStride = KernelStackSize() + PageSize();
         virtBase += PageSize(); //guard page before the first stack
         const uintptr_t stacksBase = virtBase;
 
+        const auto prevIpl = RaiseIpl(Ipl::Dpc);
         for (size_t i = 0; i < cpus - 1; i++)
         {
             for (size_t p = 0; p < KernelStackPages(); p++)
             {
-                auto page = AllocPage(false);
+                auto page = AllocPage(true);
+                NPK_ASSERT(page != nullptr);
                 auto paddr = LookupPagePaddr(page);
-                SetKernelMap(virtBase, paddr, VmFlag::Write);
 
-                virtBase += PageSize();
+                auto result = SetKernelMap(virtBase + (p << PfnShift()), paddr,
+                    VmFlag::Write);
+                NPK_ASSERT(result == NpkStatus::Success);
             }
 
-            virtBase += PageSize();
+            virtBase += stackStride;
         }
 
         Log("Idle stacks mapped: 0x%zx B each", LogLevel::Info,
             KernelStackSize());
 
-        //1. allocate space for AP cpu-local storage
+        //1. Allocate space for AP cpu-local storage
         //The BSP doesn;t need local storage allocated for it, since it
         //uses the original storage thats part of the kernel image.
         const auto localsBegin = (uintptr_t)KERNEL_CPULOCALS_BEGIN;
@@ -353,14 +366,13 @@ namespace Npk
 
         for (size_t i = 0; i < localsSize; i += PageSize())
         {
-            auto page = AllocPage(false);
-
-            auto access = AccessPage(page);
-            NPK_ASSERT(access.Valid());
-            sl::MemSet(access.vaddr, 0, PageSize());
+            auto page = AllocPage(true);
+            NPK_ASSERT(page != nullptr);
 
             auto paddr = LookupPagePaddr(page);
-            SetKernelMap(virtBase, paddr, VmFlag::Write);
+            auto result = SetKernelMap(virtBase, paddr, VmFlag::Write);
+            NPK_ASSERT(result == NpkStatus::Success);
+
             virtBase += PageSize();
         }
 
@@ -368,20 +380,19 @@ namespace Npk
         Log("Per-cpu stores mapped: %zu.%zu %sB each", LogLevel::Info,
             conv.major, conv.minor, conv.prefix);
 
-        //2. allocate space for smp control blocks
+        //2. Allocate inter-cpu control blocks
         const size_t controlsSize = sizeof(SmpControl) * cpus;
         const uintptr_t controlsBase = virtBase;
 
         for (size_t i = 0; i < controlsSize; i += PageSize())
         {
-            auto page = AllocPage(false);
-
-            auto access = AccessPage(page);
-            NPK_ASSERT(access.Valid());
-            sl::MemSet(access.vaddr, 0, PageSize());
+            auto page = AllocPage(true);
+            NPK_ASSERT(page != nullptr);
 
             auto paddr = LookupPagePaddr(page);
-            SetKernelMap(virtBase, paddr, VmFlag::Write);
+            auto result = SetKernelMap(virtBase, paddr, VmFlag::Write);
+            NPK_ASSERT(result == NpkStatus::Success);
+
             virtBase += PageSize();
         }
 
@@ -450,30 +461,53 @@ R"(                                             888                      )"
         return **localSystemDomain;
     }
 
-    void SetLocalSystemDomain()
+    void InitLocalState(void* hwToken, uintptr_t slotsBase, size_t slotsCount,
+        uintptr_t tempMapBase)
     {
         localSystemDomain = &sysDomain0; //TODO: multi-domain
 
-        if (MyCoreId() != 0)
+        size_t ctorCount = 0;
+        for (auto it = PREINIT_ARRAY_BEGIN; it != PREINIT_ARRAY_END; ++it)
         {
-            size_t ctorCount = 0;
-            for (auto it = PREINIT_ARRAY_BEGIN; it != PREINIT_ARRAY_END; ++it)
-            {
-                it[0]();
-                ctorCount++;
-            }
-            Log("Ran %zu local constructor%s.", LogLevel::Verbose, ctorCount,
-                ctorCount == 1 ? "" : "s");
+            it[0]();
+            ctorCount++;
         }
+        Log("Ran %zu local constructor%s.", LogLevel::Verbose, ctorCount,
+            ctorCount == 1 ? "" : "s");
+
+        HwSetTempMap(hwToken, tempMapBase, slotsCount);
+        Private::ResetCycleAccounts(CycleAccount::Kernel);
+        Private::InitPageAccessCache(slotsBase, slotsCount);
+
+        Log("Cpu %zu has initialized local kernel state.", LogLevel::Info,
+            MyCoreId());
     }
 
     void BringCpuOnline(ThreadContext* idle)
     {
         Private::InitLocalScheduler(idle);
-        Private::ResetCycleAccounts(CycleAccount::Kernel);
         SetCurrentThread(idle);
         Log("Cpu %zu is online and available.", LogLevel::Info, MyCoreId());
     }
+
+    void EnterIdleLoop()
+    {
+        auto& dom = MySystemDomain();
+
+        Log("Cpu is entering idle loop.", LogLevel::Trace);
+        while (true)
+        {
+            Private::DrainCleanupJobs();
+
+            EnterNoEpochState(dom.rcu, MyRelativeCoreId());
+            WaitForIntr();
+            ExitNoEpochState(dom.rcu, MyRelativeCoreId());
+        }
+
+        NPK_UNREACHABLE();
+    }
+
+    void PerformFireworksTest(SimpleFramebuffer* fb);
 
     extern "C" void KernelEntry()
     {
@@ -501,50 +535,43 @@ R"(                                             888                      )"
         //2. Setup early allocators
         initState.dmBase = loadState.directMapBase;
         initState.usedPages = 0;
-        initState.pmaCount = ReadConfigUint("npk.pm.temp_mapping_count", 512);
-        initState.vmAllocHead = HwInitBspMmu(initState, initState.pmaCount);
+
+        const size_t pmaGranule = HwTempMapGranularity();
+        initState.pmaCount = sl::AlignUp(ReadConfigUint("npk.pm.temp_map_slots",
+            pmaGranule), pmaGranule);
+        initState.vmAllocHead = HwInitBspMmu(initState);
         sysDomain0.zeroPage = initState.PmAlloc();
 
-        //3. Setup kernel virtual address space (it switches to it
+        //3. Setup kernel virtual address space: this function switches to it
         //internally, since the pmm freelist needs the kernel tables active.
         SetupKernelAddressSpace(initState, loadState);
         
-        //4. Load cpu-local variables for the BSP. The storage used for these
-        //is the original copy of the cpu-locals in the kernel image. Other
-        //cpus will make a copy of this memory for their local variables but
-        //theirs will be zeroed before calling `HwSetMyLocals()`.
+        //4. Setup BSP local state. The storage for these is the original copy
+        //in the kernel image, other cpus get an area of the same size but
+        //zero filled in `InitPerCpuData()`.
         HwSetMyLocals((uintptr_t)KERNEL_CPULOCALS_BEGIN, loadState.bspId);
-        localSystemDomain = &sysDomain0;
+        InitLocalState(initState.bspTempMapToken, initState.pmaSlots,
+            initState.pmaCount, initState.pmaBase);
 
-        ctorCount = 0;
-        for (auto it = PREINIT_ARRAY_BEGIN; it != PREINIT_ARRAY_END; ++it)
-        {
-            it[0]();
-            ctorCount++;
-        }
-        Log("Ran %zu local constructor%s.", LogLevel::Verbose, ctorCount,
-            ctorCount == 1 ? "" : "s");
-
-        //5. Begin initializing core infrastructure: page access, proper
-        //config store, configuration data (acpi/fdt).
-        //We also (boot if needed, and) take control of the other cpus here.
-        //This is where the system really starts to come alive.
-        InitPageAccessCache(initState.pmaCount, initState.pmaSlots);
+        //5. Initialize discovery mechanisms from firmware (acpi, fdt, efi rt).
         SetConfigStore(initState.mappedCmdLine, false);
-
         uintptr_t virtBase = initState.vmAllocHead;
 
         SetConfigRoot(loadState);
-        TryMapAcpiTables(virtBase);
+        auto result = TryMapAcpiTables(virtBase);
+        if (result != NpkStatus::Success)
+            NPK_UNEXPECTED_STATUS(result, LogLevel::Error);
+     
         if (loadState.efi.HasValue())
         {
-            auto result = TryEnableEfiRuntimeServices(*loadState.efi, virtBase);
+            result = TryEnableEfiRuntimeServices(*loadState.efi, virtBase);
             if (result != NpkStatus::Success)
                 NPK_UNEXPECTED_STATUS(result, LogLevel::Error);
         }
         else
             Log("EFI runtime services not available.", LogLevel::Info);
 
+        //6. Discover and boot APs.
         const auto smpData = InitPerCpuData(virtBase);
         HwInitFull(virtBase);
         const size_t bootedAps = HwBootAps(virtBase, smpData);
@@ -559,6 +586,7 @@ R"(                                             888                      )"
             //NOTE: we do leak some memory here, in an ideal world I wouldn't.
         }
 
+        //7. Start bringing higher level subsystems online.
         InitDebugger(virtBase);
 
         ThreadContext idleContext {};
@@ -596,14 +624,8 @@ R"(                                             888                      )"
             Panic("Failed to load init program, status=%u %s", nullptr,
                 result, StatusStr(result));
         }
+        */
 
-        Log("Init program loaded, entering idle thread.", LogLevel::Trace);
-        while (true)
-        {
-            auto& dom = MySystemDomain();
-            EnterNoEpochState(dom..rcu, MyCoreId() - dom.smpBase);
-            WaitForIntr();
-            ExitNoEpochState(dom.rcu, MyCoreId() - dom.smpBase);
-        }
+        EnterIdleLoop();
     }
 }

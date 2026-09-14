@@ -12,6 +12,7 @@ namespace Npk::Private
     void SetMyNodePointer(uintptr_t addr);
     void InitLocalScheduler(ThreadContext* idle);
     void InitLocalWorker();
+    void InitPageAccessCache(uintptr_t slotsBase, size_t slotsCount);
 
     void SignalPendingWaitables();
     bool HasPendingWaitables();

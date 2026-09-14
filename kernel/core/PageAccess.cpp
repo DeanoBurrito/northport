@@ -1,10 +1,10 @@
-#include <Core.hpp>
+#include <private/Core.hpp>
 #include <lib/Memory.hpp>
 #include <lib/Maths.hpp>
 
 namespace Npk
 {
-    static PageAccessCache accessCache;
+    CPU_LOCAL(PageAccessCache, static accessCache);
 
     bool Private::PmaCacheSetEntry(size_t slot, void** curVaddr, 
         Paddr curPaddr, Paddr nextPaddr)
@@ -54,33 +54,43 @@ namespace Npk
                 continue;
             }
 
+            const auto prevIpl = EnsureIpl(Ipl::Dpc);
             const size_t offset = paddr & PageMask();
-            PageAccessRef access = AccessPage(AlignDownPage(paddr));
-            if (!access.Valid())
-                return copied;
-
             const size_t runLen = sl::Min(remaining, PageSize() - offset);
-            const auto src = reinterpret_cast<void*>(
-                reinterpret_cast<uintptr_t>(access.vaddr) + offset);
+            do
+            {
+                PageAccessRef access = AccessPage(AlignDownPage(paddr));
+                if (!access.Valid())
+                    return copied;
 
-            sl::MemCopy(&buffer[copied], src, runLen);
+                const auto src = reinterpret_cast<void*>(
+                    reinterpret_cast<uintptr_t>(access.vaddr) + offset);
+
+                sl::MemCopy(&buffer[copied], src, runLen);
+            }
+            while (false);
+
+            if (prevIpl < Ipl::Dpc)
+                LowerIpl(prevIpl);
             copied += runLen;
         }
 
         return buffer.Size();
     }
 
-    void InitPageAccessCache(size_t entries, uintptr_t slots)
+    void Private::InitPageAccessCache(uintptr_t slotsBase, size_t slotsCount)
     {
-        auto slotsPtr = reinterpret_cast<PageAccessCache::Slot*>(slots);
-        accessCache.Init({ slotsPtr, entries }, 0);
+        auto* ptr = reinterpret_cast<PageAccessCache::Slot*>(slotsBase);
+        accessCache->Init({ ptr, slotsCount }, 0);
 
-        Log("Initialized page access cache", LogLevel::Trace);
+        Log("Page access initialized: slots=0x%tx (x%zu)", LogLevel::Trace,
+            slotsBase, slotsCount);
     }
 
     PageAccessRef AccessPage(Paddr paddr)
     {
         NPK_CHECK((paddr & PageMask()) == 0, {});
+        NPK_CHECK(CurrentIpl() >= Ipl::Dpc, {});
 
         const HwDirectMapSegment* seg = GetDirectMapSegment(paddr);
         if (seg != nullptr)
@@ -95,7 +105,7 @@ namespace Npk
             return ref;
         }
 
-        auto slot = accessCache.Get(paddr);
+        auto slot = accessCache->Get(paddr);
         if (!slot.Valid())
             return {};
 
@@ -110,6 +120,7 @@ namespace Npk
     void DestroyPageAccess(PageAccessRef* ref)
     {
         NPK_CHECK(ref != nullptr, );
+        NPK_ASSERT(CurrentIpl() >= Ipl::Dpc);
 
         PageAccessRef other = sl::Move(*ref);
 

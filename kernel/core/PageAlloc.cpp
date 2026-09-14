@@ -23,6 +23,11 @@ namespace Npk
                 dom.freeLists.free.PushBack(next);
             }
 
+            //this should be true by the caller holding the ipl spinlock
+            //protecting the freelists, but this assert catches us if that lock
+            //ever changes implementation. The IPL is required for using
+            //AccessPage() below.
+            AssertIpl(Ipl::Dpc);
             auto access = AccessPage(page);
             if (!access.Valid())
             {

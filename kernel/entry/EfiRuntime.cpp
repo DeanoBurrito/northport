@@ -76,10 +76,12 @@ namespace Npk
                 details.memmapDescSize);
         }
 
+        const auto prevIpl = RaiseIpl(Ipl::Dpc);
         sl::EfiSystemTable sysTable {};
         if (CopyFromPhysical(details.systemTable, 
             { (char*)&sysTable, sizeof(sysTable) }) != sizeof(sysTable))
         {
+            LowerIpl(prevIpl);
             Log("EFI runtime services unavailable: failed to read system table",
                 LogLevel::Error);
 
@@ -88,6 +90,7 @@ namespace Npk
 
         if (sysTable.hdr.signature != sl::EfiSignatureSystemTable)
         {
+            LowerIpl(prevIpl);
             Log("EFI runtime unavailable: bad SystemTable signature 0x%" PRIx64,
                 LogLevel::Error, sysTable.hdr.signature);
 
@@ -128,6 +131,7 @@ namespace Npk
         {
             Log("EFI runtime services unavailable: RT table not found in any"
                 " runtime region", LogLevel::Error);
+            LowerIpl(prevIpl);
 
             return NpkStatus::InternalError;
         }
@@ -275,6 +279,7 @@ namespace Npk
             }
         }
         HwFlushTlbAll(AsidNone);
+        LowerIpl(prevIpl);
 
         if (result != NpkStatus::Success)
         {
