@@ -106,7 +106,12 @@ namespace Npk
                 dpcQueueLock->Unlock();
 
                 if (!moreWork && target == Ipl::Passive)
+                {
+                    IntrsOn();
                     Private::SignalPendingWaitables();
+                    IntrsOff();
+                    moreWork = Private::HasPendingWaitables();
+                }
                 break;
 
             case Ipl::Passive:

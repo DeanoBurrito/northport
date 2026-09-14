@@ -180,8 +180,8 @@ namespace Npk
 
         auto& waiter = thread->waiting;
 
-        auto blocked = WaitStage::Blocked;
-        const auto desired = WaitStage::Cancelled;
+        auto blocked = WaitStatus::Blocked;
+        const auto desired = WaitStatus::Cancelled;
 
         if (!waiter.status.CompareExchange(blocked, desired, sl::AcqRel))
             return NpkStatus::NotAvailable;
