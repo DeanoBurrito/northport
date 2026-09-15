@@ -35,7 +35,8 @@ namespace Npk
     {
         size_t copied = 0;
 
-        while (copied < buffer.Size())
+        bool abort = false;
+        while (copied < buffer.Size() && !abort)
         {
             const Paddr paddr = base + copied;
             const size_t remaining = buffer.Size() - copied;
@@ -61,7 +62,10 @@ namespace Npk
             {
                 PageAccessRef access = AccessPage(AlignDownPage(paddr));
                 if (!access.Valid())
-                    return copied;
+                {
+                    abort = true;
+                    break;
+                }
 
                 const auto src = reinterpret_cast<void*>(
                     reinterpret_cast<uintptr_t>(access.vaddr) + offset);

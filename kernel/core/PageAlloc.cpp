@@ -31,6 +31,7 @@ namespace Npk
             auto access = AccessPage(page);
             if (!access.Valid())
             {
+                page->pm.count = 1;
                 dom.freeLists.free.PushFront(page);
 
                 return nullptr;

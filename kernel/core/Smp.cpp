@@ -207,14 +207,12 @@ namespace Npk
         if (status == nullptr)
             return;
 
-        const uint8_t perf = performance;
-        const uint8_t eff = efficiency;
-        status->performanceCapacity.Exchange(performance, sl::AcqRel);
-        status->efficiencyClass.Exchange(efficiency, sl::AcqRel);
+        auto p = status->performanceCapacity.Exchange(performance, sl::AcqRel);
+        auto e = status->efficiencyClass.Exchange(efficiency, sl::AcqRel);
 
-        Log("Performance/efficiency update for cpu %zu: perf %u -> %u,\
-            eff %u -> %u", LogLevel::Verbose, who, performance, perf,
-            efficiency, eff);
+        Log("Performance/efficiency update for cpu %zu: perf %u -> %u, "
+            "eff %u -> %u", LogLevel::Verbose, who, p, performance,
+            e, efficiency);
     }
 }
 
