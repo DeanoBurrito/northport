@@ -138,12 +138,19 @@ namespace Npk
 
     struct PerCpuConfig
     {
+        size_t cpuCount;
+
         uintptr_t localsBase;
-        uintptr_t apStacksBase;
-        uintptr_t tempSlotsBase;
         size_t localsStride;
+
+        uintptr_t apStacksBase;
         size_t stackStride;
+        uintptr_t tempMapBase;
+        size_t tempMapStride;
+        uintptr_t tempSlotsBase;
+        size_t tempSlotsStride;
         size_t tempSlotsCount;
+        sl::Span<void*> tempMapTokens;
     };
 
     [[noreturn]]
@@ -183,6 +190,28 @@ namespace Npk
      */
     size_t HwGetCpuCount();
 
+    /* Attempts to start other cores in the system, returns the number of cores
+     * that successfully booted and reported such to the BSP.
+     */
+    size_t StartAps(const PerCpuConfig& conf, uintptr_t& virtBase);
+
+    /* Hardware layer hook to initialize per-cpu state, only cpu local storage
+     * and the current software assigned id are available at this point.
+     * The local current may NOT access shared kernel data structures unless
+     * explicitly passed a pointer to them via it's wake entry.
+     * The cpu has also not run any per-cpu constructors on it's local storage
+     * at this stage.
+     * The component passing that pointer assumes responsibility for
+     * synchronization here.
+     */
+    void HwInitLocalEarly();
+
+    /* Hardware layer hook for more per-cpu init: this function is called 
+     * after all local state (except the scheduler) is initialized. This means
+     * the page access mechanism is available.
+     */
+    void HwInitLocalLate();
+
     /* Returns the granularity the hardware layer requires for the temp mapping
      * window: how many slots it will round to, and what the window's base must
      * be aligned to. On page-table based architectures this is often the PTE
@@ -201,8 +230,8 @@ namespace Npk
      * slots by the hardware layer, and should be passed to `HwSetTempMap()`
      * later on.
      */
-    NpkStatus HwMakeTempMapSpace(void** token, InitState* state, uintptr_t base,
-        size_t slots);
+    NpkStatus HwMakeTempMapSpace(void** token, InitState* state,
+        uintptr_t& virtBase, uintptr_t base, size_t slots);
 
     NpkStatus HwSetTempMap(void* token, uintptr_t base, size_t slots);
 
@@ -212,17 +241,6 @@ namespace Npk
      */
     void HwInitFull(uintptr_t& virtBase);
 
-    /* Boots all available APs (CPUs other than the BSP/boot cpu). The per-cpu
-     * data ranges contain space for the number of cpus reported by
-     * `HwGetCpuCount()`, but this function is allowed to boot less than that,
-     * if errors occur during bootup. APs booted will initialize themselves and
-     * their local data but are not allowed to touch shared data until
-     * `HwReleaseAps()` is called.
-     *
-     * This function returns the number of APs it booted.
-     */
-    size_t HwBootAps(uintptr_t& virtBase, PerCpuConfig data);
-
     /* Upcall from hardware code, should be called as early as possible as it
      * enables the cpu to access local (as in per-cpu) kernel facilities such
      * as the page access mechanism.
@@ -230,10 +248,10 @@ namespace Npk
     void InitLocalState(void* hwToken, uintptr_t slotsBase, size_t slotsCount,
         uintptr_t tempMapBase);
 
-    /* Companion function to `HwBootAps()`: this function allows booted APs to
-     * access shared data and continue on (and finish) their init.
+    /* Companion function to `StartAps()`, allows APs to continue to on and 
+     * access shared data, and finish their init.
      */
-    void HwReleaseAps();
+    void ReleaseAps();
 
     /* Hook for hardware layer to perform further init, this is called after 
      * the virtual memory subsystem is ready.

@@ -221,7 +221,7 @@ namespace Npk
         init.pmaBase = reinterpret_cast<uintptr_t>(pmaWindow);
 
         auto result = HwMakeTempMapSpace(&init.bspTempMapToken, &init,
-            init.pmaBase, init.pmaCount);
+            init.vmAllocHead, init.pmaBase, init.pmaCount);
         NPK_ASSERT(result == NpkStatus::Success);
 
         //4. Init list of free pages
@@ -321,7 +321,7 @@ namespace Npk
             usedConv.major, usedConv.minor, usedConv.prefix);
     }
 
-    static PerCpuConfig InitPerCpuData(uintptr_t& virtBase)
+    static PerCpuConfig InitPerCpuData(uintptr_t& virtBase, size_t pmaSlots)
     {
         const size_t cpus = HwGetCpuCount();
         Log("Setting up control structures for %zu cpu%s.", LogLevel::Info,
@@ -402,13 +402,72 @@ namespace Npk
         for (size_t i = 0; i < cpus; i++)
             new(&sysDomain0.smpControls[i]) SmpControl();
 
-        return 
+        //3. Allocate temp mapping window and cache slots.
+        const size_t tempSlotsSize = pmaSlots * sizeof(PageAccessCache::Slot);
+        const size_t tempSlotsStride = sl::AlignUp(tempSlotsSize,
+            HwGetStaticCacheLineSize());
+        const uintptr_t tempSlotsBase = virtBase;
+
+        for (size_t i = 0; i < tempSlotsStride * (cpus - 1); i += PageSize())
         {
-            .localsBase = localsBase,
-            .apStacksBase = stacksBase,
-            .localsStride = localsStride,
-            .stackStride = stackStride,
-        };
+            auto page = AllocPage(true);
+            NPK_ASSERT(page != nullptr);
+
+            auto paddr = LookupPagePaddr(page);
+            auto result = SetKernelMap(virtBase, paddr, VmFlag::Write);
+            NPK_ASSERT(result == NpkStatus::Success);
+
+            virtBase += PageSize();
+        }
+
+        const uintptr_t tokensBase = virtBase;
+        for (size_t i = 0; i < sizeof(void*) * (cpus - 1); i += PageSize())
+        {
+            auto page = AllocPage(true);
+            NPK_ASSERT(page != nullptr);
+
+            auto paddr = LookupPagePaddr(page);
+            auto result = SetKernelMap(virtBase, paddr, VmFlag::Write);
+            NPK_ASSERT(result == NpkStatus::Success);
+
+            virtBase += PageSize();
+        }
+        sl::Span<void*> tokens(reinterpret_cast<void**>(tokensBase), cpus - 1);
+
+        const size_t granule = HwTempMapGranularity() << PfnShift();
+        NPK_ASSERT(pmaSlots % HwTempMapGranularity() == 0);
+
+        virtBase = sl::AlignUp(virtBase, granule);
+        const uintptr_t tempMapBase = virtBase;
+        const size_t tempMapStride = pmaSlots << PfnShift();
+        virtBase += tempMapStride * (cpus - 1);
+
+        for (size_t i = 0; i < cpus - 1; i++)
+        {
+            auto result = HwMakeTempMapSpace(&tokens[i], nullptr, virtBase,
+                tempMapBase + tempMapStride * i, pmaSlots);
+            NPK_ASSERT(result == NpkStatus::Success);
+        }
+
+        Log("Temp map windows: 0x%zx B each (x%zu slots), stride=0x%zx B",
+            LogLevel::Info, tempMapStride, pmaSlots, tempSlotsStride);
+
+        LowerIpl(prevIpl);
+
+        PerCpuConfig conf {};
+        conf.cpuCount = cpus;
+        conf.localsBase = localsBase;
+        conf.localsStride = localsStride;
+        conf.apStacksBase = stacksBase;
+        conf.stackStride = stackStride;
+        conf.tempMapBase = tempMapBase;
+        conf.tempMapStride = tempMapStride;
+        conf.tempSlotsBase = tempSlotsBase;
+        conf.tempSlotsStride = tempSlotsStride;
+        conf.tempSlotsCount = pmaSlots;
+        conf.tempMapTokens = tokens;
+
+        return conf;
     }
 
     static void PrintWelcome()
@@ -481,13 +540,6 @@ R"(                                             888                      )"
 
         Log("Cpu %zu has initialized local kernel state.", LogLevel::Info,
             MyCoreId());
-    }
-
-    void BringCpuOnline(ThreadContext* idle)
-    {
-        Private::InitLocalScheduler(idle);
-        SetCurrentThread(idle);
-        Log("Cpu %zu is online and available.", LogLevel::Info, MyCoreId());
     }
 
     void EnterIdleLoop()
@@ -572,25 +624,26 @@ R"(                                             888                      )"
             Log("EFI runtime services not available.", LogLevel::Info);
 
         //6. Discover and boot APs.
-        const auto smpData = InitPerCpuData(virtBase);
+        const auto smpData = InitPerCpuData(virtBase, initState.pmaCount);
         HwInitFull(virtBase);
-        const size_t bootedAps = HwBootAps(virtBase, smpData);
+        const size_t bootedAps = StartAps(smpData, virtBase);
         if (bootedAps < MySystemDomain().smpControls.Size() - 1)
         {
             auto& controls = MySystemDomain().smpControls;
 
-            Log("%zu of %zu APs booted, truncating live cpu count",
+            Log("%zu of %zu APs booted, truncating live cpu count.",
                 LogLevel::Warning, bootedAps, controls.Size() - 1);
 
             MySystemDomain().smpControls = controls.Subspan(0, bootedAps + 1);
-            //NOTE: we do leak some memory here, in an ideal world I wouldn't.
+            //NOTE: we do leak some memory here, in an ideal world we wouldn't.
         }
 
         //7. Start bringing higher level subsystems online.
         InitDebugger(virtBase);
 
         ThreadContext idleContext {};
-        BringCpuOnline(&idleContext);
+        Private::InitLocalScheduler(&idleContext);
+        SetCurrentThread(&idleContext);
 
         const uintptr_t lowBase = virtBase;
         const uintptr_t lowTop = AlignDownPage((uintptr_t)KERNEL_BLOB_BEGIN);

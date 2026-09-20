@@ -4,8 +4,9 @@
 
 extern "C"
 {
-    extern char SpinupBlob[];
-    extern char _EndOfSpinupBlob[];
+    extern char ApSpinupBlob[];
+    extern char ApSpinupBlobData[];
+    extern char _EndOfApSpinupBlob[];
 }
 
 namespace Npk

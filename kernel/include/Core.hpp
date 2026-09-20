@@ -331,7 +331,8 @@ namespace Npk
         {}
 
         PageAccessRef(PageAccessCache::CacheRef slot)
-            : slot(sl::Move(slot))
+            : slot(sl::Move(slot)), 
+            vaddr { this->slot->value }, paddr { this->slot->key }
         {}
         
         bool Valid()

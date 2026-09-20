@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Status.hpp>
+#include <lib/Atomic.hpp>
 #include <lib/Optional.hpp>
 #include <lib/Span.hpp>
 #include <lib/Flags.hpp>
@@ -112,6 +113,86 @@ namespace Npk
          */
         LogSyscall,
     };
+
+    /* Opaque type outside of the hardware layer, but must be copyable.
+     * Represents the data needed to wake a unique cpu in the system.
+     */
+    struct HwWakeTarget;
+
+    /* Represents the current progress of a waking cpu. Note this enum is
+     * accessed from assembly and its values are enforced by the static asserts
+     * below.
+     */
+    enum class WakeStage : uint32_t
+    {
+        Unclaimed = 0,
+        Entered = 1,
+        Online = 2,
+        Released = 3,
+    };
+    static_assert(static_cast<uint32_t>(WakeStage::Unclaimed) == 0);
+    static_assert(static_cast<uint32_t>(WakeStage::Entered) == 1);
+    static_assert(static_cast<uint32_t>(WakeStage::Online) == 2);
+    static_assert(static_cast<uint32_t>(WakeStage::Released) == 3);
+
+    /* Represents a record of a single cpu being woken/booted. This has an
+     * implicit id (the software id all portable kernel subsystems use)
+     * associated with it, which can be recovered by its offset from the wake
+     * table `entries` field.
+     *
+     * Some of these fields are accessed by assembly, those that are have their
+     * offsets enforced by the static asserts below the struct.
+     *
+     * Most fields are populated by the portable code, the exceptions is `hwData`
+     * which can be used to pass arbitary data to the AP during wake. It's for
+     * use by the hardware layer.
+     */
+    struct WakeEntry
+    {
+        //this group is written once by the bsp, before any cpu is woken
+        uint64_t hwData;
+        uintptr_t entry;
+        uintptr_t stackBase;
+        size_t stackLen;
+        uintptr_t locals;
+        uintptr_t tempMapBase;
+        uintptr_t tempSlotsBase;
+        size_t tempSlotsCount;
+        void* tempMapHwToken;
+
+        //this group is written by the woken cpu after claiming its id
+        uint64_t hwId;
+        sl::Atomic<WakeStage> stage;
+    };
+    static_assert(offsetof(WakeEntry, hwData) == 0);
+    static_assert(offsetof(WakeEntry, entry) == 8);
+    static_assert(offsetof(WakeEntry, stackBase) == 8 + sizeof(uintptr_t));
+    static_assert(offsetof(WakeEntry, stackLen) == 8 + 2 * sizeof(uintptr_t));
+
+    /* Top level structure for waking cpus. Note the asserts below it, they
+     * guard the offsets of fields in this structure that are accessed from
+     * assembly.
+     * Most of these fields are used by the portable code, however `hwFlags` and
+     * `hwData` are reserved for use by the hardware layer.
+     */
+    struct WakeTable
+    {
+        sl::Atomic<uint32_t> nextCpuId;
+        uint32_t entryCount;
+        sl::Atomic<uint32_t> lateCpus;
+        uint32_t hwFlags;
+        uint64_t hwData;
+        uint64_t entryStride;
+
+        WakeEntry entries[];
+    };
+    static_assert(offsetof(WakeTable, nextCpuId) == 0);
+    static_assert(offsetof(WakeTable, entryCount) == 4);
+    static_assert(offsetof(WakeTable, lateCpus) == 8);
+    static_assert(offsetof(WakeTable, hwFlags) == 12);
+    static_assert(offsetof(WakeTable, hwData) == 16);
+    static_assert(offsetof(WakeTable, entryStride) == 24);
+    static_assert(offsetof(WakeTable, entries) == 32);
 
     /* Forward declaration, see Core.hpp for the full description.
      */
@@ -452,6 +533,54 @@ namespace Npk
     /* Returns a reference to the activations list for the specified context.
      */
     ActivationList& HwGetUserContextActivations(HwUserContext& context);
+
+    /* Returns an opaque value representing the current cpu as a wake target.
+     * This is never acted upon, only used for error reporting and by
+     * `HwReportUnwokenAps()`.
+     */
+    uint64_t HwGetMyWakeId();
+
+    /* Fills `outAps` with valid wake targets, each target identifiers a
+     * potential cpu that can be booted. It will write at most `HwGetCpuCount()
+     * - 1` entries into `outAps`, the number of written targets is returned.
+     */
+    size_t HwEnumerateAps(sl::Span<HwWakeTarget> outAps);
+
+    /* Called once during init, allows the arch layer to prepare whatever it
+     * needs before waking APs. This includes writing the `hwFlags`/`hwData`
+     * fields of the wake table and wake entries, all other fields are populated
+     * before passing the table to this function.
+     *
+     * When this function returns the table must be readable by cpus running
+     * in a fresh state, whatever that means for the particular isa + platform
+     * + firmware combination. Often though this means the target cpu must be
+     * able to read this struct with caching disabled, potentially address 
+     * translation. The specifics will depend heavily on the hardware layer
+     * implementation but this is the last barrier the hardware layer has to
+     * sync on. All the non-atomic fields of the wake table and its entries are
+     * considered readonly by the BSP after this function returns.
+     */
+    NpkStatus HwInitWaking(WakeTable& table, uintptr_t& virtBase);
+
+    /* Attempts to notify the cpu core identified by `target` to wake up and
+     * begin executing kernel code. This function may or may not be called by
+     * the BSP (if cascade wakeups are being used it may not be) so the wake
+     * structures should not be modified here - that should have been done in
+     * `HwInitWaking()`.
+     *
+     * This functions returns whether it was able to deliver the wakeup
+     * request: `Success` indicates the request was sent, `NotAvailable`
+     * indicates the request failed locally and the target will NOT wakeup.
+     * Other values indicate an uncertain failure, the target may or may not
+     * wakeup in response to the request.
+     */
+    NpkStatus HwWakeAp(HwWakeTarget target);
+
+    /* Compares the list of targets and wake entries, emit logs about any
+     * wake targets that failed at any stage in the process. This is how early
+     * panics on APs are communicated.
+     */
+    void HwReportUnwokenAps(sl::Span<HwWakeTarget> targets, WakeTable& table);
 
     /* Halts (or at least stalls) the current cpu core until an interrupt
      * fires. This should ideally put the cpu into a low(er) power state.

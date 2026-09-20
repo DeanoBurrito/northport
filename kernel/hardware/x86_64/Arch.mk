@@ -1,6 +1,6 @@
 KERNEL_CXX_SRCS += \
+	$(ARCH_DIR)/ApBoot.cpp \
 	$(ARCH_DIR)/Alarm.cpp \
-	$(ARCH_DIR)/ApBringup.cpp \
 	$(ARCH_DIR)/Arch.cpp \
 	$(ARCH_DIR)/Cache.cpp \
 	$(ARCH_DIR)/Cpuid.cpp \
@@ -22,7 +22,7 @@ KERNEL_CXX_SRCS += \
 	hardware/common/mmu/TlbSync.cpp
 
 KERNEL_AS_SRCS += \
+	$(ARCH_DIR)/ApSpinup.S \
 	$(ARCH_DIR)/Entry.S \
 	$(ARCH_DIR)/ExceptionAwareCall.S \
-	$(ARCH_DIR)/Spinup.S \
 	$(ARCH_DIR)/Switch.S

@@ -81,6 +81,11 @@ namespace Npk
 
     void CommonCpuSetup();
 
+    struct HwWakeTarget
+    {
+        uint32_t lapicId;
+    };
+
     SL_ALWAYS_INLINE
     size_t PfnShift()
     {

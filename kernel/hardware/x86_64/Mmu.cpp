@@ -430,11 +430,12 @@ namespace Npk
         HwEarlyMap(state, apBootPage, apBootPage,
             MmuPermission::Write | MmuPermission::Fetch, {});
 
-        const size_t blobLength = reinterpret_cast<uintptr_t>(_EndOfSpinupBlob)
-            - reinterpret_cast<uintptr_t>(SpinupBlob);
+        const size_t blobLength = 
+            reinterpret_cast<uintptr_t>(_EndOfApSpinupBlob)
+            - reinterpret_cast<uintptr_t>(ApSpinupBlob);
         NPK_ASSERT(blobLength <= PageSize());
         sl::MemCopy(reinterpret_cast<void*>(apBootPage + state.dmBase),
-            SpinupBlob, blobLength);
+            ApSpinupBlob, blobLength);
         Log("AP boot blob @ 0x%tx", LogLevel::Verbose, apBootPage);
 
         state.vmAllocHead = -(1ull << (9 * ptLevels + 11));

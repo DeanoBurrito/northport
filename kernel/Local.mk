@@ -26,6 +26,7 @@ KERNEL_CXX_SRCS += \
 	entry/ConfigRoot.cpp \
 	entry/EfiRuntime.cpp \
 	entry/InitProgram.cpp \
+	entry/StartAps.cpp \
 	io/Packet.cpp \
 	lib/Memory.cpp \
 	lib/Printf.cpp \
