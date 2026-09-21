@@ -110,7 +110,7 @@ namespace Npk
 
         const auto conv = sl::ConvertUnits(refTimer.frequency, 
             sl::UnitBase::Decimal);
-        Log("Reference timer: %s, %zuHz (%zu.%zu %sHz), %zu-bit counter",
+        Log("Reference timer: %s, %zuHz (%zu.%03zu %sHz), %zu-bit counter",
             LogLevel::Info, timerName, refTimer.frequency, conv.major,
             conv.minor, conv.prefix, sl::PopCount(refTimer.counterMask));
     }
@@ -183,7 +183,7 @@ namespace Npk
         result.valid = true;
 
         const auto conv = sl::ConvertUnits(freq, sl::UnitBase::Decimal);
-        Log("TSC measurement: freq=%zu (%zu.%zu %sHz), +/- %zuppm",
+        Log("TSC measurement: freq=%zu (%zu.%03zu %sHz), +/- %zuppm",
             LogLevel::Verbose, result.frequency, conv.major, conv.minor,
             conv.prefix, result.errorPpm);
 
@@ -298,7 +298,7 @@ namespace Npk
         }
 
         const auto conv = sl::ConvertUnits(freq, sl::UnitBase::Decimal);
-        Log("TSC frequency is %zuHz (%zu.%zu %sHz) according to %s",
+        Log("TSC frequency is %zuHz (%zu.%03zu %sHz) according to %s",
             LogLevel::Info, freq, conv.major, conv.minor, conv.prefix, source);
 
         //do a sanity check, catches bad hypervisors.
@@ -340,7 +340,7 @@ namespace Npk
         NPK_ASSERT(delta + measured.errorPpm < 10'000);
 
         auto conv = sl::ConvertUnits(measured.frequency, sl::UnitBase::Decimal);
-        Log("TSC frequency verified as %zuHz (%zu.%zu %sHz)", LogLevel::Verbose,
+        Log("TSC frequency verified as %zuHz (%zu.%03zu %sHz)", LogLevel::Verbose,
             measured.frequency, conv.major, conv.minor, conv.prefix);
     }
 

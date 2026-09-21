@@ -454,19 +454,19 @@ namespace Npk
         return PtEntries;
     }
 
-    NpkStatus HwMakeTempMapSpace(void** token, InitState* state, uintptr_t base,
-        size_t slots)
+    NpkStatus HwMakeTempMapSpace(void** token, InitState* state,
+        uintptr_t& virtBase, uintptr_t base, size_t slots)
     {
         const size_t granuleSize = PtEntries << PfnShift();
         NPK_CHECK((base & (granuleSize - 1)) == 0, NpkStatus::InvalidArg);
         NPK_CHECK((slots & (PtEntries - 1)) == 0, NpkStatus::InvalidArg);
 
+        const uintptr_t manageVaddr = virtBase;
+
         if (state != nullptr)
         {
             const auto perms = MmuPermission::Write;
             const auto mode = MmuCacheMode::Default;
-
-            uintptr_t manageVaddr = state->vmAllocHead;
 
             for (size_t i = 0; i < slots; i++)
             {
@@ -476,8 +476,8 @@ namespace Npk
                 if ((i & (PtEntries - 1)) == 0)
                 {
                     //first slot in a new PT, map the table
-                    HwEarlyMap(*state, pt, state->vmAllocHead, perms, mode);
-                    state->vmAllocHead += PageSize();
+                    HwEarlyMap(*state, pt, virtBase, perms, mode);
+                    virtBase += PageSize();
                 }
             }
 
@@ -485,8 +485,11 @@ namespace Npk
         }
         else
         {
-            NPK_UNREACHABLE(); //TODO: implement this!
+            AssertIpl(Ipl::Dpc);
+
         }
+
+        *token = reinterpret_cast<void*>(manageVaddr);
 
         Log("Temp mapping window prepared: 0x%tx-0x%tx (%zu slots)",
             LogLevel::Verbose, base, base + (slots << PfnShift()), slots);

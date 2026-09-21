@@ -52,7 +52,7 @@ namespace Npk
         hpetFrequency = sl::Femtos / ((caps >> 32) & 0xFFFF'FFFF);
         
         const auto conv = sl::ConvertUnits(hpetFrequency, sl::UnitBase::Decimal);
-        Log("HPET available: counter=%s, timers=%zu, frequency=%zu.%zu %sHz",
+        Log("HPET available: counter=%s, timers=%zu, frequency=%zu.%03zu %sHz",
             LogLevel::Info, hpetIs64Bit ? "64-bit" : "32-bit", timers,
             conv.major, conv.minor, conv.prefix);
 

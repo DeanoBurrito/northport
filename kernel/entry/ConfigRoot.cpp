@@ -167,7 +167,7 @@ namespace Npk
             }
 
             const auto conv = sl::ConvertUnits(sdt.length);
-            Log("Mapped acpi table: %.4s v%u, %p -> 0x%tx, %zu.%zu %sB", 
+            Log("Mapped acpi table: %.4s v%u, %p -> 0x%tx, %zu.%03zu %sB", 
                 LogLevel::Info, sdt.signature, sdt.revision,
                 acpiTables[i].vaddr, acpiTables[i].paddr, conv.major,
                 conv.minor, conv.prefix);

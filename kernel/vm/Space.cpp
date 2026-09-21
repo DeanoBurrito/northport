@@ -21,7 +21,7 @@ namespace Npk
         Private::InitPool(poolBase, poolSize);
 
         auto conv = sl::ConvertUnits(poolSize);
-        Log("Pool space: 0x%tx-0x%tx (%zu.%zu %sB)",
+        Log("Pool space: 0x%tx-0x%tx (%zu.%03zu %sB)",
             LogLevel::Verbose, poolBase, poolBase + poolSize,
             conv.major, conv.minor, conv.prefix);
 
@@ -30,7 +30,7 @@ namespace Npk
         const size_t cacheSize = AlignDownPage(lowLen / 4);
 
         conv = sl::ConvertUnits(cacheSize);
-        Log("Cache space: 0x%tx-0x%tx (%zu.%zu %sB)",
+        Log("Cache space: 0x%tx-0x%tx (%zu.%03zu %sB)",
             LogLevel::Verbose, cacheBase, cacheBase + cacheSize,
             conv.major, conv.minor, conv.prefix);
 
@@ -67,12 +67,12 @@ namespace Npk
         mySpace->freeRanges.Insert(range);
 
         conv = sl::ConvertUnits(systemLowSize);
-        Log("General space (low): 0x%tx-0x%tx (%zu.%zu %sB)",
+        Log("General space (low): 0x%tx-0x%tx (%zu.%03zu %sB)",
             LogLevel::Verbose, systemLowBase, systemLowBase + systemLowSize,
             conv.major, conv.minor, conv.prefix);
 
         conv = sl::ConvertUnits(highLen);
-        Log("General space (high): 0x%tx-0x%tx (%zu.%zu %sB)",
+        Log("General space (high): 0x%tx-0x%tx (%zu.%03zu %sB)",
             LogLevel::Verbose, highBase, highBase + highLen,
             conv.major, conv.minor, conv.prefix);
     }

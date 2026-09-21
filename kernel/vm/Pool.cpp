@@ -300,21 +300,40 @@ namespace Npk::Private
         {
             sl::MemSet((void*)node->base, 0, node->length);
 
-            uintptr_t unmapBegin = AlignDownPage(node->base);
-            uintptr_t unmapEnd = AlignUpPage(node->base + node->length);
+            const uintptr_t firstPage = AlignDownPage(node->base);
+            const uintptr_t endPage = AlignUpPage(node->base + node->length);
 
-            const auto prev = pool.nodesByAddr.Before(node);
-            if (prev != pool.nodesByAddr.End() && prev->tag != FreeTag)
+            uintptr_t unmapBegin = firstPage;
+            uintptr_t unmapEnd = endPage;
+
+            auto prev = pool.nodesByAddr.Before(node);
+            while (prev != pool.nodesByAddr.End()
+                && AlignUpPage(prev->base + prev->length) >= firstPage)
             {
+                if (prev->tag == FreeTag)
+                {
+                    prev = pool.nodesByAddr.Before(&*prev);
+                    continue;
+                }
+
                 unmapBegin = sl::Max(unmapBegin, prev->base + prev->length);
                 unmapBegin = AlignUpPage(unmapBegin);
+                break;
             }
 
-            const auto next = pool.nodesByAddr.After(node);
-            if (next != pool.nodesByAddr.End() && next->tag != FreeTag)
+            auto next = pool.nodesByAddr.After(node);
+            while (next != pool.nodesByAddr.End()
+                && AlignDownPage(next->base) < endPage)
             {
+                if (next->tag == FreeTag)
+                {
+                    next = pool.nodesByAddr.After(&*next);
+                    continue;
+                }
+
                 unmapEnd = sl::Min(unmapEnd, next->base);
                 unmapEnd = AlignDownPage(unmapEnd);
+                break;
             }
 
             for (uintptr_t i = unmapBegin; i < unmapEnd; i += PageSize())

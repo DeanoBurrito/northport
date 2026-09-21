@@ -387,7 +387,7 @@ namespace Npk
 
         const auto lapicHz = lapicValue * TscFrequency() / tscValue;
         const auto conv = sl::ConvertUnits(lapicHz, sl::UnitBase::Decimal);
-        Log("LAPIC timer is %zuHz (%zu.%zu %sHz), +/- %zuppm",
+        Log("LAPIC timer is %zuHz (%zu.%03zu %sHz), +/- %zuppm",
             LogLevel::Info, lapicHz, conv.major, conv.minor, conv.prefix,
             accuracy);
 
