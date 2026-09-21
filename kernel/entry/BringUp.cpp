@@ -15,6 +15,97 @@
  */
 namespace Npk
 {
+    constexpr size_t MaxInitPhases = 8;
+
+    struct InitPhase
+    {
+        const char* name;
+        size_t pagesUsed;
+        size_t vmBytes;
+    };
+
+    struct InitUsage
+    {
+        size_t phaseCount;
+        size_t pagesUsed;
+        size_t vmBase;
+        size_t vmHead;
+        InitPhase phases[MaxInitPhases];
+    };
+
+    static void EndInitPhase(InitUsage& usage, const char* name,
+        const InitState& state)
+    {
+        NPK_EARLY_ASSERT(usage.phaseCount < MaxInitPhases);
+
+        auto& phase = usage.phases[usage.phaseCount++];
+        phase.name = name;
+        phase.pagesUsed = state.usedPages - usage.pagesUsed;
+        phase.vmBytes = state.vmAllocHead - usage.vmHead;
+
+        usage.pagesUsed = state.usedPages;
+        usage.vmHead = state.vmAllocHead;
+    }
+
+    static void LogInitUsage(const InitUsage& usage, size_t initPages,
+        size_t usablePages)
+    {
+        struct Percentage 
+        {
+            size_t major;
+            size_t minor;
+        };
+
+        auto MakePercent = [](size_t part, size_t whole) -> Percentage
+        {
+            if (whole == 0)
+                return {};
+
+            size_t accum = (part / whole) * 10000 + ((part % whole) * 10000) 
+                / whole;
+
+            return { accum / 100, accum % 100 };
+        };
+
+        Log("Address space usage: 0x%tx-0x%tx", LogLevel::Verbose,
+            usage.vmBase, usage.vmHead);
+        Log("%16s|%9s|%14s|%8s|%14s", LogLevel::Verbose, "Phase", "Pages",
+            "Memory", "Memory %", "Address Space");
+
+        for (size_t i = 0; i < usage.phaseCount; i++)
+        {
+            const auto& phase = usage.phases[i];
+
+            auto conv = sl::ConvertUnits(phase.pagesUsed << PfnShift());
+            auto percent = MakePercent(phase.pagesUsed, usablePages);
+            auto vmConv = sl::ConvertUnits(phase.vmBytes);
+
+            Log("%16s|%9zu|%6zu.%03zu %2sB|%4zu.%02zu%%|%6zu.%03zu %2sB",
+                LogLevel::Verbose, phase.name, phase.pagesUsed, conv.major,
+                conv.minor, conv.prefix, percent.major, percent.minor,
+                vmConv.major, vmConv.minor, vmConv.prefix);
+        }
+
+        auto conv = sl::ConvertUnits(usage.pagesUsed << PfnShift());
+        auto percent = MakePercent(initPages, usablePages);
+        auto vmConv = sl::ConvertUnits(usage.vmHead - usage.vmBase);
+        Log("%16s|%9zu|%6zu.%03zu %2sB|%4zu.%02zu%%|%6zu.%03zu %2sB",
+            LogLevel::Verbose, "total", usage.pagesUsed, conv.major, conv.minor,
+            conv.prefix, percent.major, percent.minor, vmConv.major,
+            vmConv.minor, vmConv.prefix);
+    }
+
+    static void LogImageSection(const char* name, char* begin, char* end,
+        uintptr_t offset, const char* flags)
+    {
+        const auto base = reinterpret_cast<uintptr_t>(AlignDownPage(begin));
+        const auto top = reinterpret_cast<uintptr_t>(AlignUpPage(end));
+        const auto conv = sl::ConvertUnits(top - base);
+
+        Log("%10s|%#20tx|%#18tx|%4zu.%03zu %2sB| %s", LogLevel::Verbose, name,
+            base, base - offset, conv.major, conv.minor, conv.prefix, flags);
+    }
+
     void DispatchInterrupt(size_t vector) { (void)vector; };
 
     SystemDomain sysDomain0 {};
@@ -36,15 +127,77 @@ namespace Npk
     {
         using namespace Loader;
 
+        constexpr size_t MaxLoaderRanges = 32;
+        MemoryRange ranges[MaxLoaderRanges];
+        Paddr minUsablePaddr = static_cast<Paddr>(~0);
+        Paddr maxUsablePaddr = 0;
+        size_t usablePages = 0;
+        size_t largestRangePages = 0;
+        size_t usableRangeCount = 0;
+        size_t rangesBase = 0;
+
+        while (true)
+        {
+            const size_t count = GetUsableRanges(ranges, rangesBase);
+            rangesBase += count;
+            usableRangeCount += count;
+
+            for (size_t i = 0; i < count; i++)
+            {
+                const auto top = ranges[i].base + ranges[i].length;
+                sl::MaxInPlace(maxUsablePaddr, top);
+                sl::MinInPlace(minUsablePaddr, ranges[i].base);
+
+                const size_t pages = ranges[i].length >> PfnShift();
+                sl::MaxInPlace(largestRangePages, pages);
+                usablePages += pages;
+
+                if (((ranges[i].base | ranges[i].length) & PageMask()) != 0)
+                {
+                    //this should never happen but just in case I write a buggy
+                    //loaded in the future, this'll complain loudly.
+                    Log("Usable memory range is not page aligned: 0x%tx, 0x%zx",
+                        LogLevel::Warning, ranges[i].base, ranges[i].length);
+                }
+            }
+
+            if (count < MaxLoaderRanges)
+                break;
+        }
+        NPK_EARLY_ASSERT(usablePages > 0);
+
+        auto conv = sl::ConvertUnits(usablePages << PfnShift());
+        Log("Usable memory: %zu.%03zu %sB (%zu pages) in %zu range%s",
+            LogLevel::Info, conv.major, conv.minor,
+            conv.prefix, usablePages, usableRangeCount,
+            usableRangeCount == 1 ? "" : "s");
+        conv = sl::ConvertUnits(largestRangePages << PfnShift());
+        Log("Usable span: 0x%tx-0x%tx, largest range is %zu.%03zu %sB",
+            LogLevel::Info, minUsablePaddr, maxUsablePaddr, conv.major,
+            conv.minor, conv.prefix);
+
+        InitUsage usage {};
+        usage.vmBase = init.vmAllocHead;
+        usage.vmHead = usage.vmBase;
+        EndInitPhase(usage, "MMU bootstrap", init);
+
         //0. Map the kernel image
         const auto imageVbase = (uintptr_t)KERNEL_BLOB_BEGIN;
         const auto imagePbase = loader.kernelBase;
         NPK_EARLY_ASSERT(imageVbase >= imagePbase);
         const auto imageOffset = imageVbase - imagePbase;
 
-        Log("Mapping kernel image:", LogLevel::Verbose);
-        Log("%7s|%20s|%18s|%6s", LogLevel::Verbose,
-            "Name", "Virtual Base", "Physical Base", "Flags");
+        conv = sl::ConvertUnits(KERNEL_BLOB_END - KERNEL_BLOB_BEGIN);
+        Log("Mapping kernel image: %zu.%03zu %sB, slide=0x%tx", LogLevel::Info,
+            conv.major, conv.minor, conv.prefix, imageOffset);
+        Log("%10s|%20s|%18s|%12s|%6s", LogLevel::Verbose,
+            "Name", "Virt Base", "Phys Base", "Size", "Flags");
+        LogImageSection("text", KERNEL_TEXT_BEGIN, KERNEL_TEXT_END, 
+            imageOffset, "r-x");
+        LogImageSection("rodata", KERNEL_RODATA_BEGIN, KERNEL_RODATA_END, 
+            imageOffset, "r--");
+        LogImageSection("data", KERNEL_DATA_BEGIN, KERNEL_DATA_END, 
+            imageOffset, "rw-");
 
         for (char* i = AlignDownPage(KERNEL_TEXT_BEGIN); i < KERNEL_TEXT_END;
             i += PageSize())
@@ -53,12 +206,6 @@ namespace Npk
             const uintptr_t vaddr = (uintptr_t)i;
             const MmuPermissions perms = MmuPermission::Write 
                 | MmuPermission::Fetch;
-
-            if (i == AlignDownPage(KERNEL_TEXT_BEGIN))
-            {
-                Log("%7s|%#20tx|%#18tx|  r-x", LogLevel::Verbose, 
-                    "text", vaddr, paddr);
-            }
 
             HwEarlyMap(init, paddr, vaddr, perms, {});
         }
@@ -70,12 +217,6 @@ namespace Npk
             const uintptr_t vaddr = (uintptr_t)i;
             const MmuPermissions perms = {};
 
-            if (i == AlignDownPage(KERNEL_RODATA_BEGIN))
-            {
-                Log("%7s|%#20tx|%#18tx|  r--", LogLevel::Verbose, 
-                    "rodata", vaddr, paddr);
-            }
-
             HwEarlyMap(init, paddr, vaddr, perms, {});
         }
 
@@ -86,14 +227,10 @@ namespace Npk
             const uintptr_t vaddr = (uintptr_t)i;
             const MmuPermissions perms = MmuPermission::Write;
 
-            if (i == AlignDownPage(KERNEL_DATA_BEGIN))
-            {
-                Log("%7s|%#20tx|%#18tx|  rw-", LogLevel::Verbose, 
-                    "data", vaddr, paddr);
-            }
-
             HwEarlyMap(init, paddr, vaddr, perms, {});
         }
+
+        EndInitPhase(usage, "Kernel image", init);
 
         //1. Copy command line to the new address space
         const size_t cmdlineSize = loader.commandLine.Size();
@@ -113,31 +250,9 @@ namespace Npk
 
         Log("Command line copied to: %p, %zu bytes", LogLevel::Info, 
             cmdlineDest, cmdlineSize);
+        EndInitPhase(usage, "Command line", init);
 
         //2. Allocate memory for page info struct storage
-        constexpr size_t MaxLoaderRanges = 32;
-        MemoryRange ranges[MaxLoaderRanges];
-        Paddr minUsablePaddr = static_cast<Paddr>(~0);
-        Paddr maxUsablePaddr = 0;
-        size_t rangesBase = 0;
-
-        while (true)
-        {
-            const size_t count = GetUsableRanges(ranges, rangesBase);
-            rangesBase += count;
-
-            for (size_t i = 0; i < count; i++)
-            {
-                const auto top = ranges[i].base + ranges[i].length;
-
-                sl::MaxInPlace(maxUsablePaddr, top);
-                sl::MinInPlace(minUsablePaddr, ranges[i].base);
-            }
-
-            if (count < MaxLoaderRanges)
-                break;
-        }
-
         const size_t pfndbSize = AlignUpPage(((maxUsablePaddr - minUsablePaddr)
             >> PfnShift()) * sizeof(PageInfo));
         sysDomain0.physOffset = minUsablePaddr;
@@ -204,10 +319,11 @@ namespace Npk
         if (prevDbTop < pfndbSize)
         {
             Log("Poisoned region: 0x%tx-0x%tx",
-                LogLevel::Info, prevDbTop, pfndbSize - prevDbTop);
+                LogLevel::Info, prevDbTop, pfndbSize);
             HwEarlyMapPoison(init, poison, dbOffset + prevDbTop,
                 pfndbSize - prevDbTop);
         }
+        EndInitPhase(usage, "PageInfo init", init);
 
         //3. Setup PMA (physical memory access)/temp mappings for the bsp.
         size_t pmaSlotsSize = init.pmaCount * sizeof(PageAccessCache::Slot);
@@ -223,6 +339,8 @@ namespace Npk
         auto result = HwMakeTempMapSpace(&init.bspTempMapToken, &init,
             init.vmAllocHead, init.pmaBase, init.pmaCount);
         NPK_ASSERT(result == NpkStatus::Success);
+
+        EndInitPhase(usage, "BSP temp maps", init);
 
         //4. Init list of free pages
         const size_t startIndex = init.pmAllocIndex;
@@ -282,6 +400,8 @@ namespace Npk
                 if (count < MaxLoaderRanges)
                     break;
             }
+
+            EndInitPhase(usage, "Memmap spill", init);
         }
 
         //switch to the runtime kernel map, after this point we're no longer
@@ -314,11 +434,18 @@ namespace Npk
             sysDomain0.freeLists.pageCount += pageCount;
         }
 
-        const auto conv = sl::ConvertUnits(totalPages << PfnShift());
-        const auto usedConv = sl::ConvertUnits(init.usedPages << PfnShift());
-        Log("%zu.%zu %sB usable memory, %zu.%zu %sB used by address space init",
-            LogLevel::Info, conv.major, conv.minor, conv.prefix,
-            usedConv.major, usedConv.minor, usedConv.prefix);
+        const size_t initPages = init.usedPages;
+        LogInitUsage(usage, initPages, usablePages);
+        
+        if (totalPages + initPages < usablePages)
+        {
+            const size_t lostPages = usablePages - (totalPages + initPages);
+            conv = sl::ConvertUnits(lostPages << PfnShift());
+
+            Log("%zu page%s (%zu.%03zu %sB) of usable memory unaccounted for.",
+                LogLevel::Warning, lostPages, lostPages == 1 ? "" : "s",
+                conv.major, conv.minor, conv.prefix);
+        }
     }
 
     static PerCpuConfig InitPerCpuData(uintptr_t& virtBase, size_t pmaSlots)
@@ -512,6 +639,31 @@ R"(                                             888                      )"
         Log("Base Commit%s: %s", LogLevel::Verbose, gitDirty ? " (dirty)" : "",
             gitHash);
     }
+    
+    static void LogLoaderState(const LoadState& state)
+    {
+        Log("Loader state: direct map 0x%tx, kernel pbase 0x%tx, bsp id %zu",
+            LogLevel::Verbose, state.directMapBase, state.kernelBase,
+            state.bspId);
+
+        Log("Loader config: rsdp=0x%tx, fdt=0x%tx, efi=0x%tx, module=0x%tx",
+            LogLevel::Verbose,
+            state.rsdp.HasValue() ? *state.rsdp : 0,
+            state.fdt.HasValue() ? *state.fdt : 0,
+            state.efi.HasValue() ? (*state.efi).systemTable : 0,
+            state.moduleBlob.HasValue() ? *state.moduleBlob : 0);
+
+        if (state.timeOffset.HasValue())
+        {
+            const auto offset = (*state.timeOffset).epoch;
+            Log("Loader time offset: %zu ns", LogLevel::Verbose, offset);
+        }
+        else
+            Log("Loader did not provide time offset.", LogLevel::Verbose);
+
+        Log("Loader cmdline: %.*s", LogLevel::Verbose,
+            (int)state.commandLine.Size(), state.commandLine.Begin());
+    }
 
     CPU_LOCAL(SystemDomain*, localSystemDomain);
 
@@ -571,6 +723,7 @@ R"(                                             888                      )"
         SetConfigStore(loadState.commandLine, true);
         HwInitEarly();
         PrintWelcome();
+        LogLoaderState(loadState);
 
         if (loadState.timeOffset.HasValue())
             SetTimeOffset({ *loadState.timeOffset });
@@ -597,6 +750,7 @@ R"(                                             888                      )"
         //3. Setup kernel virtual address space: this function switches to it
         //internally, since the pmm freelist needs the kernel tables active.
         SetupKernelAddressSpace(initState, loadState);
+        SetConfigStore(initState.mappedCmdLine, false);
         
         //4. Setup BSP local state. The storage for these is the original copy
         //in the kernel image, other cpus get an area of the same size but
@@ -606,7 +760,6 @@ R"(                                             888                      )"
             initState.pmaCount, initState.pmaBase);
 
         //5. Initialize discovery mechanisms from firmware (acpi, fdt, efi rt).
-        SetConfigStore(initState.mappedCmdLine, false);
         uintptr_t virtBase = initState.vmAllocHead;
 
         SetConfigRoot(loadState);
