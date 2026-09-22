@@ -304,7 +304,7 @@ namespace Npk
 
     RcuReadToken RcuReadLock()
     {
-        const auto prev = RaiseIpl(Ipl::Dpc);
+        const auto prev = EnsureIpl(Ipl::Dpc);
         sl::AtomicSignalFence(sl::AcqRel);
 
         return prev;
@@ -313,7 +313,7 @@ namespace Npk
     void RcuReadUnlock(RcuReadToken token)
     {
         sl::AtomicSignalFence(sl::AcqRel);
-        LowerIpl(token);
+        RestoreIpl(token);
     }
 
     NpkStatus RcuCall(RcuItem* item)
@@ -335,18 +335,8 @@ namespace Npk
         EbrBarrier(MySystemDomain().rcu);
     }
 
-    CPU_LOCAL(sl::Atomic<bool>, quiescentPending);
-
-    void Private::ArmPendingRcuQuiesce()
-    {
-        quiescentPending->Store(true, sl::Relaxed);
-    }
-
     void Private::CheckPendingRcuQuiesce()
     {
-        if (!quiescentPending->Exchange(false, sl::Relaxed))
-            return;
-
         auto& dom = MySystemDomain();
         if (dom.rcu.actors.Size() == 0)
             return;

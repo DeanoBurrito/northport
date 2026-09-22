@@ -4,43 +4,15 @@ namespace Npk
 {
     CPU_LOCAL(IntrSpinLock, dpcQueueLock);
     CPU_LOCAL(DpcQueue, dpcQueue);
-    CPU_LOCAL(Ipl, localIpl);
 
     void AssertIpl(Ipl target)
     {
-        NPK_ASSERT(target == *localIpl);
+        NPK_ASSERT(target == (Ipl)(HwGetIplWord() & IplWordLevelMask));
     }
 
     Ipl CurrentIpl()
     {
-        return *localIpl;
-    }
-
-    Ipl RaiseIpl(Ipl target)
-    {
-        const bool prevIntrs = IntrsOff();
-
-        const Ipl prev = *localIpl;
-        NPK_ASSERT(target > prev);
-        localIpl = target;
-
-        if (prevIntrs)
-            IntrsOn();
-        return prev;
-    }
-
-    Ipl EnsureIpl(Ipl target)
-    {
-        const bool prevIntrs = IntrsOff();
-
-        const auto prevIpl = *localIpl;
-        NPK_ASSERT(target >= prevIpl);
-        localIpl = target;
-
-        if (prevIntrs)
-            IntrsOn();
-
-        return prevIpl;
+        return (Ipl)(HwGetIplWord() & IplWordLevelMask);
     }
 
     static void RunDpcs()
@@ -67,73 +39,108 @@ namespace Npk
         }
     }
 
-    void LowerIpl(Ipl target)
+    void Private::ClearIplPending(IplWord bits)
+    {
+        auto word = HwGetIplWord();
+
+        while (!HwCompareExchangeIplWord(word, word & ~bits))
+        {}
+    }
+
+    static IplWord StagePendingMask(Ipl level)
+    {
+        switch (level)
+        {
+        case Ipl::Alarm:
+            return IplWordAlarmBit;
+
+        case Ipl::Dpc:
+            return IplWordDpcBit | IplWordWaitableBit;
+
+        default:
+            return 0;
+        }
+    }
+
+    void Private::LowerIplSlowPath(Ipl target)
     {
         NPK_ASSERT(target < CurrentIpl());
 
         while (true)
         {
-            const auto current = *localIpl;
+            const auto word = HwGetIplWord();
+            const auto current = static_cast<Ipl>(word & IplWordLevelMask);
             if (current == target)
                 break;
 
-            const bool prevIntrs = IntrsOff();
-            bool moreWork = false;
-            switch (current)
+            const auto pendingMask = StagePendingMask(current);
+            if ((word & pendingMask) != 0)
             {
-            case Ipl::Interrupt:
-                break;
+                const bool prevIntrs = IntrsOn();
 
-            case Ipl::Tlb:
-                IntrsOn();
-                TlbSyncQuiesce();
-                IntrsOff();
-                break;
-
-            case Ipl::Alarm:
-                IntrsOn();
-                Private::OnAlarmIpl();
-                IntrsOff();
-                moreWork = Private::AlarmIplHasPendingWork();
-                break;
-
-            case Ipl::Dpc:
-                IntrsOn();
-                RunDpcs();
-                IntrsOff();
-                dpcQueueLock->Lock();
-                moreWork = !dpcQueue->Empty();
-                dpcQueueLock->Unlock();
-
-                if (!moreWork && target == Ipl::Passive)
+                switch (current)
                 {
-                    IntrsOn();
-                    Private::SignalPendingWaitables();
-                    IntrsOff();
-                    moreWork = Private::HasPendingWaitables();
+                case Ipl::Alarm:
+                    ClearIplPending(IplWordAlarmBit);
+                    OnAlarmIpl();
+                    break;
+
+                case Ipl::Dpc:
+                    if ((word & IplWordDpcBit) != 0)
+                    {
+                        ClearIplPending(IplWordDpcBit);
+                        RunDpcs();
+                        break;
+                    }
+
+                    ClearIplPending(IplWordWaitableBit);
+                    SignalPendingWaitables();
+                    break;
+
+                default:
+                    NPK_UNREACHABLE();
                 }
-                break;
 
-            case Ipl::Passive:
-                break;
-            }
-
-            if (moreWork)
-            {
-                if (prevIntrs)
-                    IntrsOn();
+                if (!prevIntrs)
+                    IntrsOff();
                 continue;
             }
 
-            localIpl = (Ipl)((unsigned)current - 1);
-            if (prevIntrs)
-                IntrsOn();
+            if (current == Ipl::Tlb)
+            {
+                const bool prevIntrs = IntrsOn();
+                TlbSyncQuiesce();
+                if (!prevIntrs)
+                    IntrsOff();
+            }
+
+            auto expected = word;
+            const auto next = static_cast<IplWord>(current) - 1;
+            while (!HwCompareExchangeIplWord(expected,
+                (expected & IplWordWorkMask) | next))
+            {
+                NPK_ASSERT((expected & IplWordLevelMask)
+                    == static_cast<IplWord>(current));
+
+                if ((expected & pendingMask) != 0)
+                    break;
+            }
         }
 
-        if (target == Ipl::Passive)
+        if (target != Ipl::Passive)
+            return;
+
+        if ((HwGetIplWord() & IplWordRcuBit) != 0)
         {
-            Private::CheckPendingRcuQuiesce();
-            Private::CheckPendingContextSwitch();
+            ClearIplPending(IplWordRcuBit);
+            CheckPendingRcuQuiesce();
+        }
+
+        const auto word = HwGetIplWord();
+        if ((word & (IplWordSwitchBit | IplWordInSwitchBit)) == IplWordSwitchBit)
+        {
+            ClearIplPending(IplWordSwitchBit);
+            Yield();
         }
     }
 
@@ -175,6 +182,8 @@ namespace Npk
         dpcQueueLock->Lock();
         dpcQueue->PushBack(dpc);
         dpcQueueLock->Unlock();
+
+        HwSetPending(IplWordDpcBit);
     }
 
     void SpinUntilDpcCompleted(Dpc* dpc)

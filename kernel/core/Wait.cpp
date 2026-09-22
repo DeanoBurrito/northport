@@ -23,7 +23,6 @@ namespace Npk
     };
     static_assert(sizeof(SxMutexState) == sizeof(size_t));
 
-    CPU_LOCAL(sl::Atomic<bool>, static waitablesPending);
     CPU_LOCAL(WaitableMpScQueue, static pendingWaitables);
 
     CPU_LOCAL_CTOR(
@@ -52,17 +51,10 @@ namespace Npk
         }
     }
 
-    bool Private::HasPendingWaitables()
-    {
-        return waitablesPending->Load(sl::Acquire);
-    }
-
     //NOTE: called at Ipl::Dpc with interrupts enabled, when about to lower
     //to Ipl::Passive.
     void Private::SignalPendingWaitables()
     {
-        waitablesPending->Store(false, sl::Release);
-
         Waitable* pending = nullptr;
         while ((pending = pendingWaitables->Pop()) != nullptr)
         {
@@ -162,7 +154,7 @@ namespace Npk
         }
 
         pendingWaitables->Push(what);
-        waitablesPending->Store(true, sl::Release);
+        HwSetPending(IplWordWaitableBit);
 
         //bump IPL to DPC and back if we need to, to trigger draing
         //the local pending queue of waitables.

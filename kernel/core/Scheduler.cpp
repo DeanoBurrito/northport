@@ -52,7 +52,6 @@ namespace Npk
         ThreadContext* idle;
         sl::Atomic<ThreadContext*> nextThread;
         sl::Atomic<SchedStatus> status;
-        sl::Atomic<bool> switchPending;
         sl::Atomic<bool> quantumEventArmed;
         uint8_t stealableLoad;
         uint8_t totalLoad;
@@ -271,7 +270,8 @@ namespace Npk
         const auto time = GetMonotonicTime().epoch - sched.quantumStart.epoch;
         thread->scheduling.runTime += time;
         
-        sched.switchPending.Exchange(true, sl::Release);
+        NPK_ASSERT(sched.cpuId == MyCoreId());
+        HwSetPending(IplWordSwitchBit);
     }
 
     static void ArmQuantumEvent(LocalScheduler& sched, ThreadContext* thread)
@@ -338,6 +338,8 @@ namespace Npk
         sched.switchPending.Store(true, sl::Release);
         if (who != MyCoreId())
             HwSendIpi(who);
+        else
+            HwSetPending(IplWordSwitchBit);
     }
 
     //NOTE: expects thread->scheduling.lock to be held!
@@ -440,7 +442,20 @@ namespace Npk
         return MyCoreId();
     }
 
-    static void EndYield()
+    static bool FinishSwitch()
+    {
+        LowerIpl(Ipl::Passive);
+        Private::ClearIplPending(IplWordInSwitchBit);
+
+        if ((HwGetIplWord() & IplWordSwitchBit) == 0)
+            return false;
+
+        Private::ClearIplPending(IplWordSwitchBit);
+
+        return true;
+    }
+
+    static bool EndYield()
     {
         auto* current = GetCurrentThread();
         auto* prev = localSched->prevThread;
@@ -527,10 +542,10 @@ namespace Npk
         const size_t who = MyRelativeCoreId();
         const size_t observed = ObserveEpoch(dom.rcu);
 
-        LowerIpl(Ipl::Passive);
-
-        auto& dom = MySystemDomain();
+        const bool again = FinishSwitch();
         NudgeEpoch(dom.rcu, who, observed);
+
+        return again;
     }
 
     NpkStatus ResetThread(ThreadContext* thread)
@@ -578,7 +593,8 @@ namespace Npk
     {
         NPK_ASSERT(Entry != nullptr);
 
-        EndYield();
+        if (EndYield())
+            Yield();
 
         Entry(arg);
         NPK_UNREACHABLE();
@@ -722,76 +738,79 @@ namespace Npk
     void Yield()
     {
         AssertIpl(Ipl::Passive);
-        RaiseIpl(Ipl::Dpc);
 
-        auto& sched = *localSched;
-        auto* current = GetCurrentThread();
-
-        //cancel the clock event for the current quantum if it's active.
-        //If we're too late and the event has already fired (unlikely but
-        //not impossible) we'll need to spin on the DPC. The spinning case can
-        //only happen if the clock event for this cpu was processed by another
-        //cpu. There are ways this can happen, but its rare.
-        if (sched.quantumEventArmed.Load(sl::Relaxed))
+        while (true)
         {
-            if (CancelClockEvent(&sched.quantumEvent) == NpkStatus::Success)
+            RaiseIpl(Ipl::Dpc);
+            HwSetPending(IplWordInSwitchBit);
+
+            auto& sched = *localSched;
+            auto* current = GetCurrentThread();
+
+            if (sched.quantumEventArmed.Load(sl::Relaxed))
             {
-                auto runtime = GetMonotonicTime().epoch 
-                    - sched.quantumStart.epoch;
-                current->scheduling.runTime += runtime;
+                if (CancelClockEvent(&sched.quantumEvent) == NpkStatus::Success)
+                {
+                    auto runtime = GetMonotonicTime().epoch 
+                        - sched.quantumStart.epoch;
+                    current->scheduling.runTime += runtime;
+                }
+                else
+                    SpinUntilDpcCompleted(&sched.quantumEventDpc);
+                sched.quantumEventArmed.Store(false, sl::Release);
+            }
+
+            ThreadContext* next = nullptr;
+            {
+                sl::ScopedLock qlock(sched.queuesLock);
+                next = PopThread(sched);
+            }
+
+            if (next == nullptr && TryStealThread(sched))
+            {
+                sl::ScopedLock qlock(sched.queuesLock);
+                next = PopThread(sched);
+            }
+            if (next == nullptr)
+                next = sched.idle;
+
+            if (next == current)
+            {
+                NPK_ASSERT(current->scheduling.state == ThreadState::Executing);
+                ArmQuantumEvent(sched, current);
+
+                if (!FinishSwitch())
+                    return;
+
+                continue;
+            }
+
+            //thread locks are considered equal rank, acquire them based on
+            //address.
+            if ((uintptr_t)current < (uintptr_t)next)
+            {
+                current->scheduling.lock.Lock();
+                next->scheduling.lock.Lock();
             }
             else
-                SpinUntilDpcCompleted(&sched.quantumEventDpc);
-            sched.quantumEventArmed.Store(false, sl::Release);
+            {
+                next->scheduling.lock.Lock();
+                current->scheduling.lock.Lock();
+            }
+
+            SetCycleAccount(CycleAccount::Kernel);
+            NPK_ASSERT(sched.prevThread == nullptr);
+            sched.prevThread = current;
+
+            next->scheduling.state = ThreadState::Executing;
+            SetCurrentThread(next);
+
+            //actual content switch happens here, EndYield() implements the exit
+            //path of a context switch and takes care of unlock the thread structs.
+            HwSwitchThread(&current->scheduling.context, next->scheduling.context);
+            if (!EndYield())
+                return;
         }
-
-        ThreadContext* next = nullptr;
-        {
-            sl::ScopedLock qlock(sched.queuesLock);
-            next = PopThread(sched);
-        }
-
-        if (next == nullptr && TryStealThread(sched))
-        {
-            sl::ScopedLock qlock(sched.queuesLock);
-            next = PopThread(sched);
-        }
-        if (next == nullptr)
-            next = sched.idle;
-
-        if (next == current)
-        {
-            NPK_ASSERT(current->scheduling.state == ThreadState::Executing);
-            ArmQuantumEvent(sched, current);
-            LowerIpl(Ipl::Passive);
-
-            return;
-        }
-
-        //thread locks are considered equal rank, acquire them based on
-        //address.
-        if ((uintptr_t)current < (uintptr_t)next)
-        {
-            current->scheduling.lock.Lock();
-            next->scheduling.lock.Lock();
-        }
-        else
-        {
-            next->scheduling.lock.Lock();
-            current->scheduling.lock.Lock();
-        }
-
-        SetCycleAccount(CycleAccount::Kernel);
-        NPK_ASSERT(sched.prevThread == nullptr);
-        sched.prevThread = current;
-
-        next->scheduling.state = ThreadState::Executing;
-        SetCurrentThread(next);
-
-        //actual content switch happens here, EndYield() implements to exit
-        //path of a context switch and takes care of unlock the thread structs.
-        HwSwitchThread(&current->scheduling.context, next->scheduling.context);
-        EndYield();
     }
 
     void EnqueueThread(ThreadContext* thread)
@@ -1084,8 +1103,6 @@ namespace Npk
         sched.idle = idle;
         sched.group = &defaultGroup;
         sched.prevThread = nullptr;
-        sched.nextThread.Store(nullptr, sl::Relaxed);
-        sched.switchPending.Store(false, sl::Relaxed);
         sched.quantumEventArmed.Store(false, sl::Relaxed);
         sched.totalLoad = 0;
         sched.stealableLoad = 0;
@@ -1108,14 +1125,6 @@ namespace Npk
         idle->scheduling.basePriority = IdlePriority;
 
         SetCurrentThread(idle);
-    }
-
-    void Private::CheckPendingContextSwitch()
-    {
-        auto& sched = *localSched;
-
-        if (sched.switchPending.Exchange(false, sl::Acquire))
-            Yield();
     }
 
     static void ApplyPriorityBoost(ThreadContext* blocked, ThreadContext* owner,
@@ -1231,7 +1240,7 @@ namespace Npk
             ApplyPriorityBoost(thread, waitable->owner, 0);
         }
 
-        localSched->switchPending.Store(true, sl::Release);
+        HwSetPending(IplWordSwitchBit);
 
         return true;
     }

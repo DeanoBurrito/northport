@@ -100,10 +100,12 @@ namespace Npk
         void* userExitStack;
         void (*ExceptRecoveryPc)(void* stack);
         void* exceptRecoveryStack;
+        IplWord ipl;
     };
     static_assert(offsetof(CoreLocalHeader, userExitStack) == 24);
     static_assert(offsetof(CoreLocalHeader, ExceptRecoveryPc) == 32);
     static_assert(offsetof(CoreLocalHeader, exceptRecoveryStack) == 40);
+    static_assert(offsetof(CoreLocalHeader, ipl) == 48);
 
     SL_ALWAYS_INLINE
     CpuId MyCoreId()
@@ -122,6 +124,43 @@ namespace Npk
         return addr;
     }
     static_assert(offsetof(CoreLocalHeader, selfAddr) == 8);
+
+    SL_ALWAYS_INLINE
+    IplWord HwGetIplWord()
+    {
+        IplWord word;
+        asm volatile("movl %%gs:48, %0" : "=r"(word));
+
+        return word;
+    }
+    static_assert(offsetof(CoreLocalHeader, ipl) == 48);
+
+    SL_ALWAYS_INLINE
+    void HwSetIpl(Ipl level)
+    {
+        asm volatile("movb %0, %%gs:48" :: "ri"(static_cast<uint8_t>(level)));
+    }
+    static_assert(offsetof(CoreLocalHeader, ipl) == 48);
+
+    SL_ALWAYS_INLINE
+    void HwSetPending(IplWord word)
+    {
+        asm volatile("orl %0, %%gs:48" :: "ri"(word) : "memory");
+    }
+    static_assert(offsetof(CoreLocalHeader, ipl) == 48);
+
+    SL_ALWAYS_INLINE
+    bool HwCompareExchangeIplWord(IplWord& expected, IplWord desired)
+    {
+        bool success;
+        asm volatile("cmpxchgl %2, %%gs:48"
+            : "=@ccz"(success), "+a"(expected)
+            : "r"(desired)
+            : "memory");
+
+        return success;
+    }
+    static_assert(offsetof(CoreLocalHeader, ipl) == 48);
 
     SL_ALWAYS_INLINE
     ThreadContext* GetCurrentThread()
@@ -149,7 +188,7 @@ namespace Npk
     bool IntrsExchange(bool on)
     {
         uint64_t flags;
-        asm("pushf; pop %0" : "=g"(flags) :: "memory");
+        asm("pushf; pop %0" : "=r"(flags) :: "memory");
 
         if (on)
             asm("sti");

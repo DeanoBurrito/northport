@@ -159,6 +159,7 @@ namespace Npk
         tls->selfAddr = where;
         tls->currThread = nullptr;
         tls->ExceptRecoveryPc = nullptr;
+        tls->ipl = static_cast<IplWord>(Ipl::Passive);
 
         WriteMsr(Msr::GsBase, where);
         Log("Cpu %zu locals at %p", LogLevel::Info, softwareId, tls);

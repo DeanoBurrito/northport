@@ -11,6 +11,33 @@
 
 namespace Npk
 {
+    /* The IplWord is a combination of the current IPL for a cpu (lowest 8 bits)
+     * and a bitmap (high 24 bits) of pending work. The bitmap and it being
+     * in the same word as the level allow for a fastpath when lowering IPL.
+     */
+    using IplWord = uint32_t;
+
+    constexpr IplWord IplWordLevelMask = 0xFF;
+    constexpr IplWord IplWordSwitchBit = 1 << 8;
+    constexpr IplWord IplWordRcuBit = 1 << 9;
+    constexpr IplWord IplWordWaitableBit = 1 << 10;
+    constexpr IplWord IplWordDpcBit = 1 << 11;
+    constexpr IplWord IplWordAlarmBit = 1 << 12;
+    constexpr IplWord IplWordInSwitchBit = 1 << 13;
+    constexpr IplWord IplWordWorkMask = static_cast<IplWord>(~IplWordLevelMask);
+
+    /* Interrupt Priority Level. Higher levels preempt and prevent behaviour
+     * from lower IPLs occuring until lowered back to that level.
+     */
+    enum class Ipl : uint8_t
+    {
+        Passive,
+        Dpc,
+        Alarm,
+        Tlb,
+        Interrupt,
+    };
+
     /* Opaque type, represents a virtual address translation set.
      */
     struct HwMap;
@@ -445,6 +472,40 @@ namespace Npk
      * one.
      */
     TrapFrame* IdentityTrapFrame();
+
+    /* Returns the IplWord value for the current cpu.
+     */
+    SL_ALWAYS_INLINE
+    IplWord HwGetIplWord();
+
+    /* Sets only the level field of the current cpu's IplWord, pending bits are
+     * left as they are. Most architectures can implement this directly, but
+     * if a byte sized store is not available a CAS can be used.
+     * Note that this function does not provide a fence or ordering of any kind,
+     * that is left to the caller.
+     * Also note that while the store needs to be atomic from the perspective
+     * of the current cpu, the IplWord is only accessed by this cpu so it doesnt
+     * need to be atomic from the perspective of other cpus: only trap handlers
+     * on the current cpu. This goes for all IplWord ops.
+     */
+    SL_ALWAYS_INLINE
+    void HwSetIpl(Ipl level);
+
+    /* Arms the pending-work bits in `word` on the current cpu, leaving the
+     * level and any bit already armed untouched. Has release semantics, so the
+     * work an armer describes is visible before the bit announcing it.
+     */
+    SL_ALWAYS_INLINE
+    void HwSetPending(IplWord word);
+
+    /* Performs a CAS operation on the current cpu's IplWord value. This is an
+     * arch specific hook because the entire operation needs to be atomic,
+     * and per-cpu storage can use non-portable addressing modes.
+     * Returns whether the CAS succeeded or not, on failure `expected` contains
+     * the current value.
+     */
+    SL_ALWAYS_INLINE
+    bool HwCompareExchangeIplWord(IplWord& expected, IplWord desired);
 
     /* Returns a pointer to the context of the currently executing thread.
      */

@@ -76,8 +76,7 @@ namespace Npk
             NPK_ASSERT(result == NpkStatus::Success);
             virtBase += PageSize();
         }
-        if (prevIpl < Ipl::Dpc)
-            LowerIpl(prevIpl);
+        RestoreIpl(prevIpl);
 
         //2. Populate wake table
         wakeTable->entryCount = conf.cpuCount;
@@ -123,8 +122,7 @@ namespace Npk
             NPK_ASSERT(result == NpkStatus::Success);
             virtBase += PageSize();
         }
-        if (prevIpl < Ipl::Dpc)
-            LowerIpl(prevIpl);
+        RestoreIpl(prevIpl);
 
         wakeTargets = wakeTargets.Subspan(0, HwEnumerateAps(wakeTargets));
         Log("%zu APs available for waking.", LogLevel::Verbose,

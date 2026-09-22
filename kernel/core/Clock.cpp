@@ -18,7 +18,6 @@ namespace Npk
         ClockList events;
         sl::TimePoint armedExpiry;
         sl::Atomic<bool> alarmArmed;
-        sl::Atomic<bool> alarmPending;
 
         ClockStats stats;
 
@@ -106,8 +105,7 @@ namespace Npk
 
         if (event->state.Load(sl::Relaxed) != ClockEventState::Idle)
         {
-            if (prevIpl != Ipl::Alarm)
-                LowerIpl(prevIpl);
+            RestoreIpl(prevIpl);
 
             return NpkStatus::Busy;
         }
@@ -115,13 +113,12 @@ namespace Npk
         event->owner = MyCoreId();
         event->state.Store(ClockEventState::Armed, sl::Release);
         if (InsertEvent(queue, *event))
-            queue.alarmPending.Store(true, sl::Relaxed);
+            HwSetPending(IplWordAlarmBit);
 
         queue.stats.Add(ClockStat::EventsArmed, 1);
         queue.stats.Add(ClockStat::QueueDepth, 1);
 
-        if (prevIpl != Ipl::Alarm)
-            LowerIpl(prevIpl);
+        RestoreIpl(prevIpl);
 
         return NpkStatus::Success;
     }
@@ -148,7 +145,7 @@ namespace Npk
         queue.stats.Sub(ClockStat::QueueDepth, 1);
 
         if (wasFront)
-            queue.alarmPending.Store(true, sl::Relaxed);
+            HwSetPending(IplWordAlarmBit);
 
         return NpkStatus::Success;
     }
@@ -159,7 +156,7 @@ namespace Npk
         auto& queue = *clockQueue;
 
         queue.cancelRequests.Push(request);
-        queue.alarmPending.Store(true, sl::Relaxed);
+        HwSetPending(IplWordAlarmBit);
     }
 
     static NpkStatus CancelRemoteEvent(ClockEvent& event, CpuId owner)
@@ -186,8 +183,7 @@ namespace Npk
         auto prevIpl = EnsureIpl(Ipl::Alarm);
         if (event->state.Load(sl::Acquire) == ClockEventState::Idle)
         {
-            if (prevIpl != Ipl::Alarm)
-                LowerIpl(prevIpl);
+            RestoreIpl(prevIpl);
 
             return NpkStatus::NotAvailable;
         }
@@ -196,13 +192,11 @@ namespace Npk
         if (owner == MyCoreId())
         {
             auto result = DoCancel(*clockQueue, *event);
-            if (prevIpl != Ipl::Alarm)
-                LowerIpl(prevIpl);
+            RestoreIpl(prevIpl);
 
             return result;
         }
-        if (prevIpl != Ipl::Alarm)
-            LowerIpl(prevIpl);
+        RestoreIpl(prevIpl);
 
         if (CurrentIpl() != Ipl::Passive)
             return NpkStatus::Unsupported;
@@ -236,77 +230,64 @@ namespace Npk
         NPK_ASSERT(CurrentIpl() == Ipl::Alarm);
 
         auto& queue = *clockQueue;
-        bool shouldRearm = false;
 
-        while (queue.alarmPending.Exchange(false, sl::Acquire))
+        while (auto* req = queue.cancelRequests.Pop())
         {
-            shouldRearm = true;
+            req->result = DoCancel(queue, *req->event);
+            req->hasResult.Store(true, sl::Release);
+            queue.stats.Add(ClockStat::RemoteCancels, 1);
 
-            while (auto* req = queue.cancelRequests.Pop())
-            {
-                req->result = DoCancel(queue, *req->event);
-                req->hasResult.Store(true, sl::Release);
+        }
+        queue.stats.Add(ClockStat::AlarmPasses, 1);
 
-                queue.stats.Add(ClockStat::RemoteCancels, 1);
-            }
+        ClockList expired {};
+        size_t expiredCount = 0;
+        const auto now = HwReadTimestamp();
 
-            queue.stats.Add(ClockStat::AlarmPasses, 1);
+        while (!queue.events.Empty())
+        {
+            if (queue.events.Front().expiry > now)
+                break;
 
-            ClockList expired {};
-            size_t expiredCount = 0;
-            const auto now = HwReadTimestamp();
-
-            while (!queue.events.Empty())
-            {
-                if (queue.events.Front().expiry > now)
-                    break;
-
-                auto* event = queue.events.PopFront();
-                expired.PushBack(event);
-                expiredCount++;
-            }
-
-            while (!expired.Empty())
-            {
-                auto* event = expired.PopFront();
-
-                if (event->periodNs != 0)
-                {
-                    event->expiry.epoch += event->periodNs;
-                    if (event->expiry.epoch <= now.epoch)
-                    {
-                        queue.stats.Add(ClockStat::PeriodsMissed, 1);
-                        event->expiry = { now.epoch + event->periodNs };
-                    }
-
-                    event->state.Store(ClockEventState::Armed, sl::Relaxed);
-                    InsertEvent(queue, *event);
-                    queue.stats.Add(ClockStat::QueueDepth, 1);
-
-                    const auto completion = event->completion.Get();
-                    NotifyCompletion(completion);
-                    continue;
-                }
-
-                const auto completion = event->completion.Get();
-                event->state.Store(ClockEventState::Expired, sl::Release);
-
-                NotifyCompletion(completion);
-            }
-
-            queue.stats.Add(ClockStat::EventsExpired, expiredCount);
-            queue.stats.Sub(ClockStat::QueueDepth, expiredCount);
-            if (expiredCount == 0)
-                queue.stats.Add(ClockStat::EmptyPasses, 1);
+            auto* event = queue.events.PopFront();
+            event->state.Store(ClockEventState::Expired, sl::Release);
+            expired.PushBack(event);
+            expiredCount++;
         }
 
-        if (shouldRearm)
-            SetAlarmForQueue(queue);
-    }
+        while (!expired.Empty())
+        {
+            auto* event = expired.PopFront();
 
-    bool Private::AlarmIplHasPendingWork()
-    {
-        return clockQueue->alarmPending.Load(sl::Relaxed);
+            if (event->periodNs != 0)
+            {
+                event->expiry.epoch += event->periodNs;
+                if (event->expiry.epoch <= now.epoch)
+                {
+                    queue.stats.Add(ClockStat::PeriodsMissed, 1);
+                    event->expiry = { now.epoch + event->periodNs };
+                }
+
+                event->state.Store(ClockEventState::Armed, sl::Relaxed);
+                InsertEvent(queue, *event);
+                queue.stats.Add(ClockStat::QueueDepth, 1);
+
+                const auto completion = event->completion.Get();
+                NotifyCompletion(completion);
+                continue;
+            }
+
+            const auto completion = event->completion.Get();
+
+            NotifyCompletion(completion);
+        }
+
+        queue.stats.Add(ClockStat::EventsExpired, expiredCount);
+        queue.stats.Sub(ClockStat::QueueDepth, expiredCount);
+        if (expiredCount == 0)
+            queue.stats.Add(ClockStat::EmptyPasses, 1);
+
+        SetAlarmForQueue(queue);
     }
 
     void DispatchAlarm()
@@ -314,7 +295,7 @@ namespace Npk
         AssertIpl(Ipl::Interrupt);
 
         clockQueue->alarmArmed.Store(false, sl::Relaxed);
-        clockQueue->alarmPending.Store(true, sl::Release);
+        HwSetPending(IplWordAlarmBit);
     }
 
     sl::Opt<sl::TimePoint> NextClockEvent()
@@ -325,8 +306,7 @@ namespace Npk
         if (!clockQueue->events.Empty())
             expiry = clockQueue->events.Front().expiry;
 
-        if (prevIpl != Ipl::Alarm)
-            LowerIpl(prevIpl);
+        RestoreIpl(prevIpl);
 
         return expiry;
     }

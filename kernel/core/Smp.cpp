@@ -76,7 +76,7 @@ namespace Npk
             NotifyCompletion(target);
         }
 
-        Private::ArmPendingRcuQuiesce();
+        HwSetPending(IplWordRcuBit | IplWordSwitchBit);
     }
 
     RemoteCpuStatus* RemoteStatus(CpuId who)

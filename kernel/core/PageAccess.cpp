@@ -74,8 +74,7 @@ namespace Npk
             }
             while (false);
 
-            if (prevIpl < Ipl::Dpc)
-                LowerIpl(prevIpl);
+            RestoreIpl(prevIpl);
             copied += runLen;
         }
 

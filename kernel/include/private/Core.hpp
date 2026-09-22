@@ -14,10 +14,8 @@ namespace Npk::Private
     void InitLocalWorker();
     void InitPageAccessCache(uintptr_t slotsBase, size_t slotsCount);
 
+    void ClearIplPending(IplWord bits);
     void SignalPendingWaitables();
-    bool HasPendingWaitables();
-    void CheckPendingContextSwitch();
-    bool AlarmIplHasPendingWork();
     void OnAlarmIpl();
 
     //returns whether scheduler accepted beginning a wait. If false means
@@ -27,7 +25,6 @@ namespace Npk::Private
     void WakeThread(ThreadContext* thread);
 
     void WorkItemThreadEntry(void* arg);
-    void ArmPendingRcuQuiesce();
     void CheckPendingRcuQuiesce();
 
     void AcquirePanicOutputs(LogSinkList& sinks);

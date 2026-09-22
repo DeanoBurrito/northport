@@ -179,24 +179,6 @@ namespace Npk
         }
     };
 
-    /* Interrupt Priority Level. Higher IPLs will mask and preempt lower IPLs.
-     * This can be used to prevent behaviours which occur at specific IPLs,
-     * or ensure mutual exclusion within a single cpu core (locks are still
-     * required when multiple cores can be involved).
-     *
-     * E.g. thread preemption only occurs when the current IPL is passive,
-     * if kernel wants to prevent being preempted but leave interrupts enabled,
-     * it can raise the IPL > Passive.
-     */
-    enum class Ipl : uint8_t
-    {
-        Passive,
-        Dpc,
-        Alarm,
-        Tlb,
-        Interrupt,
-    };
-
     /* Spinlock which can only be acquired when the `min <= current IPL <= max`.
      * If unspecified, `min` is Ipl::Passive meaning the template param defines
      * the maximum IPL the lock can be taken at. If required, holding this lock
@@ -956,19 +938,88 @@ namespace Npk
      * that runs at or below the previous level. Returns the previous IPL so it
      * can be later restored via a call to `LowerIpl()`.
      */
-    Ipl RaiseIpl(Ipl target);
+    SL_ALWAYS_INLINE
+    Ipl RaiseIpl(Ipl target)
+    {
+        const auto prev = static_cast<Ipl>(HwGetIplWord() & IplWordLevelMask);
+        NPK_ASSERT(target > prev);
+
+        HwSetIpl(target);
+        sl::AtomicSignalFence(sl::AcqRel);
+
+        return prev;
+    }
 
     /* Similar to `RaiseIpl()` but it tolerates the local IPL already being at
      * `target` level. The local IPL before the call is returned so it can be
      * restored via a call to `LowerIpl()`.
      */
-    Ipl EnsureIpl(Ipl target);
+    SL_ALWAYS_INLINE
+    Ipl EnsureIpl(Ipl target)
+    {
+        const auto prev = static_cast<Ipl>(HwGetIplWord() & IplWordLevelMask);
+        NPK_ASSERT(target >= prev);
+
+        HwSetIpl(target);
+        sl::AtomicSignalFence(sl::AcqRel);
+
+        return prev;
+    }
+
+    namespace Private
+    {
+        void LowerIplSlowPath(Ipl target);
+    }
 
     /* Strict lowers the local cpu's IPL to `target`, unmasking any activity
      * that held off at higher levels. Any work at the newly unmasked levels is
      * performed before this function returns.
      */
-    void LowerIpl(Ipl target);
+    SL_ALWAYS_INLINE
+    void LowerIpl(Ipl target)
+    {
+        auto word = HwGetIplWord();
+        const Ipl current = static_cast<Ipl>(word & IplWordLevelMask);
+        NPK_ASSERT(target < current);
+
+        const auto pendingMask = [](Ipl target) -> auto
+        {
+            switch (target)
+            {
+            case Ipl::Passive:
+                return IplWordAlarmBit | IplWordDpcBit | IplWordWaitableBit
+                    | IplWordRcuBit | IplWordSwitchBit;
+
+            case Ipl::Dpc:
+                return IplWordAlarmBit;
+
+            default:
+                return uint32_t {};
+            }
+        }(target);
+
+        if (current < Ipl::Tlb && (word & pendingMask) == 0)
+        {
+            const auto newWord = (word & ~IplWordLevelMask) | (IplWord)target;
+            if (HwCompareExchangeIplWord(word, newWord))
+                return;
+        }
+
+        Private::LowerIplSlowPath(target);
+    }
+
+    /* Similar to `LowerIpl()` but it tolerates the local IPL already being at
+     * `target` level, companion function to EnsureIpl.
+     */
+    SL_ALWAYS_INLINE
+    void RestoreIpl(Ipl target)
+    {
+        const auto prev = static_cast<Ipl>(HwGetIplWord() & IplWordLevelMask);
+        if (target == prev)
+            return;
+
+        LowerIpl(target);
+    }
 
     /* Acquires the lock, must be called at IPL <= max IPL of lock.
      */
