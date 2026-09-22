@@ -13,6 +13,7 @@
     #define SL_NO_PROFILE [[gnu::no_instrument_function]]
     #define SL_NO_KASAN [[gnu::no_sanitize_address]]
     #define SL_USED [[gnu::used]]
+    #define SL_HIDDEN [[gnu::visibility("hidden")]]
 
     #ifdef __ELF__
         #define SL_TAGGED(id, variable) [[gnu::section(".sl_tagged." #id)]] variable

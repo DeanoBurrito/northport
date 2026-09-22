@@ -77,8 +77,11 @@ namespace Npk
         ") Unexpected status code %zu, %s", lvl, \
     status, StatusStr(status))
 
-extern "C" char KERNEL_CPULOCALS_BEGIN[];
-extern "C" char KERNEL_NODELOCALS_BEGIN[];
+extern "C"
+{
+    SL_HIDDEN extern char KERNEL_CPULOCALS_BEGIN[];
+    SL_HIDDEN extern char KERNEL_NODELOCALS_BEGIN[];
+}
 
 namespace sl
 {

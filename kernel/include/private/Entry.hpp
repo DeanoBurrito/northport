@@ -287,24 +287,27 @@ namespace Npk
 extern "C"
 {
     
-    extern char KERNEL_BLOB_BEGIN[];
-    extern char KERNEL_BLOB_END[];
-    extern char KERNEL_TEXT_BEGIN[];
-    extern char KERNEL_TEXT_END[];
-    extern char KERNEL_RODATA_BEGIN[];
-    extern char KERNEL_RODATA_END[];
-    extern char KERNEL_DATA_BEGIN[];
-    extern char KERNEL_DATA_END[];
-    extern void (*INIT_ARRAY_BEGIN[])();
-    extern void (*INIT_ARRAY_END[])();
-    extern void (*PREINIT_ARRAY_BEGIN[])();
-    extern void (*PREINIT_ARRAY_END[])();
-    extern char KERNEL_CPULOCALS_BEGIN[];
-    extern char KERNEL_CPULOCALS_END[];
-    extern char KERNEL_NODELOCALS_BEGIN[];
-    extern char KERNEL_NODELOCALS_END[];
+    /* The hidden markers spare each reference a GOT load, see `SL_HIDDEN`.
+     * These are all linker script symbols, so nothing can interpose them.
+     */
+    SL_HIDDEN extern char KERNEL_BLOB_BEGIN[];
+    SL_HIDDEN extern char KERNEL_BLOB_END[];
+    SL_HIDDEN extern char KERNEL_TEXT_BEGIN[];
+    SL_HIDDEN extern char KERNEL_TEXT_END[];
+    SL_HIDDEN extern char KERNEL_RODATA_BEGIN[];
+    SL_HIDDEN extern char KERNEL_RODATA_END[];
+    SL_HIDDEN extern char KERNEL_DATA_BEGIN[];
+    SL_HIDDEN extern char KERNEL_DATA_END[];
+    SL_HIDDEN extern void (*INIT_ARRAY_BEGIN[])();
+    SL_HIDDEN extern void (*INIT_ARRAY_END[])();
+    SL_HIDDEN extern void (*PREINIT_ARRAY_BEGIN[])();
+    SL_HIDDEN extern void (*PREINIT_ARRAY_END[])();
+    SL_HIDDEN extern char KERNEL_CPULOCALS_BEGIN[];
+    SL_HIDDEN extern char KERNEL_CPULOCALS_END[];
+    SL_HIDDEN extern char KERNEL_NODELOCALS_BEGIN[];
+    SL_HIDDEN extern char KERNEL_NODELOCALS_END[];
 
-    extern char* BspStackTop;
+    SL_HIDDEN extern char* BspStackTop;
 }
 
 #ifndef NPK_ASSERT_STRINGIFY
