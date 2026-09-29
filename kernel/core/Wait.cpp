@@ -495,8 +495,13 @@ namespace Npk
 
         if (anyTimeout)
         {
-            if (CancelClockEvent(&timeoutEvent) == NpkStatus::TooLate)
+            result = CancelClockEvent(&timeoutEvent);
+
+            if (result == NpkStatus::TooLate)
                 SpinUntilDpcCompleted(&timeoutDpc);
+
+            NPK_ASSERT(result == NpkStatus::Success 
+                || result == NpkStatus::NotAvailable);
         }
 
         waiter.wakeDpc = nullptr;

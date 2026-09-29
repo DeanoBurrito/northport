@@ -110,7 +110,7 @@ namespace Npk
             return NpkStatus::Busy;
         }
 
-        event->owner = MyCoreId();
+        event->owner.Store(MyCoreId(), sl::Relaxed);
         event->state.Store(ClockEventState::Armed, sl::Release);
         if (InsertEvent(queue, *event))
             HwSetPending(IplWordAlarmBit);
@@ -125,17 +125,20 @@ namespace Npk
 
     static NpkStatus DoCancel(ClockQueue& queue, ClockEvent& event)
     {
-        switch (event.state.Load(sl::Relaxed))
+        switch (event.state.Load(sl::Acquire))
         {
         case ClockEventState::Idle:
             return NpkStatus::NotAvailable;
-        
+
         case ClockEventState::Expired:
             return NpkStatus::TooLate;
 
         case ClockEventState::Armed:
             break;
         }
+
+        if (event.owner.Load(sl::Relaxed) != MyCoreId())
+            return NpkStatus::Busy;
 
         const bool wasFront = &queue.events.Front() == &event;
         queue.events.Remove(&event);
@@ -167,7 +170,9 @@ namespace Npk
         SmpMail mail {};
         ResetMail(&mail, CancelMailCallback, &request, {});
 
-        SendMail(owner, &mail);
+        const auto sent = SendMail(owner, &mail);
+        if (sent != NpkStatus::Success)
+            return sent;
 
         while (!request.hasResult.Load(sl::Acquire))
             sl::HintSpinloop();
@@ -180,28 +185,43 @@ namespace Npk
         if (event == nullptr)
             return NpkStatus::InvalidArg;
 
-        auto prevIpl = EnsureIpl(Ipl::Alarm);
-        if (event->state.Load(sl::Acquire) == ClockEventState::Idle)
+        //This needs to be a loop because there is a window here where another
+        //core can re-arm this clock event after us notifying the owner that
+        //we want to cancel it, this can be due to a work item being processed
+        //later or similar mechanism.
+        while (true)
         {
+            auto prevIpl = EnsureIpl(Ipl::Alarm);
+            if (event->state.Load(sl::Acquire) == ClockEventState::Idle)
+            {
+                RestoreIpl(prevIpl);
+
+                return NpkStatus::NotAvailable;
+            }
+
+            const auto owner = event->owner.Load(sl::Acquire);
+            if (owner == MyCoreId())
+            {
+                auto result = DoCancel(*clockQueue, *event);
+                RestoreIpl(prevIpl);
+
+                if (result != NpkStatus::Busy)
+                    return result;
+
+                sl::HintSpinloop();
+                continue;
+            }
             RestoreIpl(prevIpl);
 
-            return NpkStatus::NotAvailable;
+            if (CurrentIpl() != Ipl::Passive)
+                return NpkStatus::Unsupported;
+
+            auto result = CancelRemoteEvent(*event, owner);
+            if (result != NpkStatus::Busy)
+                return result;
+
+            sl::HintSpinloop();
         }
-
-        const auto owner = event->owner;
-        if (owner == MyCoreId())
-        {
-            auto result = DoCancel(*clockQueue, *event);
-            RestoreIpl(prevIpl);
-
-            return result;
-        }
-        RestoreIpl(prevIpl);
-
-        if (CurrentIpl() != Ipl::Passive)
-            return NpkStatus::Unsupported;
-
-        return CancelRemoteEvent(*event, owner);
     }
 
     static void SetAlarmForQueue(ClockQueue& queue)
