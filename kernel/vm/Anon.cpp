@@ -183,7 +183,7 @@ namespace Npk::Private
         NPK_ASSERT(map != nullptr);
         NPK_ASSERT(map->refcount == 0);
 
-        if (map->slotCount != 0)
+        if (map->slots != nullptr)
         {
             auto table = static_cast<AnonTable*>(map->slots);
             const size_t levels = AnonTableLevels(map->slotCount);

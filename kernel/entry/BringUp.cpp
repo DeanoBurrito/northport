@@ -204,8 +204,7 @@ namespace Npk
         {
             const Paddr paddr = (Paddr)i - imageOffset;
             const uintptr_t vaddr = (uintptr_t)i;
-            const MmuPermissions perms = MmuPermission::Write 
-                | MmuPermission::Fetch;
+            const MmuPermissions perms = MmuPermission::Fetch;
 
             HwEarlyMap(init, paddr, vaddr, perms, {});
         }
@@ -270,7 +269,7 @@ namespace Npk
         for (size_t i = 0; i < PageSize() / sizeof(PageInfo); i++)
             poisonEntries[i].mmList.next = poisonValue;
 
-        const uintptr_t dbOffset = 
+        const uintptr_t dbOffset =
             reinterpret_cast<uintptr_t>(sysDomain0.pfndb);
         Paddr prevRangeTop = 0;
         Paddr prevDbTop = 0;
@@ -304,10 +303,12 @@ namespace Npk
                     LogLevel::Info, base, top, ranges[i].base, ranges[i].base
                     + ranges[i].length);
 
-                for (Paddr s = base; s < top; s += PageSize())
+                const Paddr mapFrom = sl::Max(base, prevDbTop);
+                for (Paddr s = mapFrom; s < top; s += PageSize())
                 {
-                    Paddr p = init.PmAlloc();
-                    uintptr_t v = dbOffset + s;
+                    const Paddr p = init.PmAlloc();
+                    const uintptr_t v = dbOffset + s;
+
                     HwEarlyMap(init, p, v, MmuPermission::Write, {});
                 }
             }
@@ -381,7 +382,7 @@ namespace Npk
                 {
                     if (spilled % rangesPerPage != 0)
                     {
-                        spillPage[spilled & rangesPerPage] = ranges[i];
+                        spillPage[spilled % rangesPerPage] = ranges[i];
 
                         continue;
                     }
@@ -395,6 +396,7 @@ namespace Npk
 
                     spillPage = reinterpret_cast<MemoryRange*>(
                         init.dmBase + page);
+                    spillPage[0] = ranges[i];
                 }
 
                 if (count < MaxLoaderRanges)

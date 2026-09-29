@@ -674,12 +674,12 @@ namespace Npk
     /* Returns the system page size, as a power of 2.
      */
     SL_ALWAYS_INLINE
-    size_t PfnShift();
+    constexpr size_t PfnShift();
 
     /* Returns the current system page size, in bytes.
      */
     SL_ALWAYS_INLINE
-    size_t PageSize()
+    constexpr size_t PageSize()
     {
         return static_cast<size_t>(1) << PfnShift();
     }
@@ -687,7 +687,7 @@ namespace Npk
     /* Returns a bitmask that extracts the page-offset from an address.
      */
     SL_ALWAYS_INLINE
-    size_t PageMask()
+    constexpr size_t PageMask()
     {
         return PageSize() - 1;
     }
@@ -695,7 +695,7 @@ namespace Npk
     /* Returns the size of kernel stacks, in pages.
      */
     SL_ALWAYS_INLINE
-    size_t KernelStackPages()
+    constexpr size_t KernelStackPages()
     {
         return 4;
     }
@@ -703,7 +703,7 @@ namespace Npk
     /* Returns the size of kernel stacks, in bytes.
      */
     SL_ALWAYS_INLINE
-    size_t KernelStackSize()
+    constexpr size_t KernelStackSize()
     {
         return KernelStackPages() << PfnShift();
     }

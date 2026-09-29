@@ -683,13 +683,13 @@ namespace Npk::Private
             "  <feature name=\"%s\">\n",
             GdbArchName, GdbArchFeature);
 
-        if (advance == 0)
+        if (advance < 0 || (size_t)advance >= bufSize - head)
             return 0;
         head += static_cast<size_t>(advance);
 
         advance = sl::SnPrintf(buffer + head, bufSize - head, "%s", 
             GdbArchHeader);
-        if (advance == 0)
+        if (advance < 0 || (size_t)advance >= bufSize - head)
             return 0;
         head += static_cast<size_t>(advance);
 
@@ -701,7 +701,7 @@ namespace Npk::Private
                 "    <reg name=\"%s\" bitsize=\"%zu\" type=\"%s\"/>\n",
                 reg.name, CountRegBytes(reg) * 8, reg.gdbType);
 
-            if (advance == 0)
+            if (advance < 0 || (size_t)advance >= bufSize - head)
                 return 0;
             head += static_cast<size_t>(advance);
         }
@@ -710,7 +710,7 @@ namespace Npk::Private
             "  </feature>\n"
             "</target>\n");
 
-        if (advance == 0)
+        if (advance < 0 || (size_t)advance >= bufSize - head)
             return 0;
         head += static_cast<size_t>(advance);
 

@@ -21,7 +21,7 @@ namespace Npk
 
         size_t bufferLen = sl::VsnPrintf(buffer, PanicPrintBufferSize, 
             format, args);
-        bufferLen = sl::Min(bufferLen, PanicPrintBufferSize);
+        bufferLen = sl::Min(bufferLen, PanicPrintBufferSize - 1);
         va_end(args);
 
         for (auto it = panicOutputs.Begin(); it != panicOutputs.End(); ++it)
@@ -117,7 +117,7 @@ namespace Npk
         uintptr_t word;
         size_t xPos = 0;
 
-        addr = sl::AlignDown(addr, (sizeof(addr) * 8) - 1);
+        addr = sl::AlignDown(addr, sizeof(addr));
         for (size_t i = 0; i < count; i++)
         {
             void* src = reinterpret_cast<void*>(addr + i * sizeof(uintptr_t));

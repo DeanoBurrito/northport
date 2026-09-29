@@ -87,7 +87,7 @@ namespace Npk
     };
 
     SL_ALWAYS_INLINE
-    size_t PfnShift()
+    constexpr size_t PfnShift()
     {
         return 12;
     }

@@ -41,14 +41,21 @@ namespace Npk
     uint64_t ReadMsr(Msr which)
     {
         uint32_t high, low;
-        asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(static_cast<uint32_t>(which)) : "memory");
-        return ((uint64_t)high << 32) | low;
+        const auto c = static_cast<uint32_t>(which);
+
+        asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(c) : "memory");
+
+        return (static_cast<uint64_t>(high) << 32) | low;
     }
 
     SL_ALWAYS_INLINE
     void WriteMsr(Msr which, uint64_t data)
     {
-        asm volatile("wrmsr" :: "a"(data & 0xFFFF'FFFF), "d"(data >> 32), "c"(static_cast<uint32_t>(which)));
+        const uint32_t a = data & 0xFFFF'FFFF;
+        const auto c = static_cast<uint32_t>(which);
+        const uint32_t d = data >> 32;
+
+        asm volatile("wrmsr" :: "a"(a), "d"(d), "c"(c));
     }
 
     void SaveMtrrs(sl::Span<uint64_t> regs);

@@ -176,8 +176,9 @@ namespace Npk
 
         inline void Unlock()
         {
+            const bool restoreIntrs = prevIntrs;
             lock.Unlock();
-            if (prevIntrs)
+            if (restoreIntrs)
                 IntrsOn();
         }
     };
@@ -418,7 +419,6 @@ namespace Npk
         WorkItemEntry function;
         void* arg;
         sl::Atomic<WorkItemState> state;
-        RemoteCpuStatus* queue;
     };
 
     using WorkItemQueue = sl::QueueMpSc<WorkItem, &WorkItem::hook>;
@@ -458,7 +458,7 @@ namespace Npk
         Completion completion;
         sl::TimePoint expiry;
         uint64_t periodNs;
-        CpuId owner;
+        sl::Atomic<CpuId> owner;
         sl::Atomic<ClockEventState> state;
     };
 
@@ -802,6 +802,7 @@ namespace Npk
         {
             size_t idleCache;
             bool done;
+            bool nudged;
         } engine;
     };
 
@@ -809,7 +810,10 @@ namespace Npk
      */
     struct EbrDomain
     {
+        alignas(HwGetStaticCacheLineSize()) 
         sl::Atomic<size_t> epoch;
+
+        alignas(HwGetStaticCacheLineSize()) 
         sl::Atomic<size_t> pending;
         sl::Span<EbrActor> actors;
         EbrNudgeActor nudge;
@@ -821,7 +825,7 @@ namespace Npk
             Dpc clockDpc;
             size_t targetEpoch;
             sl::Atomic<bool> inFlight;
-            sl::Atomic<bool> expedite;
+            sl::Atomic<size_t> expediteEpoch;
         } engine;
     };
 
@@ -1141,8 +1145,11 @@ namespace Npk
     /* Queue a function to run on a remote cpu, mail is processed at interrupt
      * IPL and can be a heavy primitive to use. For less-than-urgent work
      * consider using a work item.
+     * Returns whether the mail was successfully delivered, and this function
+     * can fail. If the caller is waiting on an action or result of this mail
+     * they should check the return value to ensure it was actually sent.
      */
-    void SendMail(CpuId who, SmpMail* mail);
+    NpkStatus SendMail(CpuId who, SmpMail* mail);
 
     /* Attempts to freeze all other cpus in the system. Upon success it will
      * returns the number of frozen cpus +1 (read: total number of cpus in the

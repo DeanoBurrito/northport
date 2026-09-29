@@ -71,7 +71,7 @@ namespace Npk
         sl::Vector2u size)
     {
         NPK_CHECK(conf != nullptr, nullptr);
-        NPK_CHECK(size.x > 40 && size.y > 20, nullptr);
+        NPK_CHECK(size.x >= 40 && size.y >= 20, nullptr);
 
         const size_t cellCount = size.x * size.y;
         void* ptr = PoolAllocWired(sizeof(TextRenderer), VideoTag);
@@ -297,7 +297,7 @@ namespace Npk
                 for (size_t x = 0; x < fontSize.x; x++)
                 {
                     auto px = nextGlyph[glyphRow + x] ? fg : bg;
-                    uintptr_t target = line + (where.x + x + scale.x) *
+                    uintptr_t target = line + (where.x + x * scale.x) *
                         bytesPerPixel;
                     for (size_t sx = 0; sx < scale.x; sx++)
                     {
@@ -493,7 +493,7 @@ namespace Npk
             if (parser.args[0] > engine->cursor.x)
                 engine->cursor.x = 0;
             else
-                engine->cursor -= parser.args[0];
+                engine->cursor.x -= parser.args[0];
             break;
 
         case 'a':
@@ -527,9 +527,24 @@ namespace Npk
         case 'K':
             {
                 const auto prevCursor = engine->cursor;
-                const size_t begin = parser.args[0] == 0 ? engine->cursor.x : 0;
-                const size_t end = parser.args[0] == 2 ? engine->size.x : 
-                    engine->cursor.x;
+
+                size_t begin = engine->cursor.x;
+                size_t end = engine->cursor.x;
+                switch (parser.args[0])
+                {
+                case 0:
+                    end = engine->size.x;
+                    break;
+
+                case 1:
+                    begin = 0;
+                    break;
+
+                case 2:
+                    begin = 0;
+                    end = engine->size.x;
+                    break;
+                }
 
                 engine->cursor.x = begin;
                 for (size_t i = begin; i < end; i++)

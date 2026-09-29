@@ -166,8 +166,6 @@ namespace Npk
 
         if (!kernel)
             value |= UserBit;
-        else
-            value |= GlobalBit;
 
         COPY_PTE(pte, &value);
     }
@@ -591,7 +589,7 @@ namespace Npk
 
         constexpr auto TableSpan = [](size_t level) -> uintptr_t
         {
-            return 1ull << (12 * 9 * level);
+            return 1ull << (12 + 9 * level);
         };
 
         const uintptr_t end = vaddr + length;

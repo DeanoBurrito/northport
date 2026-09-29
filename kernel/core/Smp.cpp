@@ -101,15 +101,17 @@ namespace Npk
         return NpkStatus::Success;
     }
 
-    void SendMail(CpuId who, SmpMail* mail)
+    NpkStatus SendMail(CpuId who, SmpMail* mail)
     {
-        NPK_CHECK(mail != nullptr, );
+        NPK_CHECK(mail != nullptr, NpkStatus::InvalidArg);
 
         auto control = GetControl(who);
-        NPK_CHECK(control != nullptr, );
+        NPK_CHECK(control != nullptr, NpkStatus::NotFound);
 
         control->mail.Push(mail);
         HwSendIpi(who);
+
+        return NpkStatus::Success;
     }
 
     size_t FreezeAllCpus(bool allowDefer)
@@ -131,6 +133,7 @@ namespace Npk
                 return 0;
 
             HandleFreezing();
+            expected = 0;
         }
 
         auto startTime = GetMonotonicTime();
