@@ -38,6 +38,8 @@ namespace Npk
         ClFlush,
         ClFlushOpt,
         ClWb,
+        Pcid,
+        InvPcid,
 
         Count
     };
@@ -62,12 +64,22 @@ namespace Npk
         }
     };
 
+    enum class CpuVendor
+    {
+        Unknown,
+        Intel,
+        Amd,
+    };
+
     constexpr uint32_t BaseLeaf = 0;
     constexpr uint32_t HypervisorLeaf = 0x4000'0000;
     constexpr uint32_t ExtendedLeaf = 0x8000'0000;
 
     CpuidLeaf& DoCpuid(uint32_t leaf, uint32_t subleaf, CpuidLeaf& data);
 
+    size_t GetCpuidFamily();
+    size_t GetCpuidModel();
+    CpuVendor GetCpuidVendor();
     bool CpuHasFeature(CpuFeature feature);
     void LogCpuFeatures();
     size_t GetBrandString(sl::Span<char> buffer);

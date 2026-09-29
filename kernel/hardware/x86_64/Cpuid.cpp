@@ -51,6 +51,8 @@ namespace Npk
         { .leaf {1, 0}, .index = 'd', .shift = 19, .name = "clflush" },
         { .leaf {7, 0}, .index = 'b', .shift = 23, .name = "clflushopt" },
         { .leaf {7, 0}, .index = 'b', .shift = 24, .name = "clwb" },
+        { .leaf {1, 0}, .index = 'c', .shift = 17, .name = "pcid" },
+        { .leaf {7, 0}, .index = 'b', .shift = 10, .name = "invpcid" },
     };
 
     static_assert(sizeof(accessors) / sizeof(CpuFeatureAccessor) 
@@ -64,6 +66,49 @@ namespace Npk
             "memory");
 
         return data;
+    }
+
+    size_t GetCpuidFamily()
+    {
+        CpuidLeaf leaf {};
+        DoCpuid(1, 0, leaf);
+
+        size_t accum = (leaf.a >> 8) & 0xF;
+        if (accum == 0xF)
+            accum += (leaf.a >> 20) & 0xFF;
+
+        return accum;
+    }
+
+    size_t GetCpuidModel()
+    {
+        CpuidLeaf leaf {};
+        DoCpuid(1, 0, leaf);
+
+        size_t accum = (leaf.a >> 4) & 0xF;
+        if (accum == 0x6 || accum == 0xF)
+            accum += (leaf.a & 0xF0000) >> 12;
+
+        return accum;
+    }
+
+    CpuVendor GetCpuidVendor()
+    {
+        CpuidLeaf leaf {};
+        DoCpuid(BaseLeaf, 0, leaf);
+
+        char vendor[12];
+        sl::MemCopy(&vendor[0], &leaf.b, 4);
+        sl::MemCopy(&vendor[4], &leaf.d, 4);
+        sl::MemCopy(&vendor[8], &leaf.c, 4);
+
+        auto who = CpuVendor::Unknown;
+        if (sl::MemCompare(vendor, "GenuineIntel", 12) == 0)
+            who = CpuVendor::Intel;
+        else if (sl::MemCompare(vendor, "AuthenticAMD", 12) == 0)
+            who = CpuVendor::Amd;
+
+        return who;
     }
 
     bool CpuHasFeature(CpuFeature feature)
