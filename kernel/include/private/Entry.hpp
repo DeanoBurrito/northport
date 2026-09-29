@@ -7,6 +7,14 @@
  */
 namespace Npk::Loader
 {
+    enum class MemoryType
+    {
+        Usable,
+        LoaderReclaimable,
+    };
+
+    using MemoryTypes = sl::Flags<MemoryType>;
+
     struct EfiDetails
     {
         Paddr systemTable;
@@ -95,18 +103,23 @@ namespace Npk::Loader
      */
     LoadState GetEntryState();
 
-    /* This function will convert memory map data from the bootloader's format
-     * to our own. It ignores the first `offset` number of usable entries, then
-     * copies the base and length values of each usable physical address range
-     * into the next unused slot in `ranges`. These values are in bytes but must
-     * be page aligned. This function never writes beyond `ranges.Size()`.
-     * The return value is the number of usable ranges written to `ranges`, if
-     * smaller than `ranges.Size()` there are likely more ranges after what was
-     * written.
+    /* This function converts memory map data from the bootloader's format to
+     * our own, sanitizing it if necessary. Entries returned from this function
+     * will not overlap with any other are will be sorted by base address
+     * - even across separate calls.
+     * Only ranges set in `flags` are considered, and the first `offset` number
+     * of considered ranges are ignored. Ranges after `offset` are copied into
+     * `ranges`. The ranges are byte granular but the values will be page
+     * aligned (page size defined as `PageSize()` in Hardware.hpp).
+     *
+     * Returns how many ranges we copied into `ranges`, if smaller than 
+     * `ranges.Size()` there are likely more memory ranges to consider and this
+     * function should be called again.
      */
-    size_t GetUsableRanges(sl::Span<MemoryRange> ranges, size_t offset);
+    size_t GetMemoryRanges(sl::Span<MemoryRange> ranges, MemoryTypes types,
+        size_t offset);
 
-    /* Similar to `GetUsableRanges()`, but for framebuffers provided by the
+    /* Similar to `GetMemoryRanges()`, but for framebuffers provided by the
      * boot protocol.
      */
     size_t GetFramebuffers(sl::Span<Framebuffer> fbs, size_t offset);

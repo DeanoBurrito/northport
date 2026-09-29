@@ -184,15 +184,29 @@ namespace Npk::Loader
         };
     }
 
-    size_t GetUsableRanges(sl::Span<MemoryRange> ranges, size_t offset)
+    size_t GetMemoryRanges(sl::Span<MemoryRange> ranges, MemoryTypes types,
+        size_t offset)
     {
         size_t entryHead = 0;
 
         for (size_t i = 0; i < mmapReq.response->entry_count; i++)
         {
             const auto entry = mmapReq.response->entries[i];
-            if (entry->type != LIMINE_MEMMAP_USABLE)
+            switch (entry->type)
+            {
+            case LIMINE_MEMMAP_USABLE:
+                if (!types.Has(MemoryType::Usable))
+                    continue;
+                break;
+
+            case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
+                if (!types.Has(MemoryType::LoaderReclaimable))
+                    continue;
+                break;
+
+            default:
                 continue;
+            }
 
             if (offset > 0)
             {

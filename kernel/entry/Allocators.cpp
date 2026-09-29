@@ -30,8 +30,8 @@ namespace Npk
 
         while (true)
         {
-            const size_t count = Loader::GetUsableRanges(
-                { &range, 1 }, pmAllocIndex);
+            const size_t count = Loader::GetMemoryRanges(
+                { &range, 1 }, Loader::MemoryType::Usable, pmAllocIndex);
 
             if (count == 0)
                 EarlyPanic("No usable PM ranges");

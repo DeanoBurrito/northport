@@ -1,8 +1,28 @@
-#include <Core.hpp>
+#include <private/Core.hpp>
 #include <lib/Memory.hpp>
+#include <lib/Units.hpp>
 
 namespace Npk
 {
+    void Private::ReclaimLoaderMemory(PageList& list, size_t pageCount)
+    {
+        auto& dom = MySystemDomain();
+
+        dom.freeLists.lock.Lock();
+        //NOTE: we dont overwrite `info->pm.count` here since bringup has
+        //set it to the real page count of the memory region. It's value is
+        //legit and we need it untouched to be correct.
+        while (!list.Empty())
+            dom.freeLists.free.PushBack(list.PopFront());
+        dom.freeLists.pageCount += pageCount;
+
+        dom.freeLists.lock.Unlock();
+
+        auto conv = sl::ConvertUnits(pageCount << PfnShift());
+        Log("Reclaimed %zu.%zu %sB of loader memory.", LogLevel::Info,
+            conv.major, conv.minor, conv.prefix);
+    }
+
     //NOTE: assumes dom.freeLists.lock is held
     static PageInfo* TakePage(SystemDomain& dom)
     {

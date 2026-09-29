@@ -8,6 +8,7 @@
  */
 namespace Npk::Private
 {
+    void ReclaimLoaderMemory(PageList& list, size_t pageCount);
     void ResetCycleAccounts(CycleAccount first);
     void SetMyNodePointer(uintptr_t addr);
     void InitLocalScheduler(ThreadContext* idle);

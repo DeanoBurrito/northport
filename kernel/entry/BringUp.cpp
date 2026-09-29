@@ -16,6 +16,7 @@
 namespace Npk
 {
     constexpr size_t MaxInitPhases = 8;
+    constexpr size_t MaxLoaderRanges = 32;
 
     struct InitPhase
     {
@@ -32,6 +33,9 @@ namespace Npk
         size_t vmHead;
         InitPhase phases[MaxInitPhases];
     };
+
+    static PageList reclaimablePageList;
+    static size_t reclaimablePages;
 
     static void EndInitPhase(InitUsage& usage, const char* name,
         const InitState& state)
@@ -122,41 +126,103 @@ namespace Npk
     }
 
     using Loader::LoadState;
+    using Loader::MemoryRange;
+    using Loader::MemoryType;
+    using Loader::MemoryTypes;
+
+    static SimpleFramebuffer simpleFb;
+
+    //collects ranges of specified types and returns them as an array in
+    //the kernel address space. If they fit into `ranges`, a subspan of that is
+    //is returned otherwise scratch memory is allocated and used (and leaked!).
+    static sl::Span<MemoryRange> CollectRanges(InitState& init,
+        MemoryTypes types, sl::Span<MemoryRange> ranges, size_t offset)
+    {
+        size_t rangeCount = GetMemoryRanges(ranges, types, offset);
+        if (rangeCount < ranges.Size())
+            return ranges.Subspan(0, rangeCount);
+
+        const size_t rangesPerPage = PageSize() / sizeof(MemoryRange);
+        NPK_ASSERT(PageSize() % sizeof(MemoryRange) == 0);
+
+        size_t rangesBase = offset + rangeCount;
+        while (true)
+        {
+            const size_t count = GetMemoryRanges(ranges, types, rangesBase);
+            rangesBase += count;
+            rangeCount += count;
+
+            if (count < ranges.Size())
+                break;
+        }
+
+        auto* buff = reinterpret_cast<MemoryRange*>(
+            init.VmAlloc(rangeCount * sizeof(MemoryRange)));
+
+        MemoryRange* access = nullptr;
+        size_t spilled = 0;
+        for (size_t base = offset; true; )
+        {
+            const size_t count = GetMemoryRanges(ranges, types, base);
+            base += count;
+
+            for (size_t i = 0; i < count; i++, spilled++)
+            {
+                if (spilled % rangesPerPage == 0)
+                {
+                    //new spill page, get access to it
+
+                    const Paddr page = init.PmAlloc();
+                    const auto vaddr = (uintptr_t)&buff[spilled];
+
+                    HwEarlyMap(init, page, vaddr, MmuPermission::Write, {});
+                    access = reinterpret_cast<MemoryRange*>(init.dmBase + page);
+                }
+
+                access[spilled % rangesPerPage] = ranges[i];
+            }
+
+            if (count < ranges.Size())
+                break;
+        }
+
+        return { buff, rangeCount };
+    }
 
     static void SetupKernelAddressSpace(InitState& init, LoadState& loader)
     {
         using namespace Loader;
 
-        constexpr size_t MaxLoaderRanges = 32;
         MemoryRange ranges[MaxLoaderRanges];
-        Paddr minUsablePaddr = static_cast<Paddr>(~0);
-        Paddr maxUsablePaddr = 0;
-        size_t usablePages = 0;
+        Paddr minUsefulPaddr = static_cast<Paddr>(~0);
+        Paddr maxUsefulPaddr = 0;
+        size_t usefulPages = 0;
         size_t largestRangePages = 0;
-        size_t usableRangeCount = 0;
+        size_t usefulRangeCount = 0;
         size_t rangesBase = 0;
 
         while (true)
         {
-            const size_t count = GetUsableRanges(ranges, rangesBase);
+            auto types = MemoryType::Usable | MemoryType::LoaderReclaimable;
+            const size_t count = GetMemoryRanges(ranges, types, rangesBase);
             rangesBase += count;
-            usableRangeCount += count;
+            usefulRangeCount += count;
 
             for (size_t i = 0; i < count; i++)
             {
                 const auto top = ranges[i].base + ranges[i].length;
-                sl::MaxInPlace(maxUsablePaddr, top);
-                sl::MinInPlace(minUsablePaddr, ranges[i].base);
+                sl::MaxInPlace(maxUsefulPaddr, top);
+                sl::MinInPlace(minUsefulPaddr, ranges[i].base);
 
                 const size_t pages = ranges[i].length >> PfnShift();
                 sl::MaxInPlace(largestRangePages, pages);
-                usablePages += pages;
+                usefulPages += pages;
 
                 if (((ranges[i].base | ranges[i].length) & PageMask()) != 0)
                 {
                     //this should never happen but just in case I write a buggy
                     //loaded in the future, this'll complain loudly.
-                    Log("Usable memory range is not page aligned: 0x%tx, 0x%zx",
+                    Log("Memory range is not page aligned: 0x%tx, 0x%zx",
                         LogLevel::Warning, ranges[i].base, ranges[i].length);
                 }
             }
@@ -164,16 +230,16 @@ namespace Npk
             if (count < MaxLoaderRanges)
                 break;
         }
-        NPK_EARLY_ASSERT(usablePages > 0);
+        NPK_EARLY_ASSERT(usefulPages > 0);
 
-        auto conv = sl::ConvertUnits(usablePages << PfnShift());
-        Log("Usable memory: %zu.%03zu %sB (%zu pages) in %zu range%s",
-            LogLevel::Info, conv.major, conv.minor,
-            conv.prefix, usablePages, usableRangeCount,
-            usableRangeCount == 1 ? "" : "s");
+        auto conv = sl::ConvertUnits(usefulPages << PfnShift());
+        Log("Useful memory (usable + reclaim): %zu.%03zu %sB (%zu pages) in "
+            "%zu range%s", LogLevel::Info, conv.major, conv.minor,
+            conv.prefix, usefulPages, usefulRangeCount,
+            usefulRangeCount == 1 ? "" : "s");
         conv = sl::ConvertUnits(largestRangePages << PfnShift());
-        Log("Usable span: 0x%tx-0x%tx, largest range is %zu.%03zu %sB",
-            LogLevel::Info, minUsablePaddr, maxUsablePaddr, conv.major,
+        Log("PageInfo span: 0x%tx-0x%tx, largest range is %zu.%03zu %sB",
+            LogLevel::Info, minUsefulPaddr, maxUsefulPaddr, conv.major,
             conv.minor, conv.prefix);
 
         InitUsage usage {};
@@ -252,10 +318,10 @@ namespace Npk
         EndInitPhase(usage, "Command line", init);
 
         //2. Allocate memory for page info struct storage
-        const size_t pfndbSize = AlignUpPage(((maxUsablePaddr - minUsablePaddr)
+        const size_t pfndbSize = AlignUpPage(((maxUsefulPaddr - minUsefulPaddr)
             >> PfnShift()) * sizeof(PageInfo));
-        sysDomain0.physOffset = minUsablePaddr;
-        sysDomain0.pfndbCount = maxUsablePaddr - minUsablePaddr;
+        sysDomain0.physOffset = minUsefulPaddr;
+        sysDomain0.pfndbCount = maxUsefulPaddr - minUsefulPaddr;
         sysDomain0.pfndb = reinterpret_cast<PageInfo*>(init.VmAlloc(pfndbSize));
 
         //to be able to implement `PaddrHasPageInfo()` ("is this physical addr
@@ -276,7 +342,8 @@ namespace Npk
         rangesBase = 0;
         while (true)
         {
-            const size_t count = GetUsableRanges(ranges, rangesBase);
+            auto types = MemoryType::Usable | MemoryType::LoaderReclaimable;
+            const size_t count = GetMemoryRanges(ranges, types, rangesBase);
             rangesBase += count;
 
             for (size_t i = 0; i < count; i++)
@@ -297,13 +364,14 @@ namespace Npk
                     HwEarlyMapPoison(init, poison, dbOffset + prevDbTop,
                         base - prevDbTop);
                 }
+
+                const Paddr mapFrom = sl::Max(base, prevDbTop);
                 prevDbTop = top;
 
                 Log("PageInfo region: 0x%tx-0x%tx (phys 0x%tx-0x%tx)",
-                    LogLevel::Info, base, top, ranges[i].base, ranges[i].base
-                    + ranges[i].length);
+                    LogLevel::Info, mapFrom, top, ranges[i].base,
+                    ranges[i].base + ranges[i].length);
 
-                const Paddr mapFrom = sl::Max(base, prevDbTop);
                 for (Paddr s = mapFrom; s < top; s += PageSize())
                 {
                     const Paddr p = init.PmAlloc();
@@ -344,67 +412,11 @@ namespace Npk
         EndInitPhase(usage, "BSP temp maps", init);
 
         //4. Init list of free pages
-        const size_t startIndex = init.pmAllocIndex;
-        MemoryRange* gathered = ranges;
-        size_t rangeCount = GetUsableRanges(ranges, startIndex);
-
-        //its uncommon but on some systems we can end up with a load of usable
-        //memory ranges. In this case the stack allocated array isn't big enough
-        //so we carve one into the kernel's runtime page map and copy the map
-        //data there.
-        if (rangeCount == MaxLoaderRanges)
-        {
-            const size_t rangesPerPage = PageSize() / sizeof(MemoryRange);
-            NPK_ASSERT(PageSize() % sizeof(MemoryRange) == 0);
-
-            rangesBase = rangeCount;
-            while (true)
-            {
-                const size_t count = GetUsableRanges(ranges, rangesBase);
-                rangesBase += count;
-                rangeCount += count;
-
-                if (count != MaxLoaderRanges)
-                    break;
-            }
-
-            gathered = reinterpret_cast<MemoryRange*>(
-                init.VmAlloc(rangeCount * sizeof(MemoryRange)));
-
-            MemoryRange* spillPage = nullptr;
-            size_t spilled = 0;
-            for (size_t base = startIndex;;)
-            {
-                const size_t count = GetUsableRanges(ranges, base);
-                base += count;
-
-                for (size_t i = 0; i < count; i++, spilled++)
-                {
-                    if (spilled % rangesPerPage != 0)
-                    {
-                        spillPage[spilled % rangesPerPage] = ranges[i];
-
-                        continue;
-                    }
-
-                    const Paddr page = init.PmAlloc();
-                    const uintptr_t vaddr =
-                        reinterpret_cast<uintptr_t>(gathered)
-                        + spilled * sizeof(MemoryRange);
-
-                    HwEarlyMap(init, page, vaddr, MmuPermission::Write, {});
-
-                    spillPage = reinterpret_cast<MemoryRange*>(
-                        init.dmBase + page);
-                    spillPage[0] = ranges[i];
-                }
-
-                if (count < MaxLoaderRanges)
-                    break;
-            }
-
-            EndInitPhase(usage, "Memmap spill", init);
-        }
+        MemoryRange reclaimRanges[MaxLoaderRanges];
+        const auto reclaimable = CollectRanges(init,
+            MemoryType::LoaderReclaimable, reclaimRanges, 0);
+        const auto usable = CollectRanges(init, MemoryType::Usable, ranges,
+            init.pmAllocIndex);
 
         //switch to the runtime kernel map, after this point we're no longer
         //able to access loader data + InitState allocators.
@@ -415,12 +427,14 @@ namespace Npk
             "New Pages", "Base Address", "Total Pages", "Total Size");
 
         size_t totalPages = 0;
-        for (size_t i = 0; i < rangeCount; i++)
+        for (size_t i = 0; i < usable.Size(); i++)
         {
-            const Paddr top = gathered[i].base + gathered[i].length;
-            const Paddr base = sl::Max(gathered[i].base, init.pmAllocHead);
+            const Paddr top = usable[i].base + usable[i].length;
+            const Paddr base = sl::Max(usable[i].base, init.pmAllocHead);
             const size_t pageCount = (top - base) >> PfnShift();
 
+            if (base >= top)
+                continue;
             if (pageCount == 0)
                 continue;
 
@@ -436,17 +450,41 @@ namespace Npk
             sysDomain0.freeLists.pageCount += pageCount;
         }
 
-        const size_t initPages = init.usedPages;
-        LogInitUsage(usage, initPages, usablePages);
-        
-        if (totalPages + initPages < usablePages)
+        //build the list of reclaimable regions for use later.
+        for (size_t i = 0; i < reclaimable.Size(); i++)
         {
-            const size_t lostPages = usablePages - (totalPages + initPages);
+            const auto& range = reclaimable[i];
+
+            const size_t pageCount = range.length >> PfnShift();
+            if (pageCount == 0)
+                continue;
+
+            Log("Reclaimable range: 0x%tx-0x%tx (%zu pages)", LogLevel::Verbose,
+                range.base, range.base + range.length, pageCount);
+
+            auto* info = LookupPageInfo(range.base);
+            info->pm.count = pageCount;
+            reclaimablePageList.PushBack(info);
+            reclaimablePages += pageCount;
+        }
+
+        //log init usage with *usable* (useful - reclaimable) page count,
+        //I think it better represents what could have happened at this stage
+        //of the kernel: reclaimable memory numbers are useless to us here.
+        //e.g. we can have enough useful memory to boot, but if usable is too
+        //low we will still fail.
+        const size_t initPages = init.usedPages;
+        LogInitUsage(usage, initPages, usefulPages - reclaimablePages);
+        
+        if (totalPages + initPages + reclaimablePages < usefulPages)
+        {
+            const size_t lostPages = usefulPages - (totalPages + initPages
+                + reclaimablePages);
             conv = sl::ConvertUnits(lostPages << PfnShift());
 
-            Log("%zu page%s (%zu.%03zu %sB) of usable memory unaccounted for.",
-                LogLevel::Warning, lostPages, lostPages == 1 ? "" : "s",
-                conv.major, conv.minor, conv.prefix);
+            Log("%zu page%s (%zu.%03zu %sB) of useful (usable + reclaimable) "
+                "memory unaccounted for.", LogLevel::Warning, lostPages, 
+                lostPages == 1 ? "" : "s", conv.major, conv.minor, conv.prefix);
         }
     }
 
@@ -822,8 +860,10 @@ R"(                                             888                      )"
 
         //6. BSP initialization is complete.
         Log("BSP init done, loading init program.", LogLevel::Trace);
+
         IntrsOn();
-        HwReleaseAps();
+        ReleaseAps();
+        Private::ReclaimLoaderMemory(reclaimablePageList, reclaimablePages);
 
         //7. Load userspace init program.
         auto result = LoadInitProgram();
