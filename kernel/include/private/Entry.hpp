@@ -15,6 +15,12 @@ namespace Npk::Loader
 
     using MemoryTypes = sl::Flags<MemoryType>;
 
+    struct ModuleBlob
+    {
+        Paddr base;
+        size_t length;
+    };
+
     struct EfiDetails
     {
         Paddr systemTable;
@@ -60,9 +66,10 @@ namespace Npk::Loader
          */
         sl::Opt<EfiDetails> efi;
 
-        /* If valid, physical base address of a blob passed from the bootloader.
+        /* If valid, describes (in physical memory) the module passed from the
+         * bootloader.
          */
-        sl::Opt<Paddr> moduleBlob;
+        sl::Opt<ModuleBlob> moduleBlob;
 
         /* If valid, contains the offset of the alarm/system timer relative
          * to the unix epoch.

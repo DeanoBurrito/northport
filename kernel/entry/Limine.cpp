@@ -141,8 +141,8 @@ namespace Npk::Loader
             efi = deets;
         }
 
-        sl::Opt<Paddr> moduleBlob {};
-        if (moduleReq.response != nullptr 
+        sl::Opt<ModuleBlob> moduleBlob {};
+        if (moduleReq.response != nullptr
             && moduleReq.response->module_count > 0)
         {
             const auto mod = moduleReq.response->modules[0];
@@ -150,8 +150,8 @@ namespace Npk::Loader
             if (addr >= hhdm)
                 addr -= hhdm;
 
-            if (addr != 0)
-                moduleBlob = addr;
+            if (addr != 0 && mod->size != 0)
+                moduleBlob = ModuleBlob { addr, static_cast<size_t>(mod->size) };
         }
 
         sl::Opt<sl::TimePoint> timeOffset {};

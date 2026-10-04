@@ -686,12 +686,13 @@ R"(                                             888                      )"
             LogLevel::Verbose, state.directMapBase, state.kernelBase,
             state.bspId);
 
-        Log("Loader config: rsdp=0x%tx, fdt=0x%tx, efi=0x%tx, module=0x%tx",
+        Log("Loader config: rsdp=0x%tx, fdt=0x%tx, efi=0x%tx, module=0x%tx+0x%zx",
             LogLevel::Verbose,
             state.rsdp.HasValue() ? *state.rsdp : 0,
             state.fdt.HasValue() ? *state.fdt : 0,
             state.efi.HasValue() ? (*state.efi).systemTable : 0,
-            state.moduleBlob.HasValue() ? *state.moduleBlob : 0);
+            state.moduleBlob.HasValue() ? (*state.moduleBlob).base : 0,
+            state.moduleBlob.HasValue() ? (*state.moduleBlob).length : 0);
 
         if (state.timeOffset.HasValue())
         {
@@ -866,6 +867,7 @@ R"(                                             888                      )"
         Private::ReclaimLoaderMemory(reclaimablePageList, reclaimablePages);
 
         //7. Load userspace init program.
+        /*
         auto result = LoadInitProgram();
         if (result != NpkStatus::Success)
         {
