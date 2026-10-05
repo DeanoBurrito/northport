@@ -4,7 +4,7 @@
 
 namespace sl
 {
-    enum TimeScale : size_t
+    enum TimeScale : uint64_t
     {
         Millis = 1000,
         Micros = 1000 * Millis,
@@ -22,11 +22,11 @@ namespace sl
             : frequency(0), ticks(0)
         {}
 
-        constexpr TimeCount(size_t freq, size_t count) 
+        constexpr TimeCount(uint64_t freq, uint64_t count) 
             : frequency(freq), ticks(count)
         {}
 
-        constexpr TimeCount(TimeScale freq, size_t count) 
+        constexpr TimeCount(TimeScale freq, uint64_t count) 
             : frequency(freq), ticks(count)
         {}
 
@@ -43,7 +43,7 @@ namespace sl
         }
     };
 
-    constexpr static TimeCount NoTimeout { 1, -1ul };
+    constexpr static TimeCount NoTimeout { 1, ~0ull };
 
     struct TimePoint
     {
@@ -57,27 +57,32 @@ namespace sl
             : epoch(value)
         {}
 
-        constexpr bool operator==(TimePoint other)
+        constexpr bool operator==(TimePoint other) const 
         { 
             return epoch == other.epoch;
         }
 
-        constexpr bool operator!=(TimePoint other)
+        constexpr bool operator!=(TimePoint other) const
         { 
             return epoch != other.epoch;
         }
 
-        constexpr bool operator>(TimePoint other)
+        constexpr bool operator>(TimePoint other) const
         { 
             return epoch > other.epoch;
         }
 
-        constexpr bool operator<(TimePoint other)
+        constexpr bool operator<(TimePoint other) const
         { 
             return epoch < other.epoch;
         }
 
-        TimePoint operator+(TimeCount duration)
+        constexpr bool operator<=(TimePoint other) const
+        {
+            return epoch <= other.epoch;
+        }
+
+        constexpr TimePoint operator+(TimeCount duration) const
         { 
             return { epoch + duration.Rebase(Frequency).ticks };
         }

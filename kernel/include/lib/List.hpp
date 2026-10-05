@@ -146,6 +146,21 @@ namespace sl
             return temp;
         }
 
+        void Splice(FwdList& other)
+        {
+            if (other.Empty())
+                return;
+
+            if (Empty())
+                head = other.head;
+            else
+                Hk(tail)->next = other.head;
+
+            tail = other.tail;
+            other.head = nullptr;
+            other.tail = nullptr;
+        }
+
         void InsertAfter(Iterator it, T* value)
         {
             if (it == End())

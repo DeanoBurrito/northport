@@ -370,4 +370,14 @@ namespace sl
 
         return (x + (x >> 8)) & 0x0000007F;
     }
+
+    template<typename T>
+    constexpr inline T SaturatingAdd(T a, T b)
+    {
+        const T accum = a + b;
+        if (accum < a)
+            return static_cast<T>(~T {});
+
+        return accum;
+    }
 }

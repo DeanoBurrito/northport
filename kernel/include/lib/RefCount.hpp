@@ -50,6 +50,22 @@ namespace sl
             : ptr(nullptr)
         {}
 
+        static Ref Adopt(T* p)
+        {
+            Ref adopted;
+            adopted.ptr = p;
+
+            return adopted;
+        }
+
+        T* Disown()
+        {
+            T* held = ptr;
+            ptr = nullptr;
+
+            return held;
+        }
+
         Ref(T* p) 
             : ptr(p)
         {
@@ -110,12 +126,14 @@ namespace sl
 
         void Release()
         {
-            if (!DecrementRefCount<T, refs>(ptr))
+            T* held = ptr;
+            ptr = nullptr;
+
+            if (!DecrementRefCount<T, refs>(held))
                 return;
 
-            if (ptr != nullptr && WhenZero != nullptr)
-                WhenZero(ptr);
-            ptr = nullptr;
+            if (held != nullptr && WhenZero != nullptr)
+                WhenZero(held);
         }
 
         constexpr bool Valid() const

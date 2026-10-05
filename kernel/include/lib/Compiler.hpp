@@ -30,6 +30,8 @@
 
     #define SL_TRAILING_ZEROS(x) __builtin_ctzl(x)
     #define SL_POPCOUNT(x) __builtin_popcountl(x)
+
+    #define SL_LEADING_ZEROS_64(x) __builtin_clzll(x)
 #else
     #error "Failed to detect compiler."
 #endif
