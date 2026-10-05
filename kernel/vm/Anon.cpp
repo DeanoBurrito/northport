@@ -142,8 +142,16 @@ namespace Npk::Private
             return NpkStatus::InvalidArg;
 
         page->lock.Lock();
-        //TODO: get pageinfo or page it in
+
         auto result = NpkStatus::NotAvailable;
+        if (page->page != nullptr)
+        {
+            PinPage(page->page);
+            *info = page->page;
+
+            result = NpkStatus::Success;
+        }
+
         page->lock.Unlock();
 
         return result;
@@ -182,6 +190,7 @@ namespace Npk::Private
     {
         NPK_ASSERT(map != nullptr);
         NPK_ASSERT(map->refcount == 0);
+        NPK_ASSERT(map->ranges.Empty());
 
         if (map->slots != nullptr)
         {
@@ -256,20 +265,10 @@ namespace Npk::Private
         return NpkStatus::Success;
     }
 
-    AnonPageRef AnonMapLookup(AnonMap& map, size_t slot)
+    AnonPageRef AnonMapLookupLocked(AnonMap& map, size_t slot)
     {
-        AnonMapRef mapRef = &map;
-
-        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
-        if (result != NpkStatus::Success)
-            return {};
-
         if (slot >= map.slotCount)
-        {
-            ReleaseMutex(&map.mutex);
-
             return {};
-        }
 
         AnonPageRef ref {};
 
@@ -290,9 +289,50 @@ namespace Npk::Private
                 table = static_cast<AnonTable*>(entry);
         }
 
+        return ref;
+    }
+
+    AnonPageRef AnonMapLookup(AnonMap& map, size_t slot)
+    {
+        AnonMapRef mapRef = &map;
+
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
+            return {};
+
+        AnonPageRef ref = AnonMapLookupLocked(map, slot);
+
         ReleaseMutex(&map.mutex);
 
         return ref;
+    }
+
+    NpkStatus AnonMapLinkRange(AnonMap& map, VmRange* range)
+    {
+        NPK_ASSERT(range != nullptr);
+
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
+            return result;
+
+        map.ranges.PushBack(&range->amapLink);
+        ReleaseMutex(&map.mutex);
+
+        return NpkStatus::Success;
+    }
+
+    NpkStatus AnonMapUnlinkRange(AnonMap& map, VmRange* range)
+    {
+        NPK_ASSERT(range != nullptr);
+
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
+            return result;
+
+        map.ranges.Remove(&range->amapLink);
+        ReleaseMutex(&map.mutex);
+
+        return NpkStatus::Success;
     }
 
     NpkStatus AnonMapAdd(AnonMap& map, size_t slot, AnonPageRef& anon)

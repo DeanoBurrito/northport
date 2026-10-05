@@ -39,6 +39,8 @@ namespace Npk
 
     using VmFlags = sl::Flags<VmFlag>;
 
+    using SwapSlot = uint64_t;
+
     /* Forward declaration, see below.
      */
     struct VmSpace;
@@ -52,7 +54,7 @@ namespace Npk
         sl::SpinLock lock;
         sl::RefCount refcount;
         PageInfo* page;
-        void* swapSlot;
+        SwapSlot swapSlot;
     };
 
     namespace Private
@@ -63,12 +65,20 @@ namespace Npk
     using AnonPageRef = sl::Ref<AnonPage, &AnonPage::refcount,
         Private::DestroyAnonPage>;
 
+    struct VmRangeAmapLink
+    {
+        sl::ListHook hook;
+    };
+
+    using AmapVmRangeList = sl::List<VmRangeAmapLink, &VmRangeAmapLink::hook>;
+
     struct AnonMap
     {
         sl::RefCount refcount;
         Mutex mutex;
         size_t slotCount;
         void* slots;
+        AmapVmRangeList ranges;
     };
 
     namespace Private
@@ -81,11 +91,20 @@ namespace Npk
 
     struct VmRange
     {
+        VmRangeAmapLink amapLink;
+
         Mutex mutex;
 
         /* Linkage for VmSpace management.
          */
         sl::RBTreeHook spaceHook;
+
+        /* Linkage for the PV list of the source layer. Only valid when `source`
+         * is non-null.
+         */
+        sl::ListHook sourceHook;
+
+        VmSpace* space;
 
         /* Flags describing the behaviour of this range.
          */
@@ -114,6 +133,9 @@ namespace Npk
          */
         size_t offset;
     };
+    static_assert(offsetof(VmRange, amapLink) == 0);
+
+    using VmRangeSourceList = sl::List<VmRange, &VmRange::sourceHook>;
 
     struct VmRangeLt
     {
@@ -191,6 +213,7 @@ namespace Npk
 
         SxMutex mutex;
         sl::FwdList<PageInfo, &PageInfo::vmoList> pages; //current list of pages
+        sl::List<VmRange, &VmRange::sourceHook> ranges;
     };
 
     /* Provides fine control over address space allocation. Each field has a

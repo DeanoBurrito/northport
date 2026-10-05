@@ -6,6 +6,12 @@
 namespace Npk
 {
     struct NsObject;
+
+    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, uintptr_t addr,
+        size_t length);
+
+    void PinPage(PageInfo* page);
+    void UnpinPage(PageInfo* page, size_t count = 1);
 }
 
 namespace Npk::Private
@@ -20,6 +26,14 @@ namespace Npk::Private
     void DestroyAnonMap(AnonMap* map);
     NpkStatus ResizeAnonMap(AnonMap& map, size_t newSlotCount);
     AnonPageRef AnonMapLookup(AnonMap& map, size_t slot);
+    AnonPageRef AnonMapLookupLocked(AnonMap& map, size_t slot);
+
+    /* Links a range to an anon map, the range mutex may or may not held, but
+     * the `map.mutex` must not be. Same applies to UnlinkRange().
+     */
+    NpkStatus AnonMapLinkRange(AnonMap& map, VmRange* range);
+    NpkStatus AnonMapUnlinkRange(AnonMap& map, VmRange* range);
+
     NpkStatus AnonMapAdd(AnonMap& map, size_t slot, AnonPageRef& anon);
     AnonPageRef AnonMapRemove(AnonMap& map, size_t slot);
     NpkStatus AnonMapClone(AnonMapRef* clone, AnonMap& source);
