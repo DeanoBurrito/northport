@@ -164,6 +164,7 @@ namespace Npk
         size_t localsStride;
 
         uintptr_t apStacksBase;
+        uintptr_t apWorkerStacksBase;
         size_t stackStride;
         uintptr_t tempMapBase;
         size_t tempMapStride;

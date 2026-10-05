@@ -494,31 +494,42 @@ namespace Npk
         Log("Setting up control structures for %zu cpu%s.", LogLevel::Info,
             cpus, cpus != 1 ? "s" : "");
 
-        //0. Allocate and map stacks for AP idle threads
-        //We dont allocate a stack for the BSP since we're already using it,
-        //as its part of the kernel image.
+        //0. Allocate and map stacks for AP idle threads, and for the worker
+        //thread each AP spawns once it's released.
+        //We dont allocate an idle stack for the BSP since we're already using
+        //it, as its part of the kernel image.
         const size_t stackStride = KernelStackSize() + PageSize();
-        virtBase += PageSize(); //guard page before the first stack
-        const uintptr_t stacksBase = virtBase;
-
         const auto prevIpl = RaiseIpl(Ipl::Dpc);
-        for (size_t i = 0; i < cpus - 1; i++)
-        {
-            for (size_t p = 0; p < KernelStackPages(); p++)
+
+        auto MapStacks = [&](size_t count) -> uintptr_t
             {
-                auto page = AllocPage(true);
-                NPK_ASSERT(page != nullptr);
-                auto paddr = LookupPagePaddr(page);
+                virtBase += PageSize(); //guard page before the first stack
+                const uintptr_t base = virtBase;
 
-                auto result = SetKernelMap(virtBase + (p << PfnShift()), paddr,
-                    VmFlag::Write);
-                NPK_ASSERT(result == NpkStatus::Success);
-            }
+                for (size_t i = 0; i < count; i++)
+                {
+                    for (size_t p = 0; p < KernelStackPages(); p++)
+                    {
+                        auto page = AllocPage(true);
+                        NPK_ASSERT(page != nullptr);
+                        auto paddr = LookupPagePaddr(page);
 
-            virtBase += stackStride;
-        }
+                        auto result = SetKernelMap(virtBase + (p << PfnShift()),
+                            paddr, VmFlag::Write);
+                        NPK_ASSERT(result == NpkStatus::Success);
+                    }
 
-        Log("Idle stacks mapped: 0x%zx B each", LogLevel::Info,
+                    //`stackStride` leaves a guard page after each stack
+                    virtBase += stackStride;
+                }
+
+                return base;
+            };
+
+        const uintptr_t stacksBase = MapStacks(cpus - 1);
+        const uintptr_t workerStacksBase = MapStacks(cpus - 1);
+
+        Log("Idle and worker stacks mapped: 0x%zx B each", LogLevel::Info,
             KernelStackSize());
 
         //1. Allocate space for AP cpu-local storage
@@ -626,6 +637,7 @@ namespace Npk
         conf.localsBase = localsBase;
         conf.localsStride = localsStride;
         conf.apStacksBase = stacksBase;
+        conf.apWorkerStacksBase = workerStacksBase;
         conf.stackStride = stackStride;
         conf.tempMapBase = tempMapBase;
         conf.tempMapStride = tempMapStride;
@@ -854,6 +866,8 @@ R"(                                             888                      )"
                 who += MySystemDomain().smpBase;
                 HwSendIpi(who);
             });
+
+        Private::InitLocalWorker();
 
         HwLateInit();
         Private::InitNamespace();

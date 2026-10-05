@@ -18,7 +18,7 @@ namespace Npk
     }
 
     //NOTE: this thread is pinned to a cpu core and wont ever migrate.
-    void WorkItemThreadEntry(void* arg)
+    void Private::WorkItemThreadEntry(void* arg)
     {
         Log("WorkItem thread spawned %p", LogLevel::Verbose,
             GetCurrentThread());
@@ -78,6 +78,19 @@ namespace Npk
             auto idle = WorkItemState::Idle;
             if (item->state.CompareExchange(executing, idle, sl::AcqRel))
                 NotifyWorkItemComplete(item);
+            else
+            {
+                //someone else changed the state (either a re-queue or cancel
+                //request). Those ops only set the state field and dont place
+                //the item back in the queue because while it is still
+                //executing here another worker thread may dequeue it and begin
+                //executing it: leading to it running concurrently with itself.
+                //Instead the worker running the item (this one) requeues the
+                //item, so this cpu will examine it later and process it,
+                //rerunning it or handling the cancellation.
+                status->workItems.Push(item);
+                SetConditionTo(&status->workItemsPending, 0);
+            }
         }
 
         Log("WorkItem thread despawning due to timeout %p", LogLevel::Verbose,
@@ -86,21 +99,25 @@ namespace Npk
         ExitThread(0);
     }
 
-    void Private::InitLocalWorker() //TODO: call this late, requires VM
+    void Private::InitLocalWorker(void* stackPtr)
     {
         auto* status = RemoteStatus(MyCoreId());
         ResetCondition(&status->workItemsPending, 1);
 
-        void* stackPtr;
-        auto result = AllocKernelStack(&stackPtr);
-        NPK_ASSERT(result == NpkStatus::Success);
+        if (stackPtr == nullptr)
+        {
+            auto result = AllocKernelStack(&stackPtr);
+            NPK_ASSERT(result == NpkStatus::Success);
+        }
 
-        const auto entry = reinterpret_cast<uintptr_t>(WorkItemThreadEntry);
+        const auto entry
+            = reinterpret_cast<uintptr_t>(Private::WorkItemThreadEntry);
         const uintptr_t arg = reinterpret_cast<uintptr_t>(status);
         const auto stack = reinterpret_cast<uintptr_t>(stackPtr);
 
         ResetThread(&primaryWorker);
-        result = PrepareThread(&primaryWorker, entry, arg, stack, MyCoreId());
+        auto result = PrepareThread(&primaryWorker, entry, arg, stack,
+            MyCoreId());
         NPK_ASSERT(result == NpkStatus::Success);
 
         EnqueueThread(&primaryWorker);
@@ -122,7 +139,6 @@ namespace Npk
         item->state = WorkItemState::Idle;
         item->function = func;
         item->arg = arg;
-        item->queue = nullptr;
 
         return NpkStatus::Success;
     }
@@ -151,12 +167,16 @@ namespace Npk
                 return NpkStatus::Busy;
 
             auto expected = state;
-            if (item->state.CompareExchange(expected, WorkItemState::Pending,
+            if (!item->state.CompareExchange(expected, WorkItemState::Pending,
                 sl::AcqRel))
-                break;
+                continue;
+
+            if (state == WorkItemState::Executing)
+                return NpkStatus::Success;
+
+            break;
         }
 
-        item->queue = status;
         status->workItems.Push(item);
         SetConditionTo(&status->workItemsPending, 0);
 
@@ -196,12 +216,7 @@ namespace Npk
 
             case WorkItemState::Executing:
                 if (item->state.CompareExchange(state, desired, sl::AcqRel))
-                {
-                    item->queue->workItems.Push(item);
-                    SetConditionTo(&item->queue->workItemsPending, 0);
-
                     break;
-                }
                 continue;
 
             case WorkItemState::PendingCancel:

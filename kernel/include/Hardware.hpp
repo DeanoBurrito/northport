@@ -186,6 +186,7 @@ namespace Npk
         uintptr_t tempSlotsBase;
         size_t tempSlotsCount;
         void* tempMapHwToken;
+        void* workerStack;
 
         //this group is written by the woken cpu after claiming its id
         uint64_t hwId;

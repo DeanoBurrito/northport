@@ -39,6 +39,8 @@ namespace Npk
             sl::HintSpinloop();
 
         entry->stage.Store(WakeStage::Released, sl::Release);
+        Private::InitLocalWorker(entry->workerStack);
+
         EnterIdleLoop();
     }
 
@@ -55,6 +57,7 @@ namespace Npk
         //may miss something (there is a story here, yes).
         NPK_ASSERT(conf.localsBase != 0 && conf.localsStride != 0);
         NPK_ASSERT(conf.apStacksBase != 0 && conf.stackStride != 0);
+        NPK_ASSERT(conf.apWorkerStacksBase != 0);
         NPK_ASSERT(conf.tempMapBase != 0 && conf.tempMapStride != 0);
         NPK_ASSERT(conf.tempSlotsBase != 0 && conf.tempSlotsStride != 0);
         NPK_ASSERT(conf.tempSlotsCount != 0);
@@ -99,6 +102,8 @@ namespace Npk
                 * index;
             entry.tempSlotsCount = conf.tempSlotsCount;
             entry.tempMapHwToken = conf.tempMapTokens[index];
+            entry.workerStack = reinterpret_cast<void*>(conf.apWorkerStacksBase
+                + conf.stackStride * index + KernelStackSize());
         }
         wakeTable->entries[0].hwId = HwGetMyWakeId();
         wakeTable->entries[0].stage.Store(WakeStage::Online, sl::Release);

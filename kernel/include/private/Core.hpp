@@ -12,7 +12,7 @@ namespace Npk::Private
     void ResetCycleAccounts(CycleAccount first);
     void SetMyNodePointer(uintptr_t addr);
     void InitLocalScheduler(ThreadContext* idle);
-    void InitLocalWorker();
+    void InitLocalWorker(void* stack = nullptr);
     void InitPageAccessCache(uintptr_t slotsBase, size_t slotsCount);
 
     void ClearIplPending(IplWord bits);
