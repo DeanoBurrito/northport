@@ -63,6 +63,12 @@ namespace Npk
     static sl::Span<TlbSyncBlock> syncBlocks;
     static bool broadcastTlbs = false;
 
+    constexpr bool IsRangedFlush(const TlbFlushRequest& request)
+    {
+        return request.target == TlbTarget::GlobalsRange
+            || request.target == TlbTarget::SpaceRange;
+    }
+
     static size_t RequestPageCount(const TlbFlushRequest& request)
     {
         if (!IsRangedFlush(request))

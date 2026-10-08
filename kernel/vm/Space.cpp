@@ -427,6 +427,17 @@ namespace Npk
             return NpkStatus::BadVaddr;
         }
 
+        if ((pred != nullptr && pred->base + pred->length > base)
+            || (succ != nullptr && succ->base < base + length))
+        {
+            Log("Free of overlapping range 0x%tx-0x%tx in VM space %p",
+                LogLevel::Error, base, base + length, &space);
+            ReleaseMutex(&space.freeRangesMutex);
+            PoolFreeWired(spareRange, sizeof(*spareRange), SpaceHeapTag);
+
+            return NpkStatus::BadVaddr;
+        }
+
         //try coalesce with nearby free ranges, if any
         VmFreeRange* toFree = nullptr;
         VmFreeRange* latest = nullptr;
@@ -762,6 +773,16 @@ namespace Npk
             return result;
         }
 
+        result = HwMapCreate(&newSpace->map);
+        if (result != NpkStatus::Success)
+        {
+            PoolFreeWired(newSpace, sizeof(VmSpace), SpaceHeapTag);
+            ReleaseSxMutexExclusive(&source.rangesMutex);
+            ReleaseMutex(&source.freeRangesMutex);
+
+            return result;
+        }
+
         bool carryOn = true;
         for (auto it = source.freeRanges.First(); it != nullptr; 
             it = source.freeRanges.Successor(it))
@@ -903,6 +924,7 @@ namespace Npk
                 PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
             }
 
+            HwMapDestroy(newSpace->map);
             PoolFreeWired(newSpace, sizeof(VmSpace), SpaceHeapTag);
 
             ReleaseSxMutexExclusive(&source.rangesMutex);
