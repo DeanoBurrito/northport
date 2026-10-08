@@ -47,6 +47,9 @@ namespace Npk
         auto mySpace = MySystemDomain().kernelSpace;
         mySpace->map = MySystemDomain().kernelMap;
 
+        NPK_ASSERT(ResetMutex(&MySystemDomain().liveLists.lock, 1)
+            == NpkStatus::Success);
+
         ResetMutex(&mySpace->freeRangesMutex, 1);
         ResetSxMutex(&mySpace->rangesMutex);
 
@@ -465,7 +468,7 @@ namespace Npk
     }
 
     //NOTE: assumes space.rangesMutex is held (shared or exclusive)
-    static NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, 
+    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, 
         uintptr_t addr, size_t length)
     {
         const uintptr_t end = AlignUpPage(addr + length);
@@ -503,6 +506,8 @@ namespace Npk
         length = AlignUpPage(length);
 
         if (flags.Has(VmFlag::AmapNeedsCopy))
+            return NpkStatus::InvalidArg;
+        if (source != nullptr && (srcOffset & PageMask()) != 0)
             return NpkStatus::InvalidArg;
 
         if (flags.Has(VmFlag::Fetch))
@@ -554,6 +559,18 @@ namespace Npk
         }
 
         auto* vmr = new(ptr) VmRange {};
+        vmr->space = &space;
+
+        if (ResetMutex(&vmr->mutex, 1) != NpkStatus::Success)
+        {
+            PoolFreeWired(vmr, sizeof(*vmr), SpaceHeapTag);
+            ReleaseSxMutexExclusive(&space.rangesMutex);
+            if (allocatedVaddrs)
+                SpaceFree(space, base, length);
+
+            return NpkStatus::Shortage;
+        }
+
         vmr->flags = flags;
         vmr->base = base;
         vmr->length = length;
@@ -578,6 +595,21 @@ namespace Npk
 
             vmr->source = source;
             vmr->offset = srcOffset;
+
+            if (AcquireSxMutexExclusive(&source->mutex, sl::NoTimeout,
+                NPK_WAIT_LOCATION) != NpkStatus::Success)
+            {
+                source->ops->UnrefObj(source);
+                PoolFreeWired(vmr, sizeof(*vmr), SpaceHeapTag);
+                ReleaseSxMutexExclusive(&space.rangesMutex);
+                if (allocatedVaddrs)
+                    SpaceFree(space, base, length);
+
+                return NpkStatus::Busy;
+            }
+
+            source->ranges.PushBack(vmr);
+            ReleaseSxMutexExclusive(&source->mutex);
         }
         else
         {
@@ -614,7 +646,57 @@ namespace Npk
         }
         (void)check;
 
+        if (range->amapRef.Valid())
+        {
+            auto unlink = Private::AnonMapUnlinkRange(*range->amapRef, range);
+            if (unlink != NpkStatus::Success)
+            {
+                ReleaseSxMutexExclusive(&space.rangesMutex);
+                return unlink;
+            }
+        }
+
+        if (range->source != nullptr)
+        {
+            auto* source = range->source;
+            auto unlink = AcquireSxMutexExclusive(&source->mutex, sl::NoTimeout,
+                NPK_WAIT_LOCATION);
+
+            if (unlink != NpkStatus::Success)
+            {
+                if (range->amapRef.Valid())
+                {
+                    NPK_ASSERT(Private::AnonMapLinkRange(*range->amapRef,
+                        range) == NpkStatus::Success);
+                }
+
+                ReleaseSxMutexExclusive(&space.rangesMutex);
+                return unlink;
+            }
+
+            source->ranges.Remove(range);
+            ReleaseSxMutexExclusive(&source->mutex);
+        }
+
         space.ranges.Remove(range);
+
+        PageList flushed {};
+        for (uintptr_t at = base; at < base + length; at += PageSize())
+        {
+            Paddr present;
+
+            if (HwMapExtract(&present, nullptr, nullptr, space.map, at)
+                != NpkStatus::Success)
+                continue;
+
+            if (HwMapRemove(space.map, at, 1) != NpkStatus::Success)
+                continue;
+
+            HwMapUpdate(space.map, true, flushed);
+            NPK_ASSERT(flushed.Empty());
+
+            ReleaseMappedPage(present);
+        }
 
         if (range->amapRef.Valid())
             range->amapRef.Release();
@@ -653,10 +735,9 @@ namespace Npk
         result = AcquireSxMutexExclusive(&source.rangesMutex, sl::NoTimeout,
             NPK_WAIT_LOCATION);
         if (result != NpkStatus::Success)
-            return result;
         {
             ReleaseMutex(&source.freeRangesMutex);
-            return NpkStatus::InternalError;
+            return result;
         }
 
         void* ptr = PoolAllocWired(sizeof(VmSpace), SpaceHeapTag);
@@ -670,11 +751,16 @@ namespace Npk
 
         auto* newSpace = new(ptr) VmSpace {};
         result = ResetMutex(&newSpace->freeRangesMutex, 1);
+        if (result == NpkStatus::Success)
+            result = ResetSxMutex(&newSpace->rangesMutex);
         if (result != NpkStatus::Success)
+        {
+            PoolFreeWired(newSpace, sizeof(VmSpace), SpaceHeapTag);
+            ReleaseSxMutexExclusive(&source.rangesMutex);
+            ReleaseMutex(&source.freeRangesMutex);
+
             return result;
-        result = ResetSxMutex(&newSpace->rangesMutex);
-        if (result != NpkStatus::Success)
-            return result;
+        }
 
         bool carryOn = true;
         for (auto it = source.freeRanges.First(); it != nullptr; 
@@ -709,6 +795,14 @@ namespace Npk
             //mappings to the amap.
 
             auto* latest = new(ptr) VmRange {};
+            latest->space = newSpace;
+            if (ResetMutex(&latest->mutex, 1) != NpkStatus::Success)
+            {
+                PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
+                carryOn = false;
+                break;
+            }
+
             latest->base = it->base;
             latest->length = it->length;
             latest->flags = it->flags;
@@ -716,6 +810,18 @@ namespace Npk
             latest->amapOffset = it->amapOffset;
             latest->amapRef = it->amapRef;
             latest->source = it->source;
+
+            if (latest->amapRef.Valid())
+            {
+                auto link = Private::AnonMapLinkRange(*latest->amapRef, latest);
+                if (link != NpkStatus::Success)
+                {
+                    latest->amapRef.Release();
+                    PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
+                    carryOn = false;
+                    break;
+                }
+            }
 
             if (latest->source != nullptr)
             {
@@ -726,10 +832,35 @@ namespace Npk
 
                 if (!src->ops->RefObj(src, pagerFlags))
                 {
+                    if (latest->amapRef.Valid())
+                    {
+                        Private::AnonMapUnlinkRange(*latest->amapRef, latest);
+                        latest->amapRef.Release();
+                    }
+
                     PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
                     carryOn = false;
                     break;
                 }
+
+                if (AcquireSxMutexExclusive(&src->mutex, sl::NoTimeout,
+                    NPK_WAIT_LOCATION) != NpkStatus::Success)
+                {
+                    src->ops->UnrefObj(src);
+
+                    if (latest->amapRef.Valid())
+                    {
+                        Private::AnonMapUnlinkRange(*latest->amapRef, latest);
+                        latest->amapRef.Release();
+                    }
+
+                    PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
+                    carryOn = false;
+                    break;
+                }
+
+                src->ranges.PushBack(latest);
+                ReleaseSxMutexExclusive(&src->mutex);
             }
 
             newSpace->ranges.Insert(latest);
@@ -750,9 +881,24 @@ namespace Npk
                 newSpace->ranges.Remove(range);
 
                 if (range->amapRef.Valid())
+                {
+                    Private::AnonMapUnlinkRange(*range->amapRef, range);
                     range->amapRef.Release();
+                }
+
                 if (range->source != nullptr)
-                    range->source->ops->UnrefObj(range->source);
+                {
+                    auto* src = range->source;
+
+                    if (AcquireSxMutexExclusive(&src->mutex, sl::NoTimeout,
+                        NPK_WAIT_LOCATION) == NpkStatus::Success)
+                    {
+                        src->ranges.Remove(range);
+                        ReleaseSxMutexExclusive(&src->mutex);
+                    }
+
+                    src->ops->UnrefObj(src);
+                }
 
                 PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
             }
