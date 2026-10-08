@@ -18,8 +18,7 @@ KERNEL_CXX_SRCS += \
 	$(ARCH_DIR)/User.cpp \
 	hardware/common/timer/AcpiTimer.cpp \
 	hardware/common/uart/Ns16550.cpp \
-	hardware/common/mmu/PageTables.cpp \
-	hardware/common/mmu/TlbSync.cpp
+	hardware/common/mmu/PageTables.cpp
 
 KERNEL_AS_SRCS += \
 	$(ARCH_DIR)/ApSpinup.S \

@@ -4,7 +4,6 @@
 #include <hardware/x86_64/LocalApic.hpp>
 #include <hardware/x86_64/PvClock.hpp>
 #include <hardware/x86_64/Tsc.hpp>
-#include <hardware/common/mmu/TlbSync.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
 #include <private/Entry.hpp>
@@ -225,15 +224,7 @@ namespace Npk
     }
 
     void HwLateInit()
-    {
-        NpkStatus result;
-
-        if (!HwHasBroadcastInvalidate())
-        {
-            result = InitSoftwareTlbSync();
-            NPK_ASSERT(result == NpkStatus::Success);
-        }
-    }
+    {}
 
     //NOTE: this function relies on rbp being used for the frame base
     //pointer, i.e. being compiled with `-fno-omit-frame-pointer`.

@@ -1,5 +1,4 @@
 #include <hardware/common/mmu/PageTables.hpp>
-#include <hardware/common/mmu/TlbSync.hpp>
 #include <Core.hpp>
 #include <Vm.hpp>
 #include <private/Entry.hpp>
@@ -78,9 +77,13 @@ namespace Npk
     {
         IplSpinLock<Ipl::Dpc> lock;
         Paddr root;
-        Asid asid; //TODO: support properly!
 
-        CpuBitset activeCpus;
+        size_t tlbGen;
+        CpuBitset onprocCpus; //cpus with this map active *right now*
+        sl::Span<AsidEntry> asids; //one entry per asid domain
+        void* asidsAlloc;
+        size_t asidsAllocLen;
+
         PendingRanges pendingUpdates;
         PageList pendingFree;
     };
@@ -94,28 +97,43 @@ namespace Npk
     static_assert(offsetof(PtPageInfo, freeHook) == 0);
     static_assert(alignof(decltype(PtPageInfo::freeHook)) > 1);
 
-    struct PtWalkPath
-    {
-        Paddr tables[MaxPtPathLevels];
-        size_t indices[MaxPtPathLevels];
-    };
-
     enum class WalkResult
     {
         Success,
         NoTable,
         BlockMapped,
+        NoAccess,
+    };
+
+    struct PtWalk
+    {
+        Paddr tables[MaxPtPathLevels];
+        size_t indices[MaxPtPathLevels];
+        size_t stopLevel;
+        bool builtChain;
     };
 
     CPU_LOCAL(HwMap*, activeHwMap);
 
-    static void DoWritePte(const PageTableConfig& conf, size_t pteSize, 
-        void* dest, const void* source)
+    static size_t PtIndex(const PageTableConfig& conf, uintptr_t vaddr,
+        size_t level)
+    {
+        return (vaddr >> conf.levelShift[level]) & conf.levelMask[level];
+    }
+
+    static void* PteAt(const PageTableConfig& conf, const PageAccessRef& ref,
+        size_t index)
+    {
+        return static_cast<char*>(ref.vaddr) + index * conf.pteSize;
+    }
+
+    static void DoWritePte(const PageTableConfig& conf, void* dest,
+        const void* source)
     {
         if (conf.hasCustomWritePte)
             return WritePte(dest, source);
 
-        switch (pteSize)
+        switch (conf.pteSize)
         {
         case 4:
         {
@@ -144,13 +162,13 @@ namespace Npk
         }
     }
 
-    static void ExchangePte(const PageTableConfig& conf, size_t pteSize,
-        void* dest, const void* source, void* prev)
+    static void DoExchangePte(const PageTableConfig& conf, void* dest,
+        const void* source, void* prev)
     {
         if (conf.hasCustomExchange)
             return ExchangePte(dest, source, prev);
 
-        switch (pteSize)
+        switch (conf.pteSize)
         {
         case 4:
         {
@@ -179,13 +197,13 @@ namespace Npk
         }
     }
 
-    static bool CompExchangePte(const PageTableConfig& conf, size_t pteSize,
-        void* dest, void* expected, const void* desired)
+    static bool DoCompExchangePte(const PageTableConfig& conf, void* dest,
+        void* expected, const void* desired)
     {
         if (conf.hasCustomCompareExchange)
             return CompareExchangePte(dest, expected, desired);
 
-        switch (pteSize)
+        switch (conf.pteSize)
         {
         case 4:
         {
@@ -218,6 +236,23 @@ namespace Npk
         }
     }
 
+    static void WriteIntermediatePte(const PageTableConfig& conf, void* pte,
+        Paddr child, bool kernel)
+    {
+        PteOnStack buffer;
+        MakeIntermediatePte(buffer.data, child, kernel);
+
+        DoWritePte(conf, pte, buffer.data);
+    }
+
+    static void WriteInvalidPte(const PageTableConfig& conf, void* pte)
+    {
+        PteOnStack buffer;
+        MakeInvalidPte(buffer.data);
+
+        DoWritePte(conf, pte, buffer.data);
+    }
+
     static void PublishDirtyBit(Paddr paddr)
     {
         if (!PaddrHasPageInfo(paddr))
@@ -245,21 +280,15 @@ namespace Npk
             Paddr next = 0;
             if (level != 0)
             {
-                const size_t index = (vaddr >> conf.levelShift[level])
-                    & conf.levelMask[level];
-
                 auto ref = AccessPage(current);
                 NPK_ASSERT(ref.Valid()); //TODO: non-fatal handling
 
-                void* pte = static_cast<char*>(ref.vaddr) + index 
-                    * conf.pteSize;
-
+                void* pte = PteAt(conf, ref, PtIndex(conf, vaddr, level));
                 if (IsPteValid(pte))
                     next = GetPteAddr(pte);
             }
 
-            auto* info = LookupPageInfo(current);
-            FreePage(info);
+            FreePage(LookupPageInfo(current));
 
             if (level == 0)
                 break;
@@ -287,27 +316,17 @@ namespace Npk
                 return false;
             }
 
-            Paddr pagePaddr = LookupPagePaddr(page);
-            PtMetadata(pagePaddr).validCount = 1;
+            const Paddr pagePaddr = LookupPagePaddr(page);
+            PtMetadata(pagePaddr).validCount = (level == 0) ? 0 : 1;
 
             if (level == 0)
-            {
-                PtMetadata(pagePaddr).validCount = 0;
                 outLeaf = pagePaddr;
-            }
             else
             {
-                const size_t index = (vaddr >> conf.levelShift[level])
-                    & conf.levelMask[level];
                 auto ref = AccessPage(pagePaddr);
+                auto pte = PteAt(conf, ref, PtIndex(conf, vaddr, level));
 
-                PteOnStack buffer;
-                MakeIntermediatePte(buffer.data, child, global);
-
-                const uintptr_t dest = index * conf.pteSize 
-                    + reinterpret_cast<uintptr_t>(ref.vaddr);
-                DoWritePte(conf, conf.pteSize, reinterpret_cast<void*>(dest),
-                    buffer.data);
+                WriteIntermediatePte(conf, pte, child, global);
             }
 
             child = pagePaddr;
@@ -318,32 +337,30 @@ namespace Npk
         return true;
     }
 
-    static WalkResult Walk(Paddr& outTable, size_t& outIndex, HwMap& map,
-        uintptr_t vaddr, bool alloc, PtWalkPath* path = nullptr)
+    static WalkResult Walk(PtWalk& walk, HwMap& map, uintptr_t vaddr, bool alloc)
     {
         const auto& conf = GetPageTableConfig();
         const bool isKernel = &map == HwKernelMap();
 
-        if (path != nullptr)
-            NPK_ASSERT(conf.levelCount <= MaxPtPathLevels);
+        NPK_ASSERT(conf.levelCount <= MaxPtPathLevels);
+
+        walk.stopLevel = 0;
+        walk.builtChain = false;
 
         Paddr currentPt = map.root;
         for (size_t level = conf.levelCount - 1; level > 0; level--)
         {
-            const size_t index = (vaddr >> conf.levelShift[level])
-                & conf.levelMask[level];
+            const size_t index = PtIndex(conf, vaddr, level);
 
-            if (path != nullptr)
-            {
-                path->tables[level] = currentPt;
-                path->indices[level] = index;
-            }
+            walk.tables[level] = currentPt;
+            walk.indices[level] = index;
+            walk.stopLevel = level;
 
             auto ref = AccessPage(currentPt);
             if (!ref.Valid())
-                return WalkResult::NoTable;
+                return WalkResult::NoAccess;
 
-            void* pte = static_cast<char*>(ref.vaddr) + index * conf.pteSize;
+            void* pte = PteAt(conf, ref, index);
 
             if (IsPteValid(pte))
             {
@@ -353,38 +370,27 @@ namespace Npk
                 currentPt = GetPteAddr(pte);
                 continue;
             }
+
             if (!alloc)
                 return WalkResult::NoTable;
-
-            //NOTE: we dont currently support `alloc` being used with path
-            //tracking. If it's needed it'll need support in BuildChain().
-            NPK_ASSERT(path == nullptr);
 
             Paddr top;
             Paddr leaf;
             if (!BuildChain(top, leaf, vaddr, level, isKernel))
                 return WalkResult::NoTable;
 
-            PteOnStack buffer;
-            MakeIntermediatePte(buffer.data, top, isKernel);
-            DoWritePte(conf, conf.pteSize, pte, buffer.data);
-
+            WriteIntermediatePte(conf, pte, top, isKernel);
             PtMetadata(currentPt).validCount++;
 
-            outTable = leaf;
-            outIndex = (vaddr >> conf.levelShift[0]) & conf.levelMask[0];
+            walk.builtChain = true;
+            walk.tables[0] = leaf;
+            walk.indices[0] = PtIndex(conf, vaddr, 0);
 
             return WalkResult::Success;
         }
 
-        outTable = currentPt;
-        outIndex = (vaddr >> conf.levelShift[0]) & conf.levelMask[0];
-
-        if (path != nullptr)
-        {
-            path->tables[0] = currentPt;
-            path->indices[0] = outIndex;
-        }
+        walk.tables[0] = currentPt;
+        walk.indices[0] = PtIndex(conf, vaddr, 0);
 
         return WalkResult::Success;
     }
@@ -396,38 +402,33 @@ namespace Npk
             << conf.levelShift[level];
 
         auto next = vaddr + span;
-        next &= span - 1;
+        next &= ~(span - 1);
 
         return next;
     }
 
-    static void FreeEmptyTables(HwMap& map, const PtWalkPath& path,
-        uintptr_t vaddr)
+    static void FreeEmptyTables(HwMap& map, const PtWalk& walk, uintptr_t vaddr)
     {
+        NPK_ASSERT(!walk.builtChain);
+
         const auto& conf = GetPageTableConfig();
-        const bool isKernel = &map == HwKernelMap();
 
         for (size_t level = 0; level + 1 < conf.levelCount; level++)
         {
-            const Paddr table = path.tables[level];
+            const Paddr table = walk.tables[level];
 
             if (PtMetadata(table).validCount != 0)
                 break;
 
-            const Paddr parent = path.tables[level + 1];
-            if (isKernel && parent == map.root)
+            const Paddr parent = walk.tables[level + 1];
+            if (parent == map.root)
                 break;
 
             auto ref = AccessPage(parent);
             NPK_ASSERT(ref.Valid());
+            auto pte = PteAt(conf, ref, walk.indices[level + 1]);
 
-            void* pte = static_cast<char*>(ref.vaddr) + path.indices[level + 1]
-                * conf.pteSize;
-
-            PteOnStack invalid;
-            MakeInvalidPte(invalid.data);
-            DoWritePte(conf, conf.pteSize, pte, invalid.data);
-
+            WriteInvalidPte(conf, pte);
             PtMetadata(parent).validCount--;
 
             const uintptr_t span = (conf.levelMask[level] + 1)
@@ -447,7 +448,7 @@ namespace Npk
             return NpkStatus::Shortage;
         auto* map = new(ptr) HwMap {};
 
-        if (!map->activeCpus.Reset(MySystemDomain().smpControls.Size()))
+        if (!map->onprocCpus.Reset(MySystemDomain().smpControls.Size()))
         {
             PoolFreeWired(ptr, sizeof(HwMap), HwMapTag);
 
@@ -457,7 +458,7 @@ namespace Npk
         auto rootPage = AllocPage(true);
         if (rootPage == nullptr)
         {
-            map->activeCpus.Destroy();
+            map->onprocCpus.Destroy();
             PoolFreeWired(ptr, sizeof(HwMap), HwMapTag);
 
             return NpkStatus::Shortage;
@@ -470,28 +471,35 @@ namespace Npk
 
         if (!conf.splitRoot)
         {
-            //clone the static kernel slots into the new table since there is
-            //only a single root.
-
-            auto srcRef = AccessPage(HwKernelMap()->root);
-            auto destRef = AccessPage(map->root);
-            if (!srcRef.Valid() || !destRef.Valid())
+            bool cloned = false;
             {
-                map->activeCpus.Destroy();
+                sl::ScopedLock scopeLock(map->lock);
+
+                auto srcRef = AccessPage(HwKernelMap()->root);
+                auto destRef = AccessPage(map->root);
+
+                if (srcRef.Valid() && destRef.Valid())
+                {
+                    const size_t len = (conf.kernelLastIndex
+                        - conf.kernelFirstIndex + 1) * conf.pteSize;
+
+                    auto src = PteAt(conf, srcRef, conf.kernelFirstIndex);
+                    auto dest = PteAt(conf, destRef, conf.kernelFirstIndex);
+
+                    sl::MemCopy(dest, src, len);
+                    cloned = true;
+                }
+            }
+
+            if (!cloned)
+            {
+                FreeAsidEntries(*map);
+                map->onprocCpus.Destroy();
                 PoolFreeWired(ptr, sizeof(HwMap), HwMapTag);
                 FreePage(rootPage);
 
                 return NpkStatus::Shortage;
             }
-
-            const size_t len = (conf.kernelLastIndex - conf.kernelFirstIndex +1)
-                * conf.pteSize;
-            auto* src = static_cast<const char*>(srcRef.vaddr) 
-                + conf.kernelFirstIndex * conf.pteSize;
-            auto* dest = static_cast<char*>(destRef.vaddr)
-                + conf.kernelFirstIndex * conf.pteSize;
-
-            sl::MemCopy(dest, src, len);
         }
 
         *outMap = map;
@@ -517,7 +525,7 @@ namespace Npk
                     && i <= conf.kernelLastIndex)
                     continue;
 
-                void* pte = static_cast<char*>(ref.vaddr) + i * conf.pteSize;
+                void* pte = PteAt(conf, ref, i);
 
                 if (!IsPteValid(pte))
                     continue;
@@ -535,7 +543,7 @@ namespace Npk
     {
         NPK_ASSERT(map != nullptr);
         NPK_ASSERT(map != HwKernelMap());
-        NPK_ASSERT(map->activeCpus.Count() == 0);
+        NPK_ASSERT(map->onprocCpus.Count() == 0);
 
         map->lock.Lock();
         CollectTables(*map, map->root, GetPageTableConfig().levelCount - 1);
@@ -545,7 +553,7 @@ namespace Npk
         PageList emptyList {};
         HwMapUpdate(map, true, emptyList);
 
-        map->activeCpus.Destroy();
+        map->onprocCpus.Destroy();
         PoolFreeWired(map, sizeof(HwMap), HwMapTag);
     }
 
@@ -569,7 +577,7 @@ namespace Npk
         auto* map = new(build) HwMap {};
 
         map->root = root;
-        map->activeCpus.Reset(1); //TODO: re-init with real cpu count later
+        map->onprocCpus.Reset(1); //TODO: re-init with real cpu count later
         map->pendingUpdates.Reset();
 
         const auto& conf = GetPageTableConfig();
@@ -584,9 +592,7 @@ namespace Npk
                 if (IsPteValid(pte))
                     continue;
 
-                PteOnStack buffer;
-                MakeIntermediatePte(buffer.data, state.PmAlloc(), true);
-                DoWritePte(conf, conf.pteSize, pte, buffer.data);
+                WriteIntermediatePte(conf, pte, state.PmAlloc(), true);
             }
         }
 
@@ -601,7 +607,9 @@ namespace Npk
     void HwMapActivate(HwMap* map)
     {
         NPK_ASSERT(map != nullptr);
+        NPK_ASSERT(map != HwKernelMap());
 
+        const auto prevIpl = RaiseIpl(Ipl::Dpc);
         const size_t self = MyRelativeCoreId();
         auto* prev = *activeHwMap;
 
@@ -618,9 +626,11 @@ namespace Npk
         if (prev != map && prev != nullptr)
         {
             prev->lock.Lock();
-            prev->activeCpus.Clear(self);
+            prev->onprocCpus.Clear(self);
             prev->lock.Unlock();
         }
+
+        RestoreIpl(prevIpl);
     }
 
     NpkStatus HwMapAdd(HwMap* map, uintptr_t vaddr, Paddr paddr, 
@@ -636,9 +646,8 @@ namespace Npk
 
         sl::ScopedLock mapLock(map->lock);
 
-        Paddr table;
-        size_t index;
-        switch (Walk(table, index, *map, vaddr, true))
+        PtWalk walk;
+        switch (Walk(walk, *map, vaddr, true))
         {
         case WalkResult::Success:
             break;
@@ -648,14 +657,15 @@ namespace Npk
             return NpkStatus::AlreadyMapped;
 
         case WalkResult::NoTable:
+        case WalkResult::NoAccess:
             return NpkStatus::Shortage;
         }
 
-        auto ref = AccessPage(table);
+        auto ref = AccessPage(walk.tables[0]);
         if (!ref.Valid())
             return NpkStatus::Shortage;
 
-        void* pte = static_cast<char*>(ref.vaddr) + index * conf.pteSize;
+        void* pte = PteAt(conf, ref, walk.indices[0]);
 
         PteOnStack buffer;
         MakeLeafPte(buffer.data, paddr, perms, cacheMode, isKernel, 0);
@@ -678,8 +688,37 @@ namespace Npk
             return NpkStatus::AlreadyMapped;
         }
 
-        DoWritePte(conf, conf.pteSize, pte, buffer.data);
-        PtMetadata(table).validCount++;
+        DoWritePte(conf, pte, buffer.data);
+        PtMetadata(walk.tables[0]).validCount++;
+
+        return NpkStatus::Success;
+    }
+
+    NpkStatus HwMapLeafTable(Paddr* outTable, HwMap* map, uintptr_t vaddr)
+    {
+        if (outTable == nullptr || map == nullptr)
+            return NpkStatus::InvalidArg;
+
+        const auto& conf = GetPageTableConfig();
+        sl::ScopedLock mapLock(map->lock);
+
+        PtWalk walk;
+        switch (Walk(walk, *map, vaddr, true))
+        {
+        case WalkResult::Success:
+            break;
+
+        case WalkResult::BlockMapped:
+            return NpkStatus::AlreadyMapped;
+
+        case WalkResult::NoTable:
+            [[fallthrough]];
+        case WalkResult::NoAccess:
+            return NpkStatus::Shortage;
+        }
+
+        PtMetadata(walk.tables[0]).validCount = conf.levelMask[0] + 1;
+        *outTable = walk.tables[0];
 
         return NpkStatus::Success;
     }
@@ -694,18 +733,23 @@ namespace Npk
 
         sl::ScopedLock mapLock(map->lock);
 
+        PteOnStack invalid;
+        MakeInvalidPte(invalid.data);
+
         while (vaddr < end)
         {
-            Paddr table;
-            size_t index;
-            PtWalkPath path;
+            PtWalk walk;
+
             //a block mapping is skipped like an absent one: this path only
             //ever created leaf-sized entries, so it has no business tearing
             //down a static mapping it doesn't know the shape of.
-            if (Walk(table, index, *map, vaddr, false, &path)
-                != WalkResult::Success)
+            const auto result = Walk(walk, *map, vaddr, false);
+            if (result == WalkResult::NoAccess)
+                return NpkStatus::Shortage;
+
+            if (result != WalkResult::Success)
             {
-                const uintptr_t next = NextSubtree(vaddr, level);
+                const uintptr_t next = NextSubtree(vaddr, walk.stopLevel);
                 if (next <= vaddr)
                     break;
                 vaddr = next;
@@ -713,17 +757,16 @@ namespace Npk
                 continue;
             }
 
+            const Paddr table = walk.tables[0];
+            size_t index = walk.indices[0];
+
             auto ref = AccessPage(table);
             if (!ref.Valid())
                 return NpkStatus::Shortage;
 
             while (index <= conf.levelMask[0] && vaddr < end)
             {
-                PteOnStack invalid;
-                PteOnStack old;
-
-                void* pte = static_cast<char*>(ref.vaddr) + index
-                    * conf.pteSize;
+                void* pte = PteAt(conf, ref, index);
                 if (!IsPteValid(pte))
                 {
                     index++;
@@ -732,8 +775,8 @@ namespace Npk
                     continue;
                 }
 
-                MakeInvalidPte(invalid.data);
-                ExchangePte(conf, conf.pteSize, pte, invalid.data, old.data);
+                PteOnStack old;
+                DoExchangePte(conf, pte, invalid.data, old.data);
 
                 if (IsPteDirty(old.data))
                     PublishDirtyBit(GetPteAddr(old.data));
@@ -748,7 +791,7 @@ namespace Npk
             ref = {};
 
             if (PtMetadata(table).validCount == 0)
-                FreeEmptyTables(*map, path, vaddr - PageSize());
+                FreeEmptyTables(*map, walk, vaddr - PageSize());
         }
 
         return NpkStatus::Success;
@@ -767,12 +810,16 @@ namespace Npk
 
         while (vaddr < end)
         {
-            Paddr table;
-            size_t index;
+            PtWalk walk;
+
             //as in HwMapRemove(): a block mapping is left alone.
-            if (Walk(table, index, *map, vaddr, false) != WalkResult::Success)
+            const auto result = Walk(walk, *map, vaddr, false);
+            if (result == WalkResult::NoAccess)
+                return NpkStatus::NotAvailable;
+
+            if (result != WalkResult::Success)
             {
-                const uintptr_t next = NextSubtree(vaddr, level);
+                const uintptr_t next = NextSubtree(vaddr, walk.stopLevel);
                 if (next <= vaddr)
                     break;
                 vaddr = next;
@@ -780,14 +827,14 @@ namespace Npk
                 continue;
             }
 
-            auto ref = AccessPage(table);
+            size_t index = walk.indices[0];
+            auto ref = AccessPage(walk.tables[0]);
             if (!ref.Valid())
                 return NpkStatus::Shortage;
 
             while (index <= conf.levelMask[0] && vaddr < end)
             {
-                void* pte = static_cast<char*>(ref.vaddr) + index
-                    * conf.pteSize;
+                void* pte = PteAt(conf, ref, index);
                 if (!IsPteValid(pte))
                 {
                     index++;
@@ -805,8 +852,7 @@ namespace Npk
                     sl::MemCopy(next.data, old.data, conf.pteSize);
                     SetPtePerms(next.data, perms);
                 }
-                while (!CompExchangePte(conf, conf.pteSize, pte, old.data,
-                    next.data));
+                while (!DoCompExchangePte(conf, pte, old.data, next.data));
 
                 if (!perms.Has(MmuPermission::Write) && IsPteDirty(old.data))
                     PublishDirtyBit(GetPteAddr(old.data));
@@ -831,16 +877,15 @@ namespace Npk
 
         sl::ScopedLock scopeLock(map->lock);
 
-        Paddr table;
-        size_t index;
-        if (Walk(table, index, *map, vaddr, false) != WalkResult::Success)
+        PtWalk walk;
+        if (Walk(walk, *map, vaddr, false) != WalkResult::Success)
             return NpkStatus::BadVaddr;
 
-        auto ref = AccessPage(table);
+        auto ref = AccessPage(walk.tables[0]);
         if (!ref.Valid())
             return NpkStatus::Shortage;
 
-        void* pte = static_cast<char*>(ref.vaddr) + index * conf.pteSize;
+        void* pte = PteAt(conf, ref, walk.indices[0]);
         if (!IsPteValid(pte) || !IsLeafPte(pte, 0))
             return NpkStatus::BadVaddr;
 
@@ -874,16 +919,15 @@ namespace Npk
 
         sl::ScopedLock scopeLock(map->lock);
 
-        Paddr table;
-        size_t index;
-        if (Walk(table, index, *map, vaddr, false) != WalkResult::Success)
+        PtWalk walk;
+        if (Walk(walk, *map, vaddr, false) != WalkResult::Success)
             return false;
 
-        auto ref = AccessPage(table);
+        auto ref = AccessPage(walk.tables[0]);
         if (!ref.Valid())
             return false;
 
-        void* pte = static_cast<char*>(ref.vaddr) + index * conf.pteSize;
+        void* pte = PteAt(conf, ref, walk.indices[0]);
         if (!IsPteValid(pte))
             return false;
 
@@ -934,16 +978,15 @@ namespace Npk
     {
         const auto& conf = GetPageTableConfig();
 
-        Paddr table;
-        size_t index;
-        if (Walk(table, index, map, vaddr, false) != WalkResult::Success)
+        PtWalk walk;
+        if (Walk(walk, map, vaddr, false) != WalkResult::Success)
             return false;
 
-        auto ref = AccessPage(table);
+        auto ref = AccessPage(walk.tables[0]);
         if (!ref.Valid())
             return false;
 
-        void* pte = static_cast<char*>(ref.vaddr) + index * conf.pteSize;
+        void* pte = PteAt(conf, ref, walk.indices[0]);
         if (!IsPteValid(pte))
             return false;
 
@@ -984,15 +1027,9 @@ namespace Npk
         //Therefore being at this level prevents any page tables this cpu knows
         //about (due to them being part of the current map) being freed while
         //we walk them.
-        const Ipl prevIpl = CurrentIpl();
-        const bool raised = prevIpl < Ipl::Tlb;
-        if (raised)
-            RaiseIpl(Ipl::Tlb);
-
+        const auto prevIpl = EnsureIpl(Ipl::Tlb);
         const bool handled = DoMinorFault(*map, vaddr, write);
-
-        if (raised)
-            LowerIpl(prevIpl);
+        RestoreIpl(prevIpl);
 
         return handled;
     }

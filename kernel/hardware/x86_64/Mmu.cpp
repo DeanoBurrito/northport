@@ -135,7 +135,7 @@ namespace Npk
 
         if (!kernel)
             value |= UserBit;
-        else
+        else if (globalPageSupport)
             value |= GlobalBit;
 
         if (nxSupport && !perms.Has(MmuPermission::Fetch))
@@ -466,10 +466,23 @@ namespace Npk
             const auto perms = MmuPermission::Write;
             const auto mode = MmuCacheMode::Default;
 
+            //no code will use the temp slots to access anything until they're
+            //populated from higher level code, but they are still valid,
+            //so they must point at something valid: paddr=0 isnt necessarily.
+            //Some older AMD cpus can send you an MCE or reset the system if
+            //a non-ram mapping exists with an incorrect caching mode.
+            //So we use the domain's zero page, which is known to be valid
+            //ram (what these mappings are for).
+            //We do open up the danger that there is now a writable path to the
+            //zero page, but that would be caught pretty quickly.
+            const Paddr placeholder = sysDomain0.zeroPage;
+            NPK_ASSERT(placeholder != 0);
+
             for (size_t i = 0; i < slots; i++)
             {
                 const auto vaddr = base + (i << PfnShift());
-                const auto pt = DoEarlyMap(*state, 0, vaddr, perms, mode);
+                const auto pt = DoEarlyMap(*state, placeholder, vaddr, perms,
+                    mode);
 
                 if ((i & (PtEntries - 1)) == 0)
                 {
@@ -478,13 +491,26 @@ namespace Npk
                     virtBase += PageSize();
                 }
             }
-
-            *token = reinterpret_cast<void*>(manageVaddr);
         }
         else
         {
             AssertIpl(Ipl::Dpc);
 
+            for (size_t i = 0; i < slots; i += PtEntries)
+            {
+                Paddr table;
+                auto result = HwMapLeafTable(&table, HwKernelMap(),
+                    base + (i << PfnShift()));
+                if (result != NpkStatus::Success)
+                    return result;
+
+                result = HwMapAdd(HwKernelMap(), virtBase, table,
+                    MmuPermission::Write, MmuCacheMode::Default, true);
+                if (result != NpkStatus::Success)
+                    return result;
+
+                virtBase += PageSize();
+            }
         }
 
         *token = reinterpret_cast<void*>(manageVaddr);

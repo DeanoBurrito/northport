@@ -167,4 +167,6 @@ namespace Npk
      * allocators and early map management functions. 
      */
     HwMap* HwCreateKernelMap(InitState& state, Paddr root);
+
+    NpkStatus HwMapLeafTable(Paddr* outTable, HwMap* map, uintptr_t vaddr);
 }

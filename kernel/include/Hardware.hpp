@@ -56,11 +56,81 @@ namespace Npk
      */
     using Asid = uint32_t;
 
-    /* Special ASID, which must never be returned from the asid allocator.
-     * This value indicates the tlb operation should effect all entries not
-     * associated with a particular space, typically kernel entries.
+    enum class TlbTarget
+    {
+        /* Targets all entries not associated with any particular ASID.
+         */
+        Globals,
+
+        /* Same as `Globals` but with a range constraint.
+         */
+        GlobalsRange,
+
+        /* Targets all entries associated with the specified ASID.
+         */
+        Space,
+
+        /* Same as `Space` but with a range constraint.
+         */
+        SpaceRange,
+
+        /* Targets every entry associated with an ASID. This is the interse of
+         * `Globals`.
+         */
+        AllSpaces,
+
+        /* Targets eveything, this is logically `Globals | AllSpaces`.
+         */
+        Everything,
+    };
+
+    /* Describes a TLB flush oepration. Usage of `asid`/`base`/`length` fields
+     * depends on the target.
      */
-    constexpr Asid AsidNone = 0;
+    struct TlbFlushRequest
+    {
+        TlbTarget target;
+        Asid asid;
+        uintptr_t base;
+        size_t length;
+    };
+
+    SL_ALWAYS_INLINE
+    constexpr TlbFlushRequest FlushSpace(Asid asid)
+    {
+        return { TlbTarget::Space, asid, 0, 0 };
+    }
+
+    SL_ALWAYS_INLINE
+    constexpr TlbFlushRequest FlushSpaceRange(Asid asid, uintptr_t base,
+        size_t length)
+    {
+        return { TlbTarget::SpaceRange, asid, base, length };
+    }
+
+    SL_ALWAYS_INLINE
+    constexpr TlbFlushRequest FlushGlobals()
+    {
+        return { TlbTarget::Globals, 0, 0, 0 };
+    }
+
+    SL_ALWAYS_INLINE
+    constexpr TlbFlushRequest FlushGlobalsRange(uintptr_t base, size_t length)
+    {
+        return { TlbTarget::GlobalsRange, 0, base, length };
+    }
+
+    SL_ALWAYS_INLINE
+    constexpr TlbFlushRequest FlushAllSpaces()
+    {
+        return { TlbTarget::AllSpaces, 0, 0, 0 };
+    }
+
+    SL_ALWAYS_INLINE
+    constexpr TlbFlushRequest FlushEverything()
+    {
+        return { TlbTarget::Everything, 0, 0, 0 };
+    }
 
     /* Opaque type. Represents stored register state before a synchronous
      * exception/trap was fired.
@@ -851,13 +921,15 @@ namespace Npk
      */
     bool HwHasBroadcastInvalidate();
 
-    /* Asks all cpus aware of `map` to invalidate `vaddr` -> `vaddr + len`.
+    /* Asks every cpu to action `request` against its own tlb. The request has
+     * the same meaning it has for `HwFlushTlb()` below; the only difference is
+     * reach.
      * This function returns after starting the operation but does not wait for
      * it to finish on remote cpus, meaning the system still has an inconsistent
      * view of memory. See `HwSyncTlbs()` below for that behaviour.
      * Only called when `HwHasBroadcastInvalidate()` returns true.
      */
-    void HwInvalidateTlbs(HwMap* map, uintptr_t vaddr, size_t length);
+    void HwInvalidateTlbs(const TlbFlushRequest& request);
 
     /* Holds the current cpu (not waiting or otherwise blocking) until all
      * prior calls to `HwInvalidateTlbs()` on this cpu have been confirmed
@@ -866,8 +938,8 @@ namespace Npk
      */
     void HwSyncTlbs();
 
-    /* Returns the count where it's cheaper to flush the whole tlb rather than
-     * individual entries.
+    /* Returns the count of pages where it's cheaper to flush a whole tag than
+     * to flush individual entries.
      */
     size_t HwGetTlbFlushThreshold();
 
@@ -876,9 +948,9 @@ namespace Npk
      */
     void HwFlushTlb(Asid asid, uintptr_t base, size_t length);
 
-    /* Flush local TLB entries tagged with `asid`, regardless of address.
+    /* Flushes local TLB entries described by the request.
      */
-    void HwFlushTlbAll(Asid asid);
+    void HwFlushTlb(const TlbFlushRequest& request);
 
     /* Flush caches relevant to the local cpu for addresses in the range
      * indicated by `base` and `length`. The `types` field determines which
