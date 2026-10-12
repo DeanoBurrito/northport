@@ -40,7 +40,12 @@ namespace Npk::Private
 
     VmSource* AnonSourceAttach(size_t size);
     VmSource* NamedSourceAttach(NsObject& obj);
+    VmSource* ModuleSourceAttach();
     //VmSource* DeviceSourceAttach(); TODO: revisit after driver subsystem
+
+    bool ModuleSourceAvailable();
+    NpkStatus InitModuleSource(uint64_t seed, size_t failPercent,
+        size_t maxDelayUs);
 
     sl::Opt<Paddr> AllocatePageTable(size_t level);
     void FreePageTable(size_t level, Paddr paddr);

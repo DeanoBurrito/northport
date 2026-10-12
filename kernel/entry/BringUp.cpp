@@ -36,6 +36,8 @@ namespace Npk
 
     static PageList reclaimablePageList;
     static size_t reclaimablePages;
+    static Paddr loaderModuleBase;
+    static size_t loaderModuleSize;
 
     static void EndInitPhase(InitUsage& usage, const char* name,
         const InitState& state)
@@ -725,6 +727,17 @@ R"(                                             888                      )"
         return **localSystemDomain;
     }
 
+    NpkStatus GetLoaderModule(Paddr& outBase, size_t& outLen)
+    {
+        if (loaderModuleBase == 0 || loaderModuleSize == 0)
+            return NpkStatus::NotAvailable;
+
+        outBase = loaderModuleBase;
+        outLen = loaderModuleSize;
+
+        return NpkStatus::Success;
+    }
+
     void InitLocalState(void* hwToken, uintptr_t slotsBase, size_t slotsCount,
         uintptr_t tempMapBase)
     {
@@ -756,9 +769,11 @@ R"(                                             888                      )"
         {
             Private::DrainCleanupJobs();
 
+            const auto prevIpl = RaiseIpl(Ipl::Dpc);
             EnterNoEpochState(dom.rcu, MyRelativeCoreId());
             WaitForIntr();
             ExitNoEpochState(dom.rcu, MyRelativeCoreId());
+            LowerIpl(prevIpl);
         }
 
         NPK_UNREACHABLE();
@@ -780,6 +795,11 @@ R"(                                             888                      )"
 
         if (loadState.timeOffset.HasValue())
             SetTimeOffset({ *loadState.timeOffset });
+        if (loadState.moduleBlob.HasValue())
+        {
+            loaderModuleBase = loadState.moduleBlob->base;
+            loaderModuleSize = loadState.moduleBlob->length;
+        }
 
         size_t ctorCount = 0;
         for (auto it = INIT_ARRAY_BEGIN; it != INIT_ARRAY_END; it++)

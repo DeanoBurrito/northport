@@ -14,6 +14,7 @@ KERNEL_CXX_SRCS += \
 	core/Scheduler.cpp \
 	core/Smp.cpp \
 	core/Time.cpp \
+	core/TlbSync.cpp \
 	core/Wait.cpp \
 	core/Worker.cpp\
 	debugger/EnclaveApi.cpp \
@@ -48,6 +49,7 @@ KERNEL_CXX_SRCS += \
 	vm/Anon.cpp \
 	vm/Fault.cpp \
 	vm/KernelStack.cpp \
+	vm/PagerModule.cpp \
 	vm/Pool.cpp \
 	vm/Space.cpp \
 	Fireworks.cpp \

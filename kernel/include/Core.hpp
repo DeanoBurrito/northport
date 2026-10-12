@@ -1855,4 +1855,11 @@ namespace Npk
      * state is protected by a higher level lock, but worth being aware of.
      */
     NpkStatus PeekActivation(Activation** outAct, HwUserContext& context);
+
+    /* If a module blob was provided by the bootloader, this function places 
+     * the physical base address and length into its arguments.
+     * Returns whether the module blob is available, if a non-success value is
+     * returned `outBase` and `outLen` are untouched by this function.
+     */
+    NpkStatus GetLoaderModule(Paddr& outBase, size_t& outLen);
 }
