@@ -88,15 +88,34 @@ namespace Npk
         if (key[key.Size() - 1] == 0)
             key = key.Subspan(0, key.Size() - 1);
 
-        for (size_t i = 0; i < configStore.Size(); i++)
+        size_t i = 0;
+        while (i < configStore.Size())
         {
-            if (configStore[i] != key[0])
-                continue;
-            if (key != configStore.Subspan(i, key.Size()))
-                continue;
+            while (i < configStore.Size() && IsSpace(configStore[i]))
+                i++;
 
-            return i + key.Size();
+            const size_t end = i + key.Size();
+            if (end <= configStore.Size()
+                && key == configStore.Subspan(i, key.Size()))
+            {
+                size_t scan = end;
+                while (scan < configStore.Size() && IsSpace(configStore[scan]))
+                    scan++;
+
+                if (scan == configStore.Size()
+                    || configStore[scan] == KeyValueDelim
+                    || configStore[scan] == ElementDelim)
+                {
+                    return end;
+                }
+            }
+
+            while (i < configStore.Size() && configStore[i] != ElementDelim)
+                i++;
+
+            i++;
         }
+
         return {};
     }
 
