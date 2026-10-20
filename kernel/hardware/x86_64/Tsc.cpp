@@ -3,6 +3,7 @@
 #include <hardware/x86_64/Pit.hpp>
 #include <hardware/x86_64/Cpuid.hpp>
 #include <hardware/x86_64/PvClock.hpp>
+#include <hardware/x86_64/Msr.hpp>
 #include <hardware/common/timer/AcpiTimer.hpp>
 #include <Core.hpp>
 #include <lib/Units.hpp>
@@ -26,6 +27,7 @@ namespace Npk
         HypervisorLeaf,
         Measured,
         Cpuid16,
+        P0Msr,
     };
 
     struct RefTimerControl

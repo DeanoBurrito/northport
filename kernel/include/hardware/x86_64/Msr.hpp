@@ -35,6 +35,7 @@ namespace Npk
         MciStatus = 0x401,
         MciAddr = 0x402,
         MciMisc0 = 0x403,
+        PStateBase = 0xC001'0064,
     };
 
     SL_ALWAYS_INLINE
