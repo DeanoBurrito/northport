@@ -583,6 +583,8 @@ namespace Npk
         }
 
         vmr->flags = flags;
+        vmr->advice = VmAdvice::Normal;
+        vmr->lastFaultSlotPlusOne = 0;
         vmr->base = base;
         vmr->length = length;
         vmr->amapRef = {};
@@ -812,9 +814,6 @@ namespace Npk
                 break;
             }
 
-            //TODO: mark amap as copy-on-write, means modifying any existing
-            //mappings to the amap.
-
             auto* latest = new(ptr) VmRange {};
             latest->space = newSpace;
             if (ResetMutex(&latest->mutex, 1) != NpkStatus::Success)
@@ -827,10 +826,18 @@ namespace Npk
             latest->base = it->base;
             latest->length = it->length;
             latest->flags = it->flags;
+            latest->advice = it->advice;
+            latest->lastFaultSlotPlusOne = 0;
             latest->offset = it->offset;
             latest->amapOffset = it->amapOffset;
             latest->amapRef = it->amapRef;
             latest->source = it->source;
+
+            if (latest->amapRef.Valid())
+            {
+                NPK_ASSERT(latest->flags.Has(VmFlag::CopyOnWrite));
+                latest->flags.Set(VmFlag::AmapNeedsCopy);
+            }
 
             if (latest->amapRef.Valid())
             {
@@ -887,6 +894,45 @@ namespace Npk
             newSpace->ranges.Insert(latest);
         }
 
+        NpkStatus cloneStatus = NpkStatus::Shortage;
+        bool protectedAny = false;
+
+        for (auto it = source.ranges.First(); it != nullptr && carryOn;
+            it = source.ranges.Successor(it))
+        {
+            if (!it->amapRef.Valid() || it->flags.Has(VmFlag::AmapNeedsCopy))
+                continue;
+
+            MmuPermissions perms {};
+            if (it->flags.Has(VmFlag::Fetch))
+                perms.Set(MmuPermission::Fetch);
+
+            protectedAny = true;
+            cloneStatus = HwMapProtect(source.map, it->base,
+                it->length >> PfnShift(), perms);
+
+            if (cloneStatus != NpkStatus::Success)
+            {
+                carryOn = false;
+                break;
+            }
+        }
+
+        if (protectedAny)
+        {
+            PageList protectFreed {};
+            HwMapUpdate(source.map, true, protectFreed);
+        }
+
+        for (auto it = source.ranges.First(); it != nullptr && carryOn;
+            it = source.ranges.Successor(it))
+        {
+            if (!it->amapRef.Valid() || it->flags.Has(VmFlag::AmapNeedsCopy))
+                continue;
+
+            it->flags.Set(VmFlag::AmapNeedsCopy);
+        }
+
         if (!carryOn)
         {
             while (newSpace->freeRanges.GetRoot() != nullptr)
@@ -930,7 +976,7 @@ namespace Npk
             ReleaseSxMutexExclusive(&source.rangesMutex);
             ReleaseMutex(&source.freeRangesMutex);
 
-            return NpkStatus::Shortage;
+            return cloneStatus;
         }
 
         *clone = newSpace;
