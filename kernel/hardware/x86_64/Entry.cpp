@@ -8,6 +8,18 @@ namespace Npk
 
     SL_TAGGED(cpubase, CoreLocalHeader localHeader);
 
+    static void SetFrameForJacket(TrapFrame* frame, HwExceptionFlag which)
+    {
+        NPK_ASSERT(localHeader.ExceptRecoveryPc != nullptr);
+        NPK_ASSERT(localHeader.exceptRecoveryStack != nullptr);
+
+        frame->iret.rip = (uint64_t)localHeader.ExceptRecoveryPc;
+        frame->rdi = (uint64_t)localHeader.exceptRecoveryStack;
+
+        localHeader.exceptFlags.Reset();
+        localHeader.exceptFlags.Set(which);
+    }
+
     extern "C" void InterruptDispatch(TrapFrame* frame)
     {
         RemoteStatus(MyCoreId())->lastIntrFrame = frame;
@@ -57,22 +69,16 @@ namespace Npk
             break;
 
         case 0xD: //general protection fault
-            if (localHeader.ExceptRecoveryPc != nullptr)
-            {
-                frame->iret.rip = (uint64_t)localHeader.ExceptRecoveryPc;
-                frame->rdi = (uint64_t)localHeader.exceptRecoveryStack;
-            }
+            if (localHeader.exceptFlags.Has(HwExceptionFlag::BadIo))
+                SetFrameForJacket(frame, HwExceptionFlag::BadIo);
             else
                 NotifyOfBadOp();
             suppressEoi = true;
             break;
 
         case 0xE: //page fault
-            if (localHeader.ExceptRecoveryPc != nullptr)
-            {
-                frame->iret.rip = (uint64_t)localHeader.ExceptRecoveryPc;
-                frame->rdi = (uint64_t)localHeader.exceptRecoveryStack;
-            }
+            if (localHeader.exceptFlags.Has(HwExceptionFlag::PageFault))
+                SetFrameForJacket(frame, HwExceptionFlag::PageFault);
             else if (prevIpl != Ipl::Passive)
             {
                 Panic("Page fault at non-passive IPL, addr=0x%tx, ec=0x%tx", 
@@ -82,7 +88,16 @@ namespace Npk
             {
                 const bool write = frame->ec & 0b10;
                 const bool user = frame->ec & 0b100;
-                DispatchPageFault(READ_CR(2), write, user);
+
+                bool isBadFault = false;
+                bool* probePtr = nullptr;
+                if (localHeader.exceptFlags.Has(HwExceptionFlag::BadPageFault))
+                    probePtr = &isBadFault;
+
+                DispatchPageFault(probePtr, READ_CR(2), write, user);
+
+                if (probePtr != nullptr && isBadFault)
+                    SetFrameForJacket(frame, HwExceptionFlag::BadPageFault);
             }
             suppressEoi = true;
             break;

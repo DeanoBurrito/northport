@@ -479,6 +479,29 @@ namespace Npk
 
     using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
 
+    enum class HwExceptionFlag
+    {
+        /* Any page fault, handled before VMM.
+         */
+        PageFault = 0,
+
+        /* Page fault rejected by VMM.
+         */
+        BadPageFault = 1,
+
+        /* Bad io that wouldnt trigger a page fault (port io, msr reads).
+         */
+        BadIo,
+
+        /* Start of region for isa specific flags.
+         */
+        ArchBase = 0x8,
+    };
+
+    using HwExceptionFlags = sl::Flags<HwExceptionFlag>;
+
+    using HwJacketFunc = void (*)(void* arg);
+
     /* Calls `func` passing `a`/`b`/`c` as params to it, optionally placing
      * the return value of `func` into `*r` if non-null. If a synchronous
      * exception (i.e. one occurring due to an instruction `func` executed)
