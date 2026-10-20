@@ -89,6 +89,14 @@ namespace Npk
     using AnonMapRef = sl::Ref<AnonMap, &AnonMap::refcount,
         Private::DestroyAnonMap>;
 
+    enum class VmAdvice : uint8_t
+    {
+        Normal = 0,
+        Random,
+        Sequential,
+        WillNeed,
+    };
+
     struct VmRange
     {
         VmRangeAmapLink amapLink;
@@ -104,11 +112,23 @@ namespace Npk
          */
         sl::ListHook sourceHook;
 
+        /* Address space this range describes.
+         */
         VmSpace* space;
 
         /* Flags describing the behaviour of this range.
          */
         VmFlags flags;
+
+        /* Helps inform fault handler how the range is being accessed, can allow
+         * a range to be treated as if it has `Sequential` advice even if it
+         * doesn't.
+         */
+        uint32_t lastFaultSlotPlusOne;
+
+        /* How this range is likely to be accessed, set explicitly.
+         */
+        VmAdvice advice;
 
         /* Base address of this address range, relative to the parent
          * address space. This can also be thought of as an offset,
@@ -120,12 +140,19 @@ namespace Npk
          */
         size_t length;
 
+        /* Owning reference to this range's anon map structure.
+         */
         AnonMapRef amapRef;
+
+        /* Offset of this range within its referenced amap, allows efficient
+         * splitting of a range as the new ranges can continue to refer to the
+         * old amap.
+         */
         size_t amapOffset;
 
         /* Source object (layer 2) providing physical pages for this range
          * if not found in layer 1 (the amap). If `source` is null, this range
-         * is zero-fill area.
+         * is a zero-fill area.
          */
         VmSource* source;
 
@@ -389,6 +416,11 @@ namespace Npk
     /* TODO:
      */
     NpkStatus SpaceSplit(VmSpace& space, VmRange& range, size_t offset);
+
+    /* TODO:
+     */
+    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, uintptr_t addr,
+        size_t length);
 
     /* TODO:
      */

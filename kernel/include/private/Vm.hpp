@@ -47,8 +47,12 @@ namespace Npk::Private
     NpkStatus InitModuleSource(uint64_t seed, size_t failPercent,
         size_t maxDelayUs);
 
-    sl::Opt<Paddr> AllocatePageTable(size_t level);
-    void FreePageTable(size_t level, Paddr paddr);
+    void PinPage(PageInfo* page);
+    void UnpinPage(PageInfo* page, size_t count = 1);
+    void TrackPage(PageInfo* page); //places page on active list
+    void UntrackPage(PageInfo* page); //removes page from a live list (if any)
+    void DrainSourcePages(VmSource& src);
+    NpkStatus ReleaseMappedPage(Paddr paddr);
 
     void InitPool(uintptr_t base, size_t length);
     void* PoolAlloc(size_t len, HeapTag tag, bool paged, sl::TimeCount timeout 

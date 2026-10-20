@@ -834,6 +834,15 @@ namespace Npk
 
     struct VmSpace;
 
+    enum class LiveList
+    {
+        Active,
+        Dirty,
+        Standby,
+
+        Count
+    };
+
     struct SystemDomain
     {
         Paddr physOffset;
@@ -862,9 +871,9 @@ namespace Npk
         struct 
         {
             Mutex lock;
-            PageList active;
-            PageList dirty;
-            PageList standby;
+            PageList lists[(size_t)LiveList::Count];
+            size_t lengths[(size_t)LiveList::Count];
+            TrimStats stats; //writers hold `lock` above
         } liveLists;
 
         //TODO: io + device linkage

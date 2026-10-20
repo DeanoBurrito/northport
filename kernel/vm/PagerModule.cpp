@@ -368,6 +368,8 @@ namespace Npk::Private
         }
 
         source->ops = &modulePagerOps;
+        source->refs = 1;
+        source->length = AlignUpPage(moduleBlobLen);
         source->rng = seed;
         source->failPercent = sl::Min(failPercent, (size_t)100);
         source->maxDelayUs = maxDelayUs;

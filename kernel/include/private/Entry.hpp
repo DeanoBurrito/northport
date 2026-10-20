@@ -112,7 +112,7 @@ namespace Npk::Loader
 
     /* This function converts memory map data from the bootloader's format to
      * our own, sanitizing it if necessary. Entries returned from this function
-     * will not overlap with any other are will be sorted by base address
+     * will not overlap with any other and will be sorted by base address
      * - even across separate calls.
      * Only ranges set in `flags` are considered, and the first `offset` number
      * of considered ranges are ignored. Ranges after `offset` are copied into
