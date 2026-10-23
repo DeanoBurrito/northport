@@ -905,6 +905,28 @@ namespace Npk::Private
         return result;
     }
 
+    void Private::DrainSourcePages(VmSource& src)
+    {
+        NPK_ASSERT(src.ranges.Empty());
+
+        //this lock also synchronizes with the trimmer looking at this source
+        //from the perspective of a PageInfo's owner.
+        NPK_ASSERT(AcquireSxMutexExclusive(&src.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION) == NpkStatus::Success);
+
+        while (!src.pages.Empty())
+        {
+            auto* page = src.pages.PopFront();
+
+            UntrackPage(page);
+
+            NPK_ASSERT(page->vm.pins == 0);
+            FreePage(page);
+        }
+
+        ReleaseSxMutexExclusive(&src.mutex);
+    }
+
     NpkStatus ReleaseMappedPage(Paddr paddr)
     {
         if (paddr == MySystemDomain().zeroPage)
@@ -943,8 +965,27 @@ namespace Npk
         LowerIpl(Ipl::Passive);
         const bool prevIntrs = IntrsOn();
 
-        const size_t kernelBit = 1ull << ((sizeof(addr) * 8) - 1);
-        const bool isUserAddr = !(addr & kernelBit);
+        const auto userAddrs = HwGetUserAddressRange();
+        const auto kernelAddrs = HwGetKernelAddressRanges();
+
+        bool isUserAddr = false;
+        bool isKernelAddr = false;
+        if (addr >= userAddrs.base && addr < userAddrs.top)
+            isUserAddr = true;
+        else
+        {
+            for (size_t i = 0; i < kernelAddrs.Size(); i++)
+            {
+                if (addr >= kernelAddrs[i].base
+                    && addr < kernelAddrs[i].top)
+                {
+                    isKernelAddr = true;
+                    break;
+                }
+            }
+        }
+
+        NPK_ASSERT(isUserAddr || isKernelAddr);
         addr = AlignDownPage(addr);
 
         //sanity checks and get the associated address space for the fault.
