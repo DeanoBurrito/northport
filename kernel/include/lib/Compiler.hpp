@@ -32,6 +32,8 @@
     #define SL_POPCOUNT(x) __builtin_popcountl(x)
 
     #define SL_LEADING_ZEROS_64(x) __builtin_clzll(x)
+
+    #define SL_ATOMIC_ALWAYS_LOCK_FREE(s) __atomic_always_lock_free(s, 0)
 #else
     #error "Failed to detect compiler."
 #endif

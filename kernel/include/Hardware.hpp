@@ -489,16 +489,21 @@ namespace Npk
          */
         BadPageFault = 1,
 
-        /* Bad io that wouldnt trigger a page fault (port io, msr reads).
+        /* Bad io that wouldn't trigger a page fault (port io, msr reads).
          */
-        BadIo,
+        BadIo = 2,
 
         /* Start of region for isa specific flags.
          */
         ArchBase = 0x8,
     };
 
-    using HwExceptionFlags = sl::Flags<HwExceptionFlag>;
+    using HwExceptionFlags = sl::Flags<HwExceptionFlag, uintptr_t>;
+
+    constexpr HwExceptionFlags AllBaseExceptions = HwExceptionFlags(0xFF);
+    constexpr HwExceptionFlags AllExceptions = HwExceptionFlags((uintptr_t)~0);
+    constexpr HwExceptionFlags AllArchExceptions
+        = AllExceptions & ~AllBaseExceptions.value;
 
     using HwJacketFunc = void (*)(void* arg);
 
@@ -515,6 +520,26 @@ namespace Npk
     extern "C"
     bool ExceptionAwareCall(void* a, void* b, void* c, void** r, 
         void* (*func)(void* a, void* b, void* c));
+
+    /* Calls `func` with its argument set to `arg`, no mechanism for a return
+     * value is provided so that must be handled via the passed pointer.
+     * If a synchronous exception fires and the exception type is *set* in the
+     * flags passed to the latest call to this function, the call to `func`
+     * is intercepted. A recovery routine runs and ultimately this returns to
+     * caller. If any intercepting exceptions fired, their corresponding flags
+     * are set in the returned value. If an exception fires and is not part 
+     * of the flags set it is handled normally.
+     *
+     * Can be nested, returns to innermost frame.
+     */
+    extern "C"
+    HwExceptionFlags HwExceptionJacket(HwJacketFunc func, void* arg,
+        HwExceptionFlags flags);
+
+    /* Returns whether an exception jacket is active on the current cpu.
+     */
+    SL_ALWAYS_INLINE
+    bool HwInExceptionJacket();
 
     /* Sugar function for calling `sl::MemCopy()` via `ExceptionAwareCall()`.
      */

@@ -1871,4 +1871,49 @@ namespace Npk
      * returned `outBase` and `outLen` are untouched by this function.
      */
     NpkStatus GetLoaderModule(Paddr& outBase, size_t& outLen);
+
+    /* Performs a MemCopy() operation inside an exception jacket. The jacket is
+     * armed for exceptions set in `flags`, see `HwExceptionJacket()` for that
+     * mechanism's details. This operation is not atomic, no guarantees about
+     * how much data is transferred in case of a recovery are provided.
+     * Note that the `flags` argument acts as the return value of the exception
+     * hacket call: if a non-success status is returned `flags` will contain
+     * the intercepting exceptions.
+     */
+    NpkStatus JacketedMemCopy(HwExceptionFlags& flags, void* dest,
+        const void* src, size_t len);
+
+    /* Similar to `JacketedMemCopy()` but for an `sl::MemSet()` operation.
+     */
+    NpkStatus JacketedMemSet(HwExceptionFlags& flags, void* dest, int value,
+        size_t len);
+
+    /* Performs an atomic load operation to a naturally aligned word of `width`
+     * bytes (must be 1, 2, 4; 8 is supported if the platform supports it).
+     * All buffers (`out` `target` are expected to hold `width` bytes.
+     *
+     * Memory order must not be Release or AcqRel.
+     */
+    NpkStatus JacketedAtomicLoad(HwExceptionFlags& flags, void* out,
+        const void* target, size_t width, sl::MemoryOrder order = sl::SeqCst);
+
+    /* Similar to `JacketedAtomicLoad()` but performs a store.
+     * Memory order must not be Acquire or AcqRel.
+     */
+    NpkStatus JacketedAtomicStore(HwExceptionFlags& flags, void* target,
+        const void* value, size_t width, sl::MemoryOrder order = sl::SeqCst);
+
+    /* Similar to other jacketed atomic operations, this time an exchange.
+     * All memory orders are valid.
+     */
+    NpkStatus JacketedAtomicExchange(HwExceptionFlags& flags, void* target,
+        void* value, size_t width, sl::MemoryOrder order = sl::SeqCst);
+
+    /* A strong comare-exchange operation that is jacketed, see
+     * `JacketedAtomicLoad()` for details on this family of functions.
+     * If the operation failes due to mis-compare `ValueMismatch` is returned.
+     */
+    NpkStatus JacketedAtomicCompareExchange(HwExceptionFlags& flags,
+        void* target, void* expected, const void* value, size_t width,
+        sl::MemoryOrder order = sl::SeqCst);
 }

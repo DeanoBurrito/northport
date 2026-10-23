@@ -7,6 +7,7 @@ KERNEL_CXX_SRCS += \
 	core/CppRuntime.cpp \
 	core/Ebr.cpp \
 	core/Ipl.cpp \
+	core/Jacketed.cpp \
 	core/Logging.cpp \
 	core/PageAccess.cpp \
 	core/PageAlloc.cpp \

@@ -23,5 +23,6 @@ KERNEL_CXX_SRCS += \
 KERNEL_AS_SRCS += \
 	$(ARCH_DIR)/ApSpinup.S \
 	$(ARCH_DIR)/Entry.S \
+	$(ARCH_DIR)/ExceptionJacket.S \
 	$(ARCH_DIR)/ExceptionAwareCall.S \
 	$(ARCH_DIR)/Switch.S

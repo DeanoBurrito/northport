@@ -13,8 +13,13 @@ namespace Npk
 {
     constexpr uint8_t Int3Opcode = 0xCC;
 
-    struct TrapFrame 
+    struct TrapFrame
     {
+        HwExceptionFlags jacketFlags;
+        void* jacketStack;
+        void (*jacketPc)(void* stack);
+        uint64_t alignPad;
+
         uint64_t r15;
         uint64_t r14;
         uint64_t r13;
@@ -42,6 +47,9 @@ namespace Npk
             uint64_t ss;
         } iret;
     };
+    static_assert(offsetof(TrapFrame, jacketStack) == 8);
+    static_assert(offsetof(TrapFrame, jacketPc) == 16);
+    static_assert(offsetof(TrapFrame, r15) == 32);
 
     struct SwitchFrame
     {

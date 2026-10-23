@@ -60,9 +60,26 @@ InterruptEntry:
     mov %ax, %ds
     mov %ax, %es
 
+    sub $8, %rsp
+    pushq %gs:32
+    pushq %gs:40
+    pushq %gs:56
+    xor %eax, %eax
+    mov %rax, %gs:32
+    mov %rax, %gs:40
+    mov %rax, %gs:56
+
     mov %rsp, %rdi
     cld
     call InterruptDispatch
+
+    pop %rax
+    mov %rax, %gs:56
+    pop %rax
+    mov %rax, %gs:40
+    pop %rax
+    mov %rax, %gs:32
+    add $8, %rsp
 
     mov 144(%rsp), %ax
     cmp $0x8, %ax

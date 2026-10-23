@@ -10,14 +10,12 @@ namespace Npk
 
     static void SetFrameForJacket(TrapFrame* frame, HwExceptionFlag which)
     {
-        NPK_ASSERT(localHeader.ExceptRecoveryPc != nullptr);
-        NPK_ASSERT(localHeader.exceptRecoveryStack != nullptr);
+        NPK_ASSERT(frame->jacketPc != nullptr);
+        NPK_ASSERT(frame->jacketStack != nullptr);
 
-        frame->iret.rip = (uint64_t)localHeader.ExceptRecoveryPc;
-        frame->rdi = (uint64_t)localHeader.exceptRecoveryStack;
-
-        localHeader.exceptFlags.Reset();
-        localHeader.exceptFlags.Set(which);
+        frame->iret.rip = (uint64_t)frame->jacketPc;
+        frame->rdi = (uint64_t)frame->jacketStack;
+        frame->jacketFlags = which;
     }
 
     extern "C" void InterruptDispatch(TrapFrame* frame)
@@ -69,7 +67,7 @@ namespace Npk
             break;
 
         case 0xD: //general protection fault
-            if (localHeader.exceptFlags.Has(HwExceptionFlag::BadIo))
+            if (frame->jacketFlags.Has(HwExceptionFlag::BadIo))
                 SetFrameForJacket(frame, HwExceptionFlag::BadIo);
             else
                 NotifyOfBadOp();
@@ -77,7 +75,7 @@ namespace Npk
             break;
 
         case 0xE: //page fault
-            if (localHeader.exceptFlags.Has(HwExceptionFlag::PageFault))
+            if (frame->jacketFlags.Has(HwExceptionFlag::PageFault))
                 SetFrameForJacket(frame, HwExceptionFlag::PageFault);
             else if (prevIpl != Ipl::Passive)
             {
@@ -91,7 +89,7 @@ namespace Npk
 
                 bool isBadFault = false;
                 bool* probePtr = nullptr;
-                if (localHeader.exceptFlags.Has(HwExceptionFlag::BadPageFault))
+                if (frame->jacketFlags.Has(HwExceptionFlag::BadPageFault))
                     probePtr = &isBadFault;
 
                 DispatchPageFault(probePtr, READ_CR(2), write, user);

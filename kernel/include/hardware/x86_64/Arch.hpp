@@ -101,11 +101,13 @@ namespace Npk
         void (*ExceptRecoveryPc)(void* stack);
         void* exceptRecoveryStack;
         IplWord ipl;
+        HwExceptionFlags exceptFlags;
     };
     static_assert(offsetof(CoreLocalHeader, userExitStack) == 24);
     static_assert(offsetof(CoreLocalHeader, ExceptRecoveryPc) == 32);
     static_assert(offsetof(CoreLocalHeader, exceptRecoveryStack) == 40);
     static_assert(offsetof(CoreLocalHeader, ipl) == 48);
+    static_assert(offsetof(CoreLocalHeader, exceptFlags) == 56);
 
     SL_ALWAYS_INLINE
     CpuId MyCoreId()
@@ -134,6 +136,16 @@ namespace Npk
         return word;
     }
     static_assert(offsetof(CoreLocalHeader, ipl) == 48);
+
+    SL_ALWAYS_INLINE
+    bool HwInExceptionJacket()
+    {
+        uintptr_t flags;
+        asm volatile("mov %%gs:56, %0" : "=r"(flags));
+
+        return flags != 0;
+    }
+    static_assert(offsetof(CoreLocalHeader, exceptFlags) == 56);
 
     SL_ALWAYS_INLINE
     void HwSetIpl(Ipl level)
