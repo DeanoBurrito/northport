@@ -46,6 +46,12 @@ namespace Npk::Private
     bool ModuleSourceAvailable();
     NpkStatus InitModuleSource(uint64_t seed, size_t failPercent,
         size_t maxDelayUs);
+    NpkStatus InitStackCaches();
+
+    /* Backend of `FreeKenrelStack()`, `keepPerCpu` is the float count.
+     * Returns number of stacks freed.
+     */
+    size_t TrimKernelStackCaches(size_t keepPerCpu, sl::TimeCount timeout);
 
     void PinPage(PageInfo* page);
     void UnpinPage(PageInfo* page, size_t count = 1);

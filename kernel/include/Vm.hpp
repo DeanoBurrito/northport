@@ -290,6 +290,18 @@ namespace Npk
         sl::TimeCount timeout = sl::NoTimeout;
     };
 
+    struct StackCacheStats
+    {
+        size_t cached;
+        size_t doomed;
+        size_t reused;
+        size_t stolen;
+        size_t allocated;
+        size_t released;
+        size_t live;
+        size_t peak;
+    };
+
     /* Initializes the kernel's virtual memory space, which makes all virtual
      * memory services available (kernel pool, file cache).
      * The `base` and `len` params describe two regions of usable address space
@@ -305,15 +317,28 @@ namespace Npk
 
     /* Attempts to allocate a kernel stack. The architectural base is placed
      * in `*stack` on success, this is the value that is typically placed into
-     * the stack pointer register.
+     * the general purpose stack pointer register.
+     * The stack is sized as `KernelStackSize()` and is zeroed.
+     *
+     * Must be called at passive IPL.
      */
     NpkStatus AllocKernelStack(void** stack);
 
-    /* Immediately releases memory used by a kernel stack, DO NOT call this
-     * for the current stack (insert stick in bicycle spoke meme here) - instead
-     * a defer-based mechanism should be used (RCU, DPCs, WorkItems).
+    /* Marks a kernel stack (as returned from `AllocKernelStack()`) as no longer
+     * in use.
+     *
+     * Freed stacks go through a cache layer so this function doesn't block
+     * or touch the backing allocator itself directly, safe to call at or below
+     * DPC IPL.
      */
     void FreeKernelStack(void* stack);
+
+    /* Populates a stat block with global stats of the kernel stack cache
+     * layer. Note these stats are correct at the time of being written but
+     * nocessarily cohesive with each other. These numbers are advisory, their
+     * exactly value shouldn't be depended on.
+     */
+    void GetStackCacheStats(StackCacheStats& out);
 
     /* Attempts to allocate `len` bytes from a general purpose pool, with the
      * specified allocation tag. Returns `nullptr` on failure. The `wired` param

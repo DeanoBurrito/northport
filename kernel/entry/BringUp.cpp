@@ -4,7 +4,7 @@
 #include <private/Namespace.hpp>
 #include <private/Process.hpp>
 #include <Video.hpp>
-#include <Vm.hpp>
+#include <private/Vm.hpp>
 #include <lib/AcpiTypes.hpp>
 #include <lib/Maths.hpp>
 #include <lib/Memory.hpp>
@@ -877,6 +877,9 @@ R"(                                             888                      )"
         const uintptr_t highTop = AlignDownPage((uintptr_t)~0);
         InitKernelVmSpace(lowBase, lowTop - lowBase, highBase, 
             highTop - highBase);
+
+        result = Private::InitStackCaches();
+        NPK_ASSERT(result == NpkStatus::Success);
 
         ResetEbrDomain(sysDomain0.rcu, sysDomain0.smpControls.Size(),
             [](EbrDomain& dom, size_t who) -> void 
