@@ -3,8 +3,6 @@
 #include <lib/Units.hpp>
 #include <lib/Maths.hpp>
 
-//TODO: check max stack usage after freeing for more fun stats
-//- check for non-zero values should get us pretty close.
 namespace Npk
 {
     constexpr HeapTag KernelStackTag = NPK_MAKE_HEAP_TAG("Stck");
@@ -24,6 +22,7 @@ namespace Npk
         sl::Atomic<size_t> reused;
         sl::Atomic<size_t> stolen;
         sl::Atomic<size_t> released;
+        sl::Atomic<size_t> deepest;
     };
 
     struct StackShard
@@ -104,6 +103,26 @@ namespace Npk
         shard.count.Store(now, sl::Relaxed);
         if (now < shard.lowCountSample)
             shard.lowCountSample = now;
+    }
+
+    static size_t MeasureStackDepth(void* top)
+    {
+        const size_t untouched = sl::MemSkip(StackBase(top), 0,
+            KernelStackSize());
+
+        return KernelStackSize() - untouched;
+    }
+
+    static void RecordStackDepth(size_t depth)
+    {
+        const auto prevIpl = EnsureIpl(Ipl::Dpc);
+        const auto self = MyRelativeCoreId();
+        auto& counters = stackCaches[self].counters;
+
+        if (depth > counters.deepest.Load(sl::Relaxed))
+            counters.deepest.Store(depth, sl::Relaxed);
+
+        RestoreIpl(prevIpl);
     }
 
     static CachedStack* TryStealStack(size_t self)
@@ -219,7 +238,9 @@ namespace Npk
 
             if (cached != nullptr)
             {
-                sl::MemSet(StackBase(cached), 0, KernelStackSize());
+                const size_t depth = MeasureStackDepth(cached);
+                sl::MemSet(static_cast<char*>(cached) - depth, 0, depth);
+                RecordStackDepth(depth);
                 *stack = cached;
 
                 return NpkStatus::Success;
@@ -302,8 +323,10 @@ namespace Npk
         while (!list.Empty())
         {
             auto* node = list.PopFront();
-            void* base = StackBase(TopOf(node));
+            void* top = TopOf(node);
+            void* base = StackBase(top);
 
+            const size_t depth = MeasureStackDepth(top);
             const auto result = PoolFreeWired(base, KernelStackSize(),
                 KernelStackTag, timeout);
 
@@ -315,6 +338,7 @@ namespace Npk
                 continue;
             }
 
+            RecordStackDepth(depth);
             liveStacks.FetchSub(1, sl::AcqRel);
             freed++;
         }
@@ -455,6 +479,8 @@ namespace Npk
             out.released += cache.counters.released.Load(sl::Relaxed);
             out.cached += cache.ready.count.Load(sl::Relaxed);
             out.doomed += cache.doomed.count.Load(sl::Relaxed);
+            out.deepest = sl::Max(out.deepest,
+                cache.counters.deepest.Load(sl::Relaxed));
         }
     }
 }
