@@ -1,12 +1,15 @@
 #include <private/Core.hpp>
 #include <private/Vm.hpp>
 #include <lib/Units.hpp>
+#include <lib/Maths.hpp>
 
 //TODO: check max stack usage after freeing for more fun stats
 //- check for non-zero values should get us pretty close.
 namespace Npk
 {
     constexpr HeapTag KernelStackTag = NPK_MAKE_HEAP_TAG("Stck");
+    constexpr size_t LimitFracBits = 4;
+    constexpr size_t LimitEwmaShift = 2;
     constexpr size_t DefaultStackCacheLimit = 8;
 
     struct CachedStack
@@ -28,6 +31,8 @@ namespace Npk
         IplSpinLock<Ipl::Dpc> lock;
         CachedStackList list;
         sl::Atomic<size_t> count; //written under `lock`, can be read without
+        size_t lowCountSample;
+        size_t highCountSample;
     };
 
     struct KernelStackCache
@@ -41,7 +46,15 @@ namespace Npk
         StackShard doomed;
     };
 
-    static size_t stackCacheLimit; //TODO: refine this at runtime based on use
+    static sl::Atomic<size_t> stackCacheLimit;
+    static size_t stackCacheHardLimit;
+
+    static sl::Atomic<size_t> limitSampling;
+    static size_t limitEwma;
+    static size_t sampleDivider;
+    static size_t sampleCalls;
+    static size_t lastAllocated;
+
     static sl::Atomic<size_t> liveStacks;
     static sl::Atomic<size_t> peakStacks;
     static sl::Atomic<size_t> stacksAllocated;
@@ -86,7 +99,11 @@ namespace Npk
 
     static void SubCount(StackShard& shard, size_t count)
     {
-        shard.count.Store(shard.count.Load(sl::Relaxed) - count, sl::Relaxed);
+        const size_t now = shard.count.Load(sl::Relaxed) - count;
+
+        shard.count.Store(now, sl::Relaxed);
+        if (now < shard.lowCountSample)
+            shard.lowCountSample = now;
     }
 
     static CachedStack* TryStealStack(size_t self)
@@ -155,11 +172,17 @@ namespace Npk
 
     NpkStatus Private::InitStackCaches(size_t cpuCount)
     {
-        if (cpuCount == 0)
-            return NpkStatus::InvalidArg;
+        const auto cpuCount = MySystemDomain().smpControls.Size();
 
-        stackCacheLimit = ReadConfigUint("npk.vm.stack_cache_init_limit",
-            DefaultStackCacheLimit);
+        const size_t initLimit = ReadConfigUint(
+            "npk.vm.stack_cache_init_limit", DefaultStackCacheLimit);
+        stackCacheHardLimit = sl::Max(initLimit, ReadConfigUint(
+            "npk.vm.stack_cache_hard_limit", initLimit * 2));
+        sampleDivider = sl::Max<size_t>(1, ReadConfigUint(
+            "npk.vm.stack_cache_sample_divider", 1));
+
+        stackCacheLimit.Store(initLimit, sl::Relaxed);
+        limitEwma = initLimit << LimitFracBits;
 
         const size_t len = cpuCount * sizeof(KernelStackCache)
             + HwGetStaticCacheLineSize();
@@ -175,10 +198,10 @@ namespace Npk
             new (&caches[i]) KernelStackCache {};
         stackCaches = { caches, cpuCount };
 
-        auto conv = sl::ConvertUnits(stackCacheLimit << PfnShift());
-        Log("Kernel stack caches: init limit of %zu each (%zu.%zu %sB each)",
-            LogLevel::Info, stackCacheLimit, conv.major, conv.minor,
-            conv.prefix);
+        auto conv = sl::ConvertUnits(initLimit * KernelStackSize());
+        Log("Kernel stack caches: init limit of %zu each (%zu.%zu %sB each),"
+            " hard limit %zu", LogLevel::Info, initLimit, conv.major,
+            conv.minor, conv.prefix, stackCacheHardLimit);
 
         return NpkStatus::Success;
     }
@@ -234,12 +257,17 @@ namespace Npk
             cache.ready.list.PushFront(node);
             AddCount(cache.ready, 1);
 
-            while (cache.ready.count.Load(sl::Relaxed) > stackCacheLimit)
+            const size_t limit = stackCacheLimit.Load(sl::Relaxed);
+            while (cache.ready.count.Load(sl::Relaxed) > limit)
             {
                 excess.PushBack(cache.ready.list.PopBack());
                 SubCount(cache.ready, 1);
                 excessCount++;
             }
+
+            const size_t now = cache.ready.count.Load(sl::Relaxed);
+            if (now > cache.ready.highCountSample)
+                cache.ready.highCountSample = now;
         }
 
         if (excessCount == 0)
@@ -304,40 +332,78 @@ namespace Npk
     }
 
     static size_t TrimOneStackCache(KernelStackCache& cache, size_t keep,
-        size_t limit, sl::TimeCount timeout)
+        size_t* swing, sl::TimeCount timeout)
     {
         CachedStackList victims;
-        size_t taken = 0;
 
         cache.doomed.lock.Lock();
-        while (!cache.doomed.list.Empty() && taken < limit)
+        while (!cache.doomed.list.Empty())
         {
             victims.PushBack(cache.doomed.list.PopFront());
-
             SubCount(cache.doomed, 1);
-            taken++;
         }
         cache.doomed.lock.Unlock();
 
-        //avoid taking the lock of another cpu's hot list if we dont need to.
-        if (taken < limit)
-        {
-            auto& ready = cache.ready;
+        auto& ready = cache.ready;
 
-            ready.lock.Lock();
-            while (ready.count.Load(sl::Relaxed) > keep && taken < limit)
-            {
-                victims.PushBack(ready.list.PopBack());
-                SubCount(cache.ready, 1);
-                taken++;
-            }
-            ready.lock.Unlock();
+        ready.lock.Lock();
+        if (swing != nullptr)
+            *swing += ready.highCountSample - ready.lowCountSample;
+
+        while (ready.count.Load(sl::Relaxed) > keep)
+        {
+            victims.PushBack(ready.list.PopBack());
+            SubCount(ready, 1);
         }
+
+        if (swing != nullptr || keep == 0)
+        {
+            ready.lowCountSample = ready.count.Load(sl::Relaxed);
+            ready.highCountSample = ready.lowCountSample;
+        }
+        ready.lock.Unlock();
 
         if (victims.Empty())
             return 0;
 
         return FreeStackList(cache, victims, timeout);
+    }
+
+    static bool ShouldTakeSample()
+    {
+        size_t expected = 0;
+        if (!limitSampling.CompareExchange(expected, 1, sl::Acquire))
+            return false;
+
+        sampleCalls++;
+        if (sampleCalls % sampleDivider == 0)
+            return true;
+
+        limitSampling.Store(0, sl::Release);
+
+        return false;
+    }
+
+    static void UpdateStackCacheLimit(size_t swing)
+    {
+        const size_t allocated = stacksAllocated.Load(sl::Relaxed);
+        const size_t misses = allocated - lastAllocated;
+
+        lastAllocated = allocated;
+        const size_t need = sl::Min(((swing + misses) << LimitFracBits)
+            / stackCaches.Size(), stackCacheHardLimit << LimitFracBits);
+
+        if (need > limitEwma)
+            limitEwma += (need - limitEwma) >> LimitEwmaShift;
+        else
+            limitEwma -= (limitEwma - need) >> LimitEwmaShift;
+
+        const size_t half = (size_t)1 << (LimitFracBits - 1);
+        const size_t floor = sl::Min<size_t>(1, stackCacheHardLimit);
+        const size_t limit = sl::Clamp((limitEwma + half) >> LimitFracBits,
+            floor, stackCacheHardLimit);
+
+        stackCacheLimit.Store(limit, sl::Relaxed);
     }
 
     size_t Private::TrimKernelStackCaches(size_t keepPerCpu,
@@ -346,11 +412,23 @@ namespace Npk
         if (stackCaches.Empty())
             return 0;
 
+        const bool sample = (keepPerCpu != 0) && ShouldTakeSample();
+        const size_t keep = sl::Min(keepPerCpu,
+            stackCacheLimit.Load(sl::Relaxed));
+
+        size_t swing = 0;
+        size_t* swingOut = nullptr;
+        if (sample)
+            swingOut = &swing;
+
         size_t freed = 0;
         for (size_t i = 0; i < stackCaches.Size(); i++)
+            freed += TrimOneStackCache(stackCaches[i], keep, swingOut, timeout);
+
+        if (sample)
         {
-            freed += TrimOneStackCache(stackCaches[i], keepPerCpu,
-                static_cast<size_t>(-1), timeout);
+            UpdateStackCacheLimit(swing);
+            limitSampling.Store(0, sl::Release);
         }
 
         return freed;
@@ -362,6 +440,8 @@ namespace Npk
         out.allocated = stacksAllocated.Load(sl::Relaxed);
         out.live = liveStacks.Load(sl::Relaxed);
         out.peak = peakStacks.Load(sl::Relaxed);
+        out.limit = stackCacheLimit.Load(sl::Relaxed);
+        out.hardLimit = stackCacheHardLimit;
 
         if (stackCaches.Empty())
             return;
