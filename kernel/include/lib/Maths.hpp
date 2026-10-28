@@ -12,28 +12,47 @@ constexpr inline size_t PiB = TiB * KiB;
 namespace sl
 {
     template<typename T>
+    constexpr inline bool IsPowerOfTwo(T test)
+    {
+        return test && !(test & (test - 1));
+    }
+
+    template<typename T>
     constexpr inline T AlignDown(T addr, size_t alignment)
     {
+        if (IsPowerOfTwo(alignment))
+            return addr & ~static_cast<T>(alignment - 1);
+
         return (addr / alignment) * alignment;
     }
 
     template<typename T>
     constexpr inline T AlignUp(T addr, size_t alignment)
     {
+        if (IsPowerOfTwo(alignment))
+        {
+            const T mask = static_cast<T>(alignment - 1);
+
+            return (addr + mask) & ~mask;
+        }
+
         return ((addr + alignment - 1) / alignment) * alignment;
     }
 
     template<typename T>
     constexpr inline T* AlignDown(T* addr, size_t alignment)
     {
-        return reinterpret_cast<T*>(((uintptr_t)addr / alignment) * alignment);
+        const uintptr_t raw = reinterpret_cast<uintptr_t>(addr);
+
+        return reinterpret_cast<T*>(AlignDown(raw, alignment));
     }
 
     template<typename T>
     constexpr inline T* AlignUp(T* addr, size_t alignment)
     {
-        return reinterpret_cast<T*>(
-            (((uintptr_t)addr + alignment - 1) / alignment) * alignment);
+        const uintptr_t raw = reinterpret_cast<uintptr_t>(addr);
+
+        return reinterpret_cast<T*>(AlignUp(raw, alignment));
     }
 
     template<typename T>
@@ -268,12 +287,6 @@ namespace sl
         variance /= (data.Size() - 1);
 
         return SquareRoot(variance);
-    }
-
-    template<typename T>
-    constexpr inline bool IsPowerOfTwo(T test)
-    {
-        return test && !(test & (test - 1));
     }
 
     template<typename T>

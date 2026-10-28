@@ -32,18 +32,21 @@ namespace sl
 
     private:
         RBTree<Slot, &Slot::treeHook, SlotLessThan> tree;
-        List<Slot, &Slot::listHook> freelist;
+        List<Slot, &Slot::listHook> unused;
+        List<Slot, &Slot::listHook> retired;
         Span<Slot> entries;
 
     public:
         constexpr LruCache() 
-            : tree {}, freelist {}, entries {}
+            : tree {}, unused {}, retired {}, entries {}
         {}
 
         void Init(Span<Slot> store, Key defaultKey)
         {
-            while (!freelist.Empty())
-                freelist.PopFront();
+            while (!unused.Empty())
+                unused.PopFront();
+            while (!retired.Empty())
+                retired.PopFront();
             while (tree.GetRoot() != nullptr)
                 tree.Remove(tree.GetRoot());
             entries = store;
@@ -53,14 +56,13 @@ namespace sl
                 entries[i].refs = 0;
                 entries[i].cache = this;
                 entries[i].key = defaultKey;
-                freelist.PushBack(&entries[i]);
+                unused.PushBack(&entries[i]);
             }
         }
 
         static void Put(Slot* slot)
         {
-            slot->cache->tree.Remove(slot);
-            slot->cache->freelist.PushBack(slot);
+            slot->cache->retired.PushBack(slot);
         }
 
         using CacheRef = Ref<Slot, &Slot::refs, Put>;
@@ -73,6 +75,9 @@ namespace sl
             {
                 if (found->key == key)
                 {
+                    if (found->refs.Load(sl::Relaxed) == 0)
+                        retired.Remove(found);
+
                     found->refs.Add(1);
                     CacheRef ref = found;
                     found->refs.Sub(1);
@@ -86,15 +91,21 @@ namespace sl
                     found = tree.GetRight(found);
             }
 
-            if (freelist.Empty())
+            if (!unused.Empty())
+                found = unused.PopFront();
+            else if (!retired.Empty())
+            {
+                found = retired.PopFront();
+                tree.Remove(found);
+            }
+            else
                 return {};
 
-            found = freelist.PopFront();
             if (!SetEntry(found - entries.Begin(), &found->value, found->key, 
                 key))
             {
-                freelist.PushBack(found);
-                return nullptr;
+                unused.PushBack(found);
+                return {};
             }
             found->key = key;
             tree.Insert(found);

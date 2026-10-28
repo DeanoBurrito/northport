@@ -139,11 +139,15 @@ namespace sl
 
             while (true)
             {
+                if (state.Load(Relaxed) != ExclusivePendingBit)
+                {
+                    HintSpinloop();
+                    continue;
+                }
+
                 uint32_t expected = ExclusivePendingBit;
                 if (state.CompareExchange(expected, ExclusiveBit, Acquire))
                     return;
-
-                HintSpinloop();
             }
         }
 
