@@ -26,6 +26,9 @@ namespace Npk
     /* Upcall into generic part of kernel, happens at interrupt IPL and with
      * interrupts disabled. Informs the kernel that a page fault occurred at
      * passive IPL.
+     * If `probe` is non-null this fault should direct all failure paths to
+     * set `*probe` instead of their usual behaviours, such that this fault is
+     * otherwise unobservable (e.g. no signals fired at a process).
      */
-    void DispatchPageFault(uintptr_t addr, bool write, bool user);
+    void DispatchPageFault(bool* probe, uintptr_t addr, bool write, bool user);
 }
