@@ -72,12 +72,34 @@ namespace Npk
 
         dom.freeLists.lock.Lock();
         auto* page = TakePage(dom);
+        const size_t remaining = dom.freeLists.pageCount;
         dom.freeLists.lock.Unlock();
+
+        if (page != nullptr && remaining < dom.pressure.lowPages)
+            SetCondition(&dom.pressure.wakeTrimmer);
 
         if (page != nullptr || canFail)
             return page;
+        NPK_ASSERT(CurrentIpl() == Ipl::Passive);
 
-        NPK_UNREACHABLE(); //TODO: wait for a page to be available
+        for (size_t round = 0; round < AllocWaitRounds; round++)
+        {
+            AddPageDebt(1);
+            WaitForPages(sl::TimeCount(sl::TimeScale::Millis, AllocWaitMs));
+
+            dom.freeLists.lock.Lock();
+            page = TakePage(dom);
+            dom.freeLists.lock.Unlock();
+
+            if (page != nullptr)
+                return page;
+
+            Log("Blocking page allocation waiting on reclaim, round %zu.",
+                LogLevel::Trace, round);
+        }
+        
+        Panic("Out of memory: no pages free after %zu attempts (%zums each).",
+            nullptr, AllocWaitRounds, AllocWaitMs);
     }
 
     void FreePage(PageInfo* page)
@@ -105,5 +127,62 @@ namespace Npk
             dom.freeLists.pageCount++;
         }
         dom.freeLists.lock.Unlock();
+    }
+
+    MemoryPressure GetMemoryPressure()
+    {
+        auto& dom = MySystemDomain();
+
+        dom.freeLists.lock.Lock();
+        const size_t free = dom.freeLists.pageCount;
+        dom.freeLists.lock.Unlock();
+
+        return
+        {
+            .freePages = free,
+            .minPages = dom.pressure.minPages,
+            .lowPages = dom.pressure.lowPages,
+            .highPages = dom.pressure.highPages,
+            .debtPages = dom.pressure.debt.Load(sl::Relaxed),
+        };
+    }
+
+    bool MemoryIsLow()
+    {
+        auto& dom = MySystemDomain();
+        const auto free = FreePagesApprox(dom);
+        const bool debt = dom.pressure.debt.Load(sl::Relaxed);
+
+        return free < dom.pressure.lowPages || debt != 0;
+    }
+
+    bool MemoryIsCritical()
+    {
+        auto& dom = MySystemDomain();
+        const auto free = FreePagesApprox(dom);
+
+        return free < dom.pressure.minPages;
+    }
+
+    void AddPageDebt(size_t pages)
+    {
+        auto& dom = MySystemDomain();
+
+        dom.pressure.debt.Add(pages, sl::Relaxed);
+        SetCondition(&dom.pressure.wakeTrimmer);
+    }
+
+    NpkStatus WaitForPages(sl::TimeCount timeout)
+    {
+        auto& dom = MySystemDomain();
+        auto* cond = &dom.pressure.pagesAvail;
+
+        WaitEntry entry {};
+        const auto result = WaitOne(cond, &entry, timeout, NPK_WAIT_LOCATION);
+
+        if (result == NpkStatus::Timeout || result == NpkStatus::Reset)
+            return NpkStatus::Success;
+
+        return result;
     }
 }

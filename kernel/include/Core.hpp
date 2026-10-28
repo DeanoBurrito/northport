@@ -557,17 +557,23 @@ namespace Npk
         sl::QueueMpScHook mpscHook;
         sl::FwdListHook ownerListHook;
 
-        union
-        {
-            ThreadContext* owner;
-            ClockEvent clockEvent;
-        };
+        ThreadContext* owner;
     };
 
     using Condition = Waitable;
-    using Timer = Waitable;
     using Mutex = Waitable;
     using SxMutex = Waitable;
+
+    /* Waiters use `base`, this is a separate type because a `ClockEvent` has
+     * grown into quite a beast of a struct.
+     */
+    struct Timer
+    {
+        Waitable base;
+        ClockEvent event;
+    };
+
+    static_assert(offsetof(Timer, base) == 0, "Bad struct layout");
 
     using WaitableMpScQueue = sl::QueueMpSc<Waitable, &Waitable::mpscHook>;
     using WaitableOwnerList = sl::FwdList<Waitable, &Waitable::ownerListHook>;
@@ -836,7 +842,11 @@ namespace Npk
 
     enum class LiveList
     {
-        Active,
+        Probation,
+        Active0,
+        Active1,
+        Active2,
+        Active3,
         Dirty,
         Standby,
 
@@ -876,7 +886,55 @@ namespace Npk
             TrimStats stats; //writers hold `lock` above
         } liveLists;
 
-        //TODO: io + device linkage
+        struct
+        {
+            /* If the free page count falls below this level the system is
+             * critically low on liquid pages. All callers of `PageAlloc()` wait
+             * or fail immediately, clustered page in stops.
+             */
+            size_t minPages;
+            
+            /* If the free page count falls below this level the trimmer runs
+             * continuously and more reclaims pages more aggressively based on
+             * how close the free page count is to `minPages`. `AllocPage()`
+             * still functions as normal.
+             */
+            size_t lowPages;
+
+            /* A hysteresis target for the trimmer. Once the free page count
+             * reaches this level the trimmer switches to a periodic mode and
+             * trims less aggressively.
+             */
+            size_t highPages;
+
+            /* Incremented by threads waiting for free pages: this is a hint for
+             * many *extra* pages the trimmer should try to reclaim since they
+             * will be allocated shortly.
+             */
+            sl::Atomic<size_t> debt;
+
+            /* What the trimmer sleeps on between pages. Signal it to bring the
+             * next pass forward.
+             */
+            Condition wakeTrimmer;
+
+            /* Threads waiting for more pages to be available can sleep on this,
+             * it will be set after an attempt at freeing pages.
+             */
+            Condition pagesAvail;
+        } pressure;
+    };
+
+    /* A best-effort snapshot of page counters for a `SystemDomain`. See that
+     * struct for descriptions of each counter.
+     */
+    struct MemoryPressure
+    {
+        size_t freePages;
+        size_t minPages;
+        size_t lowPages;
+        size_t highPages;
+        size_t debtPages;
     };
 
     struct Activation
@@ -1409,6 +1467,32 @@ namespace Npk
      * called at passive or dpc IPLs.
      */
     PageInfo* AllocPage(bool canFail);
+
+    /* Returns memory pressure counters for the current `SystemDomain`.
+     */
+    MemoryPressure GetMemoryPressure();
+
+    /* Returns where the current system domain is low (but not critically so)
+     * on pages. This call is cheap and advisory only, intended for best effort
+     * policy decisions.
+     */
+    bool MemoryIsLow();
+
+    /* Returns whether current system domain is critically low on pages. See
+     * the description of `SystemDomain::pressure::minPages` for the effects
+     * of this state.
+     */
+    bool MemoryIsCritical();
+
+    /* Asks the trimmer to try reclaim an additional `pages` count beyond the
+     * high level. This is a hint to say there is a caller wanting to allocate
+     * `page`-count pages, so it's purely advisory. Domain-wide debt is reset
+     * per trim cycle.
+     * Safe to call at any IPL.
+     */
+    void AddPageDebt(size_t pages);
+
+    NpkStatus WaitForPages(sl::TimeCount timeout);
 
     /* Marks a page (and its PageInfo metadata) as no longer in use and free for
      * use by the rest of the system.
