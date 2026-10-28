@@ -78,7 +78,7 @@ namespace Npk
             copied += runLen;
         }
 
-        return buffer.Size();
+        return copied;
     }
 
     void Private::InitPageAccessCache(uintptr_t slotsBase, size_t slotsCount)
