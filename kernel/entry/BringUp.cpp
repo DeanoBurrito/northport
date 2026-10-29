@@ -760,6 +760,62 @@ R"(                                             888                      )"
             MyCoreId());
     }
 
+    void FinishDomainInit(SystemDomain& dom)
+    {
+        constexpr size_t DefaultMinPercent = 2;
+        constexpr size_t DefaultLowPercent = 5;
+        constexpr size_t DefaultHighPercent = 8;
+        constexpr size_t MinCountFloor = 128;
+        constexpr size_t LowCountFloor = 256;
+        constexpr size_t HighCountFloor = 512;
+
+        //Populate memory pressure values
+        auto& pressure = dom.pressure;
+
+        dom.freeLists.lock.Lock();
+        const size_t totalPages = dom.freeLists.pageCount;
+        dom.freeLists.lock.Unlock();
+
+        const size_t minPercent = ReadConfigUint("npk.vm.min_percent",
+            DefaultMinPercent);
+        const size_t lowPercent = ReadConfigUint("npk.vm.low_percent",
+            DefaultLowPercent);
+        const size_t highPercent = ReadConfigUint("npk.vm.high_percent",
+            DefaultHighPercent);
+
+        auto minCount = sl::Max((totalPages * minPercent) / 100,
+            MinCountFloor);
+        auto lowCount = sl::Max((totalPages * lowPercent) / 100,
+            LowCountFloor);
+        auto highCount = sl::Max((totalPages * highPercent) / 100,
+            HighCountFloor);
+
+        lowCount = sl::Max(lowCount, minCount);
+        highCount = sl::Max(highCount, lowCount);
+        if (highCount > totalPages)
+        {
+            highCount = totalPages;
+            lowCount = sl::Min(lowCount, highCount);
+            minCount = sl::Min(minCount, lowCount);
+        }
+
+        pressure.minPages = minCount;
+        pressure.lowPages = lowCount;
+        pressure.highPages = highCount;
+
+        auto result = ResetCondition(&pressure.wakeTrimmer, 1);
+        NPK_ASSERT(result == NpkStatus::Success);
+        result = ResetCondition(&pressure.pagesAvail, 1);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        const size_t myDomId = 0; //TODO: implement this stuff
+        Log("Dom %zu free page levels: total=%zu, min=%zu, low=%zu, "
+            "high=%zu", LogLevel::Info, myDomId, totalPages, minCount,
+            lowCount, highCount);
+
+        //TODO: init trimmer thread here
+    }
+
     void EnterIdleLoop()
     {
         auto& dom = MySystemDomain();
@@ -902,6 +958,7 @@ R"(                                             888                      )"
         IntrsOn();
         ReleaseAps();
         Private::ReclaimLoaderMemory(reclaimablePageList, reclaimablePages);
+        FinishDomainInit(sysDomain0);
 
         //7. Load userspace init program.
         /*

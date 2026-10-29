@@ -4,6 +4,14 @@
 
 namespace Npk
 {
+    constexpr size_t AllocWaitRounds = 16;
+    constexpr size_t AllocWaitMs = 250;
+
+    static size_t FreePagesApprox(SystemDomain& dom)
+    {
+        return dom.freeLists.pageCount;
+    }
+
     void Private::ReclaimLoaderMemory(PageList& list, size_t pageCount)
     {
         auto& dom = MySystemDomain();
