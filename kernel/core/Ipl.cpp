@@ -188,7 +188,6 @@ namespace Npk
 
     void SpinUntilDpcCompleted(Dpc* dpc)
     {
-        AssertIpl(Ipl::Passive);
         if (dpc == nullptr)
             return;
 

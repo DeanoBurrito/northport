@@ -1165,8 +1165,8 @@ namespace Npk
      */
     void QueueDpc(Dpc* dpc);
 
-    /* Must be called at passive IPL: spins until the target DPC has finished
-     * execution.
+    /* Only safe to call if DPC is not queued on the current CPU, can be called
+     * at any IPL.
      */
     void SpinUntilDpcCompleted(Dpc* dpc);
 
