@@ -79,6 +79,7 @@ namespace Npk
         size_t slotCount;
         void* slots;
         AmapVmRangeList ranges;
+        sl::Atomic<size_t> removalsInFlight;
     };
 
     namespace Private
@@ -239,8 +240,9 @@ namespace Npk
         const VmPagerOps* ops; //set before source is known to vm subsystem, readonly after - not protected by lock
 
         SxMutex mutex;
-        sl::FwdList<PageInfo, &PageInfo::vmoList> pages; //current list of pages
+        PageCacheList pages;
         sl::List<VmRange, &VmRange::sourceHook> ranges;
+        sl::Atomic<size_t> removalsInFlight;
     };
 
     /* Provides fine control over address space allocation. Each field has a
@@ -300,6 +302,9 @@ namespace Npk
         size_t released;
         size_t live;
         size_t peak;
+        size_t limit;
+        size_t hardLimit;
+        size_t deepest;
     };
 
     /* Initializes the kernel's virtual memory space, which makes all virtual

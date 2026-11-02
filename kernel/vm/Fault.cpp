@@ -204,34 +204,12 @@ namespace Npk::Private
         InitVmPage(page, clean, PageVmOwnerType::Anon, &amap, slot);
     }
 
-    static void ReleaseAnonPage(AnonMap& map, PageInfo* page)
-    {
-        if (page == nullptr)
-            return;
-
-        auto ref = AnonMapLookup(map, page->vm.offset);
-        if (!ref.Valid())
-        {
-            //not good! This is a UAF as the page is not being tracked by the
-            //amap now but we thought it was.
-            Log("Attempted to release anon page %p from slot %u: empty slot",
-                LogLevel::Error, page, page->vm.offset);
-            
-            return;
-        }
-
-        ref->lock.Lock();
-        NPK_ASSERT(ref->page == page);
-        UnpinPage(page);
-        ref->lock.Unlock();
-    }
-
     static void ReleasePinnedAnon(VmRange& range, PageInfo*& page)
     {
         if (page == nullptr || !range.amapRef.Valid())
             return;
 
-        ReleaseAnonPage(*range.amapRef, page);
+        SettleAnonPage(*range.amapRef, page, false, true);
         page = nullptr;
     }
 
@@ -384,20 +362,8 @@ namespace Npk::Private
         TrackPage(page);
         *out = page;
 
-        return NpkStatus::Success;
-    }
-
-    static void ReleaseSourcePage(VmSource& src, PageInfo* page)
-    {
-        if (page == nullptr)
-            return;
-
-        if (AcquireSxMutexExclusive(&src.mutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION) != NpkStatus::Success)
-            return;
-
-        UnpinPage(page);
-        ReleaseSxMutexExclusive(&src.mutex);
+            return NpkStatus::Success;
+        }
     }
 
     static void ReleaseSourceCluster(SourceFaultResult& fetched, VmSource* src)
@@ -411,18 +377,56 @@ namespace Npk::Private
 
             if (page == nullptr)
                 continue;
-            ReleaseSourcePage(*src, page);
+            SettleSourcePage(*src, page, false, true);
             page = nullptr;
         }
     }
 
-    static NpkStatus ReleaseReplacedPage(Paddr prevPaddr, Paddr newPaddr)
+    //NOTE: assumes the page's owner's lock is held.
+    static void CommitPin(PageInfo* page)
     {
-        //the same page with wider permissions: nothing changed hands.
-        if (prevPaddr == newPaddr)
-            return NpkStatus::Success;
+        if (page->mapped)
+            UnpinPage(page);
+        else
+            page->mapped = true;
+    }
 
-        return ReleaseMappedPage(prevPaddr);
+    static void CommitAnonPage(AnonMap& map, PageInfo* page)
+    {
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        auto ref = AnonMapLookupLocked(map, page->offset);
+        NPK_ASSERT(ref.Valid());
+
+        ref->lock.Lock();
+        NPK_ASSERT(ref->page == page);
+        CommitPin(page);
+        ref->lock.Unlock();
+
+        ReleaseMutex(&map.mutex);
+    }
+
+    static void SettleFaultedSourcePages(VmSource& src, PageInfo** pages,
+        const bool* mapped, size_t count)
+    {
+        auto result = AcquireSxMutexExclusive(&src.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        for (size_t i = 0; i < count; i++)
+        {
+            if (pages[i] == nullptr)
+                continue;
+
+            if (mapped[i])
+                CommitPin(pages[i]);
+            else
+                UnpinPage(pages[i]);
+        }
+
+        ReleaseSxMutexExclusive(&src.mutex);
     }
 
     //NOTE: assumes range.mutex is held and the amap is private.
@@ -506,7 +510,8 @@ namespace Npk::Private
         }
 
         InitVmPage(page, true, PageVmOwnerType::Source, &src, index);
-        src.pages.PushFront(page);
+        const auto success = src.pages.PushFront(page);
+        NPK_ASSERT(success);
 
         return page;
     }
@@ -744,7 +749,7 @@ namespace Npk::Private
                 //amap contains the page we want to map now, so clear it from
                 //the array provided by the source and unpin *that* page.
                 srcResult.pages[srcResult.mainIndex] = nullptr;
-                ReleaseSourcePage(*range->source, mainPage);
+                SettleSourcePage(*range->source, mainPage, false, true);
             }
             else
                 paddr = LookupPagePaddr(mainPage);
@@ -784,7 +789,9 @@ namespace Npk::Private
 
         //we have what we need to map, now to unmap anything at this location.
         Paddr prevPaddr = InvalidPaddr;
-        result = DropPreviousMapping(&prevPaddr, space.map, addr);
+        bool prevDirtied = false;
+        result = DropPreviousMapping(&prevPaddr, &prevDirtied, *range,
+            space.map, addr);
         if (result != NpkStatus::Success && result != NpkStatus::NotAvailable)
         {
             ReleaseSourceCluster(srcResult,
@@ -796,22 +803,7 @@ namespace Npk::Private
         }
 
         if (result == NpkStatus::Success)
-        {
-            if (prevPaddr == paddr)
-            {
-                ReleasePinnedAnon(*range, pinnedAnon);
-
-                if (haveSrcResult && range->source != nullptr)
-                {
-                    auto* mainPage = srcResult.pages[srcResult.mainIndex];
-
-                    srcResult.pages[srcResult.mainIndex] = nullptr;
-                    ReleaseSourcePage(*range->source, mainPage);
-                }
-            }
-
-            result = ReleaseReplacedPage(prevPaddr, paddr);
-        }
+            result = SettleMappedPage(prevPaddr, prevDirtied);
 
         if (result != NpkStatus::Success && result != NpkStatus::NotAvailable)
         {
@@ -862,12 +854,15 @@ namespace Npk::Private
 
             for (size_t i = 0; i < srcResult.count; i++)
             {
-                if (i == srcResult.mainIndex)
-                    continue;
-
                 auto* page = srcResult.pages[i];
                 if (page == nullptr)
                     continue;
+
+                if (i == srcResult.mainIndex)
+                {
+                    mapped[i] = true;
+                    continue;
+                }
 
                 const uintptr_t at = srcResult.page0Addr + (i << PfnShift());
                 Paddr existing;
@@ -880,10 +875,12 @@ namespace Npk::Private
                     result = HwMapAdd(space.map, at, LookupPagePaddr(page),
                         perms, mode, false);
                 }
-                
-                if (occupied || result != NpkStatus::Success)
-                    ReleaseSourcePage(*range->source, page);
+
+                mapped[i] = !occupied && result == NpkStatus::Success;
             }
+
+            SettleFaultedSourcePages(*range->source, srcResult.pages, mapped,
+                srcResult.count);
         }
 
         ReleaseMutex(&range->mutex);
@@ -903,56 +900,6 @@ namespace Npk::Private
         ReleaseSxMutexShared(&space.rangesMutex);
 
         return result;
-    }
-
-    void Private::DrainSourcePages(VmSource& src)
-    {
-        NPK_ASSERT(src.ranges.Empty());
-
-        //this lock also synchronizes with the trimmer looking at this source
-        //from the perspective of a PageInfo's owner.
-        NPK_ASSERT(AcquireSxMutexExclusive(&src.mutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION) == NpkStatus::Success);
-
-        while (!src.pages.Empty())
-        {
-            auto* page = src.pages.PopFront();
-
-            UntrackPage(page);
-
-            NPK_ASSERT(page->vm.pins == 0);
-            FreePage(page);
-        }
-
-        ReleaseSxMutexExclusive(&src.mutex);
-    }
-
-    NpkStatus ReleaseMappedPage(Paddr paddr)
-    {
-        if (paddr == MySystemDomain().zeroPage)
-            return NpkStatus::Success;
-        if (!PaddrHasPageInfo(paddr))
-            return NpkStatus::Unsupported;
-
-        auto* page = LookupPageInfo(paddr);
-        PageVmOwnerType type;
-        void* owner = PageInfoGetVmOwner(type, page);
-        if (owner == nullptr)
-            return NpkStatus::Success;
-
-        switch (type)
-        {
-        case PageVmOwnerType::Source:
-            ReleaseSourcePage(*static_cast<VmSource*>(owner), page);
-            return NpkStatus::Success;
-
-        case PageVmOwnerType::Anon:
-            ReleaseAnonPage(*static_cast<AnonMap*>(owner), page);
-            return NpkStatus::Success;
-
-        default:
-            NPK_UNREACHABLE();
-        }
     }
 }
 

@@ -659,12 +659,15 @@ namespace Npk
         }
         (void)check;
 
+        Private::BeginMappingRemovals(*range);
         if (range->amapRef.Valid())
         {
             auto unlink = Private::AnonMapUnlinkRange(*range->amapRef, range);
             if (unlink != NpkStatus::Success)
             {
+                Private::EndMappingRemovals(*range);
                 ReleaseSxMutexExclusive(&space.rangesMutex);
+
                 return unlink;
             }
         }
@@ -683,7 +686,9 @@ namespace Npk
                         range) == NpkStatus::Success);
                 }
 
+                Private::EndMappingRemovals(*range);
                 ReleaseSxMutexExclusive(&space.rangesMutex);
+
                 return unlink;
             }
 

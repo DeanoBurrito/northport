@@ -853,6 +853,12 @@ namespace Npk
         Count
     };
 
+    struct LiveListHead
+    {
+        PageList pages;
+        size_t length;
+    };
+
     struct SystemDomain
     {
         Paddr physOffset;
@@ -881,8 +887,7 @@ namespace Npk
         struct 
         {
             Mutex lock;
-            PageList lists[(size_t)LiveList::Count];
-            size_t lengths[(size_t)LiveList::Count];
+            LiveListHead heads[(size_t)LiveList::Count];
             TrimStats stats; //writers hold `lock` above
         } liveLists;
 

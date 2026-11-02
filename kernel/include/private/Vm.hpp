@@ -5,6 +5,8 @@
 
 namespace Npk
 {
+    /* Forward declaration for `NamedSourceAttach()`.
+     */
     struct NsObject;
 
     NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, uintptr_t addr,
@@ -17,6 +19,32 @@ namespace Npk
 namespace Npk::Private
 {
     constexpr auto VmSourceTag = NPK_MAKE_HEAP_TAG("VSrc");
+
+    enum class TrimPressure
+    {
+        None,
+        Reclaim,
+        LowLevel,
+        MinLevel,
+    };
+
+    LiveListHead& GetLiveListHead(SystemDomain& dom, LiveList which);
+    //NOTE: assumes `dom.liveLists.lock` is held
+    void LiveListLink(SystemDomain& dom, LiveList which, PageInfo* page);
+    //NOTE: assumes `dom.liveLists.lock` is held
+    void LiveListUnlink(SystemDomain& dom, PageInfo* page);
+
+    SL_ALWAYS_INLINE
+    LiveList IdToLiveList(uint8_t num)
+    {
+        return static_cast<LiveList>(num - 1);
+    }
+
+    SL_ALWAYS_INLINE
+    uint8_t LiveListToId(LiveList list)
+    {
+        return static_cast<uint8_t>((size_t)list + 1);
+    }
 
     NpkStatus CreateAnonPage(AnonPage** page);
     void DestroyAnonPage(AnonPage* page);
@@ -58,11 +86,18 @@ namespace Npk::Private
     void TrackPage(PageInfo* page); //places page on active list
     void UntrackPage(PageInfo* page); //removes page from a live list (if any)
     void DrainSourcePages(VmSource& src);
-    NpkStatus ReleaseMappedPage(Paddr paddr);
 
-    void InitPool(uintptr_t base, size_t length);
-    void* PoolAlloc(size_t len, HeapTag tag, bool paged, sl::TimeCount timeout 
-        = sl::NoTimeout);
-    NpkStatus PoolFree(void* ptr, size_t len, HeapTag tag, bool paged, 
-        sl::TimeCount timeout = sl::NoTimeout);
+    void ClearPageMapped(PageInfo* page);
+    void BeginMappingRemovals(VmRange& range);
+    void EndMappingRemovals(VmRange& range);
+    void SettleAnonPage(AnonMap& map, PageInfo* page, bool dirtied,
+        bool unpin);
+    void SettleSourcePage(VmSource& src, PageInfo* page, bool dirtied,
+        bool unpin);
+    NpkStatus SettleMappedPage(Paddr paddr, bool dirtied);
+
+    /* Runs once pass of page trimming, exposed here for testing purposes only.
+     */
+    size_t TrimOnce(size_t batch, bool ignoreRefs = false,
+        bool exactRefs = false, TrimPressure pressure = TrimPressure::Reclaim);
 }

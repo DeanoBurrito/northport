@@ -126,10 +126,22 @@ namespace Npk::Private
         NPK_ASSERT(page != nullptr);
         NPK_ASSERT(page->refcount == 0);
 
-        //ensure we're not leaking any resources (these pointers should be
-        //null if there's nothing attached).
-        NPK_ASSERT(page->swapSlot == nullptr);
-        NPK_ASSERT(page->page == nullptr);
+        if (page->page != nullptr)
+        {
+            UntrackPage(page->page);
+            ClearPageMapped(page->page);
+
+            if (page->page->pins != 0)
+            {
+                Log("Leaking anon page %p: still pinned at teardown (%u pins).",
+                    LogLevel::Error, static_cast<void*>(page->page),
+                    page->page->pins);
+            }
+            else
+                FreePage(page->page);
+
+            page->page = nullptr;
+        }
 
         PoolFreeWired(page, sizeof(*page), AnonPageTag);
     }
@@ -166,7 +178,8 @@ namespace Npk::Private
         if (ptr == nullptr)
             return NpkStatus::Shortage;
         auto* newMap = new(ptr) AnonMap {};
-        NPK_ASSERT(ResetMutex(&newMap->mutex, 1) == NpkStatus::Success);
+        auto result = ResetMutex(&newMap->mutex, 1);
+        NPK_ASSERT(result == NpkStatus::Success);
         newMap->refcount = 1;
 
         if (slotCount > 0)
