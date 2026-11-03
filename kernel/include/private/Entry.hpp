@@ -151,6 +151,9 @@ namespace Npk
         sl::StringSpan mappedCmdLine;
         void* bspTempMapToken;
 
+        Paddr memswapBase;
+        size_t memswapPages;
+
         char* VmAlloc(size_t length);
         char* VmAllocAnon(size_t length);
         Paddr PmAlloc();

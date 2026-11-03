@@ -423,22 +423,41 @@ namespace Npk
         //switch to the runtime kernel map, after this point we're no longer
         //able to access loader data + InitState allocators.
         HwCompleteBspMmuInit();
+        SetConfigStore(init.mappedCmdLine, false);
 
         Log("Populating PM freelist from bootloader map:", LogLevel::Verbose);
         Log("%9s|%18s|%12s|%12s", LogLevel::Verbose, 
             "New Pages", "Base Address", "Total Pages", "Total Size");
+
+        size_t memswapCarveSize = ReadConfigUint("npk.memswap.pages", 0);
+        if (!Private::MemSwapStoreEnabled())
+            memswapCarveSize = 0;
 
         size_t totalPages = 0;
         for (size_t i = 0; i < usable.Size(); i++)
         {
             const Paddr top = usable[i].base + usable[i].length;
             const Paddr base = sl::Max(usable[i].base, init.pmAllocHead);
-            const size_t pageCount = (top - base) >> PfnShift();
 
             if (base >= top)
                 continue;
+
+            size_t pageCount = (top - base) >> PfnShift();
             if (pageCount == 0)
                 continue;
+
+            if (memswapCarveSize != 0 && pageCount > memswapCarveSize)
+            {
+                pageCount -= memswapCarveSize;
+
+                init.memswapBase = base + (pageCount << PfnShift());
+                init.memswapPages = memswapCarveSize;
+
+                Log("Carved %zu pages at 0x%tx for the in-memory swap store.",
+                    LogLevel::Info, memswapCarveSize, init.memswapBase);
+
+                memswapCarveSize = 0;
+            }
 
             totalPages += pageCount;
             const auto conv = sl::ConvertUnits(totalPages << PfnShift());
@@ -450,6 +469,13 @@ namespace Npk
             info->pm.count = pageCount;
             sysDomain0.freeLists.free.PushBack(info);
             sysDomain0.freeLists.pageCount += pageCount;
+        }
+
+        if (memswapCarveLeft != 0)
+        {
+            Log("Could not carve %zu pages for the in-memory swap store: no "
+                "single usable range is large enough.", LogLevel::Error,
+                memswapCarveLeft);
         }
 
         //build the list of reclaimable regions for use later.
@@ -760,7 +786,8 @@ R"(                                             888                      )"
             MyCoreId());
     }
 
-    void FinishDomainInit(SystemDomain& dom)
+    void FinishDomainInit(SystemDomain& dom, Paddr memswapBase,
+        size_t memswapPages)
     {
         constexpr size_t DefaultMinPercent = 2;
         constexpr size_t DefaultLowPercent = 5;
@@ -814,6 +841,15 @@ R"(                                             888                      )"
             lowCount, highCount);
 
         //TODO: init trimmer thread here
+        if (memswapPages != 0)
+        {
+            result = Private::InitMemorySwapStore(memswapBase, memswapPages);
+            if (result != NpkStatus::Success)
+            {
+                Log("Failed to init memory swap store: %u (%s)",
+                    LogLevel::Error, result, StatusStr(result));
+            }
+        }
     }
 
     void EnterIdleLoop()
@@ -879,7 +915,6 @@ R"(                                             888                      )"
         //3. Setup kernel virtual address space: this function switches to it
         //internally, since the pmm freelist needs the kernel tables active.
         SetupKernelAddressSpace(initState, loadState);
-        SetConfigStore(initState.mappedCmdLine, false);
         
         //4. Setup BSP local state. The storage for these is the original copy
         //in the kernel image, other cpus get an area of the same size but
@@ -958,7 +993,8 @@ R"(                                             888                      )"
         IntrsOn();
         ReleaseAps();
         Private::ReclaimLoaderMemory(reclaimablePageList, reclaimablePages);
-        FinishDomainInit(sysDomain0);
+        FinishDomainInit(sysDomain0, initState.memswapBase,
+            initState.memswapPages);
 
         //7. Load userspace init program.
         /*

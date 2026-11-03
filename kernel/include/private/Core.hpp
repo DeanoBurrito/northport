@@ -26,6 +26,10 @@ namespace Npk::Private
     void WakeThread(ThreadContext* thread);
 
     void WorkItemThreadEntry(void* arg);
+
+    bool MemSwapStoreEnabled();
+    NpkStatus InitMemorySwapStore(Paddr base, size_t pages);
+
     void CheckPendingRcuQuiesce();
 
     void AcquirePanicOutputs(LogSinkList& sinks);

@@ -53,6 +53,7 @@ KERNEL_CXX_SRCS += \
 	vm/PagerModule.cpp \
 	vm/Pool.cpp \
 	vm/Space.cpp \
+	vm/SwapMemory.cpp \
 	vm/Util.cpp \
 	Fireworks.cpp \
 	$(BAKED_CONSTANTS_FILE)
