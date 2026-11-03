@@ -1024,6 +1024,25 @@ namespace Npk
      */
     constexpr size_t HwGetStaticCacheLineSize();
 
+    /* Returns the size (in bytes) of per-page metadata used by hardware.
+     * Metadata can be associated with the page itself or as part of the page's
+     * contents.
+     * Zero is returned for systems with no metadata requirements. This value
+     * is fixed for the current life of the system.
+     */
+    size_t HwPageMetadataSize();
+
+    /* Copies metadata associated with `page` into `buffer`, which MUST be at
+     * least as large as `HwPageMetadataSize()`.
+     */
+    void HwPageMetadataSave(void* buffer, Paddr page);
+
+    /* Copies (and performs any actions to make active) the metadata associated
+     * with `page`. The data bytes of the page must be emplaced but are not
+     * allowed to be accessed until this function returns.
+     */
+    void HwPageMetadataRestore(Paddr page, const void* buffer);
+
     /* Places the stack of return addresses into `store`.
      * `start` is the frame base pointer to begin at, or `0` if wanting to use
      * the current frame base pointer. `offset` allows a number of frames to

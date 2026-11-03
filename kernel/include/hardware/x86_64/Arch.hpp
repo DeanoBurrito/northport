@@ -225,6 +225,26 @@ namespace Npk
     {
         return 64;
     }
+
+    SL_ALWAYS_INLINE
+    size_t HwPageMetadataSize()
+    {
+        return 0;
+    }
+
+    SL_ALWAYS_INLINE
+    void HwPageMetadataSave(void* buffer, Paddr page)
+    {
+        (void)buffer;
+        (void)page;
+    }
+
+    SL_ALWAYS_INLINE
+    void HwPageMetadataRestore(Paddr page, const void* buffer)
+    {
+        (void)page;
+        (void)buffer;
+    }
 }
 
 #define READ_CR(num) ({ uint64_t val; asm("mov %%cr" #num ", %0" : "=r"(val)); val; })
