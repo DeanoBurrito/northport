@@ -104,7 +104,7 @@ namespace Npk::Private
             return NpkStatus::InvalidArg;
 
         const bool toStore = GetIopType(iop) == IoType::Write;
-        auto* metadata = reinterpret_cast<uint8_t*>(params.metadata);
+        auto* metadata = static_cast<uint8_t*>(params.metadata);
 
         for (size_t i = 0; i < count; i++)
         {
@@ -174,24 +174,16 @@ namespace Npk::Private
             if (packet == nullptr)
                 break;
 
-            const auto status = DoTransfer(self, packet);
-            //TODO: this next line is interesting, refactor it?
-            *GetIopParkedStash(packet) = reinterpret_cast<void*>(
-                static_cast<uintptr_t>(status) + 1);
-
-            ProgressIop(packet);
+            AnswerIop(packet, DoTransfer(self, packet));
         }
     }
 
     static NpkStatus MemSwapTryComplete(Iop* iop, void* opaque, void* stash)
     {
-        (void)iop;
         (void)opaque;
+        (void)stash;
 
-        if (stash == nullptr)
-            return NpkStatus::Pending;
-
-        return static_cast<NpkStatus>(reinterpret_cast<uintptr_t>(stash) - 1);
+        return TakeIopAnswer(iop);
     }
 
     static NpkStatus MemSwapBegin(Iop* iop, void* opaque, void** stash)

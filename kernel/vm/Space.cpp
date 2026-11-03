@@ -6,6 +6,68 @@ namespace Npk
 {
     constexpr HeapTag SpaceHeapTag = NPK_MAKE_HEAP_TAG("Spac");
 
+    static void BreakdownRange(VmFreeRangeTree& tree, VmFreeRange* range, 
+        uintptr_t base, size_t len, VmFreeRange** spare)
+    {
+        const uintptr_t rangeTop = range->base + range->length;
+
+        tree.Remove(range);
+        base = sl::Max(range->base, base);
+
+        if (base == range->base)
+        {
+            range->base += len;
+            range->length -= len;
+            if (range->length == 0)
+                PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
+            else
+                tree.Insert(range);
+
+            return;
+        }
+        else if (base + len == range->base + range->length)
+        {
+            range->length -= len;
+            if (range->length == 0)
+                PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
+            else
+                tree.Insert(range);
+
+            return;
+        }
+
+        auto latest = *spare;
+        *spare = nullptr;
+
+        latest->base = range->base;
+        latest->length = base - latest->base;
+        latest->largestChild = latest->length;
+        tree.Insert(latest);
+
+        range->base = base + len;
+        range->length = rangeTop - range->base;
+        range->largestChild = range->length;
+        tree.Insert(range);
+    }
+
+    bool VmFreeRangeAggregator::Aggregate(VmFreeRange* range)
+    {
+        size_t length = range->length;
+        auto left = VmFreeRangeTree::GetLeft(range);
+        auto right = VmFreeRangeTree::GetRight(range);
+
+        if (left != nullptr && left->largestChild > length)
+            length = left->largestChild;
+        if (right != nullptr && right->largestChild > length)
+            length = right->largestChild;
+
+        if (length == range->largestChild)
+            return false;
+
+        range->largestChild = length;
+        return true;
+    }
+
     void InitKernelVmSpace(uintptr_t lowBase, size_t lowLen, uintptr_t highBase,
         size_t highLen)
     {
@@ -78,68 +140,6 @@ namespace Npk
         Log("General space (high): 0x%tx-0x%tx (%zu.%03zu %sB)",
             LogLevel::Verbose, highBase, highBase + highLen,
             conv.major, conv.minor, conv.prefix);
-    }
-
-    bool VmFreeRangeAggregator::Aggregate(VmFreeRange* range)
-    {
-        size_t length = range->length;
-        auto left = VmFreeRangeTree::GetLeft(range);
-        auto right = VmFreeRangeTree::GetRight(range);
-
-        if (left != nullptr && left->largestChild > length)
-            length = left->largestChild;
-        if (right != nullptr && right->largestChild > length)
-            length = right->largestChild;
-
-        if (length == range->largestChild)
-            return false;
-
-        range->largestChild = length;
-        return true;
-    }
-
-    static void BreakdownRange(VmFreeRangeTree& tree, VmFreeRange* range, 
-        uintptr_t base, size_t len, VmFreeRange** spare)
-    {
-        const uintptr_t rangeTop = range->base + range->length;
-
-        tree.Remove(range);
-        base = sl::Max(range->base, base);
-
-        if (base == range->base)
-        {
-            range->base += len;
-            range->length -= len;
-            if (range->length == 0)
-                PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
-            else
-                tree.Insert(range);
-
-            return;
-        }
-        else if (base + len == range->base + range->length)
-        {
-            range->length -= len;
-            if (range->length == 0)
-                PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
-            else
-                tree.Insert(range);
-
-            return;
-        }
-
-        auto latest = *spare;
-        *spare = nullptr;
-
-        latest->base = range->base;
-        latest->length = base - latest->base;
-        latest->largestChild = latest->length;
-        tree.Insert(latest);
-
-        range->base = base + len;
-        range->length = rangeTop - range->base;
-        range->largestChild = range->length;
-        tree.Insert(range);
     }
 
     NpkStatus SpaceAlloc(VmSpace& space, uintptr_t* addr, size_t length,
@@ -221,7 +221,10 @@ namespace Npk
 
                 *addr = constr.preferredAddr;
                 if (spareRange != nullptr)
-                    PoolFreeWired(spareRange, sizeof(*spareRange), SpaceHeapTag);
+                {
+                    PoolFreeWired(spareRange, sizeof(*spareRange),
+                        SpaceHeapTag);
+                }
 
                 return NpkStatus::Success;
             }
@@ -478,39 +481,6 @@ namespace Npk
         return NpkStatus::Success;
     }
 
-    //NOTE: assumes space.rangesMutex is held (shared or exclusive)
-    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, 
-        uintptr_t addr, size_t length)
-    {
-        const uintptr_t end = AlignUpPage(addr + length);
-        addr = AlignDownPage(addr);
-
-        auto scan = space.ranges.GetRoot();
-        while (scan != nullptr)
-        {
-            const uintptr_t scanEnd = scan->base + scan->length;
-            if (addr < scanEnd && scan->base < end)
-            {
-                if (found != nullptr)
-                    *found = scan;
-                return NpkStatus::Success;
-            }
-
-            if (addr < scan->base)
-                scan = space.ranges.GetLeft(scan);
-            else if (addr > scan->base)
-                scan = space.ranges.GetRight(scan);
-            else
-            {
-                if (found != nullptr)
-                    *found = scan;
-                return NpkStatus::Success;
-            }
-        }
-
-        return NpkStatus::BadVaddr;
-    }
-
     NpkStatus SpaceAttach(VmRange** range, VmSpace& space, uintptr_t base, 
         size_t length, VmSource* source, size_t srcOffset, VmFlags flags)
     {
@@ -584,7 +554,7 @@ namespace Npk
 
         vmr->flags = flags;
         vmr->advice = VmAdvice::Normal;
-        vmr->lastFaultSlotPlusOne = 0;
+        vmr->nextFaultSlotPlusOne = 0;
         vmr->base = base;
         vmr->length = length;
         vmr->amapRef = {};
@@ -682,8 +652,9 @@ namespace Npk
             {
                 if (range->amapRef.Valid())
                 {
-                    NPK_ASSERT(Private::AnonMapLinkRange(*range->amapRef,
-                        range) == NpkStatus::Success);
+                    auto result = Private::AnonMapLinkRange(
+                        *range->amapRef, range);
+                    NPK_ASSERT(result == NpkStatus::Success);
                 }
 
                 Private::EndMappingRemovals(*range);
@@ -741,6 +712,54 @@ namespace Npk
     {
         (void)space; (void)range; (void)offset;
         return NpkStatus::Unsupported; //TODO: not this lol
+    }
+
+    //NOTE: assumes space.rangesMutex is held (shared or exclusive)
+    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, 
+        uintptr_t addr, size_t length)
+    {
+        const uintptr_t end = AlignUpPage(addr + length);
+        addr = AlignDownPage(addr);
+
+        auto scan = space.ranges.GetRoot();
+        while (scan != nullptr)
+        {
+            const uintptr_t scanEnd = scan->base + scan->length;
+            if (addr < scanEnd && scan->base < end)
+            {
+                if (found != nullptr)
+                    *found = scan;
+                return NpkStatus::Success;
+            }
+
+            if (addr < scan->base)
+                scan = space.ranges.GetLeft(scan);
+            else if (addr > scan->base)
+                scan = space.ranges.GetRight(scan);
+            else
+            {
+                if (found != nullptr)
+                    *found = scan;
+                return NpkStatus::Success;
+            }
+        }
+
+        return NpkStatus::BadVaddr;
+    }
+
+    NpkStatus SpaceLookup(VmRange** found, VmSpace& space, uintptr_t addr)
+    {
+        NPK_CHECK(found != nullptr, NpkStatus::InvalidArg);
+
+        auto result = AcquireSxMutexShared(&space.rangesMutex, {}, 
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
+            return result;
+
+        auto status = SpaceLookupLocked(found, space, addr, 1);
+        ReleaseSxMutexShared(&space.rangesMutex);
+
+        return status;
     }
 
     NpkStatus SpaceClone(VmSpace** clone, VmSpace& source)
@@ -832,7 +851,7 @@ namespace Npk
             latest->length = it->length;
             latest->flags = it->flags;
             latest->advice = it->advice;
-            latest->lastFaultSlotPlusOne = 0;
+            latest->nextFaultSlotPlusOne = 0;
             latest->offset = it->offset;
             latest->amapOffset = it->amapOffset;
             latest->amapRef = it->amapRef;
@@ -989,20 +1008,5 @@ namespace Npk
         ReleaseMutex(&source.freeRangesMutex);
 
         return NpkStatus::Success;
-    }
-
-    NpkStatus SpaceLookup(VmRange** found, VmSpace& space, uintptr_t addr)
-    {
-        NPK_CHECK(found != nullptr, NpkStatus::InvalidArg);
-
-        auto result = AcquireSxMutexShared(&space.rangesMutex, {}, 
-            NPK_WAIT_LOCATION);
-        if (result != NpkStatus::Success)
-            return result;
-
-        auto status = SpaceLookupLocked(found, space, addr, 1);
-        ReleaseSxMutexShared(&space.rangesMutex);
-
-        return status;
     }
 }

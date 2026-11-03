@@ -101,17 +101,20 @@ namespace Npk::Private
             auto blob = AccessPage(moduleBlobBase + byteOffset);
             if (!blob.Valid())
             {
+                DestroyPageAccess(&dest);
                 RestoreIpl(prevIpl);
 
                 return NpkStatus::Shortage;
             }
 
             sl::MemCopy(destBytes, blob.vaddr, fromBlob);
+            DestroyPageAccess(&blob);
         }
 
         if (fromBlob < PageSize())
             sl::MemSet(destBytes + fromBlob, 0, PageSize() - fromBlob);
 
+        DestroyPageAccess(&dest);
         RestoreIpl(prevIpl);
 
         return NpkStatus::Success;
@@ -167,6 +170,7 @@ namespace Npk::Private
 
         sl::MemCopy(dest, srcRef.vaddr, PageSize());
 
+        DestroyPageAccess(&srcRef);
         RestoreIpl(prevIpl);
         ReleaseMutex(&src.writeMutex);
 
@@ -180,7 +184,8 @@ namespace Npk::Private
         NPK_CHECK(source != nullptr, false);
         auto* src = static_cast<ModuleVmSource*>(source);
 
-        return sl::IncrementRefCount<ModuleVmSource, &ModuleVmSource::refs>(src);
+        return sl::IncrementRefCount<ModuleVmSource,
+            &ModuleVmSource::refs>(src);
     }
 
     static void ModuleUnrefObj(VmSource* source)
@@ -192,7 +197,7 @@ namespace Npk::Private
             return;
         //else: last reference is gone, cleanup.
 
-        Private::DrainSourceCache(*source);
+        Private::DrainSourcePages(*source);
         if (src->writeBack != nullptr)
         {
             PoolFreeWired(src->writeBack, src->writeBackPages << PfnShift(),
@@ -204,8 +209,11 @@ namespace Npk::Private
     }
 
     static NpkStatus ModuleGet(VmSource* source, sl::Span<PageInfo*> pages,
-        size_t pagesOffset, size_t mainIndex, PagerFlags flags)
+        size_t pagesOffset, size_t mainIndex, VmPagerMeta* meta,
+        PagerFlags flags)
     {
+        (void)meta;
+
         (void)flags;
 
         NPK_CHECK(source != nullptr, NpkStatus::InvalidArg);
@@ -244,8 +252,10 @@ namespace Npk::Private
     }
 
     static NpkStatus ModulePut(VmSource* source, sl::Span<PageInfo*> pages,
-        size_t pagesOffset, PagerFlags flags)
+        size_t pagesOffset, const VmPagerMeta* meta, PagerFlags flags)
     {
+        (void)meta;
+
         (void)flags;
 
         NPK_CHECK(source != nullptr, NpkStatus::InvalidArg);
@@ -271,8 +281,6 @@ namespace Npk::Private
 
             if (status != NpkStatus::Success)
                 result = status;
-            else
-                page->vm.flags.Set(PageVmFlag::Clean);
         }
 
         return result;

@@ -125,7 +125,7 @@ namespace Npk
          * a range to be treated as if it has `Sequential` advice even if it
          * doesn't.
          */
-        uint32_t lastFaultSlotPlusOne;
+        uint32_t nextFaultSlotPlusOne;
 
         /* How this range is likely to be accessed, set explicitly.
          */
@@ -218,6 +218,12 @@ namespace Npk
     };
 
     using PagerFlags = sl::Flags<PagerFlag>;
+
+    struct VmPagerMeta
+    {
+        uint8_t* bytes;
+        size_t bytesPerPage;
+    };
 
     struct VmPagerOps
     {

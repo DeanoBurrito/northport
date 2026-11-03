@@ -42,9 +42,7 @@ namespace Npk::Private
         else if (range.advice == VmAdvice::WillNeed)
             target = MaxClusterPages;
 
-        const bool linear = range.lastFaultSlotPlusOne != 0
-            && range.lastFaultSlotPlusOne == slot;
-        range.lastFaultSlotPlusOne = slot + 1;
+        const bool linear = range.nextFaultSlotPlusOne == slot + 1;
 
         ClusterWindow window {};
         if (linear || range.advice == VmAdvice::Sequential || target == 1)
@@ -62,6 +60,7 @@ namespace Npk::Private
         const size_t last = sl::Min(window.first + target, rangeLen);
         window.count = last - window.first;
         window.mainIndex = slot - window.first;
+        range.nextFaultSlotPlusOne = static_cast<uint32_t>(last + 1);
 
         return window;
     }
@@ -72,13 +71,9 @@ namespace Npk::Private
 
         anon.lock.Lock();
         if (anon.swapSlot != NoSwapSlot)
-        {
-            stale = anon.swapSlot;
-            anon.swapSlot = NoSwapSlot;
-            page->vm.flags.Clear(PageVmFlag::Clean);
-        }
-        
-        page->vm.flags.Clear(PageVmFlag::Busy);
+            stale = AnonMarkDirty(anon, page);
+
+        page->flags.Clear(PageVmFlag::Busy);
         anon.lock.Unlock();
 
         if (stale != NoSwapSlot)
@@ -449,6 +444,8 @@ namespace Npk::Private
 
         if (!dest.vaddr || !src.Valid())
         {
+            DestroyPageAccess(&dest);
+            DestroyPageAccess(&src);
             RestoreIpl(prevIpl);
             FreePage(page);
 
@@ -524,6 +521,8 @@ namespace Npk::Private
         const auto window = ChooseClusterWindow(range, slot, write);
         const size_t baseIndex = (range.offset >> PfnShift()) + window.first;
         const size_t first = window.first;
+
+        static_assert(MaxClusterPages <= MaxSourceClusterPages);
 
         out.count = window.count;
         out.mainIndex = window.mainIndex;
@@ -739,6 +738,7 @@ namespace Npk::Private
                 result = CopySourcePageToAmap(&paddr, *range, slot, mainPage);
                 if (result != NpkStatus::Success)
                 {
+                    ReleaseSourceCluster(srcResult, range->source);
                     ReleaseMutex(&range->mutex);
 
                     return result;
@@ -845,12 +845,25 @@ namespace Npk::Private
             return result;
         }
 
+        //the main page is in, so its pin can become the owner's.
+        if (pinnedAnon != nullptr)
+        {
+            PageVmOwnerType ownerType;
+            auto* owner = PageInfoGetVmOwner(ownerType, pinnedAnon);
+            NPK_ASSERT(ownerType == PageVmOwnerType::Anon && owner != nullptr);
+
+            CommitAnonPage(*static_cast<AnonMap*>(owner), pinnedAnon);
+            pinnedAnon = nullptr;
+        }
+
         //bonus round: map clustered pages from the source layer
         if (haveSrcResult)
         {
             //clustered pages are always mapped readonly and never overwrite
             //an existing mapping.
-            ConvertFlags(perms, mode, range->flags, false);
+            bool mapped[MaxClusterPages] {};
+            MmuPermissions clusterPerms {};
+            ConvertFlags(clusterPerms, mode, range->flags, false);
 
             for (size_t i = 0; i < srcResult.count; i++)
             {
@@ -865,6 +878,16 @@ namespace Npk::Private
                 }
 
                 const uintptr_t at = srcResult.page0Addr + (i << PfnShift());
+
+                if (range->amapRef.Valid())
+                {
+                    const size_t amapSlot = range->amapOffset
+                        + ((at - range->base) >> PfnShift());
+
+                    if (AnonMapLookup(*range->amapRef, amapSlot).Valid())
+                        continue;
+                }
+
                 Paddr existing;
                 result = HwMapExtract(&existing, nullptr,
                     nullptr, space.map, at);
@@ -873,7 +896,7 @@ namespace Npk::Private
                 if (!occupied)
                 {
                     result = HwMapAdd(space.map, at, LookupPagePaddr(page),
-                        perms, mode, false);
+                        clusterPerms, mode, false);
                 }
 
                 mapped[i] = !occupied && result == NpkStatus::Success;

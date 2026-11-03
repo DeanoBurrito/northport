@@ -11,6 +11,38 @@ namespace Npk::Private
         return dom.liveLists.heads[index];
     }
 
+    void LiveListLink(SystemDomain& dom, LiveList which, PageInfo* page)
+    {
+        NPK_ASSERT(page->liveList == 0);
+
+        auto& head = GetLiveListHead(dom, which);
+        const auto success = head.pages.PushBack(page);
+        NPK_ASSERT(success);
+        page->liveList = LiveListToId(which);
+        head.length++;
+
+        uint8_t age = PageAgeNone;
+        if (which >= LiveList::Active0 && which <= LiveList::Active3)
+        {
+            const size_t gen = (size_t)which - (size_t)LiveList::Active0;
+            age = static_cast<uint8_t>(gen);
+        }
+        page->age.Store(age, sl::Relaxed);
+    }
+
+    void LiveListUnlink(SystemDomain& dom, PageInfo* page)
+    {
+        NPK_ASSERT(page->liveList != 0);
+
+        auto& head = GetLiveListHead(dom, IdToLiveList(page->liveList));
+        NPK_ASSERT(head.length > 0);
+
+        const bool success = head.pages.Remove(page);
+        NPK_ASSERT(success);
+        page->liveList = 0;
+        head.length--;
+    }
+
     void PinPage(PageInfo* page)
     {
         constexpr auto PinsLimit = (1 << (sizeof(page->pins) * 8)) - 1;
@@ -63,47 +95,6 @@ namespace Npk::Private
         }
 
         ReleaseMutex(&dom.liveLists.lock);
-    }
-
-    void LiveListLink(SystemDomain& dom, LiveList which, PageInfo* page)
-    {
-        NPK_ASSERT(page->liveList == 0);
-
-        auto& head = GetLiveListHead(dom, which);
-        const auto success = head.pages.PushBack(page);
-        NPK_ASSERT(success);
-        page->liveList = LiveListToId(which);
-        head.length++;
-
-        uint8_t age = PageAgeNone;
-        if (which >= LiveList::Active0 && which <= LiveList::Active3)
-        {
-            const size_t gen = (size_t)which - (size_t)LiveList::Active0;
-            age = static_cast<uint8_t>(gen);
-        }
-        page->age.Store(age, sl::Relaxed);
-    }
-
-    void LiveListUnlink(SystemDomain& dom, PageInfo* page)
-    {
-        NPK_ASSERT(page->liveList != 0);
-
-        auto& head = GetLiveListHead(dom, IdToLiveList(page->liveList));
-        NPK_ASSERT(head.length > 0);
-
-        const bool success = head.pages.Remove(page);
-        NPK_ASSERT(success);
-        page->liveList = 0;
-        head.length--;
-    }
-
-    void ClearPageMapped(PageInfo* page)
-    {
-        if (!page->mapped)
-            return;
-
-        page->mapped = false;
-        UnpinPage(page);
     }
 
     void DrainSourcePages(VmSource& src)

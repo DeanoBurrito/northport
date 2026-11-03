@@ -278,6 +278,21 @@ namespace Npk::Private
         return NpkStatus::Success;
     }
 
+    AnonPageRef AnonMapLookup(AnonMap& map, size_t slot)
+    {
+        AnonMapRef mapRef = &map;
+
+        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
+        if (result != NpkStatus::Success)
+            return {};
+
+        AnonPageRef ref = AnonMapLookupLocked(map, slot);
+
+        ReleaseMutex(&map.mutex);
+
+        return ref;
+    }
+
     AnonPageRef AnonMapLookupLocked(AnonMap& map, size_t slot)
     {
         if (slot >= map.slotCount)
@@ -301,21 +316,6 @@ namespace Npk::Private
             else
                 table = static_cast<AnonTable*>(entry);
         }
-
-        return ref;
-    }
-
-    AnonPageRef AnonMapLookup(AnonMap& map, size_t slot)
-    {
-        AnonMapRef mapRef = &map;
-
-        auto result = AcquireMutex(&map.mutex, sl::NoTimeout);
-        if (result != NpkStatus::Success)
-            return {};
-
-        AnonPageRef ref = AnonMapLookupLocked(map, slot);
-
-        ReleaseMutex(&map.mutex);
 
         return ref;
     }
