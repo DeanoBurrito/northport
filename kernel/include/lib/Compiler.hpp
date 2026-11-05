@@ -5,7 +5,11 @@
  */
 
 #ifdef __GNUC__
-    #define SL_ALWAYS_INLINE [[gnu::always_inline]] inline
+    #ifdef __OPTIMIZE__
+        #define SL_ALWAYS_INLINE [[gnu::always_inline]] inline
+    #else
+        #define SL_ALWAYS_INLINE inline
+    #endif
     #define SL_PACKED(x) [[gnu::packed]] x
     #define SL_PRINTF_FUNC(fmt, args) [[gnu::format(printf, fmt, args)]]
     #define SL_NAKED_FUNC [[gnu::naked]]
@@ -14,6 +18,11 @@
     #define SL_NO_KASAN [[gnu::no_sanitize_address]]
     #define SL_USED [[gnu::used]]
     #define SL_HIDDEN [[gnu::visibility("hidden")]]
+
+    #ifdef __SIZEOF_INT128__
+        #define SL_HAS_UINT128
+        #define uint128_t __uint128_t
+    #endif
 
     #ifdef __ELF__
         #define SL_TAGGED(id, variable) [[gnu::section(".sl_tagged." #id)]] variable
@@ -31,6 +40,9 @@
     #define SL_TRAILING_ZEROS(x) __builtin_ctzl(x)
     #define SL_POPCOUNT(x) __builtin_popcountl(x)
 
+    #define SL_TRAILING_ZEROS_32(x) __builtin_ctz(static_cast<uint32_t>(x))
+    #define SL_TRAILING_ZEROS_64(x) __builtin_ctzll(static_cast<uint64_t>(x))
+    #define SL_LEADING_ZEROS_32(x) __builtin_clz(static_cast<uint32_t>(x))
     #define SL_LEADING_ZEROS_64(x) __builtin_clzll(x)
 
     #define SL_ATOMIC_ALWAYS_LOCK_FREE(s) __atomic_always_lock_free(s, 0)

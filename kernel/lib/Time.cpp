@@ -2,24 +2,6 @@
 
 namespace sl
 {
-    TimeCount TimeCount::Rebase(size_t newFrequency) const
-    {
-        if (newFrequency == frequency)
-            return *this;
-        if (frequency == 0 || newFrequency == 0)
-            return { newFrequency, 0 };
-
-        const auto q = ticks / frequency;
-        const auto r = ticks % frequency;
-
-        auto accum = r * newFrequency;
-        accum += frequency / 2;
-        accum /= frequency;
-        accum += (q * newFrequency);
-
-        return TimeCount(newFrequency, accum);
-    }
-
 /* The following functions (CalendarPoint::From and CalendarPoint::ToTimePoint)
  * use code adapted from mlibc (https://github.com/managarm/mlibc). License text
  * is attached below.
