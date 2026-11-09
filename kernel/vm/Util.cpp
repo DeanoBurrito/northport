@@ -2,6 +2,47 @@
 
 namespace Npk::Private
 {
+    void RegisterExactPoolZone(HeapTag tag, size_t size, ZoneSharing sharing)
+    {
+        PoolZoneDesc desc {};
+
+        desc.tag = tag;
+        desc.objectSize = size;
+        desc.wired = true;
+        desc.flags = PoolZoneFlag::ExactSize;
+        if (sharing == ZoneSharing::CpuShared)
+            desc.flags.Set(PoolZoneFlag::CpuShared);
+
+        const auto result = RegisterPoolZone(desc);
+        NPK_ASSERT(result == NpkStatus::Success);
+    }
+
+    void* AllocTrieNode(size_t size)
+    {
+        void* node = PoolAllocWired(size, TrieNodeTag);
+        if (node == nullptr)
+            return nullptr;
+
+        const auto addr = reinterpret_cast<uintptr_t>(node);
+        NPK_ASSERT((addr & TrieHeightMask) == 0);
+
+        return node;
+    }
+
+    void FreeTrieNode(void* node, size_t size)
+    {
+        PoolFreeWired(node, size, TrieNodeTag);
+    }
+
+    void RetireTrieNode(void* node, EbrCallback freeNow)
+    {
+        auto* item = static_cast<EbrItem*>(node);
+        item->callback = freeNow;
+
+        const auto result = RcuCall(item);
+        NPK_ASSERT(result == NpkStatus::Success);
+    }
+
     LiveListHead& GetLiveListHead(SystemDomain& dom, LiveList which)
     {
         NPK_ASSERT(which != LiveList::Count);
