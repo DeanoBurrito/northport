@@ -440,44 +440,147 @@ namespace Npk
 
     enum class PageVmFlag
     {
+        /* Indicates a page's data is currently being written out or read in
+         * and can't be relied upon until this bit is cleared.
+         */
         Busy,
-        Clean,
-    };
 
-    using PageVmFlags = sl::Flags<PageVmFlag, uint8_t>;
+        /* Set if a page's contents match it's backing store.
+         */
+        Clean,
+
+        /* Set during page-in: indicates the page's data was written to,
+         * otherwise left clear.
+         */
+        Filled,
+
+        /* Indicates a write to the page occured while `Busy` was set.
+         * If a writeback clears `Busy` and sees this flag clear it is safe to
+         * set `Clean`.
+         */
+        Redirtied,
+
+        ReadAhead,
+
+        /* Set while translations may map this page, also indicates the owner
+         * is holding a pin on the page.
+         */
+        Mapped,
+
+        /* Used to implement `PaddrHasPageInfo()`, indicates associated paddr
+         * isn't usable memory.
+         */
+        Poison = 15,
+    };
 
     constexpr uintptr_t PageVmOwnerTypeMask = 0b11;
 
     enum class PageVmOwnerType
     {
-        Source,
-        Anon,
+        Book,
+        Cell,
     };
 
-    struct PageInfo
+    constexpr uint32_t PfndbNull = 0;
+    constexpr uint32_t PfndbIndexLimit = 0xFFFF'FFFF;
+
+    constexpr uint8_t PageAgeNone = 0xFF;
+    constexpr uint8_t PageAgeMarked = 0xFE;
+
+    using PageListHook = sl::IndexListHook<uint32_t, PfndbNull>;
+
+    /* Metadata associated with a single page of usable memory. The metadata
+     * is also owned by the page's owner.
+     */
+    struct alignas(32) PageInfo
     {
-        sl::FwdListHook mmList;
+        PageListHook mmList;
+
+        /* Tagged pointer for tracking the page's owner. DONT USE IT DIRECTLY,
+         * see the VmPageOwner** helpers.
+         */
+        sl::Atomic<uintptr_t> owner;
+
+        /* Flags for this page.
+         */
+        sl::Atomic<uint16_t> flags;
+
+        /* Unique referees of this page. The owner only counts as one pin, and
+         * while non-zero this page wont be reclaimed or relocated.
+         */
+        uint16_t pins;
+
         union
         {
-            struct
-            {
-                size_t count;
-            } pm;
+            /* Offset in pages of this page in the owners store.
+             */
+            uint32_t offset;
 
-            sl::FwdListHook vmoList;
-            struct
-            {
-                char placeholder[sizeof(vmoList)];
-                uintptr_t owner; //NOTE: dont use directly, see helpers below.
-                uint32_t offset; //of page in object, counts in pages.
-                uint32_t pins : 24;
-                PageVmFlags flags;
-            } vm;
+            /* Count of contiguous pages from this entry, including self. Used
+             * to speed up pmm init.
+             */
+            uint32_t runLength;
         };
-    };
-    static_assert(sizeof(PageInfo) <= (sizeof(void*) * 4));
 
-    using PageList = sl::FwdList<PageInfo, &PageInfo::mmList>;
+        /* Used by VM subsystem, indicates which list the page is currently on.
+         */
+        uint8_t liveList;
+
+        /* Aging data for this page. It's exact meaning is fluid so it shouldn't
+         * be relied upon. May indicate the live list the page is on.
+         */
+        sl::Atomic<uint8_t> age;
+
+        uint8_t spare[2];
+
+        /* Storage for the swap handle of a resident page.
+         */
+        uint32_t swapHandle;
+    };
+    static_assert(sizeof(PageInfo) == 32);
+    static_assert(offsetof(PageInfo, flags) % 4 == 0);
+    static_assert(offsetof(PageInfo, pins) == offsetof(PageInfo, flags) + 2);
+
+    uint32_t PfndbIndex(const PageInfo* page);
+    PageInfo* PfndbEntry(uint32_t index);
+
+    struct PfndbStorage
+    {
+        using Index = uint32_t;
+
+        constexpr static Index Null = PfndbNull;
+
+        Index IndexOf(const PageInfo* page) const
+        {
+            if (page == nullptr)
+                return Null;
+
+            return PfndbIndex(page);
+        }
+
+        PageInfo* At(Index index) const
+        {
+            if (index == Null)
+                return nullptr;
+
+            return PfndbEntry(index);
+        }
+
+        PageInfo* Entry(Index index) const
+        {
+            return PfndbEntry(index);
+        }
+
+        bool SameAs(const PfndbStorage& other) const
+        {
+            (void)other;
+
+            return true;
+        }
+    };
+
+    using PageList = sl::IndexList<PageInfo, uint32_t, &PageInfo::mmList,
+        PfndbStorage>;
 
     enum class HwExceptionFlag
     {

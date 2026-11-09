@@ -863,7 +863,7 @@ namespace Npk
     {
         Paddr physOffset;
         PageInfo* pfndb;
-        Paddr pfndbCount;
+        size_t pfndbCount;
 
         CpuId smpBase;
         sl::Span<SmpControl> smpControls;
@@ -924,7 +924,8 @@ namespace Npk
             Condition wakeTrimmer;
 
             /* Threads waiting for more pages to be available can sleep on this,
-             * it will be set after an attempt at freeing pages.
+             * it will be set after an attempt at freeing pages, and when frees
+             * lift the free count above `minPages`.
              */
             Condition pagesAvail;
         } pressure;
@@ -1402,6 +1403,40 @@ namespace Npk
         return paddr + sysDomain0.physOffset;
     }
 
+    SL_ALWAYS_INLINE
+    uint32_t PfndbIndex(const PageInfo* page)
+    {
+        return static_cast<uint32_t>(page - sysDomain0.pfndb) + 1;
+    }
+
+    SL_ALWAYS_INLINE
+    PageInfo* PfndbEntry(uint32_t index)
+    {
+        return &sysDomain0.pfndb[index - 1];
+    }
+
+    SL_ALWAYS_INLINE
+    bool PageHasFlag(const PageInfo* page, PageVmFlag flag)
+    {
+        const uint16_t bit = 1 << static_cast<unsigned>(flag);
+
+        return (page->flags.Load(sl::Relaxed) & bit) != 0;
+    }
+
+    SL_ALWAYS_INLINE
+    void PageSetFlag(PageInfo* page, PageVmFlag flag)
+    {
+        const uint16_t bit = 1 << static_cast<unsigned>(flag);
+        page->flags.FetchOr(bit, sl::Relaxed);
+    }
+
+    SL_ALWAYS_INLINE
+    void PageClearFlag(PageInfo* page, PageVmFlag flag)
+    {
+        const uint16_t bit = 1 << static_cast<unsigned>(flag);
+        page->flags.FetchAnd(static_cast<uint16_t>(~bit), sl::Relaxed);
+    }
+
     /* Returns whether `paddr` has a valid page info struct, implying that the 
      * paddr is runtime usable ram (although this is not necessarily true).
      * If this function returns true it means it is safe to pass `paddr` to
@@ -1411,35 +1446,30 @@ namespace Npk
     bool PaddrHasPageInfo(Paddr paddr)
     {
         const Paddr offset = paddr - sysDomain0.physOffset;
-        if (offset >= sysDomain0.pfndbCount)
+        if ((offset >> PfnShift()) >= sysDomain0.pfndbCount)
             return false;
 
-        auto* page = LookupPageInfo(paddr);
-        const auto value = reinterpret_cast<uintptr_t>(page->mmList.next);
+        auto page = LookupPageInfo(paddr);
 
-        //NOTE: the bit indicates if the page is *invalid*, its naturally zero
-        //for real info structs as this field is a pointer, which requires
-        //alignment typically > 4.
-
-        return !(value & 1);
+        return !PageHasFlag(page, PageVmFlag::Poison);
     }
 
-    /* Helper function for accessing `PageInfo::vm::owner` field, which is a
+    /* Helper function for accessing `PageInfo::owner` field, which is a
      * tagged pointer. This function returns the usable pointer stored in
-     * `info->vm.owner` and the type of the pointed at value in `outType`.
+     * `info->owner` and the type of the pointed at value in `outType`.
      */
     SL_ALWAYS_INLINE
     void* PageInfoGetVmOwner(PageVmOwnerType& outType, PageInfo* info)
     {
-        const auto ptr = info->vm.owner;
+        const auto ptr = info->owner.Load(sl::Acquire);
         outType = static_cast<PageVmOwnerType>(ptr & PageVmOwnerTypeMask);
 
         return reinterpret_cast<void*>(ptr & ~PageVmOwnerTypeMask);
     }
 
-    /* Helper function for accessing `PageInfo::vm::owner` field, which is a
+    /* Helper function for accessing `PageInfo::owner` field, which is a
      * tagged pointer. This function constructs the tagged pointer for a page
-     * info struct from `ptr` and `type`, and stores it into `info->vm.owner`.
+     * info struct from `ptr` and `type`, and stores it into `info->owner`.
      */
     SL_ALWAYS_INLINE
     void PageInfoSetVmOwner(PageInfo* info, void* ptr, PageVmOwnerType type)
@@ -1449,7 +1479,7 @@ namespace Npk
 
         value |= static_cast<decltype(value)>(type);
 
-        info->vm.owner = value;
+        info->owner.Store(value, sl::Release);
     }
 
     /* Returns the system domain for the current cpu.
@@ -1467,9 +1497,10 @@ namespace Npk
 
     /* Attempts to allocate a page of zero-filled usable memory.
      * If `canFail` is set, the function returns `nullptr` upon exhaustion,
-     * otherwse it will wait until free memory is available. If `canFail` is
-     * set this function must be called at passive IPL, otherwise it can be 
-     * called at passive or dpc IPLs.
+     * otherwise it waits for a reclaimer to produce one. 
+     * The failing form may be called at passive or dpc IPL, the infalliable
+     * form must be called at passive IPL and with no page owner locks held
+     * to prevent deadlocks.
      */
     PageInfo* AllocPage(bool canFail);
 
@@ -1497,6 +1528,13 @@ namespace Npk
      */
     void AddPageDebt(size_t pages);
 
+    /* Blocks the current thread until pages are available for general use
+     * (i.e. the trimmer has lifted the free count > minPages) or the timeout.
+     * Callers of this function may not see any memory available by the time try
+     * to allocate again and should be prepared to call this function in a loop.
+     *
+     * Must be called at passive IPL and with no VM owner or range locks held.
+     */
     NpkStatus WaitForPages(sl::TimeCount timeout);
 
     /* Marks a page (and its PageInfo metadata) as no longer in use and free for

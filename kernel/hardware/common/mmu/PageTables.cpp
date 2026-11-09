@@ -95,7 +95,7 @@ namespace Npk
     };
     static_assert(sizeof(PtPageInfo) <= sizeof(PageInfo));
     static_assert(offsetof(PtPageInfo, freeHook) == 0);
-    static_assert(alignof(decltype(PtPageInfo::freeHook)) > 1);
+    static_assert(sizeof(PtPageInfo) <= offsetof(PageInfo, flags));
 
     enum class WalkResult
     {
@@ -258,7 +258,7 @@ namespace Npk
         if (!PaddrHasPageInfo(paddr))
             return;
 
-        LookupPageInfo(paddr)->vm.flags.Clear(PageVmFlag::Clean);
+        PageClearFlag(LookupPageInfo(paddr), PageVmFlag::Clean);
     }
 
     static PtPageInfo& PtMetadata(Paddr paddr)

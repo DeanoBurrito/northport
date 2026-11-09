@@ -320,10 +320,11 @@ namespace Npk
         EndInitPhase(usage, "Command line", init);
 
         //2. Allocate memory for page info struct storage
-        const size_t pfndbSize = AlignUpPage(((maxUsefulPaddr - minUsefulPaddr)
-            >> PfnShift()) * sizeof(PageInfo));
         sysDomain0.physOffset = minUsefulPaddr;
-        sysDomain0.pfndbCount = maxUsefulPaddr - minUsefulPaddr;
+        sysDomain0.pfndbCount =
+            (maxUsefulPaddr - minUsefulPaddr) >> PfnShift();
+        const size_t pfndbSize = AlignUpPage(sysDomain0.pfndbCount
+            * sizeof(PageInfo));
         sysDomain0.pfndb = reinterpret_cast<PageInfo*>(init.VmAlloc(pfndbSize));
 
         //to be able to implement `PaddrHasPageInfo()` ("is this physical addr
@@ -332,10 +333,14 @@ namespace Npk
         //info structs, so we store a poison value for partial pages and map
         //a single page of poison values to page aligned gaps.
         const Paddr poison = init.PmAlloc();
-        const auto poisonValue = reinterpret_cast<void*>(1);
         auto* poisonEntries = reinterpret_cast<PageInfo*>(init.dmBase + poison);
+        const auto poisonShift = static_cast<unsigned>(PageVmFlag::Poison);
+        const uint16_t poisonBit = 1 << poisonShift;
         for (size_t i = 0; i < PageSize() / sizeof(PageInfo); i++)
-            poisonEntries[i].mmList.next = poisonValue;
+            poisonEntries[i].flags.Store(poisonBit, sl::Relaxed);
+
+        //`PageList` links by a biased 32-bit index; see `PfndbIndexLimit`.
+        NPK_ASSERT(sysDomain0.pfndbCount < PfndbIndexLimit);
 
         const uintptr_t dbOffset =
             reinterpret_cast<uintptr_t>(sysDomain0.pfndb);
@@ -466,8 +471,9 @@ namespace Npk
                 conv.prefix);
 
             PageInfo* info = LookupPageInfo(base);
-            info->pm.count = pageCount;
-            sysDomain0.freeLists.free.PushBack(info);
+            info->runLength = pageCount;
+            const auto success = sysDomain0.freeLists.free.PushBack(info);
+            NPK_ASSERT(success);
             sysDomain0.freeLists.pageCount += pageCount;
         }
 
@@ -491,8 +497,9 @@ namespace Npk
                 range.base, range.base + range.length, pageCount);
 
             auto* info = LookupPageInfo(range.base);
-            info->pm.count = pageCount;
-            reclaimablePageList.PushBack(info);
+            info->runLength = pageCount;
+            const auto success = reclaimablePageList.PushBack(info);
+            NPK_ASSERT(success);
             reclaimablePages += pageCount;
         }
 

@@ -12,78 +12,126 @@ namespace Npk
         return dom.freeLists.pageCount;
     }
 
+    //NOTE: assumes `dom.freeLists.lock` is held. 
+    static bool PagesBecameAvailable(SystemDomain& dom, size_t before)
+    {
+        const size_t min = dom.pressure.minPages;
+
+        return before <= min && dom.freeLists.pageCount > min;
+    }
+
+    //NOTE: assumes `dom.freeLists.lock` is held. 
+    static PageInfo* TakePage(bool& zeroed, SystemDomain& dom)
+    {
+        if (dom.freeLists.pageCount <= dom.pressure.minPages)
+            return nullptr;
+
+        if (!dom.freeLists.zeroed.Empty())
+        {
+            zeroed = true;
+            dom.freeLists.pageCount--;
+
+            return dom.freeLists.zeroed.PopFront();
+        }
+
+        if (dom.freeLists.free.Empty())
+            return nullptr;
+
+        auto* page = dom.freeLists.free.PopFront();
+        if (page->runLength > 1)
+        {
+            PageInfo* next = page + 1;
+            next->runLength = page->runLength - 1;
+
+            const auto success = dom.freeLists.free.PushBack(next);
+            NPK_ASSERT(success);
+        }
+
+        zeroed = false;
+        dom.freeLists.pageCount--;
+
+        return page;
+    }
+
+    static bool ZeroPage(PageInfo* page)
+    {
+        const auto prevIpl = EnsureIpl(Ipl::Dpc);
+        auto access = AccessPage(page);
+
+        const bool valid = access.Valid();
+        if (valid)
+            sl::MemSet(access.vaddr, 0, PageSize());
+
+        DestroyPageAccess(&access);
+        RestoreIpl(prevIpl);
+
+        return valid;
+    }
+
+    //NOTE: `*remaining` is the free count after the attempt, either way.
+    static PageInfo* TakeZeroedPage(size_t& remaining, SystemDomain& dom)
+    {
+        bool zeroed = false;
+
+        dom.freeLists.lock.Lock();
+        auto* page = TakePage(zeroed, dom);
+        remaining = dom.freeLists.pageCount;
+        dom.freeLists.lock.Unlock();
+
+        if (page == nullptr || zeroed)
+            return page;
+        if (ZeroPage(page))
+            return page;
+
+        //no window to zero it through, so it goes back as it was.
+        dom.freeLists.lock.Lock();
+        page->runLength = 1;
+
+        const auto success = dom.freeLists.free.PushFront(page);
+        NPK_ASSERT(success);
+        dom.freeLists.pageCount++;
+        dom.freeLists.lock.Unlock();
+
+        return nullptr;
+    }
+
     void Private::ReclaimLoaderMemory(PageList& list, size_t pageCount)
     {
         auto& dom = MySystemDomain();
 
         dom.freeLists.lock.Lock();
-        //NOTE: we dont overwrite `info->pm.count` here since bringup has
+        const size_t before = dom.freeLists.pageCount;
+
+        //NOTE: we dont overwrite `info->runLength` here since bringup has
         //set it to the real page count of the memory region. It's value is
         //legit and we need it untouched to be correct.
         while (!list.Empty())
-            dom.freeLists.free.PushBack(list.PopFront());
-        dom.freeLists.pageCount += pageCount;
+        {
+            auto* page = list.PopFront();
+            const auto success = dom.freeLists.free.PushBack(page);
+            NPK_ASSERT(success);
+        }
 
+        dom.freeLists.pageCount += pageCount;
+        const bool available = PagesBecameAvailable(dom, before);
         dom.freeLists.lock.Unlock();
+
+        if (available)
+            SetConditionTo(&dom.pressure.pagesAvail, 0);
 
         auto conv = sl::ConvertUnits(pageCount << PfnShift());
         Log("Reclaimed %zu.%zu %sB of loader memory.", LogLevel::Info,
             conv.major, conv.minor, conv.prefix);
     }
 
-    //NOTE: assumes dom.freeLists.lock is held
-    static PageInfo* TakePage(SystemDomain& dom)
-    {
-        if (!dom.freeLists.zeroed.Empty())
-        {
-            dom.freeLists.pageCount--;
-            return dom.freeLists.zeroed.PopFront();
-        }
-
-        if (!dom.freeLists.free.Empty())
-        {
-            auto* page = dom.freeLists.free.PopFront();
-
-            if (page->pm.count > 1)
-            {
-                PageInfo* next = page + 1;
-                next->pm.count = page->pm.count - 1;
-                dom.freeLists.free.PushBack(next);
-            }
-
-            //this should be true by the caller holding the ipl spinlock
-            //protecting the freelists, but this assert catches us if that lock
-            //ever changes implementation. The IPL is required for using
-            //AccessPage() below.
-            AssertIpl(Ipl::Dpc);
-            auto access = AccessPage(page);
-            if (!access.Valid())
-            {
-                page->pm.count = 1;
-                dom.freeLists.free.PushFront(page);
-
-                return nullptr;
-            }
-
-            sl::MemSet(access.vaddr, 0, PageSize());
-            dom.freeLists.pageCount--;
-
-            return page;
-        }
-
-        return nullptr;
-    }
-
     PageInfo* AllocPage(bool canFail)
     {
         auto& dom = MySystemDomain();
 
-        dom.freeLists.lock.Lock();
-        auto* page = TakePage(dom);
-        const size_t remaining = dom.freeLists.pageCount;
-        dom.freeLists.lock.Unlock();
+        size_t remaining;
+        auto* page = TakeZeroedPage(remaining, dom);
 
-        if (page != nullptr && remaining < dom.pressure.lowPages)
+        if (remaining < dom.pressure.lowPages)
             SetCondition(&dom.pressure.wakeTrimmer);
 
         if (page != nullptr || canFail)
@@ -93,48 +141,18 @@ namespace Npk
         for (size_t round = 0; round < AllocWaitRounds; round++)
         {
             AddPageDebt(1);
-            WaitForPages(sl::TimeCount(sl::TimeScale::Millis, AllocWaitMs));
+            WaitForPages({ sl::TimeScale::Millis, AllocWaitMs });
 
-            dom.freeLists.lock.Lock();
-            page = TakePage(dom);
-            dom.freeLists.lock.Unlock();
-
+            page = TakeZeroedPage(remaining, dom);
             if (page != nullptr)
                 return page;
 
             Log("Blocking page allocation waiting on reclaim, round %zu.",
                 LogLevel::Trace, round);
         }
-        
+
         Panic("Out of memory: no pages free after %zu attempts (%zums each).",
             nullptr, AllocWaitRounds, AllocWaitMs);
-    }
-
-    void FreePage(PageInfo* page)
-    {
-        auto& dom = MySystemDomain();
-
-        dom.freeLists.lock.Lock();
-        page->pm.count = 1;
-        dom.freeLists.free.PushBack(page);
-        dom.freeLists.pageCount++;
-        dom.freeLists.lock.Unlock();
-    }
-
-    void FreePageList(PageList& pages)
-    {
-        auto& dom = MySystemDomain();
-
-        dom.freeLists.lock.Lock();
-        while (!pages.Empty())
-        {
-            auto* page = pages.PopFront();
-
-            page->pm.count = 1;
-            dom.freeLists.free.PushBack(page);
-            dom.freeLists.pageCount++;
-        }
-        dom.freeLists.lock.Unlock();
     }
 
     MemoryPressure GetMemoryPressure()
@@ -192,5 +210,46 @@ namespace Npk
             return NpkStatus::Success;
 
         return result;
+    }
+
+    void FreePage(PageInfo* page)
+    {
+        auto& dom = MySystemDomain();
+
+        dom.freeLists.lock.Lock();
+        const size_t before = dom.freeLists.pageCount;
+
+        page->runLength = 1;
+        const auto success = dom.freeLists.free.PushBack(page);
+        NPK_ASSERT(success);
+        dom.freeLists.pageCount++;
+
+        const bool available = PagesBecameAvailable(dom, before);
+        dom.freeLists.lock.Unlock();
+
+        if (available)
+            SetConditionTo(&dom.pressure.pagesAvail, 0);
+    }
+
+    void FreePageList(PageList& pages)
+    {
+        auto& dom = MySystemDomain();
+
+        dom.freeLists.lock.Lock();
+        const size_t before = dom.freeLists.pageCount;
+        while (!pages.Empty())
+        {
+            auto* page = pages.PopFront();
+
+            page->runLength = 1;
+            const auto success = dom.freeLists.free.PushBack(page);
+            NPK_ASSERT(success);
+            dom.freeLists.pageCount++;
+        }
+        const bool available = PagesBecameAvailable(dom, before);
+        dom.freeLists.lock.Unlock();
+
+        if (available)
+            SetConditionTo(&dom.pressure.pagesAvail, 0);
     }
 }
