@@ -9,7 +9,6 @@ namespace Npk
     constexpr HeapTag HwMapTag = NPK_MAKE_HEAP_TAG("Hmap");
     constexpr size_t MaxPteSize = 16;
     constexpr size_t MaxPtPathLevels = 8;
-    constexpr size_t MaxPendingRanges = 8;
 
     struct alignas(MaxPteSize) PteOnStack
     {
@@ -20,59 +19,6 @@ namespace Npk
     //think of (PAE on 32bit x86) and accounted for it.
     static_assert(MaxPteSize >= 2 * sizeof(uintptr_t));
 
-    //the pmap interface only requires synchronization between cpus on calls
-    //to `HwMapUpdate()`. This struct tracks a minimal amount of changed vaddrs
-    //between update calls, so we know what to sync with other cpus.
-    struct PendingRanges
-    {
-        uintptr_t bases[MaxPendingRanges];
-        size_t lengths[MaxPendingRanges];
-        size_t count;
-
-        void Reset()
-        {
-            count = 0;
-        }
-
-        bool IsFull() const
-        {
-            return count == MaxPendingRanges;
-        }
-
-        void Saturate()
-        {
-            count = MaxPendingRanges;
-        }
-
-        void Add(uintptr_t base, size_t length)
-        {
-            if (IsFull())
-                return;
-
-            for (size_t i = 0; i < count; i++)
-            {
-                if (base == bases[i] + lengths[i])
-                {
-                    lengths[i] += length;
-
-                    return;
-                }
-            
-                if (base + length == bases[i])
-                {
-                    bases[i] -= length;
-                    lengths[i] += length;
-
-                    return;
-                }
-            }
-
-            bases[count] = base;
-            lengths[count] = length;
-            count++;
-        }
-    };
-
     struct HwMap
     {
         IplSpinLock<Ipl::Dpc> lock;
@@ -81,11 +27,6 @@ namespace Npk
         size_t tlbGen;
         CpuBitset onprocCpus; //cpus with this map active *right now*
         sl::Span<AsidEntry> asids; //one entry per asid domain
-        void* asidsAlloc;
-        size_t asidsAllocLen;
-
-        PendingRanges pendingUpdates;
-        PageList pendingFree;
     };
 
     struct PtPageInfo
@@ -407,11 +348,13 @@ namespace Npk
         return next;
     }
 
-    static void FreeEmptyTables(HwMap& map, const PtWalk& walk, uintptr_t vaddr)
+    static void FreeEmptyTables(MapBatch& batch, const PtWalk& walk,
+        uintptr_t vaddr)
     {
         NPK_ASSERT(!walk.builtChain);
 
         const auto& conf = GetPageTableConfig();
+        HwMap& map = *batch.map;
 
         for (size_t level = 0; level + 1 < conf.levelCount; level++)
         {
@@ -433,10 +376,306 @@ namespace Npk
 
             const uintptr_t span = (conf.levelMask[level] + 1)
                 << conf.levelShift[level];
-            map.pendingUpdates.Add(vaddr & ~(span - 1), span);
-
-            map.pendingFree.PushBack(LookupPageInfo(table));
+            MapBatchAddRange(batch, vaddr & ~(span - 1), span);
+            MapBatchFreePage(batch, LookupPageInfo(table));
         }
+    }
+
+    static bool AllocAsidEntries(HwMap& map)
+    {
+        const size_t count = AsidDomainCount(SystemAsids());
+        NPK_ASSERT(count != 0);
+
+        void* ptr = PoolAllocWired(count * sizeof(AsidEntry), HwMapTag);
+        if (ptr == nullptr)
+            return false;
+        NPK_ASSERT(sl::AlignUp(ptr, alignof(AsidEntry)) == ptr);
+
+        auto* entries = static_cast<AsidEntry*>(ptr);
+        for (size_t i = 0; i < count; i++)
+            entries[i] = AsidEntry {};
+
+        map.asids = { entries, count };
+
+        return true;
+    }
+
+    static void FreeAsidEntries(HwMap& map)
+    {
+        if (map.asids.Empty())
+            return;
+
+        void* base = map.asids.Begin();
+        const size_t length = map.asids.SizeBytes();
+
+        auto result = PoolFreeWired(base, length, HwMapTag);
+        if (result != NpkStatus::Success)
+            NPK_UNEXPECTED_STATUS(result, LogLevel::Error);
+
+        map.asids = {};
+    }
+
+    static void CollectTables(MapBatch& batch, Paddr table, size_t level)
+    {
+        HwMap& map = *batch.map;
+        const auto& conf = GetPageTableConfig();
+
+        if (level > 0)
+        {
+            const bool isSharedRoot = !conf.splitRoot 
+                && &map != HwKernelMap() && level == conf.levelCount - 1;
+
+            auto ref = AccessPage(table);
+            NPK_ASSERT(ref.Valid());
+
+            for (size_t i = 0; i <= conf.levelMask[level]; i++)
+            {
+                if (isSharedRoot && i >= conf.kernelFirstIndex
+                    && i <= conf.kernelLastIndex)
+                    continue;
+
+                void* pte = PteAt(conf, ref, i);
+
+                if (!IsPteValid(pte))
+                    continue;
+                if (IsLeafPte(pte, level))
+                    continue;
+
+                CollectTables(batch, GetPteAddr(pte), level - 1);
+            }
+        }
+
+        MapBatchFreePage(batch, LookupPageInfo(table));
+    }
+
+    //NOTE: assumes the map's lock is held. Records an invalidation only if a
+    //bit was actually cleared.
+    static MmuPageStates HarvestEntry(MapBatch& batch, void* pte,
+        uintptr_t vaddr, MmuPageStates clear)
+    {
+        const auto state = HarvestPte(pte, vaddr, clear);
+
+        bool rearm = false;
+        if (clear.Has(MmuPageState::Accessed))
+            rearm |= state.Has(MmuPageState::Accessed);
+        if (clear.Has(MmuPageState::Dirty))
+            rearm |= state.Has(MmuPageState::Dirty);
+
+        if (rearm)
+            MapBatchAddRange(batch, vaddr, PageSize());
+
+        return state;
+    }
+
+    static bool DoMinorFault(HwMap& map, uintptr_t vaddr, bool write)
+    {
+        const auto& conf = GetPageTableConfig();
+
+        PtWalk walk;
+        if (Walk(walk, map, vaddr, false) != WalkResult::Success)
+            return false;
+
+        auto ref = AccessPage(walk.tables[0]);
+
+        //this is an error but returning `false` here is wrong: its not that
+        //the minor fault was unhandled (it may be), its a resource shortage
+        //so that should be handled differently. Currently it's late and I
+        //to get this committed so I'll just assert this so it fails loudly
+        //later on, that'll hopefully remind me to implement a solution here.
+        NPK_ASSERT(ref.vaddr);
+
+        void* pte = PteAt(conf, ref, walk.indices[0]);
+        if (!IsPteValid(pte))
+            return false;
+
+        bool handled = false;
+        if (write && !conf.hwDirtyBit && PteIsWriteTrackable(pte))
+        {
+            SetPteDirty(pte);
+            PublishDirtyBit(GetPteAddr(pte));
+
+            handled = true;
+        }
+        if (!conf.hwAccessedBit && !SetPteAccessed(pte))
+            handled = true;
+
+        return handled;
+    }
+
+    static bool DepositBatchCoarsely(const MapBatch& batch)
+    {
+        if (batch.coarse)
+            return true;
+
+        size_t pages = 0;
+        for (size_t i = 0; i < batch.count; i++)
+            pages += batch.storage[i].length >> PfnShift();
+
+        return pages > HwGetTlbFlushThreshold();
+    }
+
+    static void CoverKernelMap(const MapBatch& batch)
+    {
+        if (DepositBatchCoarsely(batch))
+        {
+            TlbSyncDeposit(nullptr, FlushGlobals());
+
+            return;
+        }
+
+        for (size_t i = 0; i < batch.count; i++)
+        {
+            TlbSyncDeposit(nullptr, FlushGlobalsRange(batch.storage[i].base,
+                batch.storage[i].length));
+        }
+    }
+
+    static void CoverUserMap(HwMap& map, const MapBatch& batch)
+    {
+        auto& asids = SystemAsids();
+
+        if (batch.count == 0 && !batch.coarse)
+            return;
+
+        map.tlbGen++;
+        const bool coarse = DepositBatchCoarsely(batch);
+
+        const auto Issue = [&](size_t cpu, bool oneCpu, Asid asid) -> void
+        {
+            const auto Deposit = [&](const TlbFlushRequest& request) -> void
+            {
+                if (oneCpu)
+                    TlbSyncDepositOne(cpu, request);
+                else
+                {
+                    const auto& domCpus = AsidDomainCpus(asids,
+                        AsidDomainOfCpu(asids, cpu));
+                    TlbSyncDeposit(&domCpus, request);
+                }
+            };
+
+            if (coarse)
+            {
+                Deposit(FlushSpace(asid));
+
+                return;
+            }
+
+            for (size_t i = 0; i < batch.count; i++)
+            {
+                Deposit(FlushSpaceRange(asid, batch.storage[i].base,
+                    batch.storage[i].length));
+            }
+        };
+
+        //1. Shootdown cpus with this map actively loaded.
+        for (size_t cpu = map.onprocCpus.FindSet();
+            cpu < map.onprocCpus.Size();
+            cpu = map.onprocCpus.FindSet(cpu + 1))
+        {
+            const size_t domain = AsidDomainOfCpu(asids, cpu);
+
+            Asid asid;
+            if (!AsidEntryIsLive(asids, domain, map.asids[domain], &asid))
+                continue;
+
+            if (map.asids[domain].seenTlbGen == map.tlbGen)
+                continue;
+
+            Issue(cpu, !AsidDomainIsShared(asids, domain), asid);
+            map.asids[domain].seenTlbGen = map.tlbGen;
+        }
+
+        if (!AsidAnyDomainShared(asids))
+            return; //fast path for targets with no shared asid domains.
+
+        //2. Shootdown cpus that have previously loaded this map.
+        for (size_t domain = 0; domain < AsidDomainCount(asids); domain++)
+        {
+            if (!AsidDomainIsShared(asids, domain))
+                continue;
+
+            Asid asid;
+            if (!AsidEntryIsLive(asids, domain, map.asids[domain], &asid))
+                continue;
+            if (map.asids[domain].seenTlbGen == map.tlbGen)
+                continue;
+
+            const auto& domCpus = AsidDomainCpus(asids, domain);
+            Issue(domCpus.FindSet(), false, asid);
+
+            map.asids[domain].seenTlbGen = map.tlbGen;
+        }
+    }
+
+    HwMap* HwCreateKernelMap(InitState& state, Paddr root)
+    {
+        //this runs before the pmap pool exists, so the object is carved from
+        //the init-state allocator instead of PoolAllocWired(). It also runs
+        //before the switch to the kernel page tables, so its reserved vaddr
+        //isn't live yet: we map it into the kernel root for later use but
+        //construct the object *now* through the bootloader direct map alias of
+        //its backing page. `root` is the table early mapping has been
+        //populating, so we adopt it as-is.
+        NPK_ASSERT(sizeof(HwMap) <= PageSize());
+
+        char* vaddr = state.VmAlloc(sizeof(HwMap));
+        const Paddr paddr = state.PmAlloc();
+        HwEarlyMap(state, paddr, reinterpret_cast<uintptr_t>(vaddr),
+            MmuPermission::Write, {});
+
+        void* build = reinterpret_cast<void*>(state.dmBase + paddr);
+        auto* map = new(build) HwMap {};
+
+        map->root = root;
+        map->onprocCpus.Reset(1); //TODO: re-init with real cpu count later
+
+        const auto& conf = GetPageTableConfig();
+        if (!conf.splitRoot)
+        {
+            char* rootPtes = reinterpret_cast<char*>(state.dmBase + root);
+
+            for (size_t i = conf.kernelFirstIndex; i <= conf.kernelLastIndex;
+                i++)
+            {
+                void* pte = rootPtes + i * conf.pteSize;
+                if (IsPteValid(pte))
+                    continue;
+
+                WriteIntermediatePte(conf, pte, state.PmAlloc(), true);
+            }
+        }
+
+        return reinterpret_cast<HwMap*>(vaddr);
+    }
+
+    NpkStatus HwMapLeafTable(Paddr* outTable, HwMap* map, uintptr_t vaddr)
+    {
+        if (outTable == nullptr || map == nullptr)
+            return NpkStatus::InvalidArg;
+
+        const auto& conf = GetPageTableConfig();
+        sl::ScopedLock mapLock(map->lock);
+
+        PtWalk walk;
+        switch (Walk(walk, *map, vaddr, true))
+        {
+        case WalkResult::Success:
+            break;
+
+        case WalkResult::BlockMapped:
+            return NpkStatus::AlreadyMapped;
+
+        case WalkResult::NoTable:
+            [[fallthrough]];
+        case WalkResult::NoAccess:
+            return NpkStatus::Shortage;
+        }
+
+        PtMetadata(walk.tables[0]).validCount = conf.levelMask[0] + 1;
+        *outTable = walk.tables[0];
+
+        return NpkStatus::Success;
     }
 
     NpkStatus HwMapCreate(HwMap** outMap)
@@ -455,9 +694,18 @@ namespace Npk
             return NpkStatus::Shortage;
         }
 
+        if (!AllocAsidEntries(*map))
+        {
+            map->onprocCpus.Destroy();
+            PoolFreeWired(ptr, sizeof(HwMap), HwMapTag);
+
+            return NpkStatus::Shortage;
+        }
+
         auto rootPage = AllocPage(true);
         if (rootPage == nullptr)
         {
+            FreeAsidEntries(*map);
             map->onprocCpus.Destroy();
             PoolFreeWired(ptr, sizeof(HwMap), HwMapTag);
 
@@ -466,8 +714,6 @@ namespace Npk
 
         map->root = LookupPagePaddr(rootPage);
         PtMetadata(map->root).validCount = 0;
-
-        map->pendingUpdates.Reset();
 
         if (!conf.splitRoot)
         {
@@ -507,96 +753,26 @@ namespace Npk
         return NpkStatus::Success;
     }
 
-    static void CollectTables(HwMap& map, Paddr table, size_t level)
-    {
-        const auto& conf = GetPageTableConfig();
-
-        if (level > 0)
-        {
-            const bool isSharedRoot = !conf.splitRoot 
-                && &map != HwKernelMap() && level == conf.levelCount - 1;
-
-            auto ref = AccessPage(table);
-            NPK_ASSERT(ref.Valid());
-
-            for (size_t i = 0; i <= conf.levelMask[level]; i++)
-            {
-                if (isSharedRoot && i >= conf.kernelFirstIndex
-                    && i <= conf.kernelLastIndex)
-                    continue;
-
-                void* pte = PteAt(conf, ref, i);
-
-                if (!IsPteValid(pte))
-                    continue;
-                if (IsLeafPte(pte, level))
-                    continue;
-
-                CollectTables(map, GetPteAddr(pte), level - 1);
-            }
-        }
-
-        map.pendingFree.PushBack(LookupPageInfo(table));
-    }
-
     void HwMapDestroy(HwMap* map)
     {
         NPK_ASSERT(map != nullptr);
         NPK_ASSERT(map != HwKernelMap());
         NPK_ASSERT(map->onprocCpus.Count() == 0);
 
+        MapBatch batch {};
+        ResetMapBatch(batch, map, {});
+
         map->lock.Lock();
-        CollectTables(*map, map->root, GetPageTableConfig().levelCount - 1);
-        map->pendingUpdates.Saturate();
+        CollectTables(batch, map->root, GetPageTableConfig().levelCount - 1);
+        batch.coarse = true; //safe to assume it'll be coarse in this case.
         map->lock.Unlock();
 
-        PageList emptyList {};
-        HwMapUpdate(map, true, emptyList);
+        HwMapUpdate(batch, true);
+        FinishMapBatch(batch);
 
+        FreeAsidEntries(*map);
         map->onprocCpus.Destroy();
         PoolFreeWired(map, sizeof(HwMap), HwMapTag);
-    }
-
-    HwMap* HwCreateKernelMap(InitState& state, Paddr root)
-    {
-        //this runs before the pmap pool exists, so the object is carved from
-        //the init-state allocator instead of PoolAllocWired(). It also runs
-        //before the switch to the kernel page tables, so its reserved vaddr
-        //isn't live yet: we map it into the kernel root for later use but
-        //construct the object *now* through the bootloader direct map alias of
-        //its backing page. `root` is the table early mapping has been
-        //populating, so we adopt it as-is.
-        NPK_ASSERT(sizeof(HwMap) <= PageSize());
-
-        char* vaddr = state.VmAlloc(sizeof(HwMap));
-        const Paddr paddr = state.PmAlloc();
-        HwEarlyMap(state, paddr, reinterpret_cast<uintptr_t>(vaddr),
-            MmuPermission::Write, {});
-
-        void* build = reinterpret_cast<void*>(state.dmBase + paddr);
-        auto* map = new(build) HwMap {};
-
-        map->root = root;
-        map->onprocCpus.Reset(1); //TODO: re-init with real cpu count later
-        map->pendingUpdates.Reset();
-
-        const auto& conf = GetPageTableConfig();
-        if (!conf.splitRoot)
-        {
-            char* rootPtes = reinterpret_cast<char*>(state.dmBase + root);
-
-            for (size_t i = conf.kernelFirstIndex; i <= conf.kernelLastIndex;
-                i++)
-            {
-                void* pte = rootPtes + i * conf.pteSize;
-                if (IsPteValid(pte))
-                    continue;
-
-                WriteIntermediatePte(conf, pte, state.PmAlloc(), true);
-            }
-        }
-
-        return reinterpret_cast<HwMap*>(vaddr);
     }
 
     HwMap* HwKernelMap()
@@ -633,14 +809,15 @@ namespace Npk
         RestoreIpl(prevIpl);
     }
 
-    NpkStatus HwMapAdd(HwMap* map, uintptr_t vaddr, Paddr paddr, 
+    NpkStatus HwMapAdd(MapBatch& batch, uintptr_t vaddr, Paddr paddr,
         MmuPermissions perms, MmuCacheMode cacheMode, bool wired)
     {
         (void)wired;
 
-        if (map == nullptr)
+        if (batch.map == nullptr)
             return NpkStatus::InvalidArg;
 
+        HwMap* map = batch.map;
         const auto& conf = GetPageTableConfig();
         const bool isKernel = (map == HwKernelMap());
 
@@ -691,43 +868,18 @@ namespace Npk
         DoWritePte(conf, pte, buffer.data);
         PtMetadata(walk.tables[0]).validCount++;
 
-        return NpkStatus::Success;
-    }
-
-    NpkStatus HwMapLeafTable(Paddr* outTable, HwMap* map, uintptr_t vaddr)
-    {
-        if (outTable == nullptr || map == nullptr)
-            return NpkStatus::InvalidArg;
-
-        const auto& conf = GetPageTableConfig();
-        sl::ScopedLock mapLock(map->lock);
-
-        PtWalk walk;
-        switch (Walk(walk, *map, vaddr, true))
-        {
-        case WalkResult::Success:
-            break;
-
-        case WalkResult::BlockMapped:
-            return NpkStatus::AlreadyMapped;
-
-        case WalkResult::NoTable:
-            [[fallthrough]];
-        case WalkResult::NoAccess:
-            return NpkStatus::Shortage;
-        }
-
-        PtMetadata(walk.tables[0]).validCount = conf.levelMask[0] + 1;
-        *outTable = walk.tables[0];
+        if (conf.cachesInvalid)
+            MapBatchAddRange(batch, vaddr, PageSize());
 
         return NpkStatus::Success;
     }
 
-    NpkStatus HwMapRemove(HwMap* map, uintptr_t vaddr, size_t count)
+    NpkStatus HwMapRemove(MapBatch& batch, uintptr_t vaddr, size_t count)
     {
-        if (map == nullptr)
+        if (batch.map == nullptr)
             return NpkStatus::InvalidArg;
 
+        HwMap* map = batch.map;
         const auto& conf = GetPageTableConfig();
         const uintptr_t end = vaddr + (count << PfnShift());
 
@@ -781,7 +933,7 @@ namespace Npk
                 if (IsPteDirty(old.data))
                     PublishDirtyBit(GetPteAddr(old.data));
 
-                map->pendingUpdates.Add(vaddr, PageSize());
+                MapBatchAddRange(batch, vaddr, PageSize());
                 PtMetadata(table).validCount--;
 
                 index++;
@@ -791,18 +943,19 @@ namespace Npk
             ref = {};
 
             if (PtMetadata(table).validCount == 0)
-                FreeEmptyTables(*map, walk, vaddr - PageSize());
+                FreeEmptyTables(batch, walk, vaddr - PageSize());
         }
 
         return NpkStatus::Success;
     }
 
-    NpkStatus HwMapProtect(HwMap* map, uintptr_t vaddr, size_t count, 
+    NpkStatus HwMapProtect(MapBatch& batch, uintptr_t vaddr, size_t count,
         MmuPermissions perms)
     {
-        if (map == nullptr)
+        if (batch.map == nullptr)
             return NpkStatus::InvalidArg;
 
+        HwMap* map = batch.map;
         const auto& conf = GetPageTableConfig();
         const uintptr_t end = vaddr + (count << PfnShift());
 
@@ -857,7 +1010,7 @@ namespace Npk
                 if (!perms.Has(MmuPermission::Write) && IsPteDirty(old.data))
                     PublishDirtyBit(GetPteAddr(old.data));
 
-                map->pendingUpdates.Add(vaddr, PageSize());
+                MapBatchAddRange(batch, vaddr, PageSize());
 
                 index++;
                 vaddr += PageSize();
@@ -867,7 +1020,62 @@ namespace Npk
         return NpkStatus::Success;
     }
 
-    NpkStatus HwMapExtract(Paddr* outPaddr, MmuPermissions* outPerms, 
+    HwHarvestResult HwMapUpgrade(MapBatch& batch, uintptr_t vaddr,
+        Paddr frame, MmuPermissions perms)
+    {
+        HwHarvestResult found {};
+
+        if (batch.map == nullptr)
+            return found;
+
+        HwMap* map = batch.map;
+        const auto& conf = GetPageTableConfig();
+
+        sl::ScopedLock mapLock(map->lock);
+
+        PtWalk walk;
+        if (Walk(walk, *map, vaddr, false) != WalkResult::Success)
+            return found;
+
+        auto ref = AccessPage(walk.tables[0]);
+        if (!ref.Valid())
+            return found;
+
+        void* pte = PteAt(conf, ref, walk.indices[0]);
+
+        PteOnStack old;
+        PteOnStack next;
+        sl::MemCopy(old.data, pte, conf.pteSize);
+        do
+        {
+            if (!IsPteValid(old.data) || !IsLeafPte(old.data, 0)
+                || GetPteAddr(old.data) != frame)
+            {
+                return found;
+            }
+
+            sl::MemCopy(next.data, old.data, conf.pteSize);
+            SetPtePerms(next.data, perms);
+
+            const auto had = GetPtePerms(old.data);
+            if ((had | GetPtePerms(next.data)) != GetPtePerms(next.data))
+                return found;
+        }
+        while (!DoCompExchangePte(conf, pte, old.data, next.data));
+
+        found.matched = true;
+        if (IsPteAccessed(old.data))
+            found.state.Set(MmuPageState::Accessed);
+        if (IsPteDirty(old.data))
+            found.state.Set(MmuPageState::Dirty);
+
+        if (conf.upgradeNeedsInvalidate)
+            MapBatchAddRange(batch, vaddr, PageSize());
+
+        return found;
+    }
+
+    NpkStatus HwMapExtract(Paddr* outPaddr, MmuPermissions* outPerms,
         MmuCacheMode* outMode, HwMap* map, uintptr_t vaddr)
     {
         if (map == nullptr)
@@ -899,113 +1107,125 @@ namespace Npk
         return NpkStatus::Success;
     }
 
-    void HwMapSetWired(HwMap* map, uintptr_t vaddr, bool wired)
+    HwHarvestResult HwMapHarvest(MapBatch& batch, uintptr_t vaddr,
+        Paddr frame, HwHarvestAction action, MmuPageStates clear)
     {
-        (void)map;
-        (void)vaddr;
-        (void)wired;
+        HwHarvestResult found {};
 
-        //this function is a no-op as page tables aren't lossy, so all entries
-        //are wired from the PoV of the pmap.
+        if (batch.map == nullptr)
+            return found;
+
+        HwMap* map = batch.map;
+        const auto& conf = GetPageTableConfig();
+
+        sl::ScopedLock mapLock(map->lock);
+
+        PtWalk walk;
+        if (Walk(walk, *map, vaddr, false) != WalkResult::Success)
+            return found;
+
+        const Paddr table = walk.tables[0];
+        auto ref = AccessPage(table);
+        if (!ref.Valid())
+            return found;
+
+        void* pte = PteAt(conf, ref, walk.indices[0]);
+
+        PteOnStack invalid;
+        MakeInvalidPte(invalid.data);
+
+        PteOnStack old;
+        sl::MemCopy(old.data, pte, conf.pteSize);
+
+        while (true)
+        {
+            if (!IsPteValid(old.data) || GetPteAddr(old.data) != frame)
+                return found;
+
+            bool keep = action == HwHarvestAction::Keep;
+            if (action == HwHarvestAction::RemoveIfIdle)
+                keep = IsPteAccessed(old.data);
+
+            if (keep)
+            {
+                found.matched = true;
+                found.state = HarvestEntry(batch, pte, vaddr, clear);
+
+                return found;
+            }
+
+            if (DoCompExchangePte(conf, pte, old.data, invalid.data))
+                break;
+        }
+
+        found.matched = true;
+        found.removed = true;
+        if (IsPteAccessed(old.data))
+            found.state.Set(MmuPageState::Accessed);
+        if (IsPteDirty(old.data))
+            found.state.Set(MmuPageState::Dirty);
+
+        MapBatchAddRange(batch, vaddr, PageSize());
+        PtMetadata(table).validCount--;
+
+        ref = {};
+
+        if (PtMetadata(table).validCount == 0)
+            FreeEmptyTables(batch, walk, vaddr);
+
+        return found;
     }
 
-    static bool GetOrClearAdBits(HwMap* map, uintptr_t vaddr, bool dirtyBit,
-        bool clear)
+    size_t HwMapHarvestRange(MapBatch& batch, uintptr_t vaddr, size_t count,
+        MmuPageStates clear, sl::Span<MmuRangeHarvest> out)
     {
-        if (map == nullptr)
-            return false;
+        NPK_ASSERT(!clear.Has(MmuPageState::Dirty));
 
+        if (batch.map == nullptr)
+            return 0;
+
+        HwMap* map = batch.map;
         const auto& conf = GetPageTableConfig();
+        const size_t limit = sl::Min(count, out.Size());
 
         sl::ScopedLock scopeLock(map->lock);
 
         PtWalk walk;
         if (Walk(walk, *map, vaddr, false) != WalkResult::Success)
-            return false;
+            return 0;
 
         auto ref = AccessPage(walk.tables[0]);
         if (!ref.Valid())
-            return false;
+            return 0;
 
-        void* pte = PteAt(conf, ref, walk.indices[0]);
-        if (!IsPteValid(pte))
-            return false;
-
-        bool prevValue = false;
-
-        if (clear)
+        size_t found = 0;
+        size_t index = walk.indices[0];
+        for (size_t i = 0; i < limit && index <= conf.levelMask[0]; i++)
         {
-            if (dirtyBit)
-                prevValue = ClearPteDirty(pte);
-            else
-                prevValue = ClearPteAccessed(pte);
-        }
-        else
-        {
-            if (dirtyBit)
-                prevValue = IsPteDirty(pte);
-            else
-                prevValue = IsPteAccessed(pte);
+            void* pte = PteAt(conf, ref, index);
+            const uintptr_t at = vaddr + (i << PfnShift());
+            index++;
+
+            if (!IsPteValid(pte) || !IsLeafPte(pte, 0))
+                continue;
+
+            out[found].vaddr = at;
+            out[found].frame = GetPteAddr(pte);
+            out[found].state = HarvestEntry(batch, pte, at, clear);
+            found++;
         }
 
-        if (clear && prevValue)
-            map->pendingUpdates.Add(vaddr, PageSize());
-
-        return prevValue;
+        return found;
     }
 
-    bool HwMapGetAccessed(HwMap* map, uintptr_t vaddr)
+    MmuAgingCost HwGetMmuAgingCost()
     {
-        return GetOrClearAdBits(map, vaddr, false, false);
-    }
+        if (!GetPageTableConfig().hwAccessedBit)
+            return MmuAgingCost::FaultDriven;
+        if (HwHasBroadcastInvalidate())
+            return MmuAgingCost::CheapShootdown;
 
-    bool HwMapGetDirty(HwMap* map, uintptr_t vaddr)
-    {
-        return GetOrClearAdBits(map, vaddr, true, false);
-    }
-
-    bool HwMapClearAccessed(HwMap* map, uintptr_t vaddr)
-    {
-        return GetOrClearAdBits(map, vaddr, false, true);
-    }
-
-    bool HwMapClearDirty(HwMap* map, uintptr_t vaddr)
-    {
-        return GetOrClearAdBits(map, vaddr, true, true);
-    }
-
-    static bool DoMinorFault(HwMap& map, uintptr_t vaddr, bool write)
-    {
-        const auto& conf = GetPageTableConfig();
-
-        PtWalk walk;
-        if (Walk(walk, map, vaddr, false) != WalkResult::Success)
-            return false;
-
-        auto ref = AccessPage(walk.tables[0]);
-        if (!ref.Valid())
-            return false;
-
-        void* pte = PteAt(conf, ref, walk.indices[0]);
-        if (!IsPteValid(pte))
-            return false;
-
-        if (write)
-        {
-            if (conf.hwDirtyBit)
-                return false;
-
-            if (!PteIsWriteTrackable(pte))
-                return false;
-
-            SetPteDirty(pte);
-            PublishDirtyBit(GetPteAddr(pte));
-            SetPteAccessed(pte);
-
-            return true;
-        }
-
-        return !SetPteAccessed(pte);
+        return MmuAgingCost::ExpensiveShootdown;
     }
 
     bool HwHandleMinorFaultOnMap(HwMap* map, uintptr_t vaddr, bool write)
@@ -1015,7 +1235,7 @@ namespace Npk
 
         const auto& conf = GetPageTableConfig();
 
-        if (conf.hwAccessedBit)
+        if (conf.hwAccessedBit && conf.hwDirtyBit)
             return false;
 
         //NOTE: we can't take the map's lock here since we're above DPC IPL,
@@ -1034,56 +1254,24 @@ namespace Npk
         return handled;
     }
 
-    void HwMapUpdate(HwMap* map, bool sync, PageList& freeAfter)
+    void HwMapUpdate(MapBatch& batch, bool sync)
     {
-        NPK_ASSERT(map != nullptr);
+        if (batch.map == nullptr)
+            return;
 
+        HwMap* map = batch.map;
         map->lock.Lock();
 
-        const PendingRanges ranges = map->pendingUpdates;
-        map->pendingUpdates.Reset();
-
         PageList dead {};
-        while (!map->pendingFree.Empty())
-            dead.PushBack(map->pendingFree.PopFront());
+        const auto exchanged = dead.Exchange(batch.freed);
+        NPK_ASSERT(exchanged);
 
-        while (!freeAfter.Empty())
-            dead.PushBack(freeAfter.PopFront());
-
-        //the kernel map shouldn't have a target list of cpus since its active
-        //on all of them.
-        const CpuBitset* targets = (map == MySystemDomain().kernelMap) 
-            ? nullptr : &map->activeCpus;
-
-        if (HwHasBroadcastInvalidate())
-        {
-            if (ranges.IsFull())
-                HwInvalidateTlbs(map, 0, static_cast<size_t>(-1));
-            else
-            {
-                for (size_t i = 0; i < ranges.count; i++)
-                    HwInvalidateTlbs(map, ranges.bases[i], ranges.lengths[i]);
-            }
-
-            HwSyncTlbs();
-            map->lock.Unlock();
-
-            FreePageList(dead);
-
-            return;
-        }
-        //else: no hardware support, software tlb sync path.
-
-        if (ranges.IsFull())
-            TlbSyncDepositAll(targets, map->asid);
+        if (map == MySystemDomain().kernelMap)
+            CoverKernelMap(batch);
         else
-        {
-            for (size_t i = 0; i < ranges.count; i++)
-            {
-                TlbSyncDeposit(targets, map->asid, ranges.bases[i],
-                    ranges.lengths[i]);
-            }
-        }
+            CoverUserMap(*map, batch);
+
+        MapBatchDropRanges(batch);
 
         TlbSyncReclaim(dead);
         map->lock.Unlock();

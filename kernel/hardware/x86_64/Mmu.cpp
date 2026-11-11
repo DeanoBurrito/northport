@@ -102,6 +102,8 @@ namespace Npk
         .splitRoot = false,
         .hwAccessedBit = true,
         .hwDirtyBit = true,
+        .cachesInvalid = false,
+        .upgradeNeedsInvalidate = false,
         .hasCustomWritePte = false,
         .hasCustomExchange = false,
         .hasCustomCompareExchange = false,
@@ -285,18 +287,31 @@ namespace Npk
         NPK_UNREACHABLE();
     }
 
-    bool ClearPteAccessed(void* pte)
+    MmuPageStates HarvestPte(void* pte, uintptr_t vaddr, MmuPageStates clear)
     {
+        (void)vaddr;
+
+        uint64_t mask = 0;
+        if (clear.Has(MmuPageState::Accessed))
+            mask |= AccessedBit;
+        if (clear.Has(MmuPageState::Dirty))
+            mask |= DirtyBit;
+
         auto* ptr = static_cast<sl::Atomic<uint64_t>*>(pte);
 
-        return ptr->FetchAnd(~AccessedBit, sl::SeqCst) & AccessedBit;
-    }
+        uint64_t prev;
+        if (mask == 0)
+            prev = ptr->Load(sl::Acquire);
+        else
+            prev = ptr->FetchAnd(~mask, sl::SeqCst);
 
-    bool ClearPteDirty(void* pte)
-    {
-        auto* ptr = static_cast<sl::Atomic<uint64_t>*>(pte);
+        MmuPageStates found {};
+        if (prev & AccessedBit)
+            found.Set(MmuPageState::Accessed);
+        if (prev & DirtyBit)
+            found.Set(MmuPageState::Dirty);
 
-        return ptr->FetchAnd(~DirtyBit, sl::SeqCst) & DirtyBit;
+        return found;
     }
 
     bool SetPteAccessed(void* pte)
@@ -496,21 +511,37 @@ namespace Npk
         {
             AssertIpl(Ipl::Dpc);
 
+            MapBatchRange rangeStore[1];
+            MapBatch batch {};
+            ResetMapBatch(batch, HwKernelMap(), { rangeStore, 1 });
+
             for (size_t i = 0; i < slots; i += PtEntries)
             {
                 Paddr table;
                 auto result = HwMapLeafTable(&table, HwKernelMap(),
                     base + (i << PfnShift()));
                 if (result != NpkStatus::Success)
-                    return result;
+                {
+                    FinishMapBatch(batch);
 
-                result = HwMapAdd(HwKernelMap(), virtBase, table,
+                    return result;
+                }
+
+                result = HwMapAdd(batch, virtBase, table,
                     MmuPermission::Write, MmuCacheMode::Default, true);
                 if (result != NpkStatus::Success)
+                {
+                    FinishMapBatch(batch);
+
                     return result;
+                }
 
                 virtBase += PageSize();
             }
+
+            if (batch.count != 0 || batch.coarse)
+                HwMapUpdate(batch, false);
+            FinishMapBatch(batch);
         }
 
         *token = reinterpret_cast<void*>(manageVaddr);

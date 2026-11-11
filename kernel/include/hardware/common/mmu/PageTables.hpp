@@ -22,6 +22,8 @@ namespace Npk
         bool splitRoot;
         bool hwAccessedBit;
         bool hwDirtyBit;
+        bool cachesInvalid;
+        bool upgradeNeedsInvalidate;
         bool hasCustomWritePte;
         bool hasCustomExchange;
         bool hasCustomCompareExchange;
@@ -126,15 +128,11 @@ namespace Npk
      */
     bool CompareExchangePte(void* dest, void* expected, const void* desired);
 
-    /* Atomically clears the accessed bit of a live PTE, returns the previous
-     * state of the bit.
+    /* Performs a harvesting operation: reads the accessed and dirty bits of a
+     * live leaf PTE (`pte`, which translates `vaddr`) and atomically clears any
+     * bits set in `clear`. This all happens atomically.
      */
-    bool ClearPteAccessed(void* pte);
-
-    /* Atommically clears the dirty bit of a live PTE, returns the previous
-     * state of the bit.
-     */
-    bool ClearPteDirty(void* pte);
+    MmuPageStates HarvestPte(void* pte, uintptr_t vaddr, MmuPageStates clear);
 
     /* Atomically set the accessed (A) bit of a leaf PTE. Note that the
      * PTE is live and accessible by the MMU and likely already cached by
@@ -146,10 +144,9 @@ namespace Npk
     bool SetPteAccessed(void* pte);
 
     /* Similar to `SetAccessed()` above but operates on the dirty (D) bit
-     * of a live leaf PTE.
-     *
-     * This function is only called if `hwAccessedBit` and `hwDirtyBit` are 
+     * of a live leaf PTE. This function is only called if `hwDirtyBit` is
      * clear.
+     * Returns the previous dirty state.
      */
     bool SetPteDirty(void* pte);
 
@@ -158,8 +155,7 @@ namespace Npk
      * this leaf is a minor page fault (wont invoke VM machinery) and 
      * instead will call `SetDirty()` (see above) on the PTE.
      * 
-     * This function is only called if `hwAccessedBit` and `hwDirtyBit` are 
-     * clear.
+     * This function is only called if `hwDirtyBit` is clear.
      */
     bool PteIsWriteTrackable(const void* pte);
 

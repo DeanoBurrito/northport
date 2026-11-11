@@ -11,6 +11,11 @@ namespace Npk
     | (static_cast<HeapTag>(str[0]) ) \
     )
 
+    /* A batch needs slack space in case the removal also frees intermediate
+     * structures (like page tables), which may also become a covered region.
+     */
+    constexpr size_t MapBatchTableSlack = 8;
+
     enum class VmFlag
     {
         /* Set if memory is writable.
@@ -312,6 +317,48 @@ namespace Npk
         size_t hardLimit;
         size_t deepest;
     };
+
+    struct MapBatchRange
+    {
+        uintptr_t base;
+        size_t length;
+    };
+
+    /* Collects ranges requiring invalidation, used to allow related but
+     * sequential mmu ops to batch shootdowns.
+     */
+    struct MapBatch
+    {
+        HwMap* map;
+        sl::Span<MapBatchRange> storage;
+        PageList freed;
+        size_t count;
+        bool coarse;
+
+        //safety net, catches a batch that wasn't finished or dropped.
+        ~MapBatch();
+    };
+
+    /* Resets and initializes `batch` using caller-provided storage, and binds
+     * it to `map`. The batch may be already bound to another map, but it must
+     * not have any outstanding pages or invalidations (i.e. it must have been
+     * passed to `HwMapUpdate()` recently).
+     */
+    void ResetMapBatch(MapBatch& batch, HwMap* map,
+        sl::Span<MapBatchRange> store);
+
+    /* Indicates that a caller is done with a batch. For correctness the batch
+     * must be empty before passing it to this function.
+     */
+    void FinishMapBatch(MapBatch& batch);
+
+    /* Empties a batch without invalidating any of its ranges, essentially
+     * dropping them. Useful if the batch's owner decides the invalidation can
+     * be avoided or is not worth it.
+     * Queued pages for freeing are *not* dropped and therefore this batch still
+     * needs to be passed to `HwMapUpdate()` at some point.
+     */
+    void MapBatchDropRanges(MapBatch& batch);
 
     /* Initializes the kernel's virtual memory space, which makes all virtual
      * memory services available (kernel pool, file cache).

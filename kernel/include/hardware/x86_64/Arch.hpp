@@ -245,6 +245,13 @@ namespace Npk
         (void)page;
         (void)buffer;
     }
+
+    SL_ALWAYS_INLINE
+    void HwCopyPageMetadata(Paddr dest, Paddr src)
+    {
+        (void)dest;
+        (void)src;
+    }
 }
 
 #define READ_CR(num) ({ uint64_t val; asm("mov %%cr" #num ", %0" : "=r"(val)); val; })

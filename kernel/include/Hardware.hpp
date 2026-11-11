@@ -42,6 +42,13 @@ namespace Npk
      */
     struct HwMap;
 
+    /* Records invalidations and freed pages that a sequence of mmu operations
+     * owes, allowing them to be batched into a single shootdown where
+     * practical. See the public VM subsystem header for associated functions,
+     * and `HwMapUpdate()`, `MapBatchAddRange()`, and `MapBatchFreePage()`.
+     */
+    struct MapBatch;
+
     /* Address Space IDentifier: not required to have as many bits as the type
      * used below, the exact bit count cant be known until runtime on some
      * hardware. These are used as an optimization for local TLB ops, as only
@@ -322,12 +329,103 @@ namespace Npk
         Framebuffer,
     };
 
-    /*
+    /* State associated with a live translation.
+     */
+    enum class MmuPageState
+    {
+        /* Indicates the translation was read or executed through. May also
+         * indicate a write access but this should not be relied upon, see
+         * `Dirty` below instead.
+         */
+        Accessed,
+
+        /* Indicates the translation successfully had a write access through it.
+         */
+        Dirty,
+    };
+
+    using MmuPageStates = sl::Flags<MmuPageState, uint8_t>;
+
+    /* What a harvesting operation should do to a matching entry.
+     */
+    enum class HwHarvestAction
+    {
+        /* Keep the entry, clearing the bits named by `clear`.
+         */
+        Keep,
+
+        /* Remove the entry, `clear` is ignored.
+         */
+        Remove,
+
+        /* Like `Remove` but conditional on the translation's access bit being
+         * clear. Otherwise it acts like `Keep`.
+         */
+        RemoveIfIdle,
+    };
+
+    /* Results of a harvest operation.
+     */
+    struct HwHarvestResult
+    {
+        /* If `matched` is set, the state of the translation before the harvest.
+         */
+        MmuPageStates state;
+
+        /* Set if the requested operation matched a valid translation. If clear,
+         * nothing changed.
+         */
+        bool matched;
+
+        /* Set if the entry was removed, only set if `matched` is also set.
+         */
+        bool removed;
+    };
+
+    /* One valid leaf a range harvest found, and its state before the clear.
+     */
+    struct MmuRangeHarvest
+    {
+        Paddr frame;
+        uintptr_t vaddr;
+        MmuPageStates state;
+    };
+
+    /* Cost of clearing an accessed bit, informs scanning and harvesting.
+     */
+    enum class MmuAgingCost
+    {
+        /* Reading and clearing the bit locally is cheap: for it to be accurate
+         * across the domain an expensive (software driven) shootdown is needed.
+         */
+        ExpensiveShootdown,
+
+        /* Similar to above but the shootdown is cheap.
+         */
+        CheapShootdown,
+
+        /* Setting the accessed bit involves taking a minor fault.
+         */
+        FaultDriven,
+    };
+
+    /* Represents hardware-layer breakpoint state.
      */
     struct HwBreakpoint
     {
-        uint8_t backupLength;
+        /* This field is opaque outside of the hardware layer. The intent is for
+         * it to store state to bind an instance of this struct to a hardware
+         * breakpoint resource (e.g. a set of debug address + state registers).
+         */
         uint8_t bind;
+
+        /* Length of the backup buffer used.
+         */
+        uint8_t backupLength;
+
+        /* If the breakpoint requires overwriting memory, this buffer is used to
+         * save and restore the original contents.
+         */
         uint8_t backup[sizeof(uintptr_t)];
     };
 
@@ -984,6 +1082,21 @@ namespace Npk
      */
     sl::Span<const HwDirectMapSegment> HwGetDirectMapSegments();
 
+    /* Records that the translations in `base` -> `base + length` changed and
+     * owe an invalidation. Provided by the VM, for the map backend.
+     *
+     * A range adjacent to the most recently recorded one is merged into it,
+     * so a backend should record in ascending address order. When the
+     * batch's storage is full this sets `coarse`.
+     */
+    void MapBatchAddRange(MapBatch& batch, uintptr_t base, size_t length);
+
+    /* Parks a page to be freed once every cpu has acknowledged the batch's
+     * invalidations. Provided by the VM, for the map backend (page tables a
+     * removal emptied) and for callers freeing pages they just unmapped.
+     */
+    void MapBatchFreePage(MapBatch& batch, PageInfo* page);
+
     /*
      */
     NpkStatus HwMapCreate(HwMap** map);
@@ -1000,44 +1113,79 @@ namespace Npk
      */
     void HwMapActivate(HwMap* map);
 
-    /*
+    /* Adds a new translation to `batch.map`, from `vaddr` to `paddr` with the
+     * specified permissions and cache mode. The `wired` flag indicates to lossy
+     * pmaps that this mapping cannot be lost, on lossless targets the flag is
+     * ignored.
+     * The batch may contain an invalidation range of targets that cache invalid
+     * translations, so callers must complete the batch.
      */
-    NpkStatus HwMapAdd(HwMap* map, uintptr_t vaddr, Paddr paddr, 
+    NpkStatus HwMapAdd(MapBatch& batch, uintptr_t vaddr, Paddr paddr,
         MmuPermissions perms, MmuCacheMode cacheMode, bool wired);
 
-    /*
+    /* Removes a number of translations for `batch.map` from `vaddr` ->
+     * `vaddr + (count * PageSize())`. Absent translations in the range are
+     * stepped over, extending to the whole range (meaning success can remove
+     * nothing if nothing was mapped).
      */
-    NpkStatus HwMapRemove(HwMap* map, uintptr_t vaddr, size_t count);
+    NpkStatus HwMapRemove(MapBatch& batch, uintptr_t vaddr, size_t count);
 
-    /*
+    /* Modifies a series of translations for `batch.map` from `vaddr` ->
+     * `vaddr + (count * PageSize())`. Absent translations are skipped, which
+     * may include the entire range (meaning Success can be returned when nothing
+     * was mapped).
+     * Modified translations will have their permissions updated to `perms`,
+     * but their caching modes will remain as set by `HwMapAdd()`.
      */
-    NpkStatus HwMapProtect(HwMap* map, uintptr_t vaddr, size_t count, 
+    NpkStatus HwMapProtect(MapBatch& batch, uintptr_t vaddr, size_t count,
         MmuPermissions perms);
+
+    /* Similar to `HwMapProtect()` but operates on a single translation, which
+     * must map `paddr`. If the matching translation is found it's accessed
+     * and dirty state are sampled and returned. The new permissions (`perms`)
+     * must be a superset of the translation's current permissions.
+     * This function is almost always cheaper than a remove followed by an add
+     * operation.
+     */
+    HwHarvestResult HwMapUpgrade(MapBatch& batch, uintptr_t vaddr,
+        Paddr paddr, MmuPermissions perms);
 
     /*
      */
     NpkStatus HwMapExtract(Paddr* outPaddr, MmuPermissions* outFlags, 
         MmuCacheMode* outMode, HwMap* map, uintptr_t vaddr);
 
-    /*
+    /* Harvests lifetime state about the translation of `vaddr` to `paddr` in
+     * `batch.map`. Note that if `vaddr` does not resolve to `paddr` nothing
+     * happens and this function returns a result with `matched = false`.
+     * If the translation matches, `action` decides what happens: see the
+     * descriptions of `HwHarvestAction` for the specifics. Any flags set in
+     * `clear` will cause the associated state to be reset on a match.
      */
-    void HwMapSetWired(HwMap* map, uintptr_t vaddr, bool wired);
+    HwHarvestResult HwMapHarvest(MapBatch& batch, uintptr_t vaddr,
+        Paddr paddr, HwHarvestAction action, MmuPageStates clear);
 
-    /*
+    /* Harvests up to `count` consecutive mappings from `vaddr` in one walk,
+     * writing one entry to `out` per valid leaf and returning how many. Stops
+     * early at the end of the leaf table holding `vaddr`, at `out`'s size, or
+     * at `count`.
+     *
+     * **Only `Accessed` may be cleared**, and that is the contract that makes
+     * an unconditional range safe: the caller has no frame to name for a
+     * neighbour, and clearing the accessed bit of a stranger's entry loses
+     * nothing but a reference. `Dirty` is never cleared here, because its
+     * fold needs the neighbour's owner lock, which the caller does not hold.
+     *
+     * Owes the batch an invalidation for every bit cleared, as
+     * `HwMapHarvest()` does.
      */
-    bool HwMapGetAccessed(HwMap* map, uintptr_t vaddr);
+    size_t HwMapHarvestRange(MapBatch& batch, uintptr_t vaddr, size_t count,
+        MmuPageStates clear, sl::Span<MmuRangeHarvest> out);
 
-    /*
+    /* Returns what clearing an accessed bit costs on this machine. Fixed for
+     * the life of the boot once the tlb sync backend is chosen.
      */
-    bool HwMapGetDirty(HwMap* map, uintptr_t vaddr);
-
-    /*
-     */
-    bool HwMapClearAccessed(HwMap* map, uintptr_t vaddr);
-
-    /*
-     */
-    bool HwMapClearDirty(HwMap* map, uintptr_t vaddr);
+    MmuAgingCost HwGetMmuAgingCost();
 
     /*
      */
@@ -1049,21 +1197,22 @@ namespace Npk
      *
      * This function is a synchronization point for a `HwMap`: it causes all
      * cpus in the same domain to ensure they see the latest version (when this
-     * function was called) of what the map contains. Note that if permissions
-     * are added to a mapping, or the mapping is new, the page fault handler
-     * or hardware will take care of that. A call to this function is required
-     * when a mapping's permissions are decreased or the mapping is removed.
+     * function was called) of what the map contains.
      *
      * The `sync` argument determines if this function should wait until all
      * relevant cpus have actioned and acknowledged the update. If clear this
      * function returns after only synchronizing the local cpu's view of the
-     * map. Any pages in `freeAfter` are freed after all cpus have acknowledged
-     * the map update.
+     * map. Any pages the batch holds are freed after all cpus have
+     * acknowledged the map update.
+     *
+     * The batch is empty and reusable on return, including when it held
+     * nothing - calling this on an empty batch costs a test and starts no
+     * epoch, so a caller that issues on a loop boundary need not check first.
      *
      * This function must be called at passive IPL if `sync` is set, otherwise
      * it may be called at DPC IPL.
      */
-    void HwMapUpdate(HwMap* map, bool sync, PageList& freeAfter);
+    void HwMapUpdate(MapBatch& batch, bool sync);
 
     /* Returns if the current system has hardware support for invalidating 
      * remote TLBs. If true, `HwInvalidateTlbs()` and `HwSyncTlbs()` will be
@@ -1145,6 +1294,13 @@ namespace Npk
      * allowed to be accessed until this function returns.
      */
     void HwPageMetadataRestore(Paddr page, const void* buffer);
+
+    /* Acts as if saving and restoring metadata from `src` page to `dest` page,
+     * but without the intermediate step. The bytes of `dest` must already be in
+     * place before calling this function, but are not allowed to be accessed
+     * until this function returns.
+     */
+    void HwCopyPageMetadata(Paddr dest, Paddr src);
 
     /* Places the stack of return addresses into `store`.
      * `start` is the frame base pointer to begin at, or `0` if wanting to use
