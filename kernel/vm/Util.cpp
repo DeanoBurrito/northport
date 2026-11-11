@@ -267,3 +267,46 @@ namespace Npk::Private
         }
     }
 }
+
+namespace Npk
+{
+    //TODO: reflow these into intent-based helpers over the pmap.
+    NpkStatus SetKernelMap(uintptr_t vaddr, Paddr paddr, VmFlags flags)
+    {
+        MmuPermissions perms {};
+        MmuCacheMode mode = MmuCacheMode::Default;
+
+        if (flags.Has(VmFlag::Write))
+            perms.Set(MmuPermission::Write);
+        if (flags.Has(VmFlag::Fetch))
+            perms.Set(MmuPermission::Fetch);
+        if (flags.Has(VmFlag::Mmio))
+            mode = MmuCacheMode::Mmio;
+
+        MapBatchRange rangeStore[1];
+        MapBatch batch {};
+        ResetMapBatch(batch, HwKernelMap(), { rangeStore, 1 });
+
+        auto result = HwMapAdd(batch, vaddr, paddr, perms, mode, true);
+
+        HwMapUpdate(batch, false);
+        FinishMapBatch(batch);
+
+        return result;
+    }
+
+    NpkStatus ClearKernelMap(MapBatch& batch, Paddr* paddr, uintptr_t vaddr)
+    {
+        if (paddr != nullptr)
+        {
+            auto result = HwMapExtract(paddr, nullptr, nullptr,
+                HwKernelMap(), vaddr);
+
+            if (result != NpkStatus::Success)
+                return result;
+        }
+        auto result = HwMapRemove(batch, vaddr, 1);
+
+        return result;
+    }
+}

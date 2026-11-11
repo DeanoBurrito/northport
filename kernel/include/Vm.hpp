@@ -370,8 +370,14 @@ namespace Npk
     void InitKernelVmSpace(uintptr_t lowBase, size_t lowLen, uintptr_t highBase,
         size_t highLen);
 
+    /* Sugar function for adding a mapping to the kernel map.
+     */
     NpkStatus SetKernelMap(uintptr_t vaddr, Paddr paddr, VmFlags flags);
-    NpkStatus ClearKernelMap(uintptr_t vaddr, Paddr* paddr);
+
+    /* Sugar function for removing a mapping from the kernel map, optionally
+     * places the translated-at physical address into `paddr` if non-null.
+     */
+    NpkStatus ClearKernelMap(MapBatch& batch, Paddr* paddr, uintptr_t vaddr);
 
     /* Attempts to allocate a kernel stack. The architectural base is placed
      * in `*stack` on success, this is the value that is typically placed into

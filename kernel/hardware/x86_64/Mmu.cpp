@@ -539,8 +539,7 @@ namespace Npk
                 virtBase += PageSize();
             }
 
-            if (batch.count != 0 || batch.coarse)
-                HwMapUpdate(batch, false);
+            HwMapUpdate(batch, false);
             FinishMapBatch(batch);
         }
 

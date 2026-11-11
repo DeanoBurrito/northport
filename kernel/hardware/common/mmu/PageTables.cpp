@@ -1259,6 +1259,14 @@ namespace Npk
         if (batch.map == nullptr)
             return;
 
+        if (batch.count == 0 && !batch.coarse && batch.freed.Empty())
+        {
+            if (sync)
+                TlbSyncWait();
+
+            return;
+        }
+
         HwMap* map = batch.map;
         map->lock.Lock();
 
