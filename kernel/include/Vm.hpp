@@ -46,13 +46,116 @@ namespace Npk
 
     using SwapSlot = uint64_t;
 
-    /* Forward declaration, see below.
+    /* Describes how entries are added and removed from the book, and what an
+     * empty entry should mean.
+     */
+    enum class BookBacking : uint8_t
+    {
+        /* Backed by swap, empty entries read as zeroes until dirtied once.
+         */
+        Swap,
+
+        /* All entries are filled and drained via a pager.
+         */
+        Pager,
+    };
+
+    /* Describes which parent struct the book is embedded in.
+     */
+    enum class BookKind : uint8_t
+    {
+        Amap,
+        Source,
+    };
+
+    /* Forward declarations.
      */
     struct VmSpace;
-
-    /* Forward declaration, see below.
-     */
     struct VmSource;
+    struct Iop;
+    struct IoInterface;
+    struct NsObject;
+    struct VmRange;
+    struct AnonPage;
+
+    /* Linkage for a VmRange's association with a book struct. Forms the
+     * book <-> mapping half of the pv-map. The other half (book <-> page) is
+     * formed by the `PageInfo::owner`.
+     */
+    struct BookToRangeLink
+    {
+        sl::ListHook hook;
+        VmRange* range;
+    };
+
+    using BookToRangeList = sl::List<BookToRangeLink, &BookToRangeLink::hook>;
+
+    /* Feedback and control data for readahead on a book instance. This tracks
+     * how well readahead has worked for the instance, it's a bit racy but
+     * it's also a best-effort over a best-effort.
+     */
+    struct BookReadaheadFeedback
+    {
+        sl::Atomic<uint32_t> issued; //pages published by readahead.
+        sl::Atomic<uint32_t> used; //published pages actually used.
+        sl::Atomic<uint32_t> lastSwapPlusOne; //adjacency tracking, see linux.
+        sl::Atomic<uint16_t> swapHits; //swapped-in pages used since last swapin
+        sl::Atomic<uint16_t> swapWindow; //readahead window size
+    };
+
+    /* A sparse collection of pages, addressable by their offset into the book.
+     * The "Book" name is copied from MINTIA2 discussions/sources (thanks!).
+     *
+     * Book contents should only be accessed via helper functions. For posterity
+     * the protocol is as follows:
+     * - An exclusive owner of the mutex can modify the trie's shape, change
+     *   linked ranges, transition an entry to empty, or sweep an unshared
+     *   page's mappings.
+     * - A shared holder of the mutex can fill an empty entry, or commit a
+     *   mapping.
+     * - An RCU reader can keep the book alive, and the trie can be navigated in
+     *   a reader's critical section via per-entry valid/vacant bit.
+     */
+    struct Book
+    {
+        /* Protects freeing of this book's memory, see protocol above.
+         */
+        EbrItem retire;
+
+        /* Protects internal state, see access protocol above.
+         */
+        SxMutex mutex;
+
+        /* Root address of the trie of cells, where a cell is a tagged pointer
+         * linking directly or indirectly (for shared pages) to the PageInfo
+         * at an offset.
+         */
+        sl::Atomic<uintptr_t> root;
+
+        /* List of mappings of this book.
+         */
+        BookToRangeList ranges;
+
+        /* Count of in-progress unmaps of pages from this book, typically they
+         * are waiting on an invalidation to complete. While non-zero this
+         * field prevents the `Mapped` flag of this book's pages being cleared.
+         */
+        sl::Atomic<size_t> removalsInFlight;
+
+        /* Readahead effectiveness tracking, answers the question of "worth it?"
+         * at runtime (per book).
+         */
+        BookReadaheadFeedback readahead;
+
+        /* How pages are moved in-to and out-of this book.
+         */
+        BookBacking backing;
+
+        /* The struct this book is embedded into.
+         */
+        BookKind kind;
+    };
+    static_assert(offsetof(Book, retire) == 0);
 
     struct AnonPage
     {

@@ -10,6 +10,25 @@ namespace Npk::Private
     constexpr size_t TrieNodeAlign = 16;
     constexpr uintptr_t TrieHeightMask = TrieNodeAlign - 1;
 
+    constexpr size_t TrieLog2(size_t value)
+    {
+        size_t bits = 0;
+        while ((static_cast<size_t>(1) << bits) < value)
+            bits++;
+
+        return bits;
+    }
+
+    constexpr size_t BookFillLimit = 16;
+    constexpr size_t BookTrieNodeBytes = 256;
+
+    constexpr auto VmSourceTag = NPK_MAKE_HEAP_TAG("VSrc");
+    constexpr HeapTag TrieNodeTag = NPK_MAKE_HEAP_TAG("Trie");
+
+    /* Forward declarations.
+     */
+    struct BookFill;
+
     enum class ZoneSharing
     {
         Packed,
@@ -23,17 +42,6 @@ namespace Npk::Private
         void* nodes[Capacity];
         size_t count;
     };
-
-    constexpr size_t TrieLog2(size_t value)
-    {
-        size_t bits = 0;
-        while ((static_cast<size_t>(1) << bits) < value)
-            bits++;
-
-        return bits;
-    }
-
-    void RegisterExactPoolZone(HeapTag tag, size_t size, ZoneSharing sharing);
 
     void* AllocTrieNode(size_t size);
     void FreeTrieNode(void* node, size_t size);
@@ -475,25 +483,116 @@ namespace Npk::Private
             Retire(node);
         }
     };
-}
 
-namespace Npk
-{
-    /* Forward declaration for `NamedSourceAttach()`.
+    /* Node entry of a book's trie structure, format as follows:
+     * - bit 0: lock bit
+     * - bit 1: reserved (intended to be used as a waiters bit)
+     * - bits 2-3: entry type, indicates what the address bits refer to.
+     * - bits 4+: address of the target, indicated by the type.
      */
-    struct NsObject;
+    using BookEntry = uintptr_t;
 
-    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, uintptr_t addr,
-        size_t length);
+    constexpr BookEntry BookEntryLocked = 1 << 0;
+    constexpr BookEntry BookEntryWaiters = 1 << 1;
+    constexpr size_t BookEntryTypeShift = 2;
+    constexpr BookEntry BookEntryTypeMask = 0b11 << BookEntryTypeShift;
+    constexpr size_t BookEntryAddrShift = 4;
+    constexpr BookEntry BookEntryAddrMask =
+        ~static_cast<BookEntry>(0b1111);
 
-    void PinPage(PageInfo* page);
-    void UnpinPage(PageInfo* page, size_t count = 1);
-}
+    /* What the address bits of a leaf book entry point to:
+     * aka how do we get a page to map from this thing.
+     */
+    enum class BookEntryType : uintptr_t
+    {
+        /* One of two things: if all address bits are 0, the entry is empty,
+         * otherwise the bits from the virtual address of a `PageInfo` struct
+         * that is the resident page.
+         */
+        Page = 0,
 
-namespace Npk::Private
-{
-    constexpr auto VmSourceTag = NPK_MAKE_HEAP_TAG("VSrc");
-    constexpr HeapTag TrieNodeTag = NPK_MAKE_HEAP_TAG("Trie");
+        /* Page is swapped out, address bits contain the swap handle.
+         */
+        Swap = 1,
+
+        /* Page is shared by multiple books, ownership info is maintained in a
+         * `struct AnonPage*` that the address bits point at.
+         */
+        Cell = 2,
+
+        /* This entry is busy and someone is already doing something with it.
+         * The address bits point at a `BookFill` structure that can be used to
+         * synchronize on completion.
+         */
+        Marker = 3,
+    };
+
+    struct BookEntryTraits
+    {
+        static bool Vacant(const sl::Atomic<BookEntry>& slot)
+        {
+            return slot.Load(sl::Relaxed) == 0;
+        }
+    };
+
+    using BookTrie = Private::Trie<sl::Atomic<BookEntry>, BookEntryTraits,
+        BookTrieNodeBytes>;
+
+    /* Sync state for page-in on a book. The struct covers entries `first` to
+     * `first + count` and is freed by EBR once its refcount is zero.
+     */
+    struct BookFill
+    {
+        EbrItem retire;
+        sl::Atomic<size_t> refs;
+        Condition done;
+        size_t first;
+        size_t count;
+        SwapHandle handles[BookFillLimit];
+    };
+    static_assert(offsetof(BookFill, retire) == 0);
+
+    enum class BookFindResult : uint8_t
+    {
+        Empty,
+        Page,
+        Swapped,
+        Filling,
+    };
+
+    /* Result of a lookup on a book, `result` determines which of
+     * page/fill/handle are valid
+     */
+    struct BookLookup
+    {
+        union
+        {
+            /* A resident page, with its pin count incremented for the caller.
+             */
+            PageInfo* page;
+
+            /* The fill operation tombstone for the entry, with a biased
+             * refcount.
+             */
+            BookFill* fill;
+
+            /* A snapshot of the swap handle, possible stale.
+             */
+            SwapHandle handle;
+        };
+
+        /* If non-null, this is the cell associated with the entry.
+         */
+        AnonPage* cell;
+
+        /* Result type, determines which of page/fill/handle fields are active.
+         */
+        BookFindResult result;
+
+        /* The cell had multiple sharers.
+         */
+        bool shared;
+    };
 
     enum class TrimPressure
     {
@@ -502,6 +601,193 @@ namespace Npk::Private
         LowLevel,
         MinLevel,
     };
+
+    void RegisterExactPoolZone(HeapTag tag, size_t size, ZoneSharing sharing);
+
+    SL_ALWAYS_INLINE
+    BookEntryType GetBookEntryType(BookEntry entry)
+    {
+        const auto kind = (entry & BookEntryTypeMask) >> BookEntryTypeShift;
+
+        return static_cast<BookEntryType>(kind);
+    }
+
+    SL_ALWAYS_INLINE
+    bool BookEntryEmpty(BookEntry entry)
+    {
+        return (entry & ~(BookEntryLocked | BookEntryWaiters)) == 0;
+    }
+
+    SL_ALWAYS_INLINE
+    PageInfo* BookEntryPage(BookEntry entry)
+    {
+        if (GetBookEntryType(entry) != BookEntryType::Page)
+            return nullptr;
+
+        return reinterpret_cast<PageInfo*>(entry & BookEntryAddrMask);
+    }
+
+    SL_ALWAYS_INLINE
+    SwapHandle BookEntrySwap(BookEntry entry)
+    {
+        if (GetBookEntryType(entry) != BookEntryType::Swap)
+            return NoSwapHandle;
+
+        return static_cast<SwapHandle>(entry >> BookEntryAddrShift);
+    }
+
+    SL_ALWAYS_INLINE
+    BookFill* BookEntryFill(BookEntry entry)
+    {
+        if (GetBookEntryType(entry) != BookEntryType::Marker)
+            return nullptr;
+
+        return reinterpret_cast<BookFill*>(entry & BookEntryAddrMask);
+    }
+
+    SL_ALWAYS_INLINE
+    AnonPage* BookEntryCell(BookEntry entry)
+    {
+        if (GetBookEntryType(entry) != BookEntryType::Cell)
+            return nullptr;
+
+        return reinterpret_cast<AnonPage*>(entry & BookEntryAddrMask);
+    }
+
+    SL_ALWAYS_INLINE
+    BookEntry MakeBookEntry(PageInfo* page)
+    {
+        return reinterpret_cast<BookEntry>(page);
+    }
+
+    SL_ALWAYS_INLINE
+    BookEntry MakeBookEntry(SwapHandle handle)
+    {
+        const auto payload = static_cast<BookEntry>(handle);
+        const auto kind = static_cast<BookEntry>(BookEntryType::Swap);
+
+        return (payload << BookEntryAddrShift)
+            | (kind << BookEntryTypeShift);
+    }
+
+    SL_ALWAYS_INLINE
+    BookEntry MakeBookEntry(BookFill* fill)
+    {
+        const auto kind = static_cast<BookEntry>(BookEntryType::Marker);
+
+        return reinterpret_cast<BookEntry>(fill)
+            | (kind << BookEntryTypeShift);
+    }
+
+    SL_ALWAYS_INLINE
+    BookEntry MakeBookEntry(AnonPage* cell)
+    {
+        const auto kind = static_cast<BookEntry>(BookEntryType::Cell);
+
+        return reinterpret_cast<BookEntry>(cell)
+            | (kind << BookEntryTypeShift);
+    }
+
+    /* Whether the page that `cell` owns, or `book` if cell is null, is backed
+     * by the swap store.
+     */
+    SL_ALWAYS_INLINE
+    bool BookOwnerSwapBacked(const Book* book, const AnonPage* cell)
+    {
+        if (cell != nullptr)
+            return true;
+        
+        return book != nullptr && book->backing == BookBacking::Swap;
+    }
+
+    /* Acquire the lock of `slot` and returns the entry. Note the conditions
+     * of setting the lock bit (described on the book struct): the mutex
+     * must be held in either mode to set it on an empty entry, otherwise an
+     * rcu read section is fine.
+     * With `conditionalEmpty` set, gives up and returns zero if the slot is
+     * empty instead: the only form a path holding no book mutex may use.
+     */
+    BookEntry LockBookEntry(sl::Atomic<BookEntry>& slot,
+        bool conditionalEmpty = false);
+
+    /* Requires the entry to be locked: publishes `value` to the slot and drops
+     * the lock. The `value` arg must not have the lock or waiter bits set.
+     */
+    void UnlockBookEntry(sl::Atomic<BookEntry>& slot, BookEntry value);
+
+    /* Returns (via `first` and `count`) the span of entries a book link
+     * exposes. This is the view that a VmRange provides of a book.
+     * Needs the mutex held in either mode.
+     */
+    void BookLinkSpan(size_t& first, size_t& count, const BookToRangeLink& link);
+
+    /* Links a book to a VmRange, the book's mutex must not be held.
+     */
+    void LinkLayer(Book& book, BookToRangeLink& link, VmRange* range);
+
+    /* Unlinks a book and VmRange, the book's mutex must not be held.
+     */
+    void UnlinkLayer(Book& book, BookToRangeLink& link);
+
+    /* Initializes `book` in-place.
+     */
+    void ResetBook(Book& book, BookKind kind, BookBacking backing);
+
+    void RegisterBookZones();
+
+    /* Begins releasing resources of a book: all entries must be empty and it
+     * must not be linked to any ranges.
+     */
+    void FinishBook(Book& book);
+
+    /* Sugar function to get the owning book of `page`, should be called inside
+     * an RCU read section. If the book's mutex isn't held the page can freely
+     * remove from it's ownership.
+     */
+    Book* BookOwnerOf(PageInfo* page);
+
+    /* Attempts to add a freshly (zeroed) page to `book`, at `offset`. Offset is
+     * counted in pages. The book's mutex must not be held.
+     * Returns success or `Exists` if the entry was already filled.
+     */
+    NpkStatus BookPopulate(Book& book, size_t offset, PageInfo* fresh);
+
+    /* Attempts to lookup whaever is at `offset` of `book`, if something valid
+     * the backing page has it's pin count incremented before being returned.
+     * If `write` is set and the page is a **non-shared** cell (i.e. a cell with
+     * share count of 1, or any anything else with a resident page) the page is
+     * flagged as dirty, which must precede any writable mapping.
+     * In all cases the resident page has it's pin count incremented.
+     *
+     * For shared cells the page should only be mapped readonly until the cell
+     * is broken (`BookBreakCell()`).
+     *
+     * No interaction with the book's lock, must be at passive IPL.
+     */
+    BookLookup BookLookupPin(Book& book, size_t offset, bool write);
+
+    /* Does `offset` in `book` have a valid entry.
+     */
+    bool BookHasEntry(Book& book, size_t offset);
+
+    /* Marks `page` dirty. The `book` argument should be the owning book, or
+     * `nullptr` if the page is detached and about to be freed.
+     */
+    void BookMarkWritten(Book* book, PageInfo* page);
+
+    /* Converts the caller's pin of `page` into the mapping pin, or drops the
+     * pin if already flagged as mapped. Must be called *after* mapping is live.
+     */
+    void BookCommit(Book& book, PageInfo* page);
+
+    /* Same as `BookCommit()`, but for a caller which already holds the book's
+     * mutex shared.
+     */
+    void BookCommitLocked(Book& book, PageInfo* page);
+
+    /* Drops a caller's pin on `page`.
+     */
+    void BookUnpin(PageInfo* page);
 
     LiveListHead& GetLiveListHead(SystemDomain& dom, LiveList which);
     //NOTE: assumes `dom.liveLists.lock` is held
@@ -575,4 +861,13 @@ namespace Npk::Private
      */
     size_t TrimOnce(size_t batch, bool ignoreRefs = false,
         bool exactRefs = false, TrimPressure pressure = TrimPressure::Reclaim);
+}
+
+namespace Npk
+{
+    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, uintptr_t addr,
+        size_t length);
+
+    void PinPage(PageInfo* page);
+    void UnpinPage(PageInfo* page, size_t count = 1);
 }

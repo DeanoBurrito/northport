@@ -48,6 +48,7 @@ KERNEL_CXX_SRCS += \
 	video/Video.cpp \
 	video/Text.cpp \
 	vm/Anon.cpp \
+	vm/Book.cpp \
 	vm/Fault.cpp \
 	vm/KernelStack.cpp \
 	vm/MapBatch.cpp \
