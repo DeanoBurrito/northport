@@ -594,6 +594,12 @@ namespace Npk::Private
         bool shared;
     };
 
+    /* Callback prototype: run per-page after a removal, at passive IPL with
+     * the book's mutex still held in exclusive mode.
+     * The page has no owner and no pins, and holds no additional resources.
+     */
+    using BookPageSink = void (*)(PageInfo* page, void* arg);
+
     enum class TrimPressure
     {
         None,
@@ -788,6 +794,84 @@ namespace Npk::Private
     /* Drops a caller's pin on `page`.
      */
     void BookUnpin(PageInfo* page);
+
+    /* Allocates a new `struct BookFill` and places it as a claim on slots
+     * `offset` -> `offset + count`. Slots are acquired and linked to the fill
+     * struct starting at `offset + mainIndex`, so low system memory only
+     * limits how much we can bring it at once, rather than running out of
+     * resources by the time we get to `mainIndex`.
+     *
+     * The `fill.first` and `fill.count` fields are the successfully claimed
+     * range, and it's allowed to cover less than requested.
+     *
+     * Returns the result for claiming slot `offset + mainIndex`.
+     */
+    NpkStatus BookBeginFill(BookFill*& out, Book& book, size_t offset,
+        size_t count, size_t mainIndex);
+
+    /* Completes a fill operation and publishes any pages in `pages` flagged as
+     * `Filled`. Pages without this flag have their book entries released and
+     * unclaimed, and the page itself is freed. The `ahead` arg is a bitmap for
+     * which pages should be published as readahead.
+     * Callers may hold the book's mutex shared.
+     */
+    uint32_t BookEndFill(Book& book, BookFill* fill,
+        sl::Span<PageInfo*> pages, uint32_t ahead);
+
+    /* Waits for the fill operation to finish, then release the reference to
+     * `fill` that `BookLookupPin()` added.
+     */
+    void BookWaitFill(BookFill* fill);
+
+    /* Similar to `WaitFill()` but without waiting. Drops the fill's reference
+     * and returns.
+     */
+    void BookLeaveFill(BookFill* fill);
+
+    /* Adjust readahead feedback that `page` (marked as readahead) was accessed.
+     * Feeds into readahead score determination for a book.
+     */
+    void BookNoteReadaheadUse(PageInfo* page);
+
+    /* Scale of 0-255, how effective readahead guesses for this book have been.
+     */
+    size_t BookReadaheadScore(const Book& book);
+
+    /* Must hold the book's mutex in exclusive mode. This function removes
+     * entries from `first` -> `first + count`, calling `sink` on each page
+     * (see that type for its exact environment).
+     */
+    void BookRemoveRange(Book& book, size_t first, size_t count,
+        BookPageSink sink, void* arg);
+
+    /* Unlinks `link` from `book`, releases every page covered by `link` that no
+     * other link covers, as `BookRemoveRange()` does. Caller must not hold the
+     * book lock in either mode.
+     */
+    void BookDetachRange(Book& book, BookToRangeLink& link, BookPageSink sink,
+        void* arg);
+
+    /* Must hold the book's mutex exclusive.
+     */
+    void BookLinkRange(Book& book, BookToRangeLink& link);
+
+    /* Must hold the book's mutex exclusive.
+     */
+    void BookUnlinkRange(Book& book, BookToRangeLink& link);
+
+    /* Finds the first run of indices in `from` -> `end` that no linked range
+     * covers. Returns false if no ranges are found and `first` and `count` are
+     * untouched.
+     * Must hold the book's mutex exclusive.
+     */
+    bool BookNextUncovered(size_t& first, size_t& count, Book& book,
+        size_t from, size_t end);
+
+    /* Returns whether any link other than `except` covers indices from `first`
+     * to `first + count`. Caller must hold the book's mutex in either mode.
+     */
+    bool BookOverlapped(Book& book, size_t first, size_t count,
+        const BookToRangeLink* except);
 
     LiveListHead& GetLiveListHead(SystemDomain& dom, LiveList which);
     //NOTE: assumes `dom.liveLists.lock` is held
