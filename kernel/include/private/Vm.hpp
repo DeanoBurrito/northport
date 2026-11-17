@@ -19,6 +19,7 @@ namespace Npk::Private
         return bits;
     }
 
+    constexpr size_t BookPageLimit = (1ull << sizeof(PageInfo::offset) * 8) - 1;
     constexpr size_t BookFillLimit = 16;
     constexpr size_t BookTrieNodeBytes = 256;
     constexpr size_t CellInlineSharers = 2;
@@ -758,6 +759,17 @@ namespace Npk::Private
             return true;
 
         return book != nullptr && book->backing == BookBacking::Swap;
+    }
+
+    /* Returns whether the range described in bytes fits within one book.
+     */
+    SL_ALWAYS_INLINE
+    bool BookBytesFit(uint64_t offset, uint64_t length)
+    {
+        constexpr uint64_t limit = static_cast<uint64_t>(BookPageLimit)
+            << PfnShift();
+
+        return offset <= limit && length <= limit - offset;
     }
 
     /* Acquire the lock of `slot` and returns the entry. Note the conditions

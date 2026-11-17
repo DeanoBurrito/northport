@@ -58,6 +58,7 @@ namespace Npk::Private
     static void ResetBookPage(PageInfo* page, Book& book, size_t offset,
         SwapHandle handle, uint16_t pins)
     {
+        NPK_ASSERT(offset < BookPageLimit);
         page->offset = static_cast<uint32_t>(offset);
 
         InitPageState(page, book.backing == BookBacking::Swap, handle, pins);
@@ -542,6 +543,7 @@ namespace Npk::Private
                 AnonSharerBlock* empty = RemoveSharer(cell, &book, offset);
                 NPK_ASSERT(empty == nullptr);
 
+                NPK_ASSERT(offset < BookPageLimit);
                 page->offset = static_cast<uint32_t>(offset);
                 PageInfoSetVmOwner(page, &book, PageVmOwnerType::Book);
 

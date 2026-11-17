@@ -491,6 +491,11 @@ namespace Npk
         if (source != nullptr && (srcOffset & PageMask()) != 0)
             return NpkStatus::InvalidArg;
 
+        if (!Private::BookBytesFit(0, length))
+            return NpkStatus::TooLarge;
+        if (source != nullptr && !Private::BookBytesFit(srcOffset, length))
+            return NpkStatus::TooLarge;
+
         if (flags.Has(VmFlag::Fetch))
         {
             if (flags.Has(VmFlag::Write))

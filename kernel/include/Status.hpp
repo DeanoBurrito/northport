@@ -27,6 +27,7 @@ namespace Npk
         Timeout,
         Reset,
         TooLate,
+        TooLarge,
     };
 
     const char* StatusStr(NpkStatus what);

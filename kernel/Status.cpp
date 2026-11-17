@@ -48,6 +48,8 @@ namespace Npk
             return "reset";
         case NpkStatus::TooLate:
             return "too late";
+        case NpkStatus::TooLarge:
+            return "too large";
         default:
             return "<>";
         }
