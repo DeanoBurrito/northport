@@ -76,7 +76,7 @@ namespace Npk
     struct IoInterface;
     struct NsObject;
     struct VmRange;
-    struct AnonPage;
+    struct AnonCell;
 
     /* Linkage for a VmRange's association with a book struct. Forms the
      * book <-> mapping half of the pv-map. The other half (book <-> page) is
@@ -157,46 +157,21 @@ namespace Npk
     };
     static_assert(offsetof(Book, retire) == 0);
 
-    struct AnonPage
+    /* Represents a set of pages over a VmRange, can be CoW'd.
+     */
+    struct Amap
     {
-        sl::SpinLock lock;
+        Book book;
         sl::RefCount refcount;
-        PageInfo* page;
-        SwapSlot swapSlot;
     };
+    static_assert(offsetof(Amap, book) == 0);
 
     namespace Private
     {
-        void DestroyAnonPage(AnonPage* page);
+        void DestroyAmap(Amap* map);
     }
 
-    using AnonPageRef = sl::Ref<AnonPage, &AnonPage::refcount,
-        Private::DestroyAnonPage>;
-
-    struct VmRangeAmapLink
-    {
-        sl::ListHook hook;
-    };
-
-    using AmapVmRangeList = sl::List<VmRangeAmapLink, &VmRangeAmapLink::hook>;
-
-    struct AnonMap
-    {
-        sl::RefCount refcount;
-        Mutex mutex;
-        size_t slotCount;
-        void* slots;
-        AmapVmRangeList ranges;
-        sl::Atomic<size_t> removalsInFlight;
-    };
-
-    namespace Private
-    {
-        void DestroyAnonMap(AnonMap* map);
-    }
-
-    using AnonMapRef = sl::Ref<AnonMap, &AnonMap::refcount,
-        Private::DestroyAnonMap>;
+    using AmapRef = sl::Ref<Amap, &Amap::refcount, Private::DestroyAmap>;
 
     enum class VmAdvice : uint8_t
     {
@@ -208,18 +183,42 @@ namespace Npk
 
     struct VmRange
     {
-        VmRangeAmapLink amapLink;
+        /* Ranges are detached from a space via RCU, allowing lookup to be
+         * lockless (8D).
+         */
+        EbrItem retire;
 
+        /* Linkage to the upper layer's book (amap).
+         */
+        BookToRangeLink upperLink;
+
+        /* Linkage to the lower layer's book (source).
+         */
+        BookToRangeLink lowerLink;
+
+        /* Synchronizes access to all fields below.
+         */
         Mutex mutex;
+
+        /* Count of faults looking at this range, part of the lockless lookup
+         * protocol.
+         */
+        sl::Atomic<uint32_t> faultRefs;
+
+        /* Faults drop the mutex while waiting for the backing page to become
+         * ready, this field is incremented any time state that would affect a
+         * fault is changed. This can save a good chunk of work when the fault
+         * re-acquires the lock and attempts to map the page.
+         */
+        uint32_t version;
+
+        /*
+         */
+        Condition drained;
 
         /* Linkage for VmSpace management.
          */
         sl::RBTreeHook spaceHook;
-
-        /* Linkage for the PV list of the source layer. Only valid when `source`
-         * is non-null.
-         */
-        sl::ListHook sourceHook;
 
         /* Address space this range describes.
          */
@@ -239,19 +238,24 @@ namespace Npk
          */
         VmAdvice advice;
 
+        /* Helps inform clustered pagein: the cluster size the last fault chose,
+         * before any memory pressure cuts.
+         */
+        uint8_t readaheadWindow;
+
         /* Base address of this address range, relative to the parent
          * address space. This can also be thought of as an offset,
          * but that field name is used below for a different meaning.
          */
         size_t base;
 
-        /* Length of the address range.
+        /* Length of the address range. May be read without holding `mutex`.
          */
-        size_t length;
+        sl::Atomic<size_t> length;
 
         /* Owning reference to this range's anon map structure.
          */
-        AnonMapRef amapRef;
+        AmapRef amapRef;
 
         /* Offset of this range within its referenced amap, allows efficient
          * splitting of a range as the new ranges can continue to refer to the
@@ -269,9 +273,7 @@ namespace Npk
          */
         size_t offset;
     };
-    static_assert(offsetof(VmRange, amapLink) == 0);
-
-    using VmRangeSourceList = sl::List<VmRange, &VmRange::sourceHook>;
+    static_assert(offsetof(VmRange, retire) == 0);
 
     struct VmRangeLt
     {

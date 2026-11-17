@@ -1,7 +1,35 @@
 #include <private/Vm.hpp>
+#include <lib/PlacementNew.hpp>
 
 namespace Npk::Private
 {
+    static void FreeAmapNow(EbrItem* item)
+    {
+        auto* map = reinterpret_cast<Amap*>(item);
+
+        PoolFreeWired(map, sizeof(Amap), AmapTag);
+    }
+
+    static void EmptyAndRetireBook(Book& book, EbrCallback freeNow)
+    {
+        NPK_ASSERT(book.ranges.Empty());
+
+        constexpr size_t Limit = ~static_cast<size_t>(0);
+
+        auto result = AcquireSxMutexExclusive(&book.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        BookRemoveRange(book, 0, Limit, ReleaseRemovedPage,
+            nullptr);
+        ReleaseSxMutexExclusive(&book.mutex);
+
+        FinishBook(book);
+        book.retire.callback = freeNow;
+        result = RcuCall(&book.retire);
+        NPK_ASSERT(result == NpkStatus::Success);
+    }
+
     void RegisterExactPoolZone(HeapTag tag, size_t size, ZoneSharing sharing)
     {
         PoolZoneDesc desc {};
@@ -162,60 +190,94 @@ namespace Npk::Private
         ReleaseSxMutexExclusive(&src.mutex);
     }
 
+    bool AmapTryRefBook(Book* book)
+    {
+        NPK_ASSERT(book->kind == BookKind::Amap);
+
+        AmapRef held = reinterpret_cast<Amap*>(book);
+        if (!held.Valid())
+            return false;
+        held.Disown();
+
+        return true;
+    }
+
+    void AmapUnrefBook(Book* book)
+    {
+        auto held = AmapRef::Adopt(reinterpret_cast<Amap*>(book));
+
+        held.Release();
+    }
+
+    NpkStatus CreateAmap(Amap** map)
+    {
+        if (map == nullptr)
+            return NpkStatus::InvalidArg;
+
+        void* ptr = PoolAllocWired(sizeof(Amap), AmapTag);
+        if (ptr == nullptr)
+            return NpkStatus::Shortage;
+
+        auto* newMap = new(ptr) Amap {};
+        ResetBook(newMap->book, BookKind::Amap, BookBacking::Swap);
+        newMap->refcount = 1;
+        *map = newMap;
+
+        return NpkStatus::Success;
+    }
+
+    void ReleaseRemovedPage(PageInfo* page, void* arg)
+    {
+        (void)arg;
+
+        NPK_ASSERT(page != nullptr);
+
+        auto& dom = MySystemDomain();
+        auto result = AcquireMutex(&dom.liveLists.lock, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        bool shouldFree = true;
+        if (LiveListIsListed(page->liveList))
+        {
+            LiveListUnlink(dom, page);
+            dom.liveLists.stats.Add(TrimStat::Untracked, 1);
+        }
+        else if (page->liveList == LiveListIsolated)
+        {
+            page->liveList = LiveListDoomed;
+            shouldFree = false;
+        }
+        else
+            NPK_ASSERT(page->liveList == 0);
+
+        ReleaseMutex(&dom.liveLists.lock);
+
+        if (shouldFree)
+            FreePage(page);
+    }
+
     void BeginMappingRemovals(VmRange& range)
     {
         if (range.source != nullptr)
-            range.source->removalsInFlight.FetchAdd(1);
+            range.source->book.removalsInFlight.FetchAdd(1);
         if (range.amapRef.Valid())
-            range.amapRef->removalsInFlight.FetchAdd(1);
+            range.amapRef->book.removalsInFlight.FetchAdd(1);
     }
 
     void EndMappingRemovals(VmRange& range)
     {
         if (range.source != nullptr)
         {
-            const size_t prev = range.source->removalsInFlight.FetchSub(1);
+            const size_t prev = range.source->book.removalsInFlight.FetchSub(1);
             NPK_ASSERT(prev != 0);
         }
 
         if (range.amapRef.Valid())
         {
-            const size_t prev = range.amapRef->removalsInFlight.FetchSub(1);
+            const size_t prev = range.amapRef->book.removalsInFlight.FetchSub(1);
             NPK_ASSERT(prev != 0);
         }
-    }
-
-    void SettleAnonPage(AnonMap& map, PageInfo* page, bool dirtied,
-        bool unpin)
-    {
-        if (page == nullptr)
-            return;
-
-        auto ref = AnonMapLookup(map, page->offset);
-        if (!ref.Valid())
-        {
-            //not good! This is a UAF as the page is not being tracked by the
-            //amap now but we thought it was.
-            Log("Attempted to release anon page %p from slot %u: empty slot",
-                LogLevel::Error, page, page->offset);
-            
-            return;
-        }
-
-        SwapSlot stale = NoSwapSlot;
-
-        ref->lock.Lock();
-        NPK_ASSERT(ref->page == page);
-
-        if (dirtied)
-            stale = AnonMarkDirty(*ref, page);
-        if (unpin)
-            UnpinPage(page);
-
-        ref->lock.Unlock();
-
-        if (stale != NoSwapSlot)
-            SwapFreeSlot(stale);
     }
 
     void SettleSourcePage(VmSource& src, PageInfo* page, bool dirtied,
@@ -238,33 +300,24 @@ namespace Npk::Private
 
     NpkStatus SettleMappedPage(Paddr paddr, bool dirtied)
     {
-        if (paddr == MySystemDomain().zeroPage)
+        if (IsZeroPage(paddr))
             return NpkStatus::Success;
         if (!PaddrHasPageInfo(paddr))
             return NpkStatus::Unsupported;
         if (!dirtied)
             return NpkStatus::Success;
 
-        auto* page = LookupPageInfo(paddr);
-        PageVmOwnerType type;
-        void* owner = PageInfoGetVmOwner(type, page);
-        if (owner == nullptr)
-            return NpkStatus::Success;
+        BookMarkWritten(nullptr, LookupPageInfo(paddr));
 
-        switch (type)
-        {
-        case PageVmOwnerType::Source:
-            SettleSourcePage(*static_cast<VmSource*>(owner), page, true,
-                false);
-            return NpkStatus::Success;
+        return NpkStatus::Success;
+    }
 
-        case PageVmOwnerType::Anon:
-            SettleAnonPage(*static_cast<AnonMap*>(owner), page, true, false);
-            return NpkStatus::Success;
+    void DestroyAmap(Amap* map)
+    {
+        NPK_ASSERT(map != nullptr);
+        NPK_ASSERT(map->refcount == 0);
 
-        default:
-            NPK_UNREACHABLE();
-        }
+        EmptyAndRetireBook(map->book, FreeAmapNow);
     }
 }
 

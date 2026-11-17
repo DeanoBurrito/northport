@@ -47,7 +47,6 @@ KERNEL_CXX_SRCS += \
 	process/Thread.cpp \
 	video/Video.cpp \
 	video/Text.cpp \
-	vm/Anon.cpp \
 	vm/Book.cpp \
 	vm/Fault.cpp \
 	vm/KernelStack.cpp \

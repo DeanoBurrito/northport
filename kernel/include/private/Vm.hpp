@@ -21,9 +21,12 @@ namespace Npk::Private
 
     constexpr size_t BookFillLimit = 16;
     constexpr size_t BookTrieNodeBytes = 256;
+    constexpr size_t CellInlineSharers = 2;
+    constexpr size_t CellBlockSharers = 6;
 
     constexpr auto VmSourceTag = NPK_MAKE_HEAP_TAG("VSrc");
     constexpr HeapTag TrieNodeTag = NPK_MAKE_HEAP_TAG("Trie");
+    constexpr HeapTag AmapTag = NPK_MAKE_HEAP_TAG("Amap");
 
     /* Forward declarations.
      */
@@ -516,7 +519,7 @@ namespace Npk::Private
         Swap = 1,
 
         /* Page is shared by multiple books, ownership info is maintained in a
-         * `struct AnonPage*` that the address bits point at.
+         * `struct AnonCell*` that the address bits point at.
          */
         Cell = 2,
 
@@ -552,6 +555,18 @@ namespace Npk::Private
     };
     static_assert(offsetof(BookFill, retire) == 0);
 
+    struct AnonSharer
+    {
+        Book* book;
+        size_t offset;
+    };
+
+    struct AnonSharerBlock
+    {
+        AnonSharerBlock* next;
+        AnonSharer sharers[CellBlockSharers];
+    };
+
     enum class BookFindResult : uint8_t
     {
         Empty,
@@ -583,7 +598,7 @@ namespace Npk::Private
 
         /* If non-null, this is the cell associated with the entry.
          */
-        AnonPage* cell;
+        AnonCell* cell;
 
         /* Result type, determines which of page/fill/handle fields are active.
          */
@@ -592,6 +607,45 @@ namespace Npk::Private
         /* The cell had multiple sharers.
          */
         bool shared;
+    };
+
+    enum class BookBreak
+    {
+        UsedFresh,
+        ReusedOld,
+        TryAgain,
+    };
+
+    struct BookPromoteSpares
+    {
+        void* cells;
+        AnonSharerBlock* blocks;
+        void* nodes;
+        size_t cellCount;
+        size_t blockCount;
+        size_t nodeCount;
+    };
+
+    //estimate of what `BookPromote` needs to complete when returning shortage.
+    struct BookPromoteNeed
+    {
+        size_t cells;
+        size_t blocks;
+        size_t nodes;
+    };
+
+    //attempts to take a reference on a shared cell's book inside an rcu read
+    //section: returns whether it could, false implies book is dying.
+    using BookTryRefFunc = bool (*)(Book* book);
+
+    //mirror to `BookTryRefFunc`, undoes the acquired ref on the book.
+    using BookUnrefFunc = void (*)(Book* book);
+
+    struct BookCellSnapshot
+    {
+        size_t sharerGeneration;
+        size_t commitGeneration;
+        uint32_t sharers;
     };
 
     /* Callback prototype: run per-page after a removal, at passive IPL with
@@ -652,12 +706,12 @@ namespace Npk::Private
     }
 
     SL_ALWAYS_INLINE
-    AnonPage* BookEntryCell(BookEntry entry)
+    AnonCell* BookEntryCell(BookEntry entry)
     {
         if (GetBookEntryType(entry) != BookEntryType::Cell)
             return nullptr;
 
-        return reinterpret_cast<AnonPage*>(entry & BookEntryAddrMask);
+        return reinterpret_cast<AnonCell*>(entry & BookEntryAddrMask);
     }
 
     SL_ALWAYS_INLINE
@@ -686,7 +740,7 @@ namespace Npk::Private
     }
 
     SL_ALWAYS_INLINE
-    BookEntry MakeBookEntry(AnonPage* cell)
+    BookEntry MakeBookEntry(AnonCell* cell)
     {
         const auto kind = static_cast<BookEntry>(BookEntryType::Cell);
 
@@ -698,11 +752,11 @@ namespace Npk::Private
      * by the swap store.
      */
     SL_ALWAYS_INLINE
-    bool BookOwnerSwapBacked(const Book* book, const AnonPage* cell)
+    bool BookOwnerSwapBacked(const Book* book, const AnonCell* cell)
     {
         if (cell != nullptr)
             return true;
-        
+
         return book != nullptr && book->backing == BookBacking::Swap;
     }
 
@@ -766,7 +820,7 @@ namespace Npk::Private
      * In all cases the resident page has it's pin count incremented.
      *
      * For shared cells the page should only be mapped readonly until the cell
-     * is broken (`BookBreakCell()`).
+     * is broken (`BreakCowOnBookCell()`).
      *
      * No interaction with the book's lock, must be at passive IPL.
      */
@@ -837,6 +891,62 @@ namespace Npk::Private
      */
     size_t BookReadaheadScore(const Book& book);
 
+    /* Attempts to take a reference on `cell`, called inside an rcu read
+     * section. Returns whether ref was acquired or not.
+     */
+    bool BookTryRefCell(AnonCell* cell);
+
+    /* Drops a ref to a cell previously acquired through `BookTryRefCell()`.
+     */
+    void BookUnrefCell(AnonCell* cell);
+
+    /* Breaks copy-on-write for `offset` into `book`, which is currently managed
+     * by `cell`. On `ReusedOld` the book was the last sharer, and this also
+     * tries to end the cell with `BookTryUnpromote()`.
+     */
+    BookBreak BreakCowOnBookCell(Book& book, size_t offset, AnonCell* cell,
+        PageInfo* old, PageInfo* fresh);
+
+    /* Promotes entries from `from` (`cursor` -> `end`) to `to` (`first`).
+     * Pages and handles become cells shared by both books, existing cells gain
+     * a ref. Both books must be held exclusively, and `to` must be unreachable
+     * besides this function.
+     *
+     * A result of `Shortage` populates `need` with what the caller should
+     * allocate before trying, `Pending` populates `fill` for the caller to wait
+     * on.
+     */
+    NpkStatus BookPromote(Book& from, size_t first, size_t& cursor,
+        size_t end, Book& to, BookPromoteSpares& spares,
+        BookPromoteNeed& need, BookFill*& fill);
+
+    NpkStatus BookFillPromoteSpares(BookPromoteSpares& spares,
+        const BookPromoteNeed& need);
+    void BookDrainPromoteSpares(BookPromoteSpares& spares);
+
+    bool BookCellBeginSweep(BookCellSnapshot& out, AnonCell* cell,
+        PageInfo* page);
+    bool BookCellSharer(AnonSharer& out, AnonCell* cell,
+        const BookCellSnapshot& snap, size_t index, BookTryRefFunc hold);
+    bool BookCellEndSweep(AnonCell* cell, PageInfo* page,
+        const BookCellSnapshot& snap, bool dirtied, bool unmapped);
+
+    /* If a cell only has one sharer this function moves the cell's content
+     * to the book's entry and releases the cell.
+     * Involves a try-lock so may fail spuriously.
+     */
+    bool BookUnpromote(AnonCell* cell, PageInfo* page, BookTryRefFunc hold,
+        BookUnrefFunc drop);
+
+    /* As `BookUnpromote()`, for a caller that is the sharer itself: `book`
+     * names `cell` at `offset`, and the caller keeps both alive (a reference
+     * on the cell, and its own on the book). Best effort, a try-lock of the
+     * book's mutex; false if anything changed or the mutex was busy. Holding
+     * no book mutex, at passive.
+     */
+    bool BookTryUnpromote(Book& book, size_t offset, AnonCell* cell,
+        PageInfo* page);
+
     /* Must hold the book's mutex in exclusive mode. This function removes
      * entries from `first` -> `first + count`, calling `sink` on each page
      * (see that type for its exact environment).
@@ -891,25 +1001,22 @@ namespace Npk::Private
         return static_cast<uint8_t>((size_t)list + 1);
     }
 
-    NpkStatus CreateAnonPage(AnonPage** page);
-    void DestroyAnonPage(AnonPage* page);
-    NpkStatus AnonPageGetPage(PageInfo** info, AnonPageRef page);
+    NpkStatus CreateAmap(Amap** map);
 
-    NpkStatus CreateAnonMap(AnonMap** map, size_t slotCount);
-    void DestroyAnonMap(AnonMap* map);
-    NpkStatus ResizeAnonMap(AnonMap& map, size_t newSlotCount);
-    AnonPageRef AnonMapLookup(AnonMap& map, size_t slot);
-    AnonPageRef AnonMapLookupLocked(AnonMap& map, size_t slot);
-
-    /* Links a range to an anon map, the range mutex may or may not held, but
-     * the `map.mutex` must not be. Same applies to UnlinkRange().
+    /* Attempts to acquire a refernce to an amap that embeds `book`. Called in
+     * an rcu read section (or something else that keeps the amap alive).
+     * Returns whether the ref bump succeeded or not.
      */
-    NpkStatus AnonMapLinkRange(AnonMap& map, VmRange* range);
-    NpkStatus AnonMapUnlinkRange(AnonMap& map, VmRange* range);
+    bool AmapTryRefBook(Book* book);
 
-    NpkStatus AnonMapAdd(AnonMap& map, size_t slot, AnonPageRef& anon);
-    AnonPageRef AnonMapRemove(AnonMap& map, size_t slot);
-    NpkStatus AnonMapClone(AnonMapRef* clone, AnonMap& source);
+    /* Drops a reference obtained via `AmapTryRefBook()`.
+     */
+    void AmapUnrefBook(Book* book);
+
+    /* Used for `BookPageSink` for a page a removal took from it's owner:
+     * page is freed or doomed.
+     */
+    void ReleaseRemovedPage(PageInfo* page, void* arg);
 
     VmSource* AnonSourceAttach(size_t size);
     VmSource* NamedSourceAttach(NsObject& obj);
@@ -935,8 +1042,6 @@ namespace Npk::Private
     void ClearPageMapped(PageInfo* page);
     void BeginMappingRemovals(VmRange& range);
     void EndMappingRemovals(VmRange& range);
-    void SettleAnonPage(AnonMap& map, PageInfo* page, bool dirtied,
-        bool unpin);
     void SettleSourcePage(VmSource& src, PageInfo* page, bool dirtied,
         bool unpin);
     NpkStatus SettleMappedPage(Paddr paddr, bool dirtied);
@@ -949,6 +1054,25 @@ namespace Npk::Private
 
 namespace Npk
 {
+    /* Represents a page shared by multiple books, `entry` holds what the book's
+     * entry field would hold.
+     * The lock bit of the cell's entry should be surrounded by the lock bit
+     * of the book's entry. The cell's lock bit protects generation counts and
+     * sharer linkage.
+     */
+    struct AnonCell
+    {
+        EbrItem retire;
+        sl::Atomic<Private::BookEntry> word;
+        sl::Atomic<size_t> refs;
+        size_t sharerGeneration; //bumped when a sharer joins/leaves
+        size_t commitGeneration; //bumped when `entry`'s type changes.
+        Private::AnonSharer inlineSharers[Private::CellInlineSharers];
+        Private::AnonSharerBlock* moreSharers;
+        uint32_t sharerCount;
+    };
+    static_assert(offsetof(AnonCell, retire) == 0);
+
     NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, uintptr_t addr,
         size_t length);
 

@@ -25,7 +25,7 @@ namespace Npk::Private
     struct OwnerView
     {
         Book* book;
-        AnonPage* cell;
+        AnonCell* cell;
         BookSlot* slot;
         BookEntry value;
     };
@@ -62,6 +62,13 @@ namespace Npk::Private
 
         InitPageState(page, book.backing == BookBacking::Swap, handle, pins);
         PageInfoSetVmOwner(page, &book, PageVmOwnerType::Book);
+    }
+
+    static void ResetCellPage(PageInfo* page, AnonCell* cell,
+        SwapHandle handle, uint16_t pins)
+    {
+        InitPageState(page, true, handle, pins);
+        PageInfoSetVmOwner(page, cell, PageVmOwnerType::Cell);
     }
 
     static void ClearPageOwner(PageInfo* page)
@@ -121,7 +128,7 @@ namespace Npk::Private
             BookSlot* slot;
             if (type == PageVmOwnerType::Cell)
             {
-                out.cell = static_cast<AnonPage*>(owner);
+                out.cell = static_cast<AnonCell*>(owner);
                 slot = &out.cell->word;
             }
             else
@@ -152,6 +159,125 @@ namespace Npk::Private
     static void UnlockOwnerSlot(const OwnerView& owner)
     {
         UnlockBookEntry(*owner.slot, owner.value);
+    }
+
+    //must hold the cell's lock bit.
+    static AnonSharer& SharerAt(AnonCell* cell, size_t index)
+    {
+        if (index < CellInlineSharers)
+            return cell->inlineSharers[index];
+
+        index -= CellInlineSharers;
+        AnonSharerBlock* block = cell->moreSharers;
+
+        while (index >= CellBlockSharers)
+        {
+            block = block->next;
+            index -= CellBlockSharers;
+        }
+
+        return block->sharers[index];
+    }
+
+    //must hold the cell's lock bit.
+    static bool CellFull(const AnonCell* cell)
+    {
+        const size_t count = cell->sharerCount;
+
+        return count >= CellInlineSharers
+            && (count - CellInlineSharers) % CellBlockSharers == 0;
+    }
+
+    //must hold the cell's lock bit.
+    static void AddSharer(AnonCell* cell, AnonSharer sharer,
+        AnonSharerBlock*& spares)
+    {
+        if (CellFull(cell))
+        {
+            AnonSharerBlock* block = spares;
+            NPK_ASSERT(block != nullptr);
+
+            spares = block->next;
+            block->next = nullptr;
+
+            AnonSharerBlock** tail = &cell->moreSharers;
+            while (*tail != nullptr)
+                tail = &(*tail)->next;
+            *tail = block;
+        }
+
+        SharerAt(cell, cell->sharerCount) = sharer;
+        cell->sharerCount++;
+        cell->sharerGeneration++;
+    }
+
+    //must hold the cell's lock bit. Returns the removed block (if any), for
+    //the caller to free.
+    static AnonSharerBlock* RemoveSharer(AnonCell* cell, Book* book,
+        size_t offset)
+    {
+        const size_t count = cell->sharerCount;
+
+        size_t found = count;
+        for (size_t i = 0; i < count; i++)
+        {
+            const auto& sharer = SharerAt(cell, i);
+            if (sharer.book == book && sharer.offset == offset)
+            {
+                found = i;
+                break;
+            }
+        }
+        NPK_ASSERT(found < count);
+
+        const size_t last = count - 1;
+        SharerAt(cell, found) = SharerAt(cell, last);
+        cell->sharerCount = static_cast<uint32_t>(last);
+        cell->sharerGeneration++;
+
+        if (last < CellInlineSharers
+            || (last - CellInlineSharers) % CellBlockSharers != 0)
+        {
+            return nullptr;
+        }
+
+        AnonSharerBlock** link = &cell->moreSharers;
+        while ((*link)->next != nullptr)
+            link = &(*link)->next;
+
+        AnonSharerBlock* empty = *link;
+        *link = nullptr;
+
+        return empty;
+    }
+
+    static void FreeSharerBlock(AnonSharerBlock* block)
+    {
+        if (block != nullptr)
+            PoolFreeWired(block, sizeof(AnonSharerBlock), BookCellTag);
+    }
+
+    static void FreeCellNow(EbrItem* item)
+    {
+        PoolFreeWired(item, sizeof(AnonCell), BookCellTag);
+    }
+
+    static void PushChain(void*& head, void* item)
+    {
+        *static_cast<void**>(item) = head;
+        head = item;
+    }
+
+    static void* PopChain(void*& head)
+    {
+        void* item = head;
+        if (item != nullptr)
+        {
+            head = *static_cast<void**>(item);
+            *static_cast<void**>(item) = nullptr;
+        }
+
+        return item;
     }
 
     static void PinPage(PageInfo* page)
@@ -306,11 +432,132 @@ namespace Npk::Private
         }
     }
 
+    static void TopUpNodes(Private::TrieSpares& spares, BookPromoteSpares& from)
+    {
+        constexpr auto cap = Private::TrieSpares::Capacity;
+
+        while (spares.count < cap && from.nodeCount != 0)
+        {
+            spares.nodes[spares.count++] = PopChain(from.nodes);
+            from.nodeCount--;
+        }
+    }
+
+    static void ReturnNodes(Private::TrieSpares& spares, BookPromoteSpares& to)
+    {
+        while (spares.count != 0)
+        {
+            PushChain(to.nodes, spares.nodes[--spares.count]);
+            to.nodeCount++;
+        }
+    }
+
     static size_t LeafStop(size_t index, size_t end)
     {
         const size_t leafEnd = (index | (BookTrie::LeafFanout - 1)) + 1;
 
         return end < leafEnd ? end : leafEnd;
+    }
+
+    /* CAller must hold `from` exclusively. Populates `need` with a conservative
+     * estimate of what resources a promote op would need.
+     */
+    static void CountPromoteNeed(BookPromoteNeed& need, Book& from,
+        size_t first, size_t cursor, size_t end)
+    {
+        need = {};
+        size_t leaves = 0;
+        size_t lastLeaf = ~static_cast<size_t>(0);
+
+        while (cursor < end)
+        {
+            auto section = RcuReadLock();
+
+            size_t index;
+            BookSlot* slot = BookTrie::Next(index, from.root, cursor);
+            if (slot == nullptr || index >= end)
+            {
+                RcuReadUnlock(section);
+                break;
+            }
+
+            const size_t stop = LeafStop(index, end);
+            for (; index < stop; index++, slot++)
+            {
+                const BookEntry value = LockBookEntry(*slot, true);
+                if (value == 0)
+                    continue;
+
+                const size_t leaf = (index - first) >> BookTrie::LeafBits;
+                if (leaf != lastLeaf)
+                {
+                    leaves++;
+                    lastLeaf = leaf;
+                }
+
+                if (AnonCell* cell = BookEntryCell(value); cell != nullptr)
+                {
+                    const BookEntry inner = LockBookEntry(cell->word);
+                    if (CellFull(cell))
+                        need.blocks++;
+
+                    UnlockBookEntry(cell->word, inner);
+                }
+                else
+                    need.cells++;
+
+                UnlockBookEntry(*slot, value);
+            }
+            RcuReadUnlock(section);
+            cursor = stop;
+        }
+
+        need.nodes = leaves * BookTrie::MaxHeight;
+    }
+
+    /* Must hold `book` exclusively. Moves `page` out of `cell` into the named
+     * offset into `book`. Collapses a single owner cell into the entry
+     * naming the page directly.
+     * If success is returned the caller must drop the entry's reference to the
+     * cell, after releasing the book mutex.
+     */
+    static bool UnpromoteLocked(Book& book, size_t offset, AnonCell* cell,
+        PageInfo* page)
+    {
+        auto section = RcuReadLock();
+
+        bool done = false;
+        BookSlot* slot = BookTrie::Lookup(book.root, offset);
+        BookEntry value = 0;
+        if (slot != nullptr)
+            value = LockBookEntry(*slot, true);
+
+        const bool entryLocked = value != 0;
+        if (value == MakeBookEntry(cell))
+        {
+            BookEntry inner = LockBookEntry(cell->word);
+
+            if (inner == MakeBookEntry(page) && cell->sharerCount == 1)
+            {
+                AnonSharerBlock* empty = RemoveSharer(cell, &book, offset);
+                NPK_ASSERT(empty == nullptr);
+
+                page->offset = static_cast<uint32_t>(offset);
+                PageInfoSetVmOwner(page, &book, PageVmOwnerType::Book);
+
+                inner = 0;
+                value = MakeBookEntry(page);
+                done = true;
+            }
+
+            UnlockBookEntry(cell->word, inner);
+        }
+
+        if (entryLocked)
+            UnlockBookEntry(*slot, value);
+        RcuReadUnlock(section);
+
+        return done;
     }
 
     static void FreeFillNow(EbrItem* item)
@@ -556,9 +803,9 @@ namespace Npk::Private
             return ret;
         }
 
-        if (AnonPage* cell = BookEntryCell(value); cell != nullptr)
+        if (AnonCell* cell = BookEntryCell(value); cell != nullptr)
         {
-            const bool held = BookHoldCell(cell);
+            const bool held = BookTryRefCell(cell);
             NPK_ASSERT(held);
 
             const BookEntry inner = LockBookEntry(cell->word);
@@ -919,6 +1166,405 @@ namespace Npk::Private
         return sl::Min(score, ReadaheadScoreFull);
     }
 
+    bool BookTryRefCell(AnonCell* cell)
+    {
+        while (true)
+        {
+            size_t refs = cell->refs.Load(sl::Relaxed);
+
+            if (refs == 0)
+                return false;
+            if (cell->refs.CompareExchange(refs, refs + 1, sl::Acquire))
+                return true;
+        }
+    }
+
+    void BookUnrefCell(AnonCell* cell)
+    {
+        if (cell->refs.FetchSub(1, sl::AcqRel) != 1)
+            return;
+
+        NPK_ASSERT(cell->sharerCount == 0);
+        NPK_ASSERT(cell->moreSharers == nullptr);
+        NPK_ASSERT(cell->word.Load(sl::Relaxed) == 0);
+
+        cell->retire.callback = FreeCellNow;
+        const auto result = RcuCall(&cell->retire);
+
+        NPK_ASSERT(result == NpkStatus::Success);
+    }
+
+    BookBreak BreakCowOnBookCell(Book& book, size_t offset, AnonCell* cell,
+        PageInfo* old, PageInfo* fresh)
+    {
+        auto result = AcquireSxMutexShared(&book.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        auto section = RcuReadLock();
+
+        BookSlot* slot = BookTrie::Lookup(book.root, offset);
+        BookEntry value = 0;
+        if (slot != nullptr)
+            value = LockBookEntry(*slot, true);
+
+        auto outcome = BookBreak::TryAgain;
+        SwapHandle dead = NoSwapHandle;
+        AnonSharerBlock* empty = nullptr;
+        const bool locked = value != 0;
+
+        if (value == MakeBookEntry(cell))
+        {
+            const auto inner = LockBookEntry(cell->word);
+
+            if (inner != MakeBookEntry(old))
+                outcome = BookBreak::TryAgain;
+            else if (cell->sharerCount == 1)
+            {
+                dead = MarkWrittenLocked(true, old);
+                outcome = BookBreak::ReusedOld;
+            }
+            else
+            {
+                UnpinPage(old);
+                empty = RemoveSharer(cell, &book, offset);
+                ResetBookPage(fresh, book, offset, NoSwapHandle, 1);
+                value = MakeBookEntry(fresh);
+
+                outcome = BookBreak::UsedFresh;
+            }
+
+            UnlockBookEntry(cell->word, inner);
+        }
+
+        if (locked)
+            UnlockBookEntry(*slot, value);
+        RcuReadUnlock(section);
+        ReleaseSxMutexShared(&book.mutex);
+
+        FreeHandle(dead);
+        FreeSharerBlock(empty);
+
+        if (outcome == BookBreak::UsedFresh)
+            BookUnrefCell(cell);
+        else if (outcome == BookBreak::ReusedOld)
+            BookTryUnpromote(book, offset, cell, old);
+
+        return outcome;
+    }
+
+    NpkStatus BookPromote(Book& from, size_t first, size_t& cursor,
+        size_t end, Book& to, BookPromoteSpares& spares,
+        BookPromoteNeed& need, BookFill*& fill)
+    {
+        NPK_ASSERT(from.backing == BookBacking::Swap);
+        NPK_ASSERT(to.backing == BookBacking::Swap);
+
+        need = {};
+        fill = nullptr;
+        Private::TrieSpares nodes {};
+        auto status = NpkStatus::Success;
+
+        while (status == NpkStatus::Success && cursor < end)
+        {
+            auto section = RcuReadLock();
+
+            size_t index;
+            BookSlot* slot = BookTrie::Next(index, from.root, cursor);
+            if (slot == nullptr || index >= end)
+            {
+                RcuReadUnlock(section);
+                cursor = end;
+                break;
+            }
+
+            const size_t stop = LeafStop(index, end);
+            for (; index < stop; index++, slot++)
+            {
+                const BookEntry value = LockBookEntry(*slot, true);
+                if (value == 0)
+                    continue;
+
+                if (BookFill* inFlight = BookEntryFill(value))
+                {
+                    inFlight->refs.FetchAdd(1, sl::Relaxed);
+                    fill = inFlight;
+
+                    UnlockBookEntry(*slot, value);
+                    status = NpkStatus::Pending;
+                    break;
+                }
+
+                //`to` is reached only through sharer lists, which never
+                //walk its trie: plain stores fill it
+
+                const size_t n = index - first;
+                TopUpNodes(nodes, spares);
+                BookSlot* dest = BookTrie::Ensure(to.root, n, nodes);
+                AnonCell* cell = BookEntryCell(value);
+                const bool needCell = cell == nullptr && spares.cellCount == 0;
+
+                if (dest == nullptr || needCell)
+                {
+                    UnlockBookEntry(*slot, value);
+                    status = NpkStatus::Shortage;
+                    break;
+                }
+
+                if (cell != nullptr)
+                {
+                    const BookEntry inner = LockBookEntry(cell->word);
+
+                    if (CellFull(cell) && spares.blockCount == 0)
+                    {
+                        UnlockBookEntry(cell->word, inner);
+                        UnlockBookEntry(*slot, value);
+                        status = NpkStatus::Shortage;
+                        break;
+                    }
+
+                    if (CellFull(cell))
+                        spares.blockCount--;
+
+                    AddSharer(cell, { &to, n }, spares.blocks);
+                    cell->refs.FetchAdd(1, sl::Relaxed);
+
+                    UnlockBookEntry(cell->word, inner);
+                    UnlockBookEntry(*slot, value);
+                    dest->Store(MakeBookEntry(cell), sl::Release);
+
+                    continue;
+                }
+
+                //create the cell with its lock bit held.
+                cell = new(PopChain(spares.cells)) AnonCell {};
+
+                spares.cellCount--;
+                cell->refs.Store(2, sl::Relaxed);
+                cell->inlineSharers[0] = { &from, index };
+                cell->inlineSharers[1] = { &to, n };
+                cell->sharerCount = 2;
+                cell->word.Store(value | BookEntryLocked, sl::Relaxed);
+
+                if (PageInfo* page = BookEntryPage(value); page != nullptr)
+                    PageInfoSetVmOwner(page, cell, PageVmOwnerType::Cell);
+
+                UnlockBookEntry(*slot, MakeBookEntry(cell));
+                UnlockBookEntry(cell->word, value);
+                dest->Store(MakeBookEntry(cell), sl::Release);
+            }
+
+            RcuReadUnlock(section);
+            cursor = index;
+        }
+
+        ReturnNodes(nodes, spares);
+        if (status == NpkStatus::Shortage)
+            CountPromoteNeed(need, from, first, cursor, end);
+
+        return status;
+    }
+
+    NpkStatus BookFillPromoteSpares(BookPromoteSpares& spares,
+        const BookPromoteNeed& need)
+    {
+        while (spares.cellCount < need.cells)
+        {
+            void* cell = PoolAllocWired(sizeof(AnonCell), BookCellTag);
+            if (cell == nullptr)
+                return NpkStatus::Shortage;
+
+            NPK_ASSERT((reinterpret_cast<uintptr_t>(cell)
+                & ~BookEntryAddrMask) == 0);
+
+            PushChain(spares.cells, cell);
+            spares.cellCount++;
+        }
+
+        while (spares.blockCount < need.blocks)
+        {
+            void* mem = PoolAllocWired(sizeof(AnonSharerBlock), BookCellTag);
+            if (mem == nullptr)
+                return NpkStatus::Shortage;
+
+            auto* block = new(mem) AnonSharerBlock {};
+            block->next = spares.blocks;
+            spares.blocks = block;
+            spares.blockCount++;
+        }
+
+        while (spares.nodeCount < need.nodes)
+        {
+            void* node = Private::AllocTrieNode(BookTrie::NodeSize);
+            if (node == nullptr)
+                return NpkStatus::Shortage;
+
+            PushChain(spares.nodes, node);
+            spares.nodeCount++;
+        }
+
+        return NpkStatus::Success;
+    }
+
+    void BookDrainPromoteSpares(BookPromoteSpares& spares)
+    {
+        while (void* cell = PopChain(spares.cells))
+            PoolFreeWired(cell, sizeof(AnonCell), BookCellTag);
+
+        while (spares.blocks != nullptr)
+        {
+            AnonSharerBlock* block = spares.blocks;
+            spares.blocks = block->next;
+
+            FreeSharerBlock(block);
+        }
+
+        while (void* node = PopChain(spares.nodes))
+            Private::FreeTrieNode(node, BookTrie::NodeSize);
+
+        spares = {};
+    }
+
+    bool BookCellBeginSweep(BookCellSnapshot& out, AnonCell* cell,
+        PageInfo* page)
+    {
+        auto section = RcuReadLock();
+
+        const BookEntry inner = LockBookEntry(cell->word, true);
+        const bool holds = inner == MakeBookEntry(page);
+        if (holds)
+        {
+            out.sharerGeneration = cell->sharerGeneration;
+            out.commitGeneration = cell->commitGeneration;
+            out.sharers = cell->sharerCount;
+        }
+
+        if (inner != 0)
+            UnlockBookEntry(cell->word, inner);
+        RcuReadUnlock(section);
+
+        return holds;
+    }
+
+    bool BookCellSharer(AnonSharer& out, AnonCell* cell,
+        const BookCellSnapshot& snap, size_t index, BookTryRefFunc hold)
+    {
+        auto section = RcuReadLock();
+
+        const BookEntry inner = LockBookEntry(cell->word, true);
+        bool found = inner != 0
+            && cell->sharerGeneration == snap.sharerGeneration
+            && index < cell->sharerCount;
+
+        if (found)
+        {
+            out = SharerAt(cell, index);
+            found = hold(out.book);
+        }
+
+        if (inner != 0)
+            UnlockBookEntry(cell->word, inner);
+        RcuReadUnlock(section);
+
+        return found;
+    }
+
+    bool BookCellEndSweep(AnonCell* cell, PageInfo* page,
+        const BookCellSnapshot& snap, bool dirtied, bool unmapped)
+    {
+        auto section = RcuReadLock();
+
+        const BookEntry inner = LockBookEntry(cell->word, true);
+        if (inner != MakeBookEntry(page))
+        {
+            if (inner != 0)
+                UnlockBookEntry(cell->word, inner);
+            RcuReadUnlock(section);
+
+            return false;
+        }
+
+        SwapHandle dead = NoSwapHandle;
+        if (dirtied)
+            dead = MarkWrittenLocked(true, page);
+
+        const bool still = cell->sharerGeneration == snap.sharerGeneration
+            && cell->commitGeneration == snap.commitGeneration;
+        if (unmapped && still)
+            ClearPageMapped(page);
+
+        const bool single = cell->sharerCount == 1;
+
+        UnlockBookEntry(cell->word, inner);
+        RcuReadUnlock(section);
+        FreeHandle(dead);
+
+        return single;
+    }
+
+    bool BookUnpromote(AnonCell* cell, PageInfo* page, BookTryRefFunc hold,
+        BookUnrefFunc drop)
+    {
+        auto section = RcuReadLock();
+
+        AnonSharer sole {};
+        BookEntry inner = LockBookEntry(cell->word, true);
+
+        bool held = inner == MakeBookEntry(page) && cell->sharerCount == 1;
+        if (held)
+        {
+            sole = cell->inlineSharers[0];
+            held = hold(sole.book);
+        }
+
+        if (inner != 0)
+            UnlockBookEntry(cell->word, inner);
+        RcuReadUnlock(section);
+        if (!held)
+            return false;
+
+        Book& book = *sole.book;
+        const auto locked = AcquireSxMutexExclusive(&book.mutex, {},
+            NPK_WAIT_LOCATION);
+        if (locked != NpkStatus::Success)
+        {
+            NPK_ASSERT(locked == NpkStatus::Timeout);
+            drop(sole.book);
+
+            return false;
+        }
+
+        const bool done = UnpromoteLocked(book, sole.offset, cell, page);
+        ReleaseSxMutexExclusive(&book.mutex);
+
+        if (done)
+            BookUnrefCell(cell);
+        drop(sole.book);
+
+        return done;
+    }
+
+    bool BookTryUnpromote(Book& book, size_t offset, AnonCell* cell,
+        PageInfo* page)
+    {
+        const auto locked = AcquireSxMutexExclusive(&book.mutex, {},
+            NPK_WAIT_LOCATION);
+        if (locked != NpkStatus::Success)
+        {
+            NPK_ASSERT(locked == NpkStatus::Timeout);
+
+            return false;
+        }
+
+        const bool done = UnpromoteLocked(book, offset, cell, page);
+        ReleaseSxMutexExclusive(&book.mutex);
+
+        if (done)
+            BookUnrefCell(cell);
+
+        return done;
+    }
+
     void BookRemoveRange(Book& book, size_t first, size_t count,
         BookPageSink sink, void* arg)
     {
@@ -928,7 +1574,8 @@ namespace Npk::Private
         while (cursor < end)
         {
             RemovalBatch take {};
-            AnonPage* cells[RemoveBatchSize];
+            AnonCell* cells[RemoveBatchSize];
+            PageInfo* lonePages[RemoveBatchSize];
             AnonSharerBlock* blocks[RemoveBatchSize];
             size_t cellCount = 0;
             size_t blockCount = 0;
@@ -953,7 +1600,7 @@ namespace Npk::Private
                 if (value == 0)
                     continue;
 
-                AnonPage* cell = BookEntryCell(value);
+                AnonCell* cell = BookEntryCell(value);
                 if (cell == nullptr)
                 {
                     TakeContent(take, value, index);
@@ -967,15 +1614,24 @@ namespace Npk::Private
                 if (empty != nullptr)
                     blocks[blockCount++] = empty;
 
+                //one sharer left in another book: worth an unpromote attempt
                 BookEntry left = inner;
+                PageInfo* lone = nullptr;
                 if (cell->sharerCount == 0)
                 {
                     TakeContent(take, inner, 0);
                     left = 0;
                 }
+                else if (cell->sharerCount == 1
+                    && cell->inlineSharers[0].book != &book)
+                {
+                    lone = BookEntryPage(inner);
+                }
                 UnlockBookEntry(cell->word, left);
                 UnlockBookEntry(*slot, 0);
-                cells[cellCount++] = cell;
+                cells[cellCount] = cell;
+                lonePages[cellCount] = lone;
+                cellCount++;
             }
             RcuReadUnlock(section);
 
@@ -984,7 +1640,15 @@ namespace Npk::Private
             for (size_t i = 0; i < blockCount; i++)
                 FreeSharerBlock(blocks[i]);
             for (size_t i = 0; i < cellCount; i++)
-                BookReleaseCell(cells[i]);
+            {
+                //best effort: the trimmer's sweep is the backstop
+                if (lonePages[i] != nullptr)
+                {
+                    (void)BookUnpromote(cells[i], lonePages[i],
+                        AmapTryRefBook, AmapUnrefBook);
+                }
+                BookUnrefCell(cells[i]);
+            }
             for (size_t i = 0; i < take.handleCount; i++)
                 SwapFreeHandle(take.handles[i]);
             for (size_t i = 0; i < take.pageCount; i++)
