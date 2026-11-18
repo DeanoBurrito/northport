@@ -59,7 +59,7 @@ namespace Npk::Private
         SwapHandle handle, uint16_t pins)
     {
         NPK_ASSERT(offset < BookPageLimit);
-        page->offset = static_cast<uint32_t>(offset);
+        page->offset = static_cast<BookIndex>(offset);
 
         InitPageState(page, book.backing == BookBacking::Swap, handle, pins);
         PageInfoSetVmOwner(page, &book, PageVmOwnerType::Book);
@@ -463,9 +463,13 @@ namespace Npk::Private
     /* CAller must hold `from` exclusively. Populates `need` with a conservative
      * estimate of what resources a promote op would need.
      */
-    static void CountPromoteNeed(BookPromoteNeed& need, Book& from,
-        size_t first, size_t cursor, size_t end)
+    static void CountPromoteNeed(BookPromoteNeed& need, BookSpan span,
+        size_t first)
     {
+        Book& from = *span.book;
+        size_t cursor = span.begin;
+        const size_t end = span.end;
+
         need = {};
         size_t leaves = 0;
         size_t lastLeaf = ~static_cast<size_t>(0);
@@ -544,7 +548,7 @@ namespace Npk::Private
                 NPK_ASSERT(empty == nullptr);
 
                 NPK_ASSERT(offset < BookPageLimit);
-                page->offset = static_cast<uint32_t>(offset);
+                page->offset = static_cast<BookIndex>(offset);
                 PageInfoSetVmOwner(page, &book, PageVmOwnerType::Book);
 
                 inner = 0;
@@ -916,9 +920,12 @@ namespace Npk::Private
         RcuReadUnlock(section);
     }
 
-    NpkStatus BookBeginFill(BookFill*& out, Book& book, size_t offset,
-        size_t count, size_t mainIndex)
+    NpkStatus BookBeginFill(BookFill*& out, BookSpan span, size_t mainIndex)
     {
+        Book& book = *span.book;
+        const size_t offset = span.begin;
+        const size_t count = span.end - span.begin;
+
         NPK_ASSERT(count != 0 && count <= BookFillLimit);
         NPK_ASSERT(mainIndex < count);
 
@@ -1255,10 +1262,13 @@ namespace Npk::Private
         return outcome;
     }
 
-    NpkStatus BookPromote(Book& from, size_t first, size_t& cursor,
-        size_t end, Book& to, BookPromoteSpares& spares,
-        BookPromoteNeed& need, BookFill*& fill)
+    NpkStatus BookPromote(BookSpan& span, size_t first, Book& to,
+        BookPromoteSpares& spares, BookPromoteNeed& need, BookFill*& fill)
     {
+        Book& from = *span.book;
+        size_t cursor = span.begin;
+        const size_t end = span.end;
+
         NPK_ASSERT(from.backing == BookBacking::Swap);
         NPK_ASSERT(to.backing == BookBacking::Swap);
 
@@ -1361,8 +1371,9 @@ namespace Npk::Private
         }
 
         ReturnNodes(nodes, spares);
+        span.begin = static_cast<BookIndex>(cursor);
         if (status == NpkStatus::Shortage)
-            CountPromoteNeed(need, from, first, cursor, end);
+            CountPromoteNeed(need, span, first);
 
         return status;
     }
@@ -1567,11 +1578,11 @@ namespace Npk::Private
         return done;
     }
 
-    void BookRemoveRange(Book& book, size_t first, size_t count,
-        BookPageSink sink, void* arg)
+    void BookRemoveRange(BookSpan span, BookPageSink sink, void* arg)
     {
-        const size_t end = first + count;
-        size_t cursor = first;
+        Book& book = *span.book;
+        const size_t end = span.end;
+        size_t cursor = span.begin;
 
         while (cursor < end)
         {
@@ -1663,10 +1674,7 @@ namespace Npk::Private
     void BookDetachRange(Book& book, BookToRangeLink& link, BookPageSink sink,
         void* arg)
     {
-        size_t first;
-        size_t count;
-        BookLinkSpan(first, count, link);
-        const size_t end = first + count;
+        BookSpan rest = BookLinkSpan(book, link);
 
         auto result = AcquireSxMutexExclusive(&book.mutex, sl::NoTimeout,
             NPK_WAIT_LOCATION);
@@ -1674,15 +1682,13 @@ namespace Npk::Private
 
         BookUnlinkRange(book, link);
 
-        size_t cursor = first;
-        size_t runFirst;
-        size_t runCount;
-        const bool nextUncvd = BookNextUncovered(runFirst, runCount, book,
-            cursor, end);
-        while (book.kind == BookKind::Amap && !book.ranges.Empty() && nextUncvd)
+        //asked again after each run: the next uncovered run starts past it
+        BookSpan run;
+        while (book.kind == BookKind::Amap && !book.ranges.Empty()
+            && BookNextUncovered(run, rest))
         {
-            BookRemoveRange(book, runFirst, runCount, sink, arg);
-            cursor = runFirst + runCount;
+            BookRemoveRange(run, sink, arg);
+            rest.begin = run.end;
         }
 
         ReleaseSxMutexExclusive(&book.mutex);
@@ -1698,10 +1704,11 @@ namespace Npk::Private
         book.ranges.Remove(&link);
     }
 
-    bool BookNextUncovered(size_t& first, size_t& count, Book& book,
-        size_t from, size_t end)
+    bool BookNextUncovered(BookSpan& out, BookSpan within)
     {
-        size_t point = from;
+        Book& book = *within.book;
+        const BookIndex end = within.end;
+        BookIndex point = within.begin;
         bool moved = true;
 
         while (moved && point < end)
@@ -1709,13 +1716,11 @@ namespace Npk::Private
             moved = false;
             for (auto it = book.ranges.Begin(); it != book.ranges.End(); ++it)
             {
-                size_t base;
-                size_t length;
-                BookLinkSpan(base, length, *it);
+                const BookSpan link = BookLinkSpan(book, *it);
 
-                if (point >= base && point < base + length)
+                if (point >= link.begin && point < link.end)
                 {
-                    point = base + length;
+                    point = link.end;
                     moved = true;
                 }
             }
@@ -1724,36 +1729,33 @@ namespace Npk::Private
         if (point >= end)
             return false;
 
-        size_t stop = end;
+        BookIndex stop = end;
         for (auto it = book.ranges.Begin(); it != book.ranges.End(); ++it)
         {
-            size_t base;
-            size_t length;
-            BookLinkSpan(base, length, *it);
+            const BookSpan link = BookLinkSpan(book, *it);
 
-            if (length != 0 && base > point && base < stop)
-                stop = base;
+            if (link.end != link.begin && link.begin > point
+                && link.begin < stop)
+            {
+                stop = link.begin;
+            }
         }
 
-        first = point;
-        count = stop - point;
+        out = { &book, point, stop };
 
         return true;
     }
 
-    bool BookOverlapped(Book& book, size_t first, size_t count,
-        const BookToRangeLink* except)
+    bool BookOverlapped(BookSpan span, const BookToRangeLink* except)
     {
+        Book& book = *span.book;
         for (auto it = book.ranges.Begin(); it != book.ranges.End(); ++it)
         {
             if (&*it == except)
                 continue;
 
-            size_t base;
-            size_t length;
-            BookLinkSpan(base, length, *it);
-
-            if (base < first + count && first < base + length)
+            const BookSpan link = BookLinkSpan(book, *it);
+            if (link.begin < span.end && span.begin < link.end)
                 return true;
         }
 

@@ -14,14 +14,12 @@ namespace Npk::Private
     {
         NPK_ASSERT(book.ranges.Empty());
 
-        constexpr size_t Limit = ~static_cast<size_t>(0);
-
         auto result = AcquireSxMutexExclusive(&book.mutex, sl::NoTimeout,
             NPK_WAIT_LOCATION);
         NPK_ASSERT(result == NpkStatus::Success);
 
-        BookRemoveRange(book, 0, Limit, ReleaseRemovedPage,
-            nullptr);
+        BookRemoveRange(MakeBookSpan(book, 0, BookPageLimit),
+            ReleaseRemovedPage, nullptr);
         ReleaseSxMutexExclusive(&book.mutex);
 
         FinishBook(book);

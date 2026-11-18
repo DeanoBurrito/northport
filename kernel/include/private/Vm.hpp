@@ -19,7 +19,14 @@ namespace Npk::Private
         return bits;
     }
 
-    constexpr size_t BookPageLimit = (1ull << sizeof(PageInfo::offset) * 8) - 1;
+    /* An index into one book. `PageInfo::offset` is what limits a book, so
+     * the type follows it.
+     */
+    using BookIndex = decltype(PageInfo::offset);
+    static_assert(static_cast<BookIndex>(-1) > 0);
+    static_assert(sizeof(BookIndex) <= sizeof(size_t));
+
+    constexpr size_t BookPageLimit = static_cast<BookIndex>(-1);
     constexpr size_t BookFillLimit = 16;
     constexpr size_t BookTrieNodeBytes = 256;
     constexpr size_t CellInlineSharers = 2;
@@ -37,6 +44,16 @@ namespace Npk::Private
     {
         Packed,
         CpuShared,
+    };
+
+    /* Convenience struct representing a range of entries within a book, this
+     * struct is dumb and plays no part in ownership semantics of the book.
+     */
+    struct BookSpan
+    {
+        Book* book;
+        BookIndex begin;
+        BookIndex end;
     };
 
     struct TrieSpares
@@ -772,6 +789,15 @@ namespace Npk::Private
         return offset <= limit && length <= limit - offset;
     }
 
+    SL_ALWAYS_INLINE
+    BookSpan MakeBookSpan(Book& book, size_t begin, size_t end)
+    {
+        NPK_ASSERT(begin <= end && end <= BookPageLimit);
+
+        return { &book, static_cast<BookIndex>(begin),
+            static_cast<BookIndex>(end) };
+    }
+
     /* Acquire the lock of `slot` and returns the entry. Note the conditions
      * of setting the lock bit (described on the book struct): the mutex
      * must be held in either mode to set it on an empty entry, otherwise an
@@ -787,11 +813,11 @@ namespace Npk::Private
      */
     void UnlockBookEntry(sl::Atomic<BookEntry>& slot, BookEntry value);
 
-    /* Returns (via `first` and `count`) the span of entries a book link
+    /* Returns the span of `book`'s entries that `link`, one of its links,
      * exposes. This is the view that a VmRange provides of a book.
      * Needs the mutex held in either mode.
      */
-    void BookLinkSpan(size_t& first, size_t& count, const BookToRangeLink& link);
+    BookSpan BookLinkSpan(Book& book, const BookToRangeLink& link);
 
     /* Links a book to a VmRange, the book's mutex must not be held.
      */
@@ -862,18 +888,17 @@ namespace Npk::Private
     void BookUnpin(PageInfo* page);
 
     /* Allocates a new `struct BookFill` and places it as a claim on slots
-     * `offset` -> `offset + count`. Slots are acquired and linked to the fill
-     * struct starting at `offset + mainIndex`, so low system memory only
-     * limits how much we can bring it at once, rather than running out of
-     * resources by the time we get to `mainIndex`.
+     * `span`. Slots are acquired and linked to the fill struct starting at
+     * `span.begin + mainIndex`, so low system memory only limits how much we
+     * can bring it at once, rather than running out of resources by the
+     * time we get to `mainIndex`.
      *
      * The `fill.first` and `fill.count` fields are the successfully claimed
      * range, and it's allowed to cover less than requested.
      *
-     * Returns the result for claiming slot `offset + mainIndex`.
+     * Returns the result for claiming slot `span.begin + mainIndex`.
      */
-    NpkStatus BookBeginFill(BookFill*& out, Book& book, size_t offset,
-        size_t count, size_t mainIndex);
+    NpkStatus BookBeginFill(BookFill*& out, BookSpan span, size_t mainIndex);
 
     /* Completes a fill operation and publishes any pages in `pages` flagged as
      * `Filled`. Pages without this flag have their book entries released and
@@ -919,18 +944,18 @@ namespace Npk::Private
     BookBreak BreakCowOnBookCell(Book& book, size_t offset, AnonCell* cell,
         PageInfo* old, PageInfo* fresh);
 
-    /* Promotes entries from `from` (`cursor` -> `end`) to `to` (`first`).
-     * Pages and handles become cells shared by both books, existing cells gain
-     * a ref. Both books must be held exclusively, and `to` must be unreachable
+    /* Promotes the entries of `from` to `to`, where entry `i` becomes
+     * `i - first`. Pages and handles become cells shared by both books,
+     * existing cells gain a ref. `from.begin` advances past what is done.
+     * Both books must be held exclusively, and `to` must be unreachable
      * besides this function.
      *
      * A result of `Shortage` populates `need` with what the caller should
      * allocate before trying, `Pending` populates `fill` for the caller to wait
      * on.
      */
-    NpkStatus BookPromote(Book& from, size_t first, size_t& cursor,
-        size_t end, Book& to, BookPromoteSpares& spares,
-        BookPromoteNeed& need, BookFill*& fill);
+    NpkStatus BookPromote(BookSpan& from, size_t first, Book& to,
+        BookPromoteSpares& spares, BookPromoteNeed& need, BookFill*& fill);
 
     NpkStatus BookFillPromoteSpares(BookPromoteSpares& spares,
         const BookPromoteNeed& need);
@@ -960,11 +985,10 @@ namespace Npk::Private
         PageInfo* page);
 
     /* Must hold the book's mutex in exclusive mode. This function removes
-     * entries from `first` -> `first + count`, calling `sink` on each page
-     * (see that type for its exact environment).
+     * the entries of `span`, calling `sink` on each page (see that type for
+     * its exact environment).
      */
-    void BookRemoveRange(Book& book, size_t first, size_t count,
-        BookPageSink sink, void* arg);
+    void BookRemoveRange(BookSpan span, BookPageSink sink, void* arg);
 
     /* Unlinks `link` from `book`, releases every page covered by `link` that no
      * other link covers, as `BookRemoveRange()` does. Caller must not hold the
@@ -981,19 +1005,16 @@ namespace Npk::Private
      */
     void BookUnlinkRange(Book& book, BookToRangeLink& link);
 
-    /* Finds the first run of indices in `from` -> `end` that no linked range
-     * covers. Returns false if no ranges are found and `first` and `count` are
-     * untouched.
+    /* Finds the first run of indices in `within` that no linked range
+     * covers. Returns false if there is none, and `out` is untouched.
      * Must hold the book's mutex exclusive.
      */
-    bool BookNextUncovered(size_t& first, size_t& count, Book& book,
-        size_t from, size_t end);
+    bool BookNextUncovered(BookSpan& out, BookSpan within);
 
-    /* Returns whether any link other than `except` covers indices from `first`
-     * to `first + count`. Caller must hold the book's mutex in either mode.
+    /* Returns whether any link other than `except` covers an index of
+     * `span`. Caller must hold the book's mutex in either mode.
      */
-    bool BookOverlapped(Book& book, size_t first, size_t count,
-        const BookToRangeLink* except);
+    bool BookOverlapped(BookSpan span, const BookToRangeLink* except);
 
     LiveListHead& GetLiveListHead(SystemDomain& dom, LiveList which);
     //NOTE: assumes `dom.liveLists.lock` is held
