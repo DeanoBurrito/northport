@@ -10,6 +10,18 @@ namespace Npk::Private
         PoolFreeWired(map, sizeof(Amap), AmapTag);
     }
 
+    static void UnpinAll(sl::Span<PageInfo*> pages)
+    {
+        for (size_t i = 0; i < pages.Size(); i++)
+        {
+            if (pages[i] == nullptr)
+                continue;
+
+            BookUnpin(pages[i]);
+            pages[i] = nullptr;
+        }
+    }
+
     static void EmptyAndRetireBook(Book& book, EbrCallback freeNow)
     {
         NPK_ASSERT(book.ranges.Empty());
@@ -26,6 +38,164 @@ namespace Npk::Private
         book.retire.callback = freeNow;
         result = RcuCall(&book.retire);
         NPK_ASSERT(result == NpkStatus::Success);
+    }
+
+    static NpkStatus PinCluster(VmSource& src, sl::Span<PageInfo*> out,
+        size_t base, size_t mainIndex, PagerFlags flags)
+    {
+        NPK_ASSERT(out.Size() != 0 && out.Size() <= MaxSourceClusterPages);
+        NPK_ASSERT(mainIndex < out.Size());
+
+        const size_t count = out.Size();
+        auto& book = src.book;
+
+        while (true)
+        {
+            bool wanted[MaxSourceClusterPages] {};
+            BookFill* theirs = nullptr;
+
+            //first pass, extract what the book has for each wanted page.
+            for (size_t i = 0; i < count; i++)
+            {
+                out[i] = nullptr;
+
+                if (i != mainIndex && BookHasEntry(book, base + i))
+                    continue;
+
+                const auto found = BookLookupPin(book, base + i, false);
+                const auto kind = found.result;
+
+                if (kind == BookFindResult::Page)
+                    out[i] = found.page;
+                else if (kind == BookFindResult::Empty)
+                    wanted[i] = true;
+                else if (kind == BookFindResult::Filling && i == mainIndex)
+                    theirs = found.fill;
+                else if (kind == BookFindResult::Filling)
+                    BookLeaveFill(found.fill); //read-ahead: never wait on it
+            }
+
+            if (theirs != nullptr)
+            {
+                UnpinAll(out);
+                BookWaitFill(theirs);
+                continue;
+            }
+
+            //determine the run (start, count) of pages to read in.
+            const bool needMain = wanted[mainIndex];
+            size_t start = mainIndex;
+            if (needMain)
+            {
+                while (start > 0 && wanted[start - 1])
+                    start--;
+            }
+            else
+            {
+                start = mainIndex + 1;
+                while (start < count && !wanted[start])
+                    start++;
+                if (start == count)
+                    return NpkStatus::Success;
+            }
+
+            BookFill* fill;
+            size_t fillMain = 0;
+            if (needMain)
+                fillMain = mainIndex - start;
+
+            size_t claimable = count - start;
+            claimable = sl::Min<size_t>(claimable, BookPageLimit
+                - (base + start));
+
+            if (claimable == 0)
+                return NpkStatus::Success;
+            const auto claim = MakeBookSpan(book, base + start,
+                base + start + claimable);
+
+            //claim the run within the book, signal our intent to others.
+            auto result = BookBeginFill(fill, claim, fillMain);
+            if (result != NpkStatus::Success && !needMain)
+                return NpkStatus::Success;
+            if (result == NpkStatus::Exists)
+            {
+                UnpinAll(out);
+                continue;
+            }
+            if (result != NpkStatus::Success)
+            {
+                UnpinAll(out);
+
+                return result;
+            }
+
+            //at this point the claim promises to hold the main entry,
+            //but the cluster we asked for may have been truncated either side
+            //depending on what was available.
+            start = fill->first - base;
+            const size_t claimed = fill->count;
+
+            PageInfo* got[MaxSourceClusterPages] {};
+            PageInfo* span[MaxSourceClusterPages] {};
+
+            bool shortage = false;
+            for (size_t i = 0; i < claimed; i++)
+            {
+                got[i] = AllocPage(true);
+
+                if (got[i] != nullptr)
+                    PageClearFlag(got[i], PageVmFlag::Filled);
+                else if (start + i == mainIndex)
+                    shortage = true;
+
+                span[start + i] = got[i];
+            }
+
+            NpkStatus pagerResult = NpkStatus::Shortage;
+            if (!shortage)
+            {
+                pagerResult = src.ops->Get(&src, { span, count }, base,
+                    mainIndex, nullptr, flags);
+            }
+
+            bool mainFilled = false;
+            if (!shortage && needMain)
+            {
+                auto* main = got[mainIndex - start];
+                mainFilled = PageHasFlag(main, PageVmFlag::Filled);
+            }
+
+            //create the bitmap of which pages were filled in as readahead,
+            //so that they can be marked as such.
+            static_assert(BookFillLimit < 32);
+
+            uint32_t ahead = (1u << claimed) - 1;
+            if (needMain)
+                ahead &= ~(1u << (mainIndex - start));
+            const uint32_t published = BookEndFill(book, fill,
+                { got, claimed }, ahead);
+
+            for (size_t i = 0; i < claimed; i++)
+            {
+                if ((published & (1u << i)) == 0)
+                    continue;
+
+                TrackPage(got[i]);
+                out[start + i] = got[i];
+            }
+
+            if (out[mainIndex] != nullptr)
+                return NpkStatus::Success;
+
+            UnpinAll(out);
+
+            if (mainFilled)
+                continue;
+            if (pagerResult == NpkStatus::Success)
+                return NpkStatus::Shortage;
+
+            return pagerResult;
+        }
     }
 
     void RegisterExactPoolZone(HeapTag tag, size_t size, ZoneSharing sharing)
@@ -110,84 +280,6 @@ namespace Npk::Private
         head.length--;
     }
 
-    void PinPage(PageInfo* page)
-    {
-        constexpr auto PinsLimit = (1 << (sizeof(page->pins) * 8)) - 1;
-        NPK_ASSERT(page->pins < PinsLimit);
-
-        page->pins++;
-    }
-
-    void UnpinPage(PageInfo* page, size_t count)
-    {
-        NPK_ASSERT(page->pins >= count);
-
-        page->pins -= count;
-    }
-
-    void TrackPage(PageInfo* page)
-    {
-        auto& dom = MySystemDomain();
-
-        PageVmOwnerType type;
-        PageInfoGetVmOwner(type, page);
-
-        LiveList to = LiveList::Active1;
-        if (type == PageVmOwnerType::Source)
-            to = LiveList::Probation;
-
-        auto result = AcquireMutex(&dom.liveLists.lock, sl::NoTimeout,
-            NPK_WAIT_LOCATION);
-        NPK_ASSERT(result == NpkStatus::Success);
-        LiveListLink(dom, to, page);
-
-        dom.liveLists.stats.Add(TrimStat::Tracked, 1);
-        ReleaseMutex(&dom.liveLists.lock);
-    }
-
-    void UntrackPage(PageInfo* page)
-    {
-        NPK_ASSERT(page != nullptr);
-
-        auto& dom = MySystemDomain();
-        auto result = AcquireMutex(&dom.liveLists.lock, sl::NoTimeout,
-            NPK_WAIT_LOCATION);
-        NPK_ASSERT(result == NpkStatus::Success);
-
-        if (page->liveList != 0)
-        {
-            LiveListUnlink(dom, page);
-
-            dom.liveLists.stats.Add(TrimStat::Untracked, 1);
-        }
-
-        ReleaseMutex(&dom.liveLists.lock);
-    }
-
-    void DrainSourcePages(VmSource& src)
-    {
-        NPK_ASSERT(src.ranges.Empty());
-
-        //this lock also synchronizes with the trimmer looking at this source
-        //from the perspective of a PageInfo's owner.
-        auto result = AcquireSxMutexExclusive(&src.mutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION);
-        NPK_ASSERT(result == NpkStatus::Success);
-
-        while (!src.pages.Empty())
-        {
-            auto* page = src.pages.PopFront();
-
-            UntrackPage(page);
-            ClearPageMapped(page);
-
-            NPK_ASSERT(page->pins == 0);
-            FreePage(page);
-        }
-
-        ReleaseSxMutexExclusive(&src.mutex);
-    }
-
     bool AmapTryRefBook(Book* book)
     {
         NPK_ASSERT(book->kind == BookKind::Amap);
@@ -224,6 +316,28 @@ namespace Npk::Private
         return NpkStatus::Success;
     }
 
+    void TrackPage(PageInfo* page)
+    {
+        auto& dom = MySystemDomain();
+
+        PageVmOwnerType type;
+        void* owner = PageInfoGetVmOwner(type, page);
+        NPK_ASSERT(owner != nullptr);
+
+        LiveList to = LiveList::Active1;
+        if (type == PageVmOwnerType::Book
+            && static_cast<Book*>(owner)->kind == BookKind::Source)
+            to = LiveList::Probation;
+
+        auto result = AcquireMutex(&dom.liveLists.lock, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        LiveListLink(dom, to, page);
+        dom.liveLists.stats.Add(TrimStat::Tracked, 1);
+        ReleaseMutex(&dom.liveLists.lock);
+    }
+
     void ReleaseRemovedPage(PageInfo* page, void* arg)
     {
         (void)arg;
@@ -255,6 +369,26 @@ namespace Npk::Private
             FreePage(page);
     }
 
+    void DestroySource(VmSource& src, EbrCallback freeNow)
+    {
+        EmptyAndRetireBook(src.book, freeNow);
+    }
+
+    NpkStatus SourcePinCluster(VmSource& src, sl::Span<PageInfo*> out,
+        size_t base, size_t mainIndex, PagerFlags flags)
+    {
+        const auto result = PinCluster(src, out, base, mainIndex, flags);
+
+        if (result != NpkStatus::Success)
+            return result;
+
+        const auto swapBacked = src.book.backing == BookBacking::Swap;
+        if (flags.Has(PagerFlag::Write) && swapBacked)
+            BookMarkWritten(&src.book, out[mainIndex]);
+
+        return result;
+    }
+
     void BeginMappingRemovals(VmRange& range)
     {
         if (range.source != nullptr)
@@ -276,24 +410,6 @@ namespace Npk::Private
             const size_t prev = range.amapRef->book.removalsInFlight.FetchSub(1);
             NPK_ASSERT(prev != 0);
         }
-    }
-
-    void SettleSourcePage(VmSource& src, PageInfo* page, bool dirtied,
-        bool unpin)
-    {
-        if (page == nullptr)
-            return;
-
-        if (AcquireSxMutexExclusive(&src.mutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION) != NpkStatus::Success)
-            return;
-
-        if (dirtied)
-            page->flags.Clear(PageVmFlag::Clean);
-        if (unpin)
-            UnpinPage(page);
-
-        ReleaseSxMutexExclusive(&src.mutex);
     }
 
     NpkStatus SettleMappedPage(Paddr paddr, bool dirtied)
@@ -359,5 +475,47 @@ namespace Npk
         auto result = HwMapRemove(batch, vaddr, 1);
 
         return result;
+    }
+
+    NpkStatus SourcePagePin(PageInfo** out, VmSource* source, size_t index)
+    {
+        if (out == nullptr || source == nullptr)
+            return NpkStatus::InvalidArg;
+        if (source->ops->Get == nullptr)
+            return NpkStatus::Unsupported;
+
+        PageInfo* pages[1] = {};
+        const auto result = Private::SourcePinCluster(*source, { pages, 1 },
+            index, 0, {});
+
+        if (result == NpkStatus::Success)
+            *out = pages[0];
+
+        return result;
+    }
+
+    void SourcePageUnpin(VmSource* source, PageInfo* page)
+    {
+        (void)source;
+
+        Private::BookUnpin(page);
+    }
+
+    bool SourcePageResident(VmSource* source, size_t index)
+    {
+        using namespace Private;
+
+        const auto found = BookLookupPin(source->book, index, false);
+
+        if (found.result == Private::BookFindResult::Page)
+        {
+            Private::BookUnpin(found.page);
+            return true;
+        }
+
+        if (found.result == Private::BookFindResult::Filling)
+            BookWaitFill(found.fill);
+
+        return false;
     }
 }

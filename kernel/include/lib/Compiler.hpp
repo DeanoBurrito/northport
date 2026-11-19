@@ -46,6 +46,12 @@
     #define SL_LEADING_ZEROS_64(x) __builtin_clzll(x)
 
     #define SL_ATOMIC_ALWAYS_LOCK_FREE(s) __atomic_always_lock_free(s, 0)
+
+    #define SL_ASSERT_OFFSET(type, member, offset) \
+        static_assert(__is_standard_layout(type), \
+            #type " must be standard-layout to assert a member offset"); \
+        static_assert(__builtin_offsetof(type, member) == (offset), \
+            #type "::" #member " is not at offset " #offset)
 #else
     #error "Failed to detect compiler."
 #endif

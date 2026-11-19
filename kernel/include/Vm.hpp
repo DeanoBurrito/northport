@@ -329,37 +329,97 @@ namespace Npk
 
     using PagerFlags = sl::Flags<PagerFlag>;
 
+    /* Used to move metadata for a page to/from pagers, as pagers will need to
+     * store and load metadata from the backing store but cannot activate the
+     * metadata (they might not have the capabilities to do so).
+     * The buffer (`bytes`) is zeroed before being passed to a pager's Get().
+     *
+     * If a target doesnt have any metadata, pointers to this struct can be left
+     * null.
+     */
     struct VmPagerMeta
     {
         uint8_t* bytes;
         size_t bytesPerPage;
     };
 
+    /* Functions for moving data between backing store and VmSource's book.
+     *
+     * For functions taking a page info span, the caller allocates these but is
+     * allowed to leave null entries mid-span to indicate it doesnt care about
+     * that page. The offset applies to `pages[0]` in the source, and
+     * `mainIndex` is relative to the offset, and indicates the page the caller
+     * really cares about. The other pages are nice-to-haves but not needed now.
+     * The return status refers to what happened regarding the main page.
+     *
+     * On Get()/Fault() ops the caller will clear the `Filled` flag on each
+     * non-null page. If the pager filled the page, it must re-set that flag.
+     */
     struct VmPagerOps
     {
+        /* Attempts to acquire a reference to the source, returns success.
+         *
+         * Implementations are not allowed to block and should generally keep
+         * this short, callers are already under several layers of locks.
+         * Spinlocks should only be taken internally with great care that they
+         * can never lead back to any state shared with the trimmer or fault
+         * handler. It's preferable to not take any locks at all if possible.
+         */
         bool (*RefObj)(VmSource* src, PagerFlags flags);
+
+        /* Undoes a previously acquired reference from `RefObj()`. See notes on
+         * that function.
+         */
         void (*UnrefObj)(VmSource* src);
-        NpkStatus (*Get)(VmSource* src, sl::Span<PageInfo> pages, 
-            size_t pagesOffset, size_t mainIndex, PagerFlags flags);
-        NpkStatus (*Fault)(VmSource* src, VmSpace& space, uintptr_t vaddr, 
-            sl::Span<PageInfo> pages, size_t pagesOffset, size_t mainIndex, 
+
+        /* Fills `pages` with data, and the caller guarantees pages are zero
+         * filled. May block and/or take locks.
+         *
+         * May be nullptr for pagers that dont support returning page data,
+         * in that case they must provide an implementation for `Fault()`.
+         */
+        NpkStatus (*Get)(VmSource* src, sl::Span<PageInfo*> pages,
+            size_t pagesOffset, size_t mainIndex, VmPagerMeta* meta,
             PagerFlags flags);
-        NpkStatus (*Put)(VmSource* src, sl::Span<PageInfo> pages, 
-            size_t pagesOffset, PagerFlags flags);
-        void (*Flush)(VmSource* src, size_t offsetPages, size_t lengthPages, 
+
+        /* Like `Get()` but establishes the mappings itself and returns after
+         * they're added. Suitable for memory the VMM can't manage, like MMIO.
+         *
+         * This function is only called for pagers that dont provide a valid
+         * `Get()` routine. Only one of these functions will be called for a
+         * pager.
+         *
+         * The `vaddr` arg is the virtual address of `pages[0]`, `pages` acts as
+         * a bitmap of which pages are wanted, but the page info structs
+         * themselves are not valid and should not be accessed.
+         */
+        NpkStatus (*Fault)(VmSource* src, VmSpace& space, uintptr_t vaddr,
+            sl::Span<PageInfo*> pages, size_t pagesOffset, size_t mainIndex,
+            PagerFlags flags);
+
+        /* For pages provided by `Get()` this function performs the opposite
+         * function: data is copied from `pages` to the backing store.
+         * There is no main index here for obvious reasons.
+         */
+        NpkStatus (*Put)(VmSource* src, sl::Span<PageInfo*> pages,
+            size_t pagesOffset, const VmPagerMeta* meta, PagerFlags flags);
+
+        void (*Flush)(VmSource* src, size_t offsetPages, size_t lengthPages,
             PagerFlags flags);
         void (*Release)(VmSource* src, PageInfo* page, size_t pageOffset);
     };
 
     struct VmSource
     {
-        const VmPagerOps* ops; //set before source is known to vm subsystem, readonly after - not protected by lock
+        /* Book struct for managing the pages for this source.
+         */
+        Book book;
 
-        SxMutex mutex;
-        PageCacheList pages;
-        sl::List<VmRange, &VmRange::sourceHook> ranges;
-        sl::Atomic<size_t> removalsInFlight;
+        /* Set before the source is known to the VM subsystem. Readonly after.
+         */
+        const VmPagerOps* ops;
     };
+    SL_ASSERT_OFFSET(VmSource, book, 0);
 
     /* Provides fine control over address space allocation. Each field has a
      * sane default value and can be left untouched if the caller doesn't care
@@ -578,6 +638,21 @@ namespace Npk
     {
         return PoolFree(ptr, len, tag, true, timeout);
     }
+
+    /* Pins the page at `source:index`. This function may block if the page
+     * needs to be fetched from backing storage. Pinned page is placed in
+     * `*out` on success.
+     */
+    NpkStatus SourcePagePin(PageInfo** out, VmSource* source, size_t index);
+
+    /* Unpins `page` that was previously pinned and returned from
+     * `SourcePagePin()`.
+     */
+    void SourcePageUnpin(VmSource* source, PageInfo* page);
+
+    /* Returns whether a `source:index` is currently resident.
+     */
+    bool SourcePageResident(VmSource* source, size_t index);
 
     /* Attempts to allocate a range of `length` bytes in an address space. If
      * successful the allocated address is placed in `*addr`, otherwise `*addr`

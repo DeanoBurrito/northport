@@ -51,6 +51,7 @@ KERNEL_CXX_SRCS += \
 	vm/Fault.cpp \
 	vm/KernelStack.cpp \
 	vm/MapBatch.cpp \
+	vm/PagerAnon.cpp \
 	vm/PagerModule.cpp \
 	vm/Pool.cpp \
 	vm/Space.cpp \

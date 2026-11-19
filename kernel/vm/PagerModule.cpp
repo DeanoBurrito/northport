@@ -177,6 +177,12 @@ namespace Npk::Private
         return NpkStatus::Success;
     }
 
+    static void FreeModuleSourceNow(EbrItem* item)
+    {
+        auto* src = reinterpret_cast<ModuleVmSource*>(item);
+        PoolFreeWired(src, sizeof(*src), VmSourceTag);
+    }
+
     static bool ModuleRefObj(VmSource* source, PagerFlags flags)
     {
         (void)flags;
@@ -197,7 +203,6 @@ namespace Npk::Private
             return;
         //else: last reference is gone, cleanup.
 
-        Private::DrainSourcePages(*source);
         if (src->writeBack != nullptr)
         {
             PoolFreeWired(src->writeBack, src->writeBackPages << PfnShift(),
@@ -205,7 +210,7 @@ namespace Npk::Private
         }
 
         moduleVmSource = nullptr;
-        PoolFreeWired(src, sizeof(*src), VmSourceTag);
+        DestroySource(*source, FreeModuleSourceNow);
     }
 
     static NpkStatus ModuleGet(VmSource* source, sl::Span<PageInfo*> pages,
@@ -240,8 +245,7 @@ namespace Npk::Private
 
             if (result == NpkStatus::Success)
             {
-                page->vm.offset = static_cast<uint32_t>(pagesOffset + i);
-                page->vm.flags.Set(PageVmFlag::Filled);
+                PageSetFlag(page, PageVmFlag::Filled);
             }
 
             if (i == mainIndex)
@@ -359,13 +363,7 @@ namespace Npk::Private
             return NpkStatus::Shortage;
 
         auto* source = new(ptr) ModuleVmSource {};
-        result = ResetSxMutex(&source->mutex);
-        if (result != NpkStatus::Success)
-        {
-            PoolFreeWired(ptr, sizeof(*source), VmSourceTag);
-
-            return result;
-        }
+        ResetBook(source->book, BookKind::Source, BookBacking::Pager);
 
         result = ResetMutex(&source->writeMutex, 1);
         if (result != NpkStatus::Success)

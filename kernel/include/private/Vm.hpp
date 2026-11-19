@@ -36,6 +36,8 @@ namespace Npk::Private
     constexpr HeapTag TrieNodeTag = NPK_MAKE_HEAP_TAG("Trie");
     constexpr HeapTag AmapTag = NPK_MAKE_HEAP_TAG("Amap");
 
+    constexpr size_t MaxSourceClusterPages = BookFillLimit;
+
     /* Forward declarations.
      */
     struct BookFill;
@@ -680,6 +682,12 @@ namespace Npk::Private
         MinLevel,
     };
 
+    struct AnonVmSource : public VmSource
+    {
+        sl::RefCount refs;
+        size_t length;
+    };
+
     void RegisterExactPoolZone(HeapTag tag, size_t size, ZoneSharing sharing);
 
     SL_ALWAYS_INLINE
@@ -1066,17 +1074,28 @@ namespace Npk::Private
      */
     size_t TrimKernelStackCaches(size_t keepPerCpu, sl::TimeCount timeout);
 
-    void PinPage(PageInfo* page);
-    void UnpinPage(PageInfo* page, size_t count = 1);
-    void TrackPage(PageInfo* page); //places page on active list
-    void UntrackPage(PageInfo* page); //removes page from a live list (if any)
-    void DrainSourcePages(VmSource& src);
+    /* Publishes a newly resident page for tracking purposes (on the active
+     * lists). Cannot hold page's owner lock when calling.
+     */
+    void TrackPage(PageInfo* page);
 
-    void ClearPageMapped(PageInfo* page);
+    /* Empties the book and retires it, `freeNow` is the retire callback.
+     * No ranges may be attached to `src`.
+     */
+    void DestroySource(VmSource& src, EbrCallback freeNow);
+
+    /* Attempts to pin `out.Size()` pages from `src:base`. The return value
+     * represents `mainIndex`, which is an offset from `base`, and on failure
+     * nothing is pinned, on success at least the main page is pinned.
+     * Non-resident pages are read in from backing storage if possible,
+     * if PagerFlag::Write is passed the page is marked as written.
+     * No locks of `src` required by caller.
+     */
+    NpkStatus SourcePinCluster(VmSource& src, sl::Span<PageInfo*> out,
+        size_t base, size_t mainIndex, PagerFlags flags);
+
     void BeginMappingRemovals(VmRange& range);
     void EndMappingRemovals(VmRange& range);
-    void SettleSourcePage(VmSource& src, PageInfo* page, bool dirtied,
-        bool unpin);
     NpkStatus SettleMappedPage(Paddr paddr, bool dirtied);
 
     /* Runs once pass of page trimming, exposed here for testing purposes only.
@@ -1108,7 +1127,4 @@ namespace Npk
 
     NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, uintptr_t addr,
         size_t length);
-
-    void PinPage(PageInfo* page);
-    void UnpinPage(PageInfo* page, size_t count = 1);
 }
