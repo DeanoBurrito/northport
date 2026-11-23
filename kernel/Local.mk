@@ -57,6 +57,7 @@ KERNEL_CXX_SRCS += \
 	vm/SourceSize.cpp \
 	vm/Space.cpp \
 	vm/SwapMemory.cpp \
+	vm/Transfer.cpp \
 	vm/Util.cpp \
 	Fireworks.cpp \
 	$(BAKED_CONSTANTS_FILE)

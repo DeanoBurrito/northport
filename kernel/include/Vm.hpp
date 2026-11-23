@@ -79,6 +79,89 @@ namespace Npk
     struct VmRange;
     struct AnonCell;
 
+    enum class TransferBufferType : uint16_t
+    {
+        /* Indicates the buffer holds no data, no `buffer.*` fields are active.
+         */
+        None,
+
+        /* Indicates the buffer resides in kernel virtual memory, the
+         * `buffer.kernel.*` fields are considered active.
+         */
+        KernelVirtual,
+
+        /* Indicates the buffer resides in a user address space. The
+         * `buffer.user.*` fields are considered active. Note that the user
+         * address space may not be active while the buffer is, so care
+         * should be taken around direct buffer accesses.
+         */
+        UserVirtual,
+
+        /* Indicates the buffer is a list of physical pages. The
+         * `buffer.physical.*` fields are considered active. Neither the
+         * buffer nor its consumer pins these pages; see `TransferBuffer`.
+         */
+        PageList,
+    };
+
+    /* Flags for an individual transfer buffer.
+     */
+    enum class TransferBufferFlag
+    {
+        /* Only for `PageList` type buffers: indicates the data on the pages
+         * has been cleaned, it's visible to all devices from main memory.
+         */
+        PagesClean,
+    };
+
+    using TransferBufferFlags = sl::Flags<TransferBufferFlag, uint16_t>;
+
+    /* General purpose descriptor used for data transfers. Note that the buffer
+     * has no ownership or lifetime contracts with the buffer it describes,
+     * that is left to the caller.
+     */
+    struct TransferBuffer
+    {
+        /* Offset (in bytes) of the target data range from the beginning
+         * of the specified buffer.
+         */
+        size_t offset;
+
+        /* Length (in bytes) of the target data range from the beginning of
+         * the specified buffer.
+         */
+        size_t length;
+
+        /* Flags describing this buffer.
+         */
+        TransferBufferFlags flags;
+
+        /* Determines the meaning of the fields in the following union type.
+         * Each enum member has a corresponding union sub-struct, except for
+         * `None`, which means no fields are valid.
+         */
+        TransferBufferType type;
+
+        union
+        {
+            struct
+            {
+                void* base;
+            } kernel;
+
+            struct
+            {
+                uintptr_t base;
+                VmSpace* space;
+            } user;
+
+            struct
+            {
+                sl::Span<PageInfo> pages;
+            } physical;
+        };
+    };
+
     /* Linkage for a VmRange's association with a book struct. Forms the
      * book <-> mapping half of the pv-map. The other half (book <-> page) is
      * formed by the `PageInfo::owner`.
@@ -731,6 +814,18 @@ namespace Npk
      */
     NpkStatus SetSourceInitializedSize(VmSource* source,
         uint64_t initializedSize);
+
+    /* Attempts to allocate `count` number of `TransferBuffer` structs. The
+     * `wired` argument determines which pool the structs are allocated from:
+     * paged (!wired) is preferred, wired should only be used if the buffers
+     * are involved in paging/swapping operations.
+     * When finished with the buffers, the caller should free their memory
+     * via `FreeTransferBuffers()`.
+     * If successful, a pointer to the first allocated buffer is placed in
+     * `*result`. Each buffer struct is initialized already.
+     */
+    NpkStatus AllocTransferBuffers(TransferBuffer** result, size_t count,
+        bool wired);
 
     /* Attempts to allocate a range of `length` bytes in an address space. If
      * successful the allocated address is placed in `*addr`, otherwise `*addr`
