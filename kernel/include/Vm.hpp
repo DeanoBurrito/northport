@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Core.hpp>
+#include <lib/SeqCount.hpp>
 
 namespace Npk
 {
@@ -418,8 +419,42 @@ namespace Npk
         /* Set before the source is known to the VM subsystem. Readonly after.
          */
         const VmPagerOps* ops;
+
+        /* Seqlock for reading sizes of this source.
+         */
+        sl::SeqCount sizeSeq;
+
+        /* Synchronizes writers to the source's sizes.
+         */
+        IplSpinLock<Ipl::Dpc> sizeLock;
+
+        /* Whether this source has a defined size.
+         */
+        bool bounded;
+
+        /* Authoritative copy of the limit of this source, providers must keep
+         * this up to date with their internal data. This value indicates the
+         * absolute limit to what the source can or will hold.
+         */
+        uint64_t size;
+
+        /* The limit of what the source's pager can provide bytes for,
+         * anything past this length is populated by the VM and fed back to the
+         * pager. Accesses beyond `initializedSize` are allowed and will be zero
+         * filled.
+         */
+        uint64_t initializedSize;
     };
     SL_ASSERT_OFFSET(VmSource, book, 0);
+
+    /* Snapshot of a source's size state, fields can be used directly.
+     */
+    struct VmSourceSize
+    {
+        uint64_t size;
+        uint64_t initializedSize;
+        bool bounded;
+    };
 
     /* Provides fine control over address space allocation. Each field has a
      * sane default value and can be left untouched if the caller doesn't care
@@ -653,6 +688,49 @@ namespace Npk
     /* Returns whether a `source:index` is currently resident.
      */
     bool SourcePageResident(VmSource* source, size_t index);
+
+    /* Indicates the page at `source:index` is about to have its data changed
+     * via a path outside of the source. The resident page is dropped, in flight
+     * fills are failed.
+     * May return `Busy` if an unstoppable op is using the source right now.
+     * The operation can be retried.
+     */
+    NpkStatus SourcePageDrop(VmSource* source, size_t index);
+
+    /* Returns a snapshot of a source's extents. Can be called at or below DPC
+     * IPL.
+     */
+    VmSourceSize GetSourceSize(const VmSource* source);
+
+    /* Enables or disables the bounds of a source, depending on `bounded`.
+     * If set the source uses `size` and `initializedSize` for its own values,
+     * see their definitions for how they interact.
+     * If clear the source becomes unbounded (the default) and the size fields
+     * have no effect.
+     * Must be called at passive IPL. Callers of this function (the page
+     * provider) must serialize calls to this function.
+     */
+    NpkStatus ResetSourceSize(VmSource* source, uint64_t size,
+        uint64_t initializedSize, bool bounded);
+
+    /* Sets the content size of `source`. Shrinking also clips
+     * `initializedSize` and discards pages past the new bounds (partial pages
+     * beyond bounds are zeroed).
+     * May return `Busy` if an unstoppable interaction is in flight, callers
+     * should retry with the same size until successful.
+     *
+     * NOTE: for anon sources private CoW'd pages in place are left alone,
+     * the code necessary to remove them isn't worth it imo. XNU/UVM also do
+     * this so it's not breaking any posix spec.
+     */
+    NpkStatus SetSourceSize(VmSource* source, uint64_t size);
+
+    /* Advances the initialized size for a source, cannot decrement via this
+     * function. Should be called once the backing bytes for a source include
+     * up to `initializedSize` and can be relied upon to exist.
+     */
+    NpkStatus SetSourceInitializedSize(VmSource* source,
+        uint64_t initializedSize);
 
     /* Attempts to allocate a range of `length` bytes in an address space. If
      * successful the allocated address is placed in `*addr`, otherwise `*addr`

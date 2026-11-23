@@ -54,6 +54,7 @@ KERNEL_CXX_SRCS += \
 	vm/PagerAnon.cpp \
 	vm/PagerModule.cpp \
 	vm/Pool.cpp \
+	vm/SourceSize.cpp \
 	vm/Space.cpp \
 	vm/SwapMemory.cpp \
 	vm/Util.cpp \

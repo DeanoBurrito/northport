@@ -1011,6 +1011,19 @@ namespace Npk
     {
         return PageSize() - 1;
     }
+
+    /* Returns the count of pages covered by `bytes` offset by `offset` bytes
+     * into the first page.
+     */
+    template<typename T>
+    SL_ALWAYS_INLINE
+    constexpr T PageCountFor(T bytes, T offset = 0)
+    {
+        const T whole = bytes >> PfnShift();
+        const T rest = (bytes & PageMask()) + (offset & PageMask());
+
+        return whole + ((rest + PageMask()) >> PfnShift());
+    }
     
     /* Returns the size of kernel stacks, in pages.
      */

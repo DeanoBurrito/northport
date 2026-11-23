@@ -674,6 +674,13 @@ namespace Npk::Private
      */
     using BookPageSink = void (*)(PageInfo* page, void* arg);
 
+    //attempts to take `page` off of its live list: returns success, failure
+    //implies someone else (the trimmer) is holding the page.
+    using BookUntrack = bool (*)(PageInfo* page);
+
+    //puts a page `BookUntrack` took back on its live list.
+    using BookRetrack = void (*)(PageInfo* page);
+
     enum class TrimPressure
     {
         None,
@@ -992,6 +999,13 @@ namespace Npk::Private
     bool BookTryUnpromote(Book& book, size_t offset, AnonCell* cell,
         PageInfo* page);
 
+    /* Settles what a sweep of mappings for `page` found, `dirtied` is the
+     * dirty status to fold in, if `forget` is set the mapping pin is cleared.
+     * Must be called with the book mutex held in exclusive mode.
+     */
+    void BookSettleSweep(Book& book, PageInfo* page, bool dirtied,
+        bool forget);
+
     /* Must hold the book's mutex in exclusive mode. This function removes
      * the entries of `span`, calling `sink` on each page (see that type for
      * its exact environment).
@@ -1004,6 +1018,18 @@ namespace Npk::Private
      */
     void BookDetachRange(Book& book, BookToRangeLink& link, BookPageSink sink,
         void* arg);
+
+    /* Empties the entry at `offset`. If it held a page, `out` is set to that
+     * page, otherwise `out` is set to null. A swap handle in the entry is
+     * freed and a fill in progress loses its claim on the entry.
+     * Returns false and leaves the entry as it was if the page is in use:
+     * either `Untrack` failed, or the page has a transient pin (in this case
+     * `Retrack` is called to undo `Untrack`).
+     * Must be called at passive, without holding the book's mutex. Only for
+     * books that never contain cells: those of sources and the paged pool.
+     */
+    bool BookTakePage(PageInfo** out, Book& book, size_t offset,
+        BookUntrack Untrack, BookRetrack Retrack);
 
     /* Must hold the book's mutex exclusive.
      */
@@ -1079,6 +1105,11 @@ namespace Npk::Private
      */
     void TrackPage(PageInfo* page);
 
+    /* Takes a page off its live list, returns success. No page owner lock
+     * required.
+     */
+    bool UntrackIfListed(PageInfo* page);
+
     /* Empties the book and retires it, `freeNow` is the retire callback.
      * No ranges may be attached to `src`.
      */
@@ -1093,6 +1124,11 @@ namespace Npk::Private
      */
     NpkStatus SourcePinCluster(VmSource& src, sl::Span<PageInfo*> out,
         size_t base, size_t mainIndex, PagerFlags flags);
+
+    /* Helper function for partial zeroing, `from` is a byte offset into the
+     * `page`. Must be called at DPC IPL or below.
+     */
+    void ZeroPageFrom(PageInfo* page, size_t from);
 
     void BeginMappingRemovals(VmRange& range);
     void EndMappingRemovals(VmRange& range);

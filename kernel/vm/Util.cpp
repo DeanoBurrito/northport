@@ -22,6 +22,22 @@ namespace Npk::Private
         }
     }
 
+    static bool fillZeroingKept = true;
+
+    void ZeroPageFrom(PageInfo* page, size_t from)
+    {
+        const auto prevIpl = EnsureIpl(Ipl::Dpc);
+
+        auto access = AccessPage(page);
+        NPK_ASSERT(access.Valid());
+
+        sl::MemSet(static_cast<uint8_t*>(access.vaddr) + from, 0,
+            PageSize() - from);
+
+        DestroyPageAccess(&access);
+        RestoreIpl(prevIpl);
+    }
+
     static void EmptyAndRetireBook(Book& book, EbrCallback freeNow)
     {
         NPK_ASSERT(book.ranges.Empty());
@@ -40,6 +56,15 @@ namespace Npk::Private
         NPK_ASSERT(result == NpkStatus::Success);
     }
 
+    //NOTE: must hold owning book's lock in exclusive mode.
+    static bool UntrackForDrop(PageInfo* page)
+    {
+        if (PageHasFlag(page, PageVmFlag::Mapped))
+            return false;
+
+        return UntrackIfListed(page);
+    }
+
     static NpkStatus PinCluster(VmSource& src, sl::Span<PageInfo*> out,
         size_t base, size_t mainIndex, PagerFlags flags)
     {
@@ -51,6 +76,14 @@ namespace Npk::Private
 
         while (true)
         {
+            const auto extent = GetSourceSize(&src);
+            uint64_t limit = static_cast<uint64_t>(-1);
+
+            if (extent.bounded)
+                limit = PageCountFor(extent.size);
+            if (base + mainIndex >= limit)
+                return NpkStatus::BadVaddr;
+
             bool wanted[MaxSourceClusterPages] {};
             BookFill* theirs = nullptr;
 
@@ -59,6 +92,8 @@ namespace Npk::Private
             {
                 out[i] = nullptr;
 
+                if (base + i >= limit)
+                    continue;
                 if (i != mainIndex && BookHasEntry(book, base + i))
                     continue;
 
@@ -105,6 +140,8 @@ namespace Npk::Private
                 fillMain = mainIndex - start;
 
             size_t claimable = count - start;
+            if (limit - (base + start) < claimable)
+                claimable = static_cast<size_t>(limit - (base + start));
             claimable = sl::Min<size_t>(claimable, BookPageLimit
                 - (base + start));
 
@@ -151,11 +188,50 @@ namespace Npk::Private
                 span[start + i] = got[i];
             }
 
+            bool needGet = false;
+            bool mainZeroed = false;
+            for (size_t i = 0; i < claimed && !shortage; i++)
+            {
+                if (got[i] == nullptr)
+                    continue;
+
+                const uint64_t at = (base + start + i) << PfnShift();
+                if (extent.bounded && fillZeroingKept
+                    && at >= extent.initializedSize)
+                {
+                    PageSetFlag(got[i], PageVmFlag::Filled);
+                    span[start + i] = nullptr;
+
+                    if (start + i == mainIndex)
+                        mainZeroed = true;
+                    continue;
+                }
+
+                needGet = true;
+            }
+
             NpkStatus pagerResult = NpkStatus::Shortage;
-            if (!shortage)
+            if (!shortage && needGet)
             {
                 pagerResult = src.ops->Get(&src, { span, count }, base,
                     mainIndex, nullptr, flags);
+            }
+            if (!shortage && (mainZeroed || !needGet))
+                pagerResult = NpkStatus::Success;
+
+            //the initialized size can split a page, so we zero the part of
+            //that page that is beyond the source's initialized size.
+            for (size_t i = 0; i < claimed && !shortage && extent.bounded
+                && fillZeroingKept; i++)
+            {
+                if (got[i] == nullptr || span[start + i] == nullptr
+                    || !PageHasFlag(got[i], PageVmFlag::Filled))
+                    continue;
+
+                const uint64_t at = (base + start + i) << PfnShift();
+                if (extent.initializedSize > at
+                    && extent.initializedSize - at < PageSize())
+                    ZeroPageFrom(got[i], extent.initializedSize - at);
             }
 
             bool mainFilled = false;
@@ -338,6 +414,28 @@ namespace Npk::Private
         ReleaseMutex(&dom.liveLists.lock);
     }
 
+    bool UntrackIfListed(PageInfo* page)
+    {
+        NPK_ASSERT(page != nullptr);
+
+        auto& dom = MySystemDomain();
+
+        auto result = AcquireMutex(&dom.liveLists.lock, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        const bool listed = LiveListIsListed(page->liveList);
+        if (listed)
+        {
+            LiveListUnlink(dom, page);
+            dom.liveLists.stats.Add(TrimStat::Untracked, 1);
+        }
+
+        ReleaseMutex(&dom.liveLists.lock);
+
+        return listed;
+    }
+
     void ReleaseRemovedPage(PageInfo* page, void* arg)
     {
         (void)arg;
@@ -517,5 +615,24 @@ namespace Npk
             BookWaitFill(found.fill);
 
         return false;
+    }
+
+    NpkStatus SourcePageDrop(VmSource* source, size_t index)
+    {
+        using namespace Private;
+
+        if (source->book.removalsInFlight.Load(sl::Acquire) != 0)
+            return NpkStatus::Busy;
+
+        PageInfo* page;
+        const bool taken = BookTakePage(&page, source->book, index,
+            UntrackForDrop, TrackPage);
+        if (!taken)
+            return NpkStatus::Busy;
+
+        if (page != nullptr)
+            FreePage(page);
+
+        return NpkStatus::Success;
     }
 }

@@ -1578,6 +1578,29 @@ namespace Npk::Private
         return done;
     }
 
+    void BookSettleSweep(Book& book, PageInfo* page, bool dirtied,
+        bool forget)
+    {
+        NPK_ASSERT(BookOwnerOf(page) == &book);
+
+        auto section = RcuReadLock();
+        BookSlot* slot = BookTrie::Lookup(book.root, page->offset);
+        NPK_ASSERT(slot != nullptr);
+
+        const BookEntry value = LockBookEntry(*slot, true);
+        NPK_ASSERT(value == MakeBookEntry(page));
+
+        SwapHandle dead = NoSwapHandle;
+        if (dirtied)
+            dead = MarkWrittenLocked(book.backing == BookBacking::Swap, page);
+        if (forget)
+            ClearPageMapped(page);
+
+        UnlockBookEntry(*slot, value);
+        RcuReadUnlock(section);
+        FreeHandle(dead);
+    }
+
     void BookRemoveRange(BookSpan span, BookPageSink sink, void* arg)
     {
         Book& book = *span.book;
@@ -1692,6 +1715,103 @@ namespace Npk::Private
         }
 
         ReleaseSxMutexExclusive(&book.mutex);
+    }
+
+    bool BookTakePage(PageInfo** out, Book& book, size_t offset,
+        BookUntrack Untrack, BookRetrack Retrack)
+    {
+        *out = nullptr;
+
+        auto result = AcquireSxMutexExclusive(&book.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        bool taken = true;
+        SwapHandle dead = NoSwapHandle;
+        while (true)
+        {
+            auto section = RcuReadLock();
+
+            BookSlot* slot = BookTrie::Lookup(book.root, offset);
+            BookEntry value = 0;
+            if (slot != nullptr)
+                value = LockBookEntry(*slot, true);
+
+            PageInfo* page = BookEntryPage(value);
+            if (value != 0)
+                UnlockBookEntry(*slot, value);
+            RcuReadUnlock(section);
+
+            if (value == 0)
+                break;
+
+            if (page != nullptr && !Untrack(page))
+            {
+                taken = false;
+                break;
+            }
+
+            section = RcuReadLock();
+            const BookEntry now = LockBookEntry(*slot);
+
+            if (page != nullptr)
+            {
+                NPK_ASSERT(now == MakeBookEntry(page));
+
+                size_t ownPins = 0;
+                if (PageHasFlag(page, PageVmFlag::Mapped))
+                    ownPins = 1;
+
+                taken = page->pins == ownPins;
+                if (!taken)
+                {
+                    UnlockBookEntry(*slot, now);
+                    RcuReadUnlock(section);
+                    Retrack(page);
+                    break;
+                }
+
+                ClearPageMapped(page);
+                dead = page->swapHandle;
+                page->swapHandle = NoSwapHandle;
+                PageClearFlag(page, PageVmFlag::Clean);
+                ClearPageOwner(page);
+
+                UnlockBookEntry(*slot, 0);
+                RcuReadUnlock(section);
+                *out = page;
+                break;
+            }
+
+            if (BookEntryPage(now) != nullptr)
+            {
+                //a lockless page-in published between the two sections
+                UnlockBookEntry(*slot, now);
+                RcuReadUnlock(section);
+                continue;
+            }
+
+            NPK_ASSERT(GetBookEntryType(now) != BookEntryType::Cell);
+
+            dead = BookEntrySwap(now);
+            BookFill* fill = BookEntryFill(now);
+            if (fill != nullptr)
+                dead = fill->handles[offset - fill->first];
+
+            NPK_ASSERT(now != 0);
+            UnlockBookEntry(*slot, 0);
+            RcuReadUnlock(section);
+
+            break;
+        }
+
+        if (taken)
+            BookTrie::Prune(book.root, offset);
+
+        ReleaseSxMutexExclusive(&book.mutex);
+        FreeHandle(dead);
+
+        return taken;
     }
 
     void BookLinkRange(Book& book, BookToRangeLink& link)
