@@ -6,6 +6,160 @@ namespace Npk
 {
     constexpr HeapTag SpaceHeapTag = NPK_MAKE_HEAP_TAG("Spac");
 
+    constexpr size_t CloneProtectRanges = 32;
+
+    static void FreeRangeNow(EbrItem* item)
+    {
+        PoolFreeWired(reinterpret_cast<VmRange*>(item), sizeof(VmRange),
+            SpaceHeapTag);
+    }
+
+    //a range that was in the tree: a lockless walk may still stand on it.
+    static void RetireRange(VmRange* range)
+    {
+        range->retire.callback = FreeRangeNow;
+        const auto result = RcuCall(&range->retire);
+        NPK_ASSERT(result == NpkStatus::Success);
+    }
+
+    static bool RangeDying(const VmRange& range)
+    {
+        return (range.faultRefs.Load(sl::Acquire) & Private::VmRangeDying) != 0;
+    }
+
+    //refused once a detach owns the range.
+    static bool TryRefRange(VmRange& range)
+    {
+        while (true)
+        {
+            auto refs = range.faultRefs.Load(sl::Relaxed);
+
+            if ((refs & Private::VmRangeDying) != 0)
+                return false;
+            if (range.faultRefs.CompareExchange(refs, refs + 1, sl::Acquire))
+                return true;
+        }
+    }
+
+    //NOTE: assumes `space.rangesMutex` is held in either mode. Any range
+    //overlapping the span, dying or not: what an attach may not land on.
+    static VmRange* FindOverlapLocked(VmSpace& space, uintptr_t addr,
+        size_t length)
+    {
+        const uintptr_t end = AlignUpPage(addr + length);
+        addr = AlignDownPage(addr);
+
+        auto scan = space.ranges.GetRoot();
+        while (scan != nullptr)
+        {
+            const uintptr_t scanEnd = scan->base
+                + scan->length.Load(sl::Relaxed);
+            if (addr < scanEnd && scan->base < end)
+                return scan;
+
+            if (addr < scan->base)
+                scan = space.ranges.GetLeft(scan);
+            else
+                scan = space.ranges.GetRight(scan);
+        }
+
+        return nullptr;
+    }
+
+    static bool MarkRangeDying(VmRange& range)
+    {
+        auto result = AcquireMutex(&range.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        result = ResetCondition(&range.drained, 1);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        range.version++;
+        const uint32_t prev = range.faultRefs.FetchOr(Private::VmRangeDying,
+            sl::AcqRel);
+        NPK_ASSERT((prev & Private::VmRangeDying) == 0);
+
+        ReleaseMutex(&range.mutex);
+
+        return prev != 0;
+    }
+
+    static void DrainRange(VmRange& range, bool busy)
+    {
+        if (!busy)
+            return;
+
+        WaitEntry entry {};
+        const auto result = WaitOne(&range.drained, &entry, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+    }
+
+    //NOTE: assumes the space ranges mutex is held exclusive, and range is
+    //dying and drained. Retires `range`.
+    static void DetachLocked(VmSpace& space, VmRange* range)
+    {
+        NPK_ASSERT(range->faultRefs.Load(sl::Acquire) == Private::VmRangeDying);
+
+        const uintptr_t base = range->base;
+        const size_t length = range->length.Load(sl::Relaxed);
+
+        Private::BeginMappingRemovals(*range);
+        space.ranges.Remove(range);
+
+        /* TODO: issue once after the loop, since only `EndMappingRemovals()`
+         * has to follow the invalidation. Until then each pass covers the page
+         * it removed, plus the slack an emptied page table needs.
+         */
+        constexpr size_t DetachRanges = 1 + MapBatchTableSlack;
+
+        if (space.map != nullptr)
+        {
+            MapBatchRange rangeStore[DetachRanges];
+            MapBatch batch {};
+            ResetMapBatch(batch, space.map, { rangeStore, DetachRanges });
+
+            for (uintptr_t at = base; at < base + length; at += PageSize())
+            {
+                Paddr present;
+
+                if (HwMapExtract(&present, nullptr, nullptr, space.map, at)
+                    != NpkStatus::Success)
+                    continue;
+
+                const auto harvest = HwMapHarvest(batch, at, present,
+                    HwHarvestAction::Remove, {});
+                if (!harvest.removed)
+                    continue;
+
+                HwMapUpdate(batch, true);
+                Private::SettleMappedPage(present,
+                    harvest.state.Has(MmuPageState::Dirty));
+            }
+
+            FinishMapBatch(batch);
+        }
+
+        Private::EndMappingRemovals(*range);
+
+        if (range->amapRef.Valid())
+        {
+            Private::BookDetachRange(range->amapRef->book, range->upperLink,
+                Private::ReleaseRemovedPage, nullptr);
+            range->amapRef.Release();
+        }
+
+        if (range->source != nullptr)
+        {
+            Private::UnlinkLayer(range->source->book, range->lowerLink);
+            range->source->ops->UnrefObj(range->source);
+            range->source = nullptr;
+        }
+
+        RetireRange(range);
+    }
+
     static void BreakdownRange(VmFreeRangeTree& tree, VmFreeRange* range, 
         uintptr_t base, size_t len, VmFreeRange** spare)
     {
@@ -48,6 +202,85 @@ namespace Npk
         range->length = rangeTop - range->base;
         range->largestChild = range->length;
         tree.Insert(range);
+    }
+
+    Private::BookSpan Private::BookLinkSpan(Book& book,
+        const BookToRangeLink& link)
+    {
+        const VmRange* range = link.range;
+        const size_t count = range->length.Load(sl::Relaxed) >> PfnShift();
+
+        size_t first;
+        if (&link == &range->upperLink)
+            first = range->amapOffset;
+        else
+            first = range->offset >> PfnShift();
+
+        return MakeBookSpan(book, first, first + count);
+    }
+
+    void Private::LinkLayer(Book& book, BookToRangeLink& link, VmRange* range)
+    {
+        link.range = range;
+
+        auto result = AcquireSxMutexExclusive(&book.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        BookLinkRange(book, link);
+        ReleaseSxMutexExclusive(&book.mutex);
+    }
+
+    void Private::UnlinkLayer(Book& book, BookToRangeLink& link)
+    {
+        auto result = AcquireSxMutexExclusive(&book.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        BookUnlinkRange(book, link);
+        ReleaseSxMutexExclusive(&book.mutex);
+    }
+
+    NpkStatus Private::BeginFaultInRange(VmRange** out, VmSpace& space,
+        uintptr_t addr)
+    {
+        auto result = AcquireSxMutexShared(&space.rangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        if (result != NpkStatus::Success)
+            return result;
+
+        result = NpkStatus::BadVaddr;
+
+        VmRange* found = FindOverlapLocked(space, addr, 1);
+        if (found != nullptr && TryRefRange(*found))
+        {
+            *out = found;
+            result = NpkStatus::Success;
+        }
+        ReleaseSxMutexShared(&space.rangesMutex);
+
+        return result;
+    }
+
+    void Private::EndFaultInRange(VmRange& range)
+    {
+        const uint32_t prev = range.faultRefs.FetchSub(1, sl::AcqRel);
+        NPK_ASSERT((prev & ~Private::VmRangeDying) != 0);
+
+        if (prev == (Private::VmRangeDying | 1))
+            SetCondition(&range.drained);
+    }
+
+    void Private::WaitForFaultGateOfSpace(VmSpace& space)
+    {
+        if (!space.faultGate.Load(sl::Acquire))
+            return;
+
+        //the clone holds this exclusive until after it lowers the gate
+        const auto result = AcquireSxMutexShared(&space.rangesMutex,
+            sl::NoTimeout, NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+        ReleaseSxMutexShared(&space.rangesMutex);
     }
 
     bool VmFreeRangeAggregator::Aggregate(VmFreeRange* range)
@@ -109,8 +342,8 @@ namespace Npk
         auto mySpace = MySystemDomain().kernelSpace;
         mySpace->map = MySystemDomain().kernelMap;
 
-        NPK_ASSERT(ResetMutex(&MySystemDomain().liveLists.lock, 1)
-            == NpkStatus::Success);
+        auto result = ResetMutex(&MySystemDomain().liveLists.lock, 1);
+        NPK_ASSERT(result == NpkStatus::Success);
 
         ResetMutex(&mySpace->freeRangesMutex, 1);
         ResetSxMutex(&mySpace->rangesMutex);
@@ -524,8 +757,7 @@ namespace Npk
             return result;
         }
 
-        result = SpaceLookupLocked(nullptr, space, base, length);
-        if (result == NpkStatus::Success)
+        if (FindOverlapLocked(space, base, length) != nullptr)
         {
             ReleaseSxMutexExclusive(&space.rangesMutex);
             if (allocatedVaddrs)
@@ -561,7 +793,7 @@ namespace Npk
         vmr->advice = VmAdvice::Normal;
         vmr->nextFaultSlotPlusOne = 0;
         vmr->base = base;
-        vmr->length = length;
+        vmr->length.Store(length, sl::Relaxed);
         vmr->amapRef = {};
         vmr->amapOffset = 0;
 
@@ -583,21 +815,7 @@ namespace Npk
 
             vmr->source = source;
             vmr->offset = srcOffset;
-
-            if (AcquireSxMutexExclusive(&source->mutex, sl::NoTimeout,
-                NPK_WAIT_LOCATION) != NpkStatus::Success)
-            {
-                source->ops->UnrefObj(source);
-                PoolFreeWired(vmr, sizeof(*vmr), SpaceHeapTag);
-                ReleaseSxMutexExclusive(&space.rangesMutex);
-                if (allocatedVaddrs)
-                    SpaceFree(space, base, length);
-
-                return NpkStatus::Busy;
-            }
-
-            source->ranges.PushBack(vmr);
-            ReleaseSxMutexExclusive(&source->mutex);
+            Private::LinkLayer(source->book, vmr->lowerLink, vmr);
         }
         else
         {
@@ -617,9 +835,6 @@ namespace Npk
     {
         NPK_ASSERT(range != nullptr);
 
-        const uintptr_t base = range->base;
-        const size_t length = range->length;
-
         auto result = AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
             NPK_WAIT_LOCATION);
         if (result != NpkStatus::Success)
@@ -632,79 +847,24 @@ namespace Npk
             ReleaseSxMutexExclusive(&space.rangesMutex);
             return NpkStatus::InvalidArg;
         }
-        (void)check;
 
-        Private::BeginMappingRemovals(*range);
-        if (range->amapRef.Valid())
-        {
-            auto unlink = Private::AnonMapUnlinkRange(*range->amapRef, range);
-            if (unlink != NpkStatus::Success)
-            {
-                Private::EndMappingRemovals(*range);
-                ReleaseSxMutexExclusive(&space.rangesMutex);
+        //two stages to detaching a range, the issue is a fault on another cpu
+        //may be inside a pager's Get() intending to add to this range,
+        //which may also fault on this space/acquire its locks.
+        //So we first flag the range as dying, release the lock and wait for
+        //ongoing ops, then relock and finish the detach.
 
-                return unlink;
-            }
-        }
+        const bool busy = MarkRangeDying(*range);
+        ReleaseSxMutexExclusive(&space.rangesMutex);
+        DrainRange(*range, busy);
 
-        if (range->source != nullptr)
-        {
-            auto* source = range->source;
-            auto unlink = AcquireSxMutexExclusive(&source->mutex, sl::NoTimeout,
-                NPK_WAIT_LOCATION);
+        result = AcquireSxMutexExclusive(&space.rangesMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
 
-            if (unlink != NpkStatus::Success)
-            {
-                if (range->amapRef.Valid())
-                {
-                    auto result = Private::AnonMapLinkRange(
-                        *range->amapRef, range);
-                    NPK_ASSERT(result == NpkStatus::Success);
-                }
-
-                Private::EndMappingRemovals(*range);
-                ReleaseSxMutexExclusive(&space.rangesMutex);
-
-                return unlink;
-            }
-
-            source->ranges.Remove(range);
-            ReleaseSxMutexExclusive(&source->mutex);
-        }
-
-        space.ranges.Remove(range);
-
-        PageList flushed {};
-        for (uintptr_t at = base; at < base + length; at += PageSize())
-        {
-            Paddr present;
-
-            if (HwMapExtract(&present, nullptr, nullptr, space.map, at)
-                != NpkStatus::Success)
-                continue;
-
-            if (HwMapRemove(space.map, at, 1) != NpkStatus::Success)
-                continue;
-
-            HwMapUpdate(space.map, true, flushed);
-            NPK_ASSERT(flushed.Empty());
-
-            ReleaseMappedPage(present);
-        }
-
-        if (range->amapRef.Valid())
-            range->amapRef.Release();
-
-        if (range->source != nullptr)
-        {
-            range->source->ops->UnrefObj(range->source);
-            range->source = nullptr;
-        }
-
-        PoolFreeWired(range, sizeof(*range), SpaceHeapTag);
-        range = nullptr;
-        (void)range;
-
+        const uintptr_t base = range->base;
+        const size_t length = range->length.Load(sl::Relaxed);
+        DetachLocked(space, range);
         ReleaseSxMutexExclusive(&space.rangesMutex);
 
         if (freeAddresses)
@@ -720,33 +880,16 @@ namespace Npk
     }
 
     //NOTE: assumes space.rangesMutex is held (shared or exclusive)
-    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space, 
+    NpkStatus SpaceLookupLocked(VmRange** found, VmSpace& space,
         uintptr_t addr, size_t length)
     {
-        const uintptr_t end = AlignUpPage(addr + length);
-        addr = AlignDownPage(addr);
-
-        auto scan = space.ranges.GetRoot();
-        while (scan != nullptr)
+        //a dying range is going: to a find it is already gone
+        VmRange* scan = FindOverlapLocked(space, addr, length);
+        if (scan != nullptr && !RangeDying(*scan))
         {
-            const uintptr_t scanEnd = scan->base + scan->length;
-            if (addr < scanEnd && scan->base < end)
-            {
-                if (found != nullptr)
-                    *found = scan;
-                return NpkStatus::Success;
-            }
-
-            if (addr < scan->base)
-                scan = space.ranges.GetLeft(scan);
-            else if (addr > scan->base)
-                scan = space.ranges.GetRight(scan);
-            else
-            {
-                if (found != nullptr)
-                    *found = scan;
-                return NpkStatus::Success;
-            }
+            if (found != nullptr)
+                *found = scan;
+            return NpkStatus::Success;
         }
 
         return NpkStatus::BadVaddr;
@@ -814,8 +957,23 @@ namespace Npk
             return result;
         }
 
+        source.faultGate.Store(true, sl::SeqCst);
+        for (auto it = source.ranges.First(); it != nullptr;
+            it = source.ranges.Successor(it))
+        {
+            if (RangeDying(*it))
+                continue;
+
+            result = AcquireMutex(&it->mutex, sl::NoTimeout,
+                NPK_WAIT_LOCATION);
+            NPK_ASSERT(result == NpkStatus::Success);
+            it->version++;
+            ReleaseMutex(&it->mutex);
+        }
+
         bool carryOn = true;
-        for (auto it = source.freeRanges.First(); it != nullptr; 
+        NpkStatus cloneStatus = NpkStatus::Shortage;
+        for (auto it = source.freeRanges.First(); it != nullptr;
             it = source.freeRanges.Successor(it))
         {
             ptr = PoolAllocWired(sizeof(VmFreeRange), SpaceHeapTag);
@@ -836,6 +994,9 @@ namespace Npk
         for (auto it = source.ranges.First(); it != nullptr && carryOn;
             it = source.ranges.Successor(it))
         {
+            if (RangeDying(*it))
+                continue;
+
             ptr = PoolAllocWired(sizeof(VmRange), SpaceHeapTag);
             if (ptr == nullptr)
             {
@@ -853,7 +1014,7 @@ namespace Npk
             }
 
             latest->base = it->base;
-            latest->length = it->length;
+            latest->length.Store(it->length.Load(sl::Relaxed), sl::Relaxed);
             latest->flags = it->flags;
             latest->advice = it->advice;
             latest->nextFaultSlotPlusOne = 0;
@@ -866,18 +1027,9 @@ namespace Npk
             {
                 NPK_ASSERT(latest->flags.Has(VmFlag::CopyOnWrite));
                 latest->flags.Set(VmFlag::AmapNeedsCopy);
-            }
 
-            if (latest->amapRef.Valid())
-            {
-                auto link = Private::AnonMapLinkRange(*latest->amapRef, latest);
-                if (link != NpkStatus::Success)
-                {
-                    latest->amapRef.Release();
-                    PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
-                    carryOn = false;
-                    break;
-                }
+                Private::LinkLayer(latest->amapRef->book, latest->upperLink,
+                    latest);
             }
 
             if (latest->source != nullptr)
@@ -891,44 +1043,33 @@ namespace Npk
                 {
                     if (latest->amapRef.Valid())
                     {
-                        Private::AnonMapUnlinkRange(*latest->amapRef, latest);
+                        Private::UnlinkLayer(latest->amapRef->book,
+                            latest->upperLink);
                         latest->amapRef.Release();
                     }
 
                     PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
+                    cloneStatus = NpkStatus::ObjRefFailed;
                     carryOn = false;
                     break;
                 }
 
-                if (AcquireSxMutexExclusive(&src->mutex, sl::NoTimeout,
-                    NPK_WAIT_LOCATION) != NpkStatus::Success)
-                {
-                    src->ops->UnrefObj(src);
-
-                    if (latest->amapRef.Valid())
-                    {
-                        Private::AnonMapUnlinkRange(*latest->amapRef, latest);
-                        latest->amapRef.Release();
-                    }
-
-                    PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
-                    carryOn = false;
-                    break;
-                }
-
-                src->ranges.PushBack(latest);
-                ReleaseSxMutexExclusive(&src->mutex);
+                Private::LinkLayer(src->book, latest->lowerLink, latest);
             }
 
             newSpace->ranges.Insert(latest);
         }
 
-        NpkStatus cloneStatus = NpkStatus::Shortage;
-        bool protectedAny = false;
+        MapBatchRange rangeStore[CloneProtectRanges];
+        MapBatch batch {};
+        ResetMapBatch(batch, source.map, { rangeStore, CloneProtectRanges });
 
+        bool protectedAny = false;
         for (auto it = source.ranges.First(); it != nullptr && carryOn;
             it = source.ranges.Successor(it))
         {
+            if (RangeDying(*it))
+                continue;
             if (!it->amapRef.Valid() || it->flags.Has(VmFlag::AmapNeedsCopy))
                 continue;
 
@@ -937,8 +1078,8 @@ namespace Npk
                 perms.Set(MmuPermission::Fetch);
 
             protectedAny = true;
-            cloneStatus = HwMapProtect(source.map, it->base,
-                it->length >> PfnShift(), perms);
+            cloneStatus = HwMapProtect(batch, it->base,
+                it->length.Load(sl::Relaxed) >> PfnShift(), perms);
 
             if (cloneStatus != NpkStatus::Success)
             {
@@ -947,15 +1088,18 @@ namespace Npk
             }
         }
 
+        //issued even after a failure: once a protect ran, entries may pend.
         if (protectedAny)
-        {
-            PageList protectFreed {};
-            HwMapUpdate(source.map, true, protectFreed);
-        }
+            HwMapUpdate(batch, true);
 
+        FinishMapBatch(batch);
+
+        //only now that the protections are visible on every cpu.
         for (auto it = source.ranges.First(); it != nullptr && carryOn;
             it = source.ranges.Successor(it))
         {
+            if (RangeDying(*it))
+                continue;
             if (!it->amapRef.Valid() || it->flags.Has(VmFlag::AmapNeedsCopy))
                 continue;
 
@@ -976,23 +1120,18 @@ namespace Npk
                 auto range = newSpace->ranges.GetRoot();
                 newSpace->ranges.Remove(range);
 
+                //off both reverse maps before the memory goes back.
                 if (range->amapRef.Valid())
                 {
-                    Private::AnonMapUnlinkRange(*range->amapRef, range);
+                    Private::UnlinkLayer(range->amapRef->book,
+                        range->upperLink);
                     range->amapRef.Release();
                 }
 
                 if (range->source != nullptr)
                 {
                     auto* src = range->source;
-
-                    if (AcquireSxMutexExclusive(&src->mutex, sl::NoTimeout,
-                        NPK_WAIT_LOCATION) == NpkStatus::Success)
-                    {
-                        src->ranges.Remove(range);
-                        ReleaseSxMutexExclusive(&src->mutex);
-                    }
-
+                    Private::UnlinkLayer(src->book, range->lowerLink);
                     src->ops->UnrefObj(src);
                 }
 
@@ -1002,6 +1141,8 @@ namespace Npk
             HwMapDestroy(newSpace->map);
             PoolFreeWired(newSpace, sizeof(VmSpace), SpaceHeapTag);
 
+            //a turned-away fault waits on `rangesMutex`, so before it goes
+            source.faultGate.Store(false, sl::Release);
             ReleaseSxMutexExclusive(&source.rangesMutex);
             ReleaseMutex(&source.freeRangesMutex);
 
@@ -1009,6 +1150,7 @@ namespace Npk
         }
 
         *clone = newSpace;
+        source.faultGate.Store(false, sl::Release);
         ReleaseSxMutexExclusive(&source.rangesMutex);
         ReleaseMutex(&source.freeRangesMutex);
 

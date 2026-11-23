@@ -32,6 +32,9 @@ namespace Npk::Private
     constexpr size_t CellInlineSharers = 2;
     constexpr size_t CellBlockSharers = 6;
 
+    //set in `VmRange::faultRefs` once a detach owns the range.
+    constexpr uint32_t VmRangeDying = 1u << 31;
+
     constexpr auto VmSourceTag = NPK_MAKE_HEAP_TAG("VSrc");
     constexpr HeapTag TrieNodeTag = NPK_MAKE_HEAP_TAG("Trie");
     constexpr HeapTag AmapTag = NPK_MAKE_HEAP_TAG("Amap");
@@ -841,6 +844,22 @@ namespace Npk::Private
     /* Unlinks a book and VmRange, the book's mutex must not be held.
      */
     void UnlinkLayer(Book& book, BookToRangeLink& link);
+
+    /* Registers the interest of a page fault handler in the vm range for
+     * `addr` in `space`. On success `*out` contains the range with the fault's
+     * interest flagged.
+     * Must be called at passive IPL.
+     */
+    NpkStatus BeginFaultInRange(VmRange** out, VmSpace& space,
+        uintptr_t addr);
+
+    /* Marks the end of a page fault in `range`, undoes `BeginFaultInRange()`.
+     */
+    void EndFaultInRange(VmRange& range);
+
+    /* Waits for a clone operation on `space` to clear the space's fault gate.
+     */
+    void WaitForFaultGateOfSpace(VmSpace& space);
 
     /* Initializes `book` in-place.
      */

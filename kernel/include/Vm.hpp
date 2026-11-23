@@ -357,7 +357,7 @@ namespace Npk
          */
         size_t offset;
     };
-    static_assert(offsetof(VmRange, retire) == 0);
+    SL_ASSERT_OFFSET(VmRange, retire, 0);
 
     struct VmRangeLt
     {
@@ -402,6 +402,10 @@ namespace Npk
 
         SxMutex rangesMutex;
         VmRangeTree ranges;
+
+        /* Used to synchronize page faults and clone operations on the space.
+         */
+        sl::Atomic<bool> faultGate;
     };
 
     enum class PagerFlag
