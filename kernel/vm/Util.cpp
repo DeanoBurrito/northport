@@ -151,7 +151,7 @@ namespace Npk::Private
                 base + start + claimable);
 
             //claim the run within the book, signal our intent to others.
-            auto result = BookBeginFill(fill, claim, fillMain);
+            auto result = BookBeginFill(&fill, claim, fillMain);
             if (result != NpkStatus::Success && !needMain)
                 return NpkStatus::Success;
             if (result == NpkStatus::Exists)

@@ -913,7 +913,7 @@ namespace Npk::Private
      *
      * Returns the result for claiming slot `span.begin + mainIndex`.
      */
-    NpkStatus BookBeginFill(BookFill*& out, BookSpan span, size_t mainIndex);
+    NpkStatus BookBeginFill(BookFill** out, BookSpan span, size_t mainIndex);
 
     /* Completes a fill operation and publishes any pages in `pages` flagged as
      * `Filled`. Pages without this flag have their book entries released and
@@ -970,7 +970,7 @@ namespace Npk::Private
      * on.
      */
     NpkStatus BookPromote(BookSpan& from, size_t first, Book& to,
-        BookPromoteSpares& spares, BookPromoteNeed& need, BookFill*& fill);
+        BookPromoteSpares& spares, BookPromoteNeed& need, BookFill** fill);
 
     NpkStatus BookFillPromoteSpares(BookPromoteSpares& spares,
         const BookPromoteNeed& need);

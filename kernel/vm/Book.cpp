@@ -191,14 +191,14 @@ namespace Npk::Private
 
     //must hold the cell's lock bit.
     static void AddSharer(AnonCell* cell, AnonSharer sharer,
-        AnonSharerBlock*& spares)
+        AnonSharerBlock** spares)
     {
         if (CellFull(cell))
         {
-            AnonSharerBlock* block = spares;
+            AnonSharerBlock* block = *spares;
             NPK_ASSERT(block != nullptr);
 
-            spares = block->next;
+            *spares = block->next;
             block->next = nullptr;
 
             AnonSharerBlock** tail = &cell->moreSharers;
@@ -263,18 +263,18 @@ namespace Npk::Private
         PoolFreeWired(item, sizeof(AnonCell), BookCellTag);
     }
 
-    static void PushChain(void*& head, void* item)
+    static void PushChain(void** head, void* item)
     {
-        *static_cast<void**>(item) = head;
-        head = item;
+        *static_cast<void**>(item) = *head;
+        *head = item;
     }
 
-    static void* PopChain(void*& head)
+    static void* PopChain(void** head)
     {
-        void* item = head;
+        void* item = *head;
         if (item != nullptr)
         {
-            head = *static_cast<void**>(item);
+            *head = *static_cast<void**>(item);
             *static_cast<void**>(item) = nullptr;
         }
 
@@ -439,7 +439,7 @@ namespace Npk::Private
 
         while (spares.count < cap && from.nodeCount != 0)
         {
-            spares.nodes[spares.count++] = PopChain(from.nodes);
+            spares.nodes[spares.count++] = PopChain(&from.nodes);
             from.nodeCount--;
         }
     }
@@ -448,7 +448,7 @@ namespace Npk::Private
     {
         while (spares.count != 0)
         {
-            PushChain(to.nodes, spares.nodes[--spares.count]);
+            PushChain(&to.nodes, spares.nodes[--spares.count]);
             to.nodeCount++;
         }
     }
@@ -920,7 +920,7 @@ namespace Npk::Private
         RcuReadUnlock(section);
     }
 
-    NpkStatus BookBeginFill(BookFill*& out, BookSpan span, size_t mainIndex)
+    NpkStatus BookBeginFill(BookFill** out, BookSpan span, size_t mainIndex)
     {
         Book& book = *span.book;
         const size_t offset = span.begin;
@@ -1035,7 +1035,7 @@ namespace Npk::Private
             break;
         }
 
-        out = fill;
+        *out = fill;
 
         return NpkStatus::Success;
     }
@@ -1263,7 +1263,7 @@ namespace Npk::Private
     }
 
     NpkStatus BookPromote(BookSpan& span, size_t first, Book& to,
-        BookPromoteSpares& spares, BookPromoteNeed& need, BookFill*& fill)
+        BookPromoteSpares& spares, BookPromoteNeed& need, BookFill** fill)
     {
         Book& from = *span.book;
         size_t cursor = span.begin;
@@ -1273,7 +1273,7 @@ namespace Npk::Private
         NPK_ASSERT(to.backing == BookBacking::Swap);
 
         need = {};
-        fill = nullptr;
+        *fill = nullptr;
         Private::TrieSpares nodes {};
         auto status = NpkStatus::Success;
 
@@ -1300,7 +1300,7 @@ namespace Npk::Private
                 if (BookFill* inFlight = BookEntryFill(value))
                 {
                     inFlight->refs.FetchAdd(1, sl::Relaxed);
-                    fill = inFlight;
+                    *fill = inFlight;
 
                     UnlockBookEntry(*slot, value);
                     status = NpkStatus::Pending;
@@ -1338,7 +1338,7 @@ namespace Npk::Private
                     if (CellFull(cell))
                         spares.blockCount--;
 
-                    AddSharer(cell, { &to, n }, spares.blocks);
+                    AddSharer(cell, { &to, n }, &spares.blocks);
                     cell->refs.FetchAdd(1, sl::Relaxed);
 
                     UnlockBookEntry(cell->word, inner);
@@ -1349,7 +1349,7 @@ namespace Npk::Private
                 }
 
                 //create the cell with its lock bit held.
-                cell = new(PopChain(spares.cells)) AnonCell {};
+                cell = new(PopChain(&spares.cells)) AnonCell {};
 
                 spares.cellCount--;
                 cell->refs.Store(2, sl::Relaxed);
@@ -1390,7 +1390,7 @@ namespace Npk::Private
             NPK_ASSERT((reinterpret_cast<uintptr_t>(cell)
                 & ~BookEntryAddrMask) == 0);
 
-            PushChain(spares.cells, cell);
+            PushChain(&spares.cells, cell);
             spares.cellCount++;
         }
 
@@ -1412,7 +1412,7 @@ namespace Npk::Private
             if (node == nullptr)
                 return NpkStatus::Shortage;
 
-            PushChain(spares.nodes, node);
+            PushChain(&spares.nodes, node);
             spares.nodeCount++;
         }
 
@@ -1421,7 +1421,7 @@ namespace Npk::Private
 
     void BookDrainPromoteSpares(BookPromoteSpares& spares)
     {
-        while (void* cell = PopChain(spares.cells))
+        while (void* cell = PopChain(&spares.cells))
             PoolFreeWired(cell, sizeof(AnonCell), BookCellTag);
 
         while (spares.blocks != nullptr)
@@ -1432,7 +1432,7 @@ namespace Npk::Private
             FreeSharerBlock(block);
         }
 
-        while (void* node = PopChain(spares.nodes))
+        while (void* node = PopChain(&spares.nodes))
             Private::FreeTrieNode(node, BookTrie::NodeSize);
 
         spares = {};
