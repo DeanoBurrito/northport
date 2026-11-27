@@ -8,6 +8,9 @@ namespace Npk
 
     constexpr size_t CloneProtectRanges = 32;
 
+    static size_t clusterInPageCount;
+    static size_t readaheadPageCount;
+
     static void FreeRangeNow(EbrItem* item)
     {
         PoolFreeWired(reinterpret_cast<VmRange*>(item), sizeof(VmRange),
@@ -20,6 +23,15 @@ namespace Npk
         range->retire.callback = FreeRangeNow;
         const auto result = RcuCall(&range->retire);
         NPK_ASSERT(result == NpkStatus::Success);
+    }
+
+    static NpkStatus ResetRangeLocks(VmRange& range)
+    {
+        const auto result = ResetSxMutex(&range.mutex);
+        if (result != NpkStatus::Success)
+            return result;
+
+        return ResetMutex(&range.installMutex, 1);
     }
 
     static bool RangeDying(const VmRange& range)
@@ -68,7 +80,7 @@ namespace Npk
 
     static bool MarkRangeDying(VmRange& range)
     {
-        auto result = AcquireMutex(&range.mutex, sl::NoTimeout,
+        auto result = AcquireSxMutexExclusive(&range.mutex, sl::NoTimeout,
             NPK_WAIT_LOCATION);
         NPK_ASSERT(result == NpkStatus::Success);
 
@@ -80,7 +92,7 @@ namespace Npk
             sl::AcqRel);
         NPK_ASSERT((prev & Private::VmRangeDying) == 0);
 
-        ReleaseMutex(&range.mutex);
+        ReleaseSxMutexExclusive(&range.mutex);
 
         return prev != 0;
     }
@@ -283,6 +295,16 @@ namespace Npk
         ReleaseSxMutexShared(&space.rangesMutex);
     }
 
+    size_t Private::GetClusterInPageCount()
+    {
+        return clusterInPageCount;
+    }
+
+    size_t Private::GetReadaheadPageCount()
+    {
+        return readaheadPageCount;
+    }
+
     bool VmFreeRangeAggregator::Aggregate(VmFreeRange* range)
     {
         size_t length = range->length;
@@ -304,8 +326,22 @@ namespace Npk
     void InitKernelVmSpace(uintptr_t lowBase, size_t lowLen, uintptr_t highBase,
         size_t highLen)
     {
+        using namespace Private;
+
         NPK_ASSERT((lowBase & PageMask()) == 0);
         NPK_ASSERT((highBase & PageMask()) == 0);
+
+        auto& dom = MySystemDomain();
+
+        const size_t clusterCount = ReadConfigUint("npk.vm.cluster_pages",
+            DefaultClusterPages);
+        clusterInPageCount = sl::Clamp<size_t>(clusterCount, 1,
+            MaxClusterPages);
+
+        const size_t readaheadCount = ReadConfigUint("npk.vm.readahead_pages",
+            DefaultClusterPages);
+        readaheadPageCount = sl::Clamp<size_t>(readaheadCount, 1,
+            MaxSwapClusterPages);
 
         //1. Initialize kernel pool allocators, these are our general purpose
         //heaps, one wired and one pageable. The wired heap is necessary for
@@ -313,7 +349,7 @@ namespace Npk
         //is for everything else.
         const uintptr_t poolBase = lowBase;
         const size_t poolSize = AlignDownPage(lowLen / 4);
-        Private::InitPool(poolBase, poolSize);
+        InitPool(poolBase, poolSize);
 
         auto conv = sl::ConvertUnits(poolSize);
         Log("Pool space: 0x%tx-0x%tx (%zu.%03zu %sB)",
@@ -339,8 +375,8 @@ namespace Npk
         void* ptr = PoolAllocWired(sizeof(VmSpace), SpaceHeapTag);
         NPK_ASSERT(ptr != nullptr);
         MySystemDomain().kernelSpace = new(ptr) VmSpace {};
-        auto mySpace = MySystemDomain().kernelSpace;
-        mySpace->map = MySystemDomain().kernelMap;
+        auto mySpace = dom.kernelSpace;
+        mySpace->map = dom.kernelMap;
 
         auto result = ResetMutex(&MySystemDomain().liveLists.lock, 1);
         NPK_ASSERT(result == NpkStatus::Success);
@@ -779,7 +815,7 @@ namespace Npk
         auto* vmr = new(ptr) VmRange {};
         vmr->space = &space;
 
-        if (ResetMutex(&vmr->mutex, 1) != NpkStatus::Success)
+        if (ResetRangeLocks(*vmr) != NpkStatus::Success)
         {
             PoolFreeWired(vmr, sizeof(*vmr), SpaceHeapTag);
             ReleaseSxMutexExclusive(&space.rangesMutex);
@@ -791,7 +827,7 @@ namespace Npk
 
         vmr->flags = flags;
         vmr->advice = VmAdvice::Normal;
-        vmr->nextFaultSlotPlusOne = 0;
+        vmr->nextFaultSlotPlusOne.Store(0, sl::Relaxed);
         vmr->base = base;
         vmr->length.Store(length, sl::Relaxed);
         vmr->amapRef = {};
@@ -964,11 +1000,11 @@ namespace Npk
             if (RangeDying(*it))
                 continue;
 
-            result = AcquireMutex(&it->mutex, sl::NoTimeout,
+            result = AcquireSxMutexExclusive(&it->mutex, sl::NoTimeout,
                 NPK_WAIT_LOCATION);
             NPK_ASSERT(result == NpkStatus::Success);
             it->version++;
-            ReleaseMutex(&it->mutex);
+            ReleaseSxMutexExclusive(&it->mutex);
         }
 
         bool carryOn = true;
@@ -1006,7 +1042,7 @@ namespace Npk
 
             auto* latest = new(ptr) VmRange {};
             latest->space = newSpace;
-            if (ResetMutex(&latest->mutex, 1) != NpkStatus::Success)
+            if (ResetRangeLocks(*latest) != NpkStatus::Success)
             {
                 PoolFreeWired(latest, sizeof(*latest), SpaceHeapTag);
                 carryOn = false;
@@ -1017,7 +1053,7 @@ namespace Npk
             latest->length.Store(it->length.Load(sl::Relaxed), sl::Relaxed);
             latest->flags = it->flags;
             latest->advice = it->advice;
-            latest->nextFaultSlotPlusOne = 0;
+            latest->nextFaultSlotPlusOne.Store(0, sl::Relaxed);
             latest->offset = it->offset;
             latest->amapOffset = it->amapOffset;
             latest->amapRef = it->amapRef;

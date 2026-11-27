@@ -4,11 +4,11 @@
 namespace Npk::Private
 {
     constexpr size_t MaxPageFaultAttempts = 4;
+    constexpr size_t MaxFaultRetryRounds = 32;
+    constexpr size_t MaxUnlockedFaultRounds = 4;
     constexpr size_t MaxFaultMemoryWaits = 16;
     constexpr auto WaitForMemoryTimeout = 100_ms;
-    constexpr size_t MaxClusterPages = 16;
-    constexpr size_t DefaultClusterPages = 8;
-    constexpr Paddr InvalidPaddr = -1;
+    constexpr size_t MaxFaultAddRanges = 1;
 
     struct ClusterWindow
     {
@@ -25,27 +25,57 @@ namespace Npk::Private
         uintptr_t page0Addr;
     };
 
-    static size_t defaultClusterLen; //TODO: populate from cmdline
-    static size_t defaultReadaheadLen;
-
-    //NOTE: assumes range.mutex is is held.
-    static ClusterWindow ChooseClusterWindow(VmRange& range, size_t slot,
-        bool write)
+    static size_t GrowClusterWindow(size_t current)
     {
-        (void)write;
+        //numbers stolen from linux (`get_next_ra_size()`).
+        if (current < MaxClusterPages / 16)
+            return 4 * current;
+        if (current <= MaxClusterPages / 2)
+            return 2 * current;
 
-        size_t target = defaultClusterLen;
-        if (UnderMemoryPressure())
+        return MaxClusterPages;
+    }
+
+    //NOTE: assumes `range.mutex` is held in either mode.
+    static ClusterWindow ChooseClusterWindow(VmRange& range, size_t slot)
+    {
+        const auto& book = range.source->book;
+        const bool single = book.backing == BookBacking::Swap;
+        const uint32_t nextSlot = range.nextFaultSlotPlusOne.Load(sl::Relaxed);
+        const bool linear = nextSlot == (slot + 1);
+        const auto adv = range.advice;
+
+        size_t target = 1;
+        if (single || MemoryIsCritical() || adv == VmAdvice::Random)
             target = 1;
-        else if (range.advice == VmAdvice::Random)
-            target = 1;
-        else if (range.advice == VmAdvice::WillNeed)
+        else if (adv == VmAdvice::WillNeed || adv == VmAdvice::Sequential)
             target = MaxClusterPages;
+        else
+        {
+            target = range.readaheadWindow.Load(sl::Relaxed);
 
-        const bool linear = range.nextFaultSlotPlusOne == slot + 1;
+            if (target == 0)
+                target = GetClusterInPageCount();
+            else if (linear)
+                target = GrowClusterWindow(target);
+            else
+            {
+                auto score = BookReadaheadScore(book);
+
+                score = (score * MaxClusterPages) >> 8;
+                target = sl::Max(score, target / 2);
+            }
+
+            target = sl::Clamp<size_t>(target, 1, MaxClusterPages);
+            range.readaheadWindow.Store(static_cast<uint8_t>(target),
+                sl::Relaxed);
+
+            if (MemoryIsLow())
+                target = sl::Max<size_t>(target / 4, 1);
+        }
 
         ClusterWindow window {};
-        if (linear || range.advice == VmAdvice::Sequential || target == 1)
+        if (linear || adv == VmAdvice::Sequential || target == 1)
             window.first = slot;
         else
         {
@@ -56,35 +86,24 @@ namespace Npk::Private
                 window.first = 0;
         }
 
-        const size_t rangeLen = range.length >> PfnShift();
+        const size_t rangeLen = range.length.Load(sl::Relaxed) >> PfnShift();
         const size_t last = sl::Min(window.first + target, rangeLen);
+
         window.count = last - window.first;
         window.mainIndex = slot - window.first;
-        range.nextFaultSlotPlusOne = static_cast<uint32_t>(last + 1);
+        range.nextFaultSlotPlusOne.Store(static_cast<uint32_t>(last + 1),
+            sl::Relaxed);
 
         return window;
     }
 
-    static void AnonDropSwapForWrite(AnonPage& anon, PageInfo* page)
+    //NOTE: assumes `range.mutex` is held shared, and `range` covers `addr`.
+    static NpkStatus DropPreviousMapping(Paddr* prev, bool* prevDirtied,
+        VmRange& range, uintptr_t addr)
     {
-        SwapSlot stale = NoSwapSlot;
+        auto* map = range.space->map;
+        *prevDirtied = false;
 
-        anon.lock.Lock();
-        if (anon.swapSlot != NoSwapSlot)
-            stale = AnonMarkDirty(anon, page);
-
-        page->flags.Clear(PageVmFlag::Busy);
-        anon.lock.Unlock();
-
-        if (stale != NoSwapSlot)
-            SwapFreeSlot(stale);
-    }
-
-    //NOTE: caller is expected to hold `range->mutex` for the range covering
-    //`addr`.
-    static NpkStatus DropPreviousMapping(Paddr* prev, HwMap* map,
-        uintptr_t addr)
-    {
         auto result = HwMapExtract(prev, nullptr, nullptr, map, addr);
 
         if (result == NpkStatus::BadVaddr)
@@ -92,664 +111,598 @@ namespace Npk::Private
         if (result != NpkStatus::Success)
             return result;
 
-        result = HwMapRemove(map, addr, 1);
-        if (result != NpkStatus::Success)
-            return result;
+        //include slack space for any mmu structures to free, since we're
+        //removing a mapping.
+        MapBatchRange rangeStore[1 + MapBatchTableSlack];
+        MapBatch batch {};
+        ResetMapBatch(batch, map, rangeStore);
 
-        PageList freeAfter {};
-        HwMapUpdate(map, true, freeAfter);
+        BeginMappingRemovals(range);
+        const auto harvest = HwMapHarvest(batch, addr, *prev,
+            HwHarvestAction::Remove, {});
+
+        if (!harvest.removed)
+        {
+            FinishMapBatch(batch);
+            EndMappingRemovals(range);
+
+            return NpkStatus::NotAvailable;
+        }
+        *prevDirtied = harvest.state.Has(MmuPageState::Dirty);
+
+        HwMapUpdate(batch, true);
+        FinishMapBatch(batch);
+
+        EndMappingRemovals(range);
 
         return NpkStatus::Success;
     }
 
-    static NpkStatus EnsurePrivateAmap(VmRange& range, size_t slot)
+    //NOTE: assumes `range.mutex` is held exclusive.
+    static NpkStatus EnsurePrivateAmap(VmRange& range)
     {
-        auto CalcSlotCount = [](size_t target, size_t max) -> size_t
-        {
-            target++;
-            target += target / 2;
-
-            return sl::Min(target, max);
-        };
-
-        const size_t totalSlots = range.length >> PfnShift();
-        const size_t targetSlots = CalcSlotCount(slot, totalSlots);
-
         if (!range.amapRef.Valid())
         {
-            AnonMap* ptr;
-            auto result = CreateAnonMap(&ptr, targetSlots);
+            //no amap at all, alloc a new one.
+
+            Amap* ptr;
+            auto result = CreateAmap(&ptr);
             if (result != NpkStatus::Success)
                 return result;
-
-            result = AnonMapLinkRange(*ptr, &range);
-            if (result != NpkStatus::Success)
-            {
-                auto doomed = AnonMapRef::Adopt(ptr);
-                doomed.Release();
-
-                return result;
-            }
 
             range.amapOffset = 0;
-            range.amapRef = AnonMapRef::Adopt(ptr);
-        }
-        else if (range.flags.Has(VmFlag::AmapNeedsCopy))
-        {
-            if (range.amapRef->refcount > 1)
-            {
-                AnonMapRef mapRef {};
-                auto result = Private::AnonMapClone(&mapRef, *range.amapRef);
-                if (result != NpkStatus::Success)
-                    return result;
-
-                NPK_ASSERT(mapRef.Valid());
-
-                result = AnonMapUnlinkRange(*range.amapRef, &range);
-                if (result != NpkStatus::Success)
-                    return result;
-
-                result = AnonMapLinkRange(*mapRef, &range);
-                if (result != NpkStatus::Success)
-                {
-                    range.amapRef.Release();
-
-                    return result;
-                }
-
-                range.amapRef = mapRef;
-            }
-
+            LinkLayer(ptr->book, range.upperLink, &range);
+            range.amapRef = AmapRef::Adopt(ptr);
             range.flags.Clear(VmFlag::AmapNeedsCopy);
-        }
-
-
-        if (range.amapRef->slotCount <= slot)
-        {
-            auto result =  ResizeAnonMap(*range.amapRef, targetSlots);
-            if (result != NpkStatus::Success)
-                return result;
-        }
-
-        return NpkStatus::Success;
-    }
-    
-    static void InitVmPage(PageInfo* page, bool clean, PageVmOwnerType type,
-        void* owner, size_t offset)
-    {
-        page->vm.pins = 0;
-        page->vm.offset = offset;
-        PageInfoSetVmOwner(page, owner, type);
-
-        page->vm.flags.Reset();
-        if (clean)
-            page->vm.flags.Set(PageVmFlag::Clean);
-
-        PinPage(page);
-    }
-
-    //NOTE: assumes `anon.lock` is held.
-    static void PublishAnonPage(AnonPage& anon, PageInfo* page, AnonMap& amap,
-        size_t slot, bool clean)
-    {
-        NPK_ASSERT(anon.page == nullptr);
-
-        anon.page = page;
-
-        InitVmPage(page, clean, PageVmOwnerType::Anon, &amap, slot);
-    }
-
-    static void ReleasePinnedAnon(VmRange& range, PageInfo*& page)
-    {
-        if (page == nullptr || !range.amapRef.Valid())
-            return;
-
-        SettleAnonPage(*range.amapRef, page, false, true);
-        page = nullptr;
-    }
-
-    static NpkStatus PopulateAnonSlot(Paddr* paddr, VmRange& range, size_t slot)
-    {
-        AnonPage* anon;
-        auto result = CreateAnonPage(&anon);
-        if (result != NpkStatus::Success)
-            return result;
-        auto ref = AnonPageRef::Adopt(anon);
-
-        auto* page = AllocPage(true);
-        if (page == nullptr)
-            return NpkStatus::Shortage;
-
-        anon->lock.Lock();
-        PublishAnonPage(*anon, page, *range.amapRef, slot, false);
-        anon->lock.Unlock();
-
-        result = AnonMapAdd(*range.amapRef, slot, ref);
-        if (result != NpkStatus::Success)
-        {
-            anon->lock.Lock();
-            UnpinPage(page);
-            anon->page = nullptr;
-            anon->lock.Unlock();
-
-            FreePage(page);
-
-            return result;
-        }
-
-        TrackPage(page);
-        *paddr = LookupPagePaddr(page);
-
-        return NpkStatus::Success;
-    }
-
-    static NpkStatus FaultOnAnonPage(PageInfo** out, AnonPageRef ref,
-        AnonMap& map, size_t slot)
-    {
-        ref->lock.Lock();
-        const auto swapSlot = ref->swapSlot;
-        const bool isResident = ref->page != nullptr;
-        ref->lock.Unlock();
-
-        if (isResident || swapSlot == NoSwapSlot)
-            return NpkStatus::NotAvailable;
-
-        auto* page = AllocPage(true);
-        if (page == nullptr)
-            return NpkStatus::Shortage;
-
-        size_t pagesWanted = defaultReadaheadLen;
-        if (UnderMemoryPressure())
-            pagesWanted = 1;
-        
-        PageInfo* pages[MaxSwapClusterPages] {};
-        AnonPageRef aheadRefs[MaxSwapClusterPages] {};
-        SwapSlot aheadSlots[MaxSwapClusterPages] {};
-        size_t count = 1;
-
-        pages[0] = page;
-        aheadSlots[0] = swapSlot;
-
-        SwapSlot prev = swapSlot;
-        while (count < pagesWanted)
-        {
-            auto next = AnonMapLookup(map, slot + count);
-            if (!next.Valid())
-                break;
-
-            next->lock.Lock();
-            const auto nextSlot = next->swapSlot;
-            const bool nextResident = next->page != nullptr;
-            next->lock.Unlock();
-
-            if (nextResident || !SwapSlotsAdjacent(prev, nextSlot))
-                break;
-
-            auto* nextPage = AllocPage(true);
-            if (nextPage == nullptr)
-                break;
-
-            pages[count] = nextPage;
-            aheadRefs[count] = next;
-            aheadSlots[count] = nextSlot;
-
-            prev = nextSlot;
-            count++;
-        }
-
-        SwapOp op {};
-        auto result = SwapBeginRead(op, swapSlot, { pages, count });
-        if (result != NpkStatus::Success && result != NpkStatus::Pending)
-        {
-            for (size_t i = 0; i < count; i++)
-                FreePage(pages[i]);
-
-            return result;
-        }
-        result = SwapEndRead(op);
-        if (result != NpkStatus::Success)
-        {
-            for (size_t i = 0; i < count; i++)
-                FreePage(pages[i]);
-
-            return result;
-        }
-
-        for (size_t i = 1; i < count; i++)
-        {
-            auto& aheadRef = *aheadRefs[i];
-
-            aheadRef.lock.Lock();
-            if (aheadRef.page != nullptr || aheadRef.swapSlot != aheadSlots[i])
-            {
-                aheadRef.lock.Unlock();
-                FreePage(pages[i]);
-
-                continue;
-            }
-
-            PublishAnonPage(aheadRef, pages[i], map, slot + i, true);
-            UnpinPage(pages[i]);
-            aheadRef.lock.Unlock();
-
-            TrackPage(pages[i]);
-        }
-
-        ref->lock.Lock();
-        if (ref->page != nullptr)
-        {
-            //race handling: someone else paged in the page's data before us
-            //and attached it to the anon. Discard our copy and return theirs.
-
-            auto* winner = ref->page;
-            PinPage(winner);
-            ref->lock.Unlock();
-
-            FreePage(page);
-            *out = winner;
+            range.version++;
 
             return NpkStatus::Success;
         }
 
-        PublishAnonPage(*ref, page, map, slot, true);
-        ref->lock.Unlock();
+        if (!range.flags.Has(VmFlag::AmapNeedsCopy))
+            return NpkStatus::Success; //has amap, private already.
+
+        //we have a shared amap, clone it!
+        auto& from = range.amapRef->book;
+        const size_t first = range.amapOffset;
+        const size_t pages = range.length.Load(sl::Relaxed) >> PfnShift();
+        BookSpan todo = MakeBookSpan(from, first, first + pages);
+
+        Amap* fresh = nullptr;
+        BookPromoteSpares spares {};
+        auto status = NpkStatus::Success;
+        while (true)
+        {
+            auto result = AcquireSxMutexExclusive(&from.mutex, sl::NoTimeout,
+                NPK_WAIT_LOCATION);
+            NPK_ASSERT(result == NpkStatus::Success);
+
+            if (todo.begin == first && !BookOverlapped(todo, &range.upperLink))
+            {
+                range.flags.Clear(VmFlag::AmapNeedsCopy);
+                ReleaseSxMutexExclusive(&from.mutex);
+                break;
+            }
+
+            if (fresh == nullptr)
+            {
+                ReleaseSxMutexExclusive(&from.mutex);
+                status = CreateAmap(&fresh);
+                if (status != NpkStatus::Success)
+                    break;
+                continue;
+            }
+
+            BookPromoteNeed need;
+            BookFill* fill;
+            status = BookPromote(todo, first, fresh->book, spares, need, &fill);
+            if (status == NpkStatus::Success)
+            {
+                auto& to = fresh->book;
+                BookUnlinkRange(from, range.upperLink);
+
+                result = AcquireSxMutexExclusive(&to.mutex, sl::NoTimeout,
+                    NPK_WAIT_LOCATION);
+                NPK_ASSERT(result == NpkStatus::Success);
+
+                range.amapOffset = 0;
+                BookLinkRange(to, range.upperLink);
+                ReleaseSxMutexExclusive(&to.mutex);
+                ReleaseSxMutexExclusive(&from.mutex);
+
+                //the old amap's reference goes last, at passive
+                AmapRef old = sl::Move(range.amapRef);
+                range.amapRef = AmapRef::Adopt(fresh);
+                fresh = nullptr;
+                range.flags.Clear(VmFlag::AmapNeedsCopy);
+                range.version++;
+
+                old.Release();
+                break;
+            }
+            ReleaseSxMutexExclusive(&from.mutex);
+
+            if (status == NpkStatus::Pending)
+            {
+                BookWaitFill(fill);
+                status = NpkStatus::Success;
+                continue;
+            }
+
+            NPK_ASSERT(status == NpkStatus::Shortage);
+            status = BookFillPromoteSpares(spares, need);
+            if (status != NpkStatus::Success)
+                break;
+        }
+
+        BookDrainPromoteSpares(spares);
+
+        if (fresh != nullptr)
+            AmapRef::Adopt(fresh).Release();
+
+        return status;
+    }
+
+    static bool CopyPageWithMetadata(PageInfo* dst, PageInfo* src)
+    {
+        const auto prevIpl = EnsureIpl(Ipl::Dpc);
+        auto dest = AccessPage(dst);
+        auto from = AccessPage(src);
+
+        const bool ok = dest.vaddr && from.Valid();
+        if (ok)
+            sl::MemCopy(dest.vaddr, from.vaddr, PageSize());
+
+        DestroyPageAccess(&dest);
+        DestroyPageAccess(&from);
+        RestoreIpl(prevIpl);
+
+        if (ok)
+        {
+            const auto dstAddr = LookupPagePaddr(dst);
+            const auto srcAddr = LookupPagePaddr(src);
+
+            HwCopyPageMetadata(dstAddr, srcAddr);
+        }
+
+        return ok;
+    }
+
+    //NOTE: assumes `range.mutex` is held and it's amap is private.
+    static NpkStatus PopulateAmapSlot(PageInfo** out, VmRange& range,
+        size_t slot, PageInfo* copyFrom)
+    {
+        auto* page = AllocPage(true);
+        if (page == nullptr)
+            return NpkStatus::Shortage;
+
+        if (copyFrom != nullptr && !CopyPageWithMetadata(page, copyFrom))
+        {
+            FreePage(page);
+
+            return NpkStatus::Shortage;
+        }
+
+        const auto result = BookPopulate(range.amapRef->book, slot, page);
+        if (result != NpkStatus::Success)
+        {
+            FreePage(page);
+
+            return result;
+        }
 
         TrackPage(page);
         *out = page;
 
-            return NpkStatus::Success;
-        }
+        return NpkStatus::Success;
     }
 
-    static void ReleaseSourceCluster(SourceFaultResult& fetched, VmSource* src)
+    static NpkStatus SwapInCell(AnonCell* cell)
     {
-        if (src == nullptr)
+        BookFill* fill;
+        auto result = BookBeginCellSwapIn(&fill, cell);
+
+        if (result == NpkStatus::NotFound)
+            return NpkStatus::Retry;
+        if (result != NpkStatus::Success)
+            return result;
+
+        PageInfo* page = AllocPage(true);
+        result = NpkStatus::Shortage;
+        if (page != nullptr)
+        {
+            SwapOp op {};
+            result = SwapBeginRead(op, { fill->handles, 1 }, { &page, 1 });
+
+            if (result == NpkStatus::Success || result == NpkStatus::Pending)
+                result = SwapEndRead(op);
+        }
+
+        const bool hasSuccess = result == NpkStatus::Success;
+        if (BookEndCellSwapIn(cell, fill, page, hasSuccess))
+            TrackPage(page);
+
+        if (result == NpkStatus::NotFound)
+        {
+            Log("Shared anon page has handle with no location: contents lost!",
+                LogLevel::Error);
+
+            return NpkStatus::InternalError;
+        }
+        if (result != NpkStatus::Success)
+            return result;
+
+        return NpkStatus::Retry;
+    }
+
+    static void ReleasePinnedAnon(PageInfo** page)
+    {
+        if (*page == nullptr)
             return;
 
+        BookUnpin(*page);
+        *page = nullptr;
+    }
+
+    static void ReleaseSourceCluster(SourceFaultResult& fetched)
+    {
         for (size_t i = 0; i < fetched.count; i++)
         {
             auto& page = fetched.pages[i];
 
             if (page == nullptr)
                 continue;
-            SettleSourcePage(*src, page, false, true);
+
+            BookUnpin(page);
             page = nullptr;
         }
     }
 
-    //NOTE: assumes the page's owner's lock is held.
-    static void CommitPin(PageInfo* page)
+    static void UnmapOwnEntry(VmRange& range, uintptr_t addr, PageInfo* page)
     {
-        if (page->mapped)
-            UnpinPage(page);
-        else
-            page->mapped = true;
-    }
+        auto* map = range.space->map;
+        const Paddr frame = LookupPagePaddr(page);
+        Paddr present;
+        if (HwMapExtract(&present, nullptr, nullptr, map, addr)
+            != NpkStatus::Success || present != frame)
+            return;
 
-    static void CommitAnonPage(AnonMap& map, PageInfo* page)
-    {
-        auto result = AcquireMutex(&map.mutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION);
-        NPK_ASSERT(result == NpkStatus::Success);
+        MapBatchRange store[1 + MapBatchTableSlack];
+        MapBatch batch {};
+        ResetMapBatch(batch, map, store);
+        BeginMappingRemovals(range);
 
-        auto ref = AnonMapLookupLocked(map, page->offset);
-        NPK_ASSERT(ref.Valid());
-
-        ref->lock.Lock();
-        NPK_ASSERT(ref->page == page);
-        CommitPin(page);
-        ref->lock.Unlock();
-
-        ReleaseMutex(&map.mutex);
-    }
-
-    static void SettleFaultedSourcePages(VmSource& src, PageInfo** pages,
-        const bool* mapped, size_t count)
-    {
-        auto result = AcquireSxMutexExclusive(&src.mutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION);
-        NPK_ASSERT(result == NpkStatus::Success);
-
-        for (size_t i = 0; i < count; i++)
+        const auto action = HwHarvestAction::Remove;
+        const auto harvest = HwMapHarvest(batch, addr, frame, action, {});
+        if (harvest.removed)
         {
-            if (pages[i] == nullptr)
-                continue;
-
-            if (mapped[i])
-                CommitPin(pages[i]);
-            else
-                UnpinPage(pages[i]);
+            HwMapUpdate(batch, true);
+            (void)SettleMappedPage(frame,
+                harvest.state.Has(MmuPageState::Dirty));
         }
 
-        ReleaseSxMutexExclusive(&src.mutex);
+        FinishMapBatch(batch);
+        EndMappingRemovals(range);
     }
 
-    //NOTE: assumes range.mutex is held and the amap is private.
-    static NpkStatus CopySourcePageToAmap(Paddr* paddr, VmRange& range,
-        size_t slot, PageInfo* sourcePage)
-    {
-        AnonPage* anon;
-        auto result = CreateAnonPage(&anon);
-        if (result != NpkStatus::Success)
-            return result;
-
-        auto ref = AnonPageRef::Adopt(anon);
-        auto page = AllocPage(true);
-        if (page == nullptr)
-            return NpkStatus::Shortage;
-
-        const auto prevIpl = EnsureIpl(Ipl::Dpc); //prevent preemption
-        auto dest = AccessPage(page);
-        auto src = AccessPage(sourcePage);
-
-        if (!dest.vaddr || !src.Valid())
-        {
-            DestroyPageAccess(&dest);
-            DestroyPageAccess(&src);
-            RestoreIpl(prevIpl);
-            FreePage(page);
-
-            return NpkStatus::Shortage;
-        }
-
-        sl::MemCopy(dest.vaddr, src.vaddr, PageSize());
-
-        DestroyPageAccess(&dest);
-        DestroyPageAccess(&src);
-        RestoreIpl(prevIpl);
-
-        anon->lock.Lock();
-        PublishAnonPage(*anon, page, *range.amapRef, slot, false);
-        anon->lock.Unlock();
-
-        result = AnonMapAdd(*range.amapRef, slot, ref);
-        if (result != NpkStatus::Success)
-        {
-            anon->lock.Lock();
-            UnpinPage(page);
-            anon->page = nullptr;
-            anon->lock.Unlock();
-
-            FreePage(page);
-
-            return result;
-        }
-
-        TrackPage(page);
-        *paddr = LookupPagePaddr(page);
-
-        return NpkStatus::Success;
-    }
-
-    //NOTE: assumes `src.mutex` is held in any mode.
-    static PageInfo* SourceCacheLookup(VmSource& src, size_t index)
-    {
-        for (auto it = src.pages.Begin(); it != src.pages.End(); ++it)
-        {
-            if (it->vm.offset == index)
-                return &*it;
-        }
-
-        return nullptr;
-    }
-
-    //NOTE: assumes `src.mutex` is held exclusively.
-    static PageInfo* PublishSourcePage(VmSource& src, PageInfo* page,
-        size_t index)
-    {
-        auto* found = SourceCacheLookup(src, index);
-        if (found != nullptr)
-        {
-            FreePage(page);
-            PinPage(found);
-
-            return found;
-        }
-
-        InitVmPage(page, true, PageVmOwnerType::Source, &src, index);
-        const auto success = src.pages.PushFront(page);
-        NPK_ASSERT(success);
-
-        return page;
-    }
-
-    //NOTE: assumes `range.mutex` is held.
-    static NpkStatus FaultOnSource(SourceFaultResult& out, VmRange& range,
-        size_t slot, bool write)
+    //NOTE: no locks required, acquires internally and re-checks input pages
+    //against book's size. Any races on a book are caught and resolved here.
+    static void CommitFaultedPages(VmRange& range, SourceFaultResult& fetched,
+        const bool* mapped)
     {
         auto& src = *range.source;
-        const auto window = ChooseClusterWindow(range, slot, write);
+
+        const auto locked = AcquireSxMutexShared(&src.book.mutex,
+            sl::NoTimeout, NPK_WAIT_LOCATION);
+        NPK_ASSERT(locked == NpkStatus::Success);
+
+        const auto extent = GetSourceSize(&src);
+        uint64_t limit = static_cast<uint64_t>(-1);
+        if (extent.bounded)
+            limit = PageCountFor(extent.size);
+
+        for (size_t i = 0; i < fetched.count; i++)
+        {
+            PageInfo* page = fetched.pages[i];
+            if (page == nullptr)
+                continue;
+
+            if (mapped[i] && page->offset < limit)
+            {
+                BookCommitLocked(src.book, page);
+                continue;
+            }
+
+            if (mapped[i])
+            {
+                UnmapOwnEntry(range, fetched.page0Addr + (i << PfnShift()),
+                    page);
+            }
+            BookUnpin(page);
+        }
+
+        ReleaseSxMutexShared(&src.book.mutex);
+    }
+
+    //NOTE: assumes `range.mutex` is not held, and was held shared before the
+    //caller dropped it. Retakes it shared, false if the range changed.
+    static bool RelockAfterIo(VmRange& range, uint32_t version)
+    {
+        const auto result = AcquireSxMutexShared(&range.mutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        if (range.space->faultGate.Load(sl::Acquire))
+            return false;
+        if ((range.faultRefs.Load(sl::Acquire) & VmRangeDying) != 0)
+            return false;
+
+        return version == range.version;
+    }
+
+    //NOTE: `found` is a resident page managed by a cell.
+    static NpkStatus FaultOnCell(PageInfo** out, const BookLookup& found,
+        VmRange& range, uintptr_t addr, size_t slot, bool write)
+    {
+        auto& book = range.amapRef->book;
+        AnonCell* cell = found.cell;
+        NPK_ASSERT(found.result == BookFindResult::Page);
+
+        PageInfo* page = found.page;
+        if (!write || !found.shared)
+        {
+            //this book is the only sharer: try to end the cell before mapping
+            if (!found.shared)
+                BookTryUnpromote(book, slot, cell, page);
+
+            BookUnrefCell(cell);
+            *out = page;
+
+            return NpkStatus::Success;
+        }
+
+        PageInfo* fresh = AllocPage(true);
+        if (fresh == nullptr || !CopyPageWithMetadata(fresh, page))
+        {
+            if (fresh != nullptr)
+                FreePage(fresh);
+
+            BookUnpin(page);
+            BookUnrefCell(cell);
+
+            return NpkStatus::Shortage;
+        }
+
+        Paddr prev;
+        bool prevDirtied;
+        auto result = DropPreviousMapping(&prev, &prevDirtied, range, addr);
+        if (result == NpkStatus::Success)
+            SettleMappedPage(prev, prevDirtied);
+        else if (result != NpkStatus::NotAvailable)
+        {
+            FreePage(fresh);
+            BookUnpin(page);
+            BookUnrefCell(cell);
+
+            return result;
+        }
+
+        const auto outcome = BreakCowOnBookCell(book, slot, cell, page, fresh);
+        BookUnrefCell(cell);
+
+        switch (outcome)
+        {
+        case BookBreak::UsedFresh:
+            TrackPage(fresh);
+            *out = fresh;
+            return NpkStatus::Success;
+
+        case BookBreak::ReusedOld:
+            FreePage(fresh);
+            *out = page;
+            return NpkStatus::Success;
+
+        case BookBreak::TryAgain:
+            FreePage(fresh);
+            BookUnpin(page);
+            return NpkStatus::Retry;
+        }
+        NPK_UNREACHABLE();
+    }
+
+    //NOTE: assumes `range.mutex` is held shared, and returns with it held
+    //shared. Unless `holdLocked` is set it is dropped around any wait, and
+    //`Retry` is returned if the range changed meanwhile.
+    static NpkStatus FaultOnAnonPage(PageInfo** out, bool* viaCell,
+        VmRange& range, uintptr_t addr, size_t slot, bool write,
+        bool holdLocked)
+    {
+        auto& book = range.amapRef->book;
+
+        while (true)
+        {
+            const auto found = BookLookupPin(book, slot, write);
+            *viaCell = found.cell != nullptr;
+
+            if (found.result == BookFindResult::Empty)
+                return NpkStatus::NotAvailable;
+
+            if (found.result == BookFindResult::Page)
+            {
+                if (found.cell == nullptr)
+                {
+                    *out = found.page;
+
+                    return NpkStatus::Success;
+                }
+
+                const auto result = FaultOnCell(out, found, range, addr,
+                    slot, write);
+                if (result == NpkStatus::Retry)
+                    continue;
+
+                return result;
+            }
+
+            //keeps `book` alive while the range's mutex is dropped
+            AmapRef held = range.amapRef;
+            const uint32_t version = range.version;
+            if (!holdLocked)
+                ReleaseSxMutexShared(&range.mutex);
+
+            PageInfo* page = nullptr;
+            auto result = NpkStatus::Retry;
+            if (found.result == BookFindResult::Filling)
+                BookWaitFill(found.fill);
+            else if (found.cell != nullptr)
+                result = SwapInCell(found.cell);
+            else
+            {
+                const size_t window = GetReadaheadWindowFor(book, slot);
+                result = SwapInBookEntry(&page, book, slot, window);
+            }
+
+            if (found.cell != nullptr)
+                BookUnrefCell(found.cell);
+
+            bool current = true;
+            if (!holdLocked)
+                current = RelockAfterIo(range, version);
+
+            if (result == NpkStatus::Success && !current)
+            {
+                BookUnpin(page);
+                result = NpkStatus::Retry;
+            }
+            if (result == NpkStatus::Retry && current)
+                continue;
+            if (result != NpkStatus::Success)
+                return result;
+
+            if (write)
+                BookMarkWritten(&book, page);
+            *out = page;
+
+            return NpkStatus::Success;
+        }
+    }
+
+    //NOTE: assumes `range.mutex` is held shared, `holdLocked` determines if
+    //the mutex is dropped around calling into the pager.
+    static NpkStatus FaultOnSource(SourceFaultResult& out, VmRange& range,
+        size_t page, bool write, bool holdLocked)
+    {
+        auto& src = *range.source;
+        const auto window = ChooseClusterWindow(range, page);
         const size_t baseIndex = (range.offset >> PfnShift()) + window.first;
         const size_t first = window.first;
-
-        static_assert(MaxClusterPages <= MaxSourceClusterPages);
 
         out.count = window.count;
         out.mainIndex = window.mainIndex;
         out.page0Addr = range.base + (first << PfnShift());
 
-        PageInfo* gotPages[MaxClusterPages] {};
-        bool publishedPages[MaxClusterPages] {};
-        bool anyPagesNeedGet = false;
+        PagerFlags flags {};
+        if (write && !range.flags.Has(VmFlag::CopyOnWrite))
+            flags.Set(PagerFlag::Write);
 
-        auto result = AcquireSxMutexShared(&src.mutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION);
-        if (result != NpkStatus::Success)
+        const uint32_t version = range.version;
+        if (!holdLocked)
+            ReleaseSxMutexShared(&range.mutex);
+
+        auto result = SourcePinCluster(src, { out.pages, out.count }, baseIndex,
+            out.mainIndex, flags);
+
+        if (holdLocked)
             return result;
 
-        for (size_t i = 0; i < out.count; i++)
+        const bool current = RelockAfterIo(range, version);
+        const auto extent = GetSourceSize(&src);
+        if (result == NpkStatus::Success && extent.bounded
+            && baseIndex + out.mainIndex >= PageCountFor(extent.size))
         {
-            auto found = SourceCacheLookup(src, baseIndex + i);
-            
-            out.pages[i] = found;
-            if (found == nullptr)
-                anyPagesNeedGet = true;
-        }
-        ReleaseSxMutexShared(&src.mutex);
+            ReleaseSourceCluster(out);
+            out.count = 0;
 
-        NpkStatus pagerResult = NpkStatus::NotAvailable;
-        if (anyPagesNeedGet)
-        {
-            for (size_t i = 0; i < out.count; i++)
-            {
-                if (out.pages[i] != nullptr)
-                    continue;
-
-                gotPages[i] = AllocPage(true);
-                if (gotPages[i] == nullptr && i == out.mainIndex)
-                {
-                    for (size_t j = 0; j < i; j++)
-                    {
-                        if (gotPages[j] != nullptr)
-                            FreePage(gotPages[j]);
-                    }
-
-                    return NpkStatus::Shortage;
-                }
-
-                if (gotPages[i] != nullptr)
-                    gotPages[i]->vm.flags.Clear(PageVmFlag::Filled);
-            }
-
-            PagerFlags flags {};
-            if (write && !range.flags.Has(VmFlag::CopyOnWrite))
-                flags.Set(PagerFlag::Write);
-
-            pagerResult = src.ops->Get(&src, { gotPages, out.count },
-                baseIndex, out.mainIndex, flags);
+            return NpkStatus::BadVaddr;
         }
 
-        result = AcquireSxMutexExclusive(&src.mutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION);
-        if (result != NpkStatus::Success)
-        {
-            for (size_t i = 0; i < out.count; i++)
-            {
-                if (gotPages[i] != nullptr)
-                    FreePage(gotPages[i]);
-            }
-
+        if (current)
             return result;
-        }
 
-        for (size_t i = 0; i < out.count; i++)
-        {
-            if (gotPages[i] == nullptr)
-            {
-                if (out.pages[i] != nullptr)
-                    PinPage(out.pages[i]);
-                continue;
-            }
+        if (result == NpkStatus::Success)
+            ReleaseSourceCluster(out);
+        out.count = 0;
 
-            if (!gotPages[i]->vm.flags.Has(PageVmFlag::Filled))
-            {
-                FreePage(gotPages[i]);
-                out.pages[i] = nullptr;
-
-                continue;
-            }
-
-            out.pages[i] = PublishSourcePage(src, gotPages[i], baseIndex + i);
-            publishedPages[i] = out.pages[i] == gotPages[i];
-        }
-        ReleaseSxMutexExclusive(&src.mutex);
-
-        for (size_t i = 0; i < out.count; i++)
-        {
-            if (publishedPages[i])
-                TrackPage(out.pages[i]);
-        }
-
-        if (out.pages[out.mainIndex] == nullptr)
-        {
-            ReleaseSourceCluster(out, &src);
-            NPK_ASSERT(pagerResult != NpkStatus::Success);
-
-            return pagerResult;
-        }
-
-        return NpkStatus::Success;
+        return NpkStatus::Retry;
     }
+    static_assert(MaxClusterPages <= MaxSourceClusterPages);
 
-    //NOTE: assumes `space->rangesMutex` is held in some form.
-    static NpkStatus AttemptPageFaultLocked(VmSpace& space, uintptr_t addr,
-        bool write)
+    //NOTE: assumes `range.mutex` is held shared, that `range` includes
+    //`addr`, and that a write to a copy-on-write range already has a private
+    //amap.
+    static NpkStatus AttemptPageFaultLocked(VmRange& range, uintptr_t addr,
+        bool write, bool holdLocked)
     {
-        VmRange* range;
-        auto result = SpaceLookupLocked(&range, space, addr, 1);
-        if (result != NpkStatus::Success)
-            return result;
-
-        result = AcquireMutex(&range->mutex, sl::NoTimeout, NPK_WAIT_LOCATION);
-        if (result != NpkStatus::Success)
-            return result;
-
-        if (write && !range->flags.Has(VmFlag::Write))
-        {
-            ReleaseMutex(&range->mutex);
-
+        //0. Object-level permissions
+        if (write && !range.flags.Has(VmFlag::Write))
             return NpkStatus::NotWritable;
-        }
 
-        NPK_ASSERT(range->amapOffset == 0);
-        const size_t slot = range->amapOffset + ((addr - range->base)
-            >> PfnShift());
-        const bool isCow = range->flags.Has(VmFlag::CopyOnWrite);
+        const size_t page = (addr - range.base) >> PfnShift();
+        const bool isCow = range.flags.Has(VmFlag::CopyOnWrite);
+        auto* map = range.space->map;
+
+        auto result = NpkStatus::Success;
 
         Paddr paddr {};
         bool resolved = false;
+        bool viaCell = false;
         PageInfo* pinnedAnon = nullptr;
 
-        if (write && isCow)
+        //1. If we have an amap try resolve the fault through it.
+        const size_t slot = range.amapOffset + page;
+        if (range.amapRef.Valid())
         {
-            result = EnsurePrivateAmap(*range, slot);
-            if (result != NpkStatus::Success)
-            {
-                ReleaseMutex(&range->mutex);
+            PageInfo* anon;
+            result = FaultOnAnonPage(&anon, &viaCell, range, addr, slot, write,
+                holdLocked);
 
-                return result;
-            }
-        }
-
-        //NOTE: only runs once, a `while` is used for short circuiting with
-        //`break` below.
-        while (range->amapRef.Valid())
-        {
-            auto ref = AnonMapLookup(*range->amapRef, slot);
-            if (!ref.Valid())
-                break; //amap doesnt cover this page
-
-            PageInfo* page;
-            result = AnonPageGetPage(&page, ref);
             if (result == NpkStatus::Success)
             {
-                pinnedAnon = page;
-                paddr = LookupPagePaddr(page);
+                pinnedAnon = anon;
+                paddr = LookupPagePaddr(anon);
                 resolved = true;
-
-                if (write)
-                    AnonDropSwapForWrite(*ref, page);
             }
-            else if (result == NpkStatus::NotAvailable) //not resident
-            {
-                result = FaultOnAnonPage(&page, ref, *range->amapRef, slot);
-                if (result == NpkStatus::Success)
-                {
-                    pinnedAnon = page;
-                    paddr = LookupPagePaddr(page);
-                    resolved = true;
-
-                    if (write)
-                        AnonDropSwapForWrite(*ref, page);
-                }
-                else if (result != NpkStatus::NotAvailable)
-                {
-                    ReleaseMutex(&range->mutex);
-
-                    return result;
-                }
-            }
-            else //real error
-            {
-                ReleaseMutex(&range->mutex);
-
+            else if (result != NpkStatus::NotAvailable)
                 return result;
-            }
-
-            break;
         }
 
+        //2. Amap couldn't resolve it, try resolve the fault at the source layer
         SourceFaultResult srcResult {};
         bool haveSrcResult = false;
-        if (!resolved && range->source != nullptr)
+        if (!resolved && range.source != nullptr)
         {
-            result = FaultOnSource(srcResult, *range, slot, write);
+            result = FaultOnSource(srcResult, range, page, write, holdLocked);
             if (result != NpkStatus::Success)
-            {
-                ReleaseMutex(&range->mutex);
-
                 return result;
-            }
             haveSrcResult = true;
 
             auto* mainPage =  srcResult.pages[srcResult.mainIndex];
             if (write && isCow)
             {
-                result = CopySourcePageToAmap(&paddr, *range, slot, mainPage);
+                result = PopulateAmapSlot(&pinnedAnon, range, slot,
+                    mainPage);
+                if (result == NpkStatus::Exists)
+                    result = NpkStatus::Retry;
                 if (result != NpkStatus::Success)
                 {
-                    ReleaseSourceCluster(srcResult, range->source);
-                    ReleaseMutex(&range->mutex);
+                    ReleaseSourceCluster(srcResult);
 
                     return result;
                 }
 
-                pinnedAnon = LookupPageInfo(paddr);
-
-                //amap contains the page we want to map now, so clear it from
-                //the array provided by the source and unpin *that* page.
+                paddr = LookupPagePaddr(pinnedAnon);
                 srcResult.pages[srcResult.mainIndex] = nullptr;
-                SettleSourcePage(*range->source, mainPage, false, true);
+                BookUnpin(mainPage);
             }
             else
                 paddr = LookupPagePaddr(mainPage);
@@ -757,62 +710,87 @@ namespace Npk::Private
             resolved = true;
         }
 
+        //3. Source layer had nothing, so it's a zero-fill region.
         if (!resolved && isCow)
         {
-            //amap and source layers had nothing, so its a zero fill demand
-            //allocate region.
-
             if (write)
             {
-                result = PopulateAnonSlot(&paddr, *range, slot);
+                result = PopulateAmapSlot(&pinnedAnon, range, slot, nullptr);
+                if (result == NpkStatus::Exists)
+                    return NpkStatus::Retry;
                 if (result != NpkStatus::Success)
-                {
-                    ReleaseMutex(&range->mutex);
-
                     return result;
-                }
 
-                pinnedAnon = LookupPageInfo(paddr);
+                paddr = LookupPagePaddr(pinnedAnon);
             }
             else
-                paddr = MySystemDomain().zeroPage;
+                paddr = sysDomain0.zeroPage;
             resolved = true;
         }
 
+        //4. If we dont have a page at this point, its a bad fault.
+        //That means the amap and source layers rejected the slot, and the range
+        //isn't marked as CoW.
         if (!resolved)
-        {
-            //amap, source and not marked as CoW, this is as far as we go.
-            ReleaseMutex(&range->mutex);
-
             return NpkStatus::BadVaddr;
+
+        auto AmapStillAgrees = [](VmRange& range, size_t slot, PageInfo* anon,
+            bool viaCell) -> bool
+        {
+            if (!range.amapRef.Valid())
+                return true;
+
+            auto& book = range.amapRef->book;
+            if (anon == nullptr)
+                return !BookHasEntry(book, slot);
+
+            //only a cell's entry can be broken to another page under a pin
+            if (!viaCell)
+                return true;
+
+            const auto found = BookLookupPin(book, slot, false);
+            const bool agrees = found.result == BookFindResult::Page
+                && found.page == anon;
+
+            if (found.result == BookFindResult::Page)
+                BookUnpin(found.page);
+            else if (found.result == BookFindResult::Filling)
+                BookLeaveFill(found.fill);
+            if (found.cell != nullptr)
+                BookUnrefCell(found.cell);
+
+            return agrees;
+        };
+
+        //5. The decision may be stale by now: recheck it and install as one
+        //step against the other faults in this range.
+        result = AcquireMutex(&range.installMutex, sl::NoTimeout,
+            NPK_WAIT_LOCATION);
+        NPK_ASSERT(result == NpkStatus::Success);
+
+        if (!AmapStillAgrees(range, slot, pinnedAnon, viaCell))
+        {
+            ReleaseMutex(&range.installMutex);
+            ReleaseSourceCluster(srcResult);
+            ReleasePinnedAnon(&pinnedAnon);
+
+            return NpkStatus::Retry;
         }
 
-        //we have what we need to map, now to unmap anything at this location.
-        Paddr prevPaddr = InvalidPaddr;
-        bool prevDirtied = false;
-        result = DropPreviousMapping(&prevPaddr, &prevDirtied, *range,
-            space.map, addr);
-        if (result != NpkStatus::Success && result != NpkStatus::NotAvailable)
+        //another fault already installed what this one would
+        Paddr present;
+        MmuPermissions presentPerms {};
+        result = HwMapExtract(&present, &presentPerms, nullptr, map, addr);
+        const bool alreadyMapped = result == NpkStatus::Success
+            && present == paddr
+            && (!write || presentPerms.Has(MmuPermission::Write));
+        if (alreadyMapped)
         {
-            ReleaseSourceCluster(srcResult,
-                haveSrcResult ? range->source : nullptr);
-            ReleasePinnedAnon(*range, pinnedAnon);
-            ReleaseMutex(&range->mutex);
+            ReleaseMutex(&range.installMutex);
+            ReleaseSourceCluster(srcResult);
+            ReleasePinnedAnon(&pinnedAnon);
 
-            return result;
-        }
-
-        if (result == NpkStatus::Success)
-            result = SettleMappedPage(prevPaddr, prevDirtied);
-
-        if (result != NpkStatus::Success && result != NpkStatus::NotAvailable)
-        {
-            ReleaseSourceCluster(srcResult,
-                haveSrcResult ? range->source : nullptr);
-            ReleasePinnedAnon(*range, pinnedAnon);
-            ReleaseMutex(&range->mutex);
-
-            return result;
+            return NpkStatus::Success;
         }
 
         //helper lambda
@@ -829,41 +807,82 @@ namespace Npk::Private
                 mode = MmuCacheMode::Mmio;
         };
 
-        //prepare and actually add the new mapping in response to the fault!
         MmuPermissions perms {};
         MmuCacheMode mode {};
-        ConvertFlags(perms, mode, range->flags, write);
+        ConvertFlags(perms, mode, range.flags, write);
 
-        result = HwMapAdd(space.map, addr, paddr, perms, mode, false);
-        if (result != NpkStatus::Success)
+        //6. Remove an old mapping and install the new mapping. We allow for a
+        //fastpath with `HwMapUpgrade()` here.
+        bool upgraded = false;
+        if (write)
         {
-            ReleaseSourceCluster(srcResult,
-                haveSrcResult ? range->source : nullptr);
-            ReleasePinnedAnon(*range, pinnedAnon);
-            ReleaseMutex(&range->mutex);
+            //optimization: try upgrade the mapping if the MMU allows this.
+            MapBatchRange upgradeStore[1];
+            MapBatch upgradeBatch {};
+            ResetMapBatch(upgradeBatch, map, upgradeStore);
+
+            upgraded = HwMapUpgrade(upgradeBatch, addr, paddr, perms).matched;
+
+            HwMapUpdate(upgradeBatch, true);
+            FinishMapBatch(upgradeBatch);
+        }
+
+        //no fastpath, do it the long way.
+        Paddr prevPaddr;
+        bool prevDirtied = false;
+        result = NpkStatus::NotAvailable;
+        if (!upgraded)
+            result = DropPreviousMapping(&prevPaddr, &prevDirtied, range, addr);
+        if (result == NpkStatus::Success)
+            result = SettleMappedPage(prevPaddr, prevDirtied);
+
+        if (result != NpkStatus::Success && result != NpkStatus::NotAvailable)
+        {
+            ReleaseMutex(&range.installMutex);
+            ReleaseSourceCluster(srcResult);
+            ReleasePinnedAnon(&pinnedAnon);
 
             return result;
         }
 
-        //the main page is in, so its pin can become the owner's.
+        MapBatchRange rangeStore[MaxFaultAddRanges];
+        MapBatch batch {};
+        ResetMapBatch(batch, map, { rangeStore, MaxFaultAddRanges });
+
+        //add the new mapping
+        result = NpkStatus::Success;
+        if (!upgraded)
+            result = HwMapAdd(batch, addr, paddr, perms, mode, false);
+        if (result != NpkStatus::Success)
+        {
+            ReleaseSourceCluster(srcResult);
+            ReleasePinnedAnon(&pinnedAnon);
+            FinishMapBatch(batch);
+            ReleaseMutex(&range.installMutex);
+
+            return result;
+        }
+
+        //7. Housekeeping after adding the new mapping: the owner's pin becomes
+        //the mapped flag.
         if (pinnedAnon != nullptr)
         {
-            PageVmOwnerType ownerType;
-            auto* owner = PageInfoGetVmOwner(ownerType, pinnedAnon);
-            NPK_ASSERT(ownerType == PageVmOwnerType::Anon && owner != nullptr);
-
-            CommitAnonPage(*static_cast<AnonMap*>(owner), pinnedAnon);
+            BookCommit(range.amapRef->book, pinnedAnon);
             pinnedAnon = nullptr;
         }
 
         //bonus round: map clustered pages from the source layer
         if (haveSrcResult)
         {
-            //clustered pages are always mapped readonly and never overwrite
+            //Clustered pages are always mapped readonly and never overwrite
             //an existing mapping.
+            //They're readonly so we can detect readahead usage and feed that
+            //into future readahead decisions, see `BookReadaheadFeedback` and
+            //the `Readahead` page info flag.
+
             bool mapped[MaxClusterPages] {};
             MmuPermissions clusterPerms {};
-            ConvertFlags(clusterPerms, mode, range->flags, false);
+            ConvertFlags(clusterPerms, mode, range.flags, false);
 
             for (size_t i = 0; i < srcResult.count; i++)
             {
@@ -879,34 +898,34 @@ namespace Npk::Private
 
                 const uintptr_t at = srcResult.page0Addr + (i << PfnShift());
 
-                if (range->amapRef.Valid())
+                if (range.amapRef.Valid())
                 {
-                    const size_t amapSlot = range->amapOffset
-                        + ((at - range->base) >> PfnShift());
+                    const size_t amapSlot = range.amapOffset
+                        + ((at - range.base) >> PfnShift());
 
-                    if (AnonMapLookup(*range->amapRef, amapSlot).Valid())
+                    if (BookHasEntry(range.amapRef->book, amapSlot))
                         continue;
                 }
 
                 Paddr existing;
                 result = HwMapExtract(&existing, nullptr,
-                    nullptr, space.map, at);
+                    nullptr, map, at);
 
                 const bool occupied = result == NpkStatus::Success;
                 if (!occupied)
                 {
-                    result = HwMapAdd(space.map, at, LookupPagePaddr(page),
+                    result = HwMapAdd(batch, at, LookupPagePaddr(page),
                         clusterPerms, mode, false);
                 }
 
                 mapped[i] = !occupied && result == NpkStatus::Success;
             }
 
-            SettleFaultedSourcePages(*range->source, srcResult.pages, mapped,
-                srcResult.count);
+            CommitFaultedPages(range, srcResult, mapped);
         }
 
-        ReleaseMutex(&range->mutex);
+        FinishMapBatch(batch);
+        ReleaseMutex(&range.installMutex);
 
         return NpkStatus::Success;
     }
@@ -914,15 +933,95 @@ namespace Npk::Private
     static NpkStatus AttemptPageFault(VmSpace& space, uintptr_t addr,
         bool write)
     {
-        auto result = AcquireSxMutexShared(&space.rangesMutex, sl::NoTimeout,
-            NPK_WAIT_LOCATION);
-        if (result != NpkStatus::Success)
+        auto NeedsPrivateAmap = [](const VmRange& range) -> bool
+        {
+            if (!range.flags.Has(VmFlag::Write))
+                return false;
+            if (!range.flags.Has(VmFlag::CopyOnWrite))
+                return false;
+            if (!range.amapRef.Valid())
+                return true;
+
+            return range.flags.Has(VmFlag::AmapNeedsCopy);
+        };
+
+        auto PrivatiseAmap = [](VmRange& range) -> NpkStatus
+        {
+            auto result = AcquireSxMutexExclusive(&range.mutex,
+                sl::NoTimeout, NPK_WAIT_LOCATION);
+            if (result != NpkStatus::Success)
+                return result;
+
+            const bool gated = range.space->faultGate.Load(sl::Acquire);
+            const bool dying = (range.faultRefs.Load(sl::Acquire)
+                & VmRangeDying) != 0;
+            if (!gated && !dying)
+                result = EnsurePrivateAmap(range);
+
+            ReleaseSxMutexExclusive(&range.mutex);
+
             return result;
+        };
 
-        result = AttemptPageFaultLocked(space, addr, write);
-        ReleaseSxMutexShared(&space.rangesMutex);
+        for (size_t round = 0; ; round++)
+        {
+            VmRange* range;
+            auto result = BeginFaultInRange(&range, space, addr);
+            if (result != NpkStatus::Success)
+                return result;
 
-        return result;
+            result = AcquireSxMutexShared(&range->mutex, sl::NoTimeout,
+                NPK_WAIT_LOCATION);
+            if (result != NpkStatus::Success)
+            {
+                EndFaultInRange(*range);
+                return result;
+            }
+
+            const bool gated = space.faultGate.Load(sl::Acquire);
+            const bool dying = (range->faultRefs.Load(sl::Acquire)
+                & VmRangeDying) != 0;
+            const bool covers = addr - range->base
+                < range->length.Load(sl::Relaxed);
+            if (gated || dying || !covers)
+            {
+                ReleaseSxMutexShared(&range->mutex);
+                EndFaultInRange(*range);
+
+                //a dying range's span is going: the fault is on nothing
+                if (dying)
+                    return NpkStatus::BadVaddr;
+                WaitForFaultGateOfSpace(space);
+                continue;
+            }
+
+            if (write && NeedsPrivateAmap(*range))
+            {
+                ReleaseSxMutexShared(&range->mutex);
+                result = PrivatiseAmap(*range);
+                EndFaultInRange(*range);
+
+                if (result != NpkStatus::Success)
+                    return result;
+                continue;
+            }
+
+            const bool holdLocked = round >= MaxUnlockedFaultRounds;
+            result = AttemptPageFaultLocked(*range, addr, write, holdLocked);
+            ReleaseSxMutexShared(&range->mutex);
+            EndFaultInRange(*range);
+
+            if (result != NpkStatus::Retry || round >= MaxFaultRetryRounds)
+                return result;
+        }
+    }
+
+    size_t GetReadaheadWindowFor(Book& book, size_t index)
+    {
+        if (MemoryIsLow())
+            return 1;
+
+        return BookSwapWindow(book, index, GetReadaheadPageCount());
     }
 }
 
@@ -955,6 +1054,7 @@ namespace Npk
             }
         }
 
+
         NPK_ASSERT(isUserAddr || isKernelAddr);
         addr = AlignDownPage(addr);
 
@@ -967,6 +1067,7 @@ namespace Npk
             const auto userRange = HwGetUserAddressRange();
             if (!isUserAddr)
                 Boom();
+            //a range changing under every pager call is held across one
             if (addr < userRange.base || addr >= userRange.top)
                 Boom();
             */

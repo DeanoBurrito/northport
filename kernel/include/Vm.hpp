@@ -280,9 +280,17 @@ namespace Npk
          */
         BookToRangeLink lowerLink;
 
-        /* Synchronizes access to all fields below.
+        /* Synchronizes access to all fields below, as a reader/writer lock.
+         * Installing pages into the range is synchronized separately,
+         * currently by `installMutex` below.
          */
-        Mutex mutex;
+        SxMutex mutex;
+
+        /* Temporary solution (as of 25/11/2026, hahaha I wonder how long this
+         * comment will remain here for). Used to serialize page mappings added
+         * to this range.
+         */
+        Mutex installMutex;
 
         /* Count of faults looking at this range, part of the lockless lookup
          * protocol.
@@ -316,7 +324,7 @@ namespace Npk
          * a range to be treated as if it has `Sequential` advice even if it
          * doesn't.
          */
-        uint32_t nextFaultSlotPlusOne;
+        sl::Atomic<uint32_t> nextFaultSlotPlusOne;
 
         /* How this range is likely to be accessed, set explicitly.
          */
@@ -325,7 +333,7 @@ namespace Npk
         /* Helps inform clustered pagein: the cluster size the last fault chose,
          * before any memory pressure cuts.
          */
-        uint8_t readaheadWindow;
+        sl::Atomic<uint8_t> readaheadWindow;
 
         /* Base address of this address range, relative to the parent
          * address space. This can also be thought of as an offset,

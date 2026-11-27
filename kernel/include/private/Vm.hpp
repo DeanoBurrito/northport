@@ -41,6 +41,9 @@ namespace Npk::Private
 
     constexpr size_t MaxSourceClusterPages = BookFillLimit;
 
+    constexpr size_t MaxClusterPages = 16;
+    constexpr size_t DefaultClusterPages = 8;
+
     /* Forward declarations.
      */
     struct BookFill;
@@ -1143,6 +1146,10 @@ namespace Npk::Private
      */
     NpkStatus SourcePinCluster(VmSource& src, sl::Span<PageInfo*> out,
         size_t base, size_t mainIndex, PagerFlags flags);
+
+    size_t GetReadaheadWindowFor(Book& book, size_t index);
+    size_t GetClusterInPageCount();
+    size_t GetReadaheadPageCount();
 
     /* Helper function for partial zeroing, `from` is a byte offset into the
      * `page`. Must be called at DPC IPL or below.
